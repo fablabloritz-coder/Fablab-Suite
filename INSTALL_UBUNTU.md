@@ -100,7 +100,7 @@ python fabsuite_ssh_gui.py
 Ordre conseillé dans la GUI:
 1. Connect SSH
 2. Upload installer files
-3. Audit serveur
+3. Audit serveur (inclut automatiquement un pré-check sécurité données)
 4. Prepare host
 5. Réparer env monorepo
 6. Pré-check sécurité données

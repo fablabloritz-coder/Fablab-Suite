@@ -1293,8 +1293,25 @@ exit 0
         except Exception as exc:
             self._log(f"Avertissement: suppression OK mais rafraîchissement liste impossible: {exc}")
 
+    def _audit_worker(self):
+        self._run_helper_action("audit")
+        code = self._run_helper_action("check-data-safety", allow_failure=True)
+        if code == 0:
+            self._log("Pré-check sécurité données (post-audit): aucun écrasement détecté.")
+        elif code == 2:
+            self._queue_ui(
+                MSG_ALERT,
+                (
+                    "Alerte sécurité données",
+                    "Le pré-check post-audit a détecté un risque de changement de chemin data.\n\nL'installation/mise à jour sera bloquée tant que le risque persiste.",
+                ),
+            )
+            self._log("Pré-check sécurité données (post-audit): risque détecté.")
+        else:
+            self._log(f"Pré-check sécurité données (post-audit): échec technique (code {code}).")
+
     def action_audit(self):
-        self._run_async("Audit serveur", lambda: self._run_helper_action("audit"))
+        self._run_async("Audit serveur", self._audit_worker)
 
     def action_cleanup_safe(self):
         if not messagebox.askyesno("Confirmation", "Exécuter cleanup-safe ? Les conteneurs FabSuite seront supprimés (backup bind mounts inclus)."):
