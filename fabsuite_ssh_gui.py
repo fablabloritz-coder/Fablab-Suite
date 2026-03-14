@@ -447,6 +447,12 @@ class FabSuiteSshGui(tk.Tk):
             relief=tk.FLAT, borderwidth=0, padx=8, pady=8,
         )
         self.output.pack(fill=tk.BOTH, expand=True)
+        self.output.tag_configure("log_ok", foreground="#9ece6a")
+        self.output.tag_configure("log_err", foreground="#f7768e")
+        self.output.tag_configure("log_warn", foreground="#e0af68")
+        self.output.tag_configure("log_info", foreground="#7aa2f7")
+        self.output.tag_configure("log_section", foreground="#7dcfff")
+        self.output.tag_configure("log_normal", foreground="#a9b1d6")
 
         bottom = ttk.Frame(term_frame, padding=(10, 4, 10, 8))
         bottom.pack(fill=tk.X)
@@ -617,8 +623,7 @@ class FabSuiteSshGui(tk.Tk):
                 msg_type, payload = MSG_LOG, str(item)
 
             if msg_type == MSG_LOG:
-                self.output.insert(tk.END, str(payload) + "\n")
-                self.output.see(tk.END)
+                self._append_output_colored(str(payload))
             elif msg_type == MSG_SET_ACTIONS:
                 self._set_actions_enabled(bool(payload))
             elif msg_type == MSG_SET_STATUS:
@@ -643,6 +648,45 @@ class FabSuiteSshGui(tk.Tk):
             self.after(120, self._poll_log_queue)
         except tk.TclError:
             pass
+
+    def _classify_log_tag(self, line):
+        txt = (line or "").strip()
+        low = txt.lower()
+
+        if txt.startswith("---") or txt.startswith("====="):
+            return "log_section"
+
+        if txt.startswith("[OK]") or txt.startswith("[SAFE]"):
+            return "log_ok"
+
+        if txt.startswith("[KO]") or txt.startswith("[RISK]") or txt.startswith("[ALERT]"):
+            return "log_err"
+
+        if txt.startswith("[WARN]") or "warning" in low or "avertissement" in low:
+            return "log_warn"
+
+        if "traceback" in low or "runtimeerror" in low or "exception" in low:
+            return "log_err"
+
+        if "error" in low and "0 error" not in low:
+            return "log_err"
+
+        if low.startswith("exit code:"):
+            if low == "exit code: 0":
+                return "log_ok"
+            return "log_err"
+
+        if txt.startswith("[INFO]") or low.startswith("connected to"):
+            return "log_info"
+
+        return "log_normal"
+
+    def _append_output_colored(self, text):
+        lines = text.splitlines() or [""]
+        for line in lines:
+            tag = self._classify_log_tag(line)
+            self.output.insert(tk.END, line + "\n", tag)
+        self.output.see(tk.END)
 
     def _log(self, msg):
         self.log_queue.put((MSG_LOG, msg))

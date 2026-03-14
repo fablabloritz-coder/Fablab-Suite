@@ -92,6 +92,7 @@ Le GUI est conçu pour rester neutre:
 - Install et Update lancent automatiquement une réparation d'env avant exécution
 - Install et Update lancent automatiquement un pré-check sécurité données (arrêt + alerte si risque détecté)
 - Audit serveur lance aussi automatiquement un pré-check sécurité données informatif
+- terminal Output colorisé automatiquement (OK en vert, erreurs en rouge, warnings en orange)
 
 ## Maintenance
 
