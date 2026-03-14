@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Recherche - Gestion de Prêts{% endblock %}
+
+{% block content %}
+<h1 class="page-title">
+    <i class="bi bi-search text-primary"></i> Recherche universelle
+</h1>
+
+<!-- Formulaire de recherche -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('core.recherche') }}">
+            <div class="row g-3">
+                <div class="col-12 col-md-8">
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="text"
+                               name="q"
+                               class="form-control form-control-lg"
+                               placeholder="Rechercher par nom, prénom, objet, n° série, classe..."
+                               value="{{ q }}"
+                               autofocus>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <div class="d-flex gap-2 h-100">
+                        <select name="statut" class="form-select form-select-lg" aria-label="Filtrer les prêts">
+                            <option value="tous" {{ 'selected' if filtre_statut == 'tous' }}>Tous les prêts</option>
+                            <option value="actifs" {{ 'selected' if filtre_statut == 'actifs' }}>En cours uniquement</option>
+                            <option value="retournes" {{ 'selected' if filtre_statut == 'retournes' }}>Retournés uniquement</option>
+                        </select>
+                        <button type="submit" class="btn btn-primary btn-lg" aria-label="Rechercher">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Résultats -->
+{% if q %}
+{% set total = resultats_prets|length + resultats_personnes|length + resultats_materiel|length %}
+<div class="mb-3 text-muted">
+    <strong>{{ total }}</strong> résultat(s) pour « {{ q }} »
+</div>
+
+{% if total == 0 %}
+    <div class="empty-state">
+        <i class="bi bi-search"></i>
+        <p>Aucun résultat pour « {{ q }} »</p>
+        <p class="text-muted small">Essayez avec un autre terme de recherche</p>
+    </div>
+{% endif %}
+
+{# ── Résultats : Personnes ── #}
+{% if resultats_personnes %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="mb-0"><i class="bi bi-people-fill text-primary me-2"></i>Personnes ({{ resultats_personnes|length }})</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-touch table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Nom</th>
+                        <th>Prénom</th>
+                        <th>Catégorie</th>
+                        <th>Classe</th>
+                        <th>Email</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in resultats_personnes %}
+                    <tr onclick="window.location='{{ url_for('personnes.modifier_personne', personne_id=p.id) }}'" style="cursor:pointer">
+                        <td><strong>{{ p.nom }}</strong></td>
+                        <td>{{ p.prenom }}</td>
+                        <td><span class="cat-badge" style="{{ p.categorie | style_categorie }}">{{ p.categorie | label_categorie }}</span></td>
+                        <td>{{ p.classe or '—' }}</td>
+                        <td>{{ p.email or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── Résultats : Matériel ── #}
+{% if resultats_materiel %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="mb-0"><i class="bi bi-pc-display text-primary me-2"></i>Matériel ({{ resultats_materiel|length }})</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-touch table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Marque / Modèle</th>
+                        <th>N° Série</th>
+                        <th>N° Inventaire</th>
+                        <th>État</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in resultats_materiel %}
+                    <tr onclick="window.location='{{ url_for('inventaire.modifier_materiel', mat_id=m.id) }}'" style="cursor:pointer">
+                        <td><strong>{{ m.type_materiel }}</strong></td>
+                        <td>{{ m.marque or '' }} {{ m.modele or '' }}</td>
+                        <td><code>{{ m.numero_serie or '—' }}</code></td>
+                        <td><code>{{ m.numero_inventaire or '—' }}</code></td>
+                        <td>
+                            {% if m.etat == 'disponible' %}
+                                <span class="badge bg-success">Disponible</span>
+                            {% elif m.etat == 'prete' %}
+                                <span class="badge bg-warning text-dark">Prêté</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ m.etat }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── Résultats : Prêts ── #}
+{% if resultats_prets %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="mb-0"><i class="bi bi-arrow-left-right text-primary me-2"></i>Prêts ({{ resultats_prets|length }})</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-touch table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Statut</th>
+                        <th>Emprunteur</th>
+                        <th>Catégorie</th>
+                        <th>Classe</th>
+                        <th>Objet(s)</th>
+                        <th>Date emprunt</th>
+                        <th>Date retour</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pret in resultats_prets %}
+                    <tr onclick="window.location='{{ url_for('prets.detail_pret', pret_id=pret.id) }}'" style="cursor:pointer">
+                        <td>
+                            {% if pret.retour_confirme %}
+                                <span class="badge-retourne"><i class="bi bi-check"></i> Retourné</span>
+                            {% else %}
+                                {% set depasse, _ = calcul_depassement_heures(pret.date_emprunt, pret.duree_pret_heures, pret.duree_pret_jours, date_retour_prevue=pret.date_retour_prevue) %}
+                                {% if depasse %}
+                                    <span class="badge-urgent"><i class="bi bi-exclamation-triangle"></i> En retard</span>
+                                {% else %}
+                                    <span class="badge-actif">En cours</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ pret.nom }} {{ pret.prenom }}</strong></td>
+                        <td><span class="cat-badge" style="{{ pret.categorie | style_categorie }}">{{ pret.categorie | label_categorie }}</span></td>
+                        <td>{{ pret.classe_snapshot or pret.classe or '—' }}</td>
+                        <td>{{ pret.descriptif_objets }}</td>
+                        <td>{{ pret.date_emprunt | format_date }}</td>
+                        <td>{{ pret.date_retour | format_date if pret.date_retour else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-search"></i>
+    <p>Entrez un terme de recherche ci-dessus</p>
+    <p class="text-muted small">Recherche dans les prêts, les personnes et le matériel</p>
+</div>
+{% endif %}
+{% endblock %}

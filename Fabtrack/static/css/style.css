@@ -1,0 +1,694 @@
+/* ==============================================
+   FABTRACK — Suivi de Consommation Fablab
+   CSS personnalisé (Bootstrap 5.3 override)
+   Theme: Orange industriel
+   ============================================== */
+
+:root {
+    --ft-primary: #e67e22;
+    --ft-primary-dark: #d35400;
+    --ft-primary-light: #fef3e2;
+    --ft-secondary: #5f6368;
+    --ft-success: #0d904f;
+    --ft-warning: #ea8600;
+    --ft-danger: #d93025;
+    --ft-info: #0891b2;
+    --ft-bg: #f5f3f0;
+    --ft-card-bg: #ffffff;
+    --ft-text: #202124;
+    --ft-text-muted: #5f6368;
+    --ft-border: #dadce0;
+    --ft-icon-size: 32px;
+    --ft-icon-size-machines: 32px;
+    --ft-icon-size-preparateurs: 32px;
+    --ft-icon-size-types: 28px;
+    --ft-radius: 14px;
+    --ft-radius-sm: 10px;
+}
+
+/* Entity images (respect icon size vars) */
+.entity-img-machine {
+    width: var(--ft-icon-size-machines, 32px);
+    height: var(--ft-icon-size-machines, 32px);
+    object-fit: cover;
+}
+.entity-img-prep {
+    width: var(--ft-icon-size-preparateurs, 32px);
+    height: var(--ft-icon-size-preparateurs, 32px);
+    object-fit: cover;
+}
+.entity-img-type {
+    width: var(--ft-icon-size-types, 28px);
+    height: var(--ft-icon-size-types, 28px);
+    object-fit: cover;
+}
+.entity-img-mat {
+    width: var(--ft-icon-size, 32px);
+    height: var(--ft-icon-size, 32px);
+    object-fit: cover;
+}
+.machine-card-img {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+}
+
+/* Optimisations tactiles */
+* { -webkit-tap-highlight-color: transparent; }
+
+body {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: var(--ft-bg);
+    color: var(--ft-text);
+    overflow-x: hidden;
+}
+
+/* ============================================
+   NAVBAR — Gradient orange/rouge
+   ============================================ */
+.navbar-fabtrack {
+    background: linear-gradient(135deg, #c0392b 0%, #e67e22 100%) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+}
+
+.navbar-fabtrack .navbar-brand {
+    font-weight: 800;
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+}
+
+.navbar-fabtrack .navbar-brand img {
+    border-radius: 8px;
+}
+
+.navbar-fabtrack .nav-link {
+    color: rgba(255,255,255,0.85) !important;
+    font-weight: 600;
+    font-size: 0.92rem;
+    border-radius: 8px;
+    padding: 0.5rem 0.9rem !important;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.navbar-fabtrack .nav-link:hover,
+.navbar-fabtrack .nav-link.active {
+    color: #fff !important;
+    background: rgba(255,255,255,0.2);
+}
+
+.navbar-fabtrack .nav-link i {
+    font-size: 1.05rem;
+}
+
+.user-select-nav {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+    min-width: 160px;
+    cursor: pointer;
+}
+
+.user-select-nav:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+}
+
+.user-select-nav option {
+    color: var(--ft-text);
+    background: #fff;
+}
+
+/* ============================================
+   PAGE TITLE
+   ============================================ */
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--ft-text);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.page-subtitle {
+    font-size: 0.95rem;
+    color: var(--ft-text-muted);
+}
+
+/* ============================================
+   CARDS — Border-0 shadow-sm (style PretGo)
+   ============================================ */
+.card {
+    border: none !important;
+    border-radius: var(--ft-radius) !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+.card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--ft-border);
+    font-weight: 700;
+}
+
+/* ============================================
+   STAT CARDS
+   ============================================ */
+.stat-card {
+    border: none;
+    border-radius: 16px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    transition: transform 0.15s;
+    background: #fff;
+}
+
+.stat-card:active {
+    transform: scale(0.97);
+}
+
+.stat-card .stat-number {
+    font-size: 2.4rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.stat-card .stat-label {
+    font-size: 0.88rem;
+    color: var(--ft-text-muted);
+    margin-top: 0.4rem;
+    font-weight: 500;
+}
+
+/* ============================================
+   FORM OVERRIDES — Tactile
+   ============================================ */
+.form-control,
+.form-select {
+    min-height: 48px;
+    font-size: 1rem;
+    border-radius: var(--ft-radius-sm) !important;
+    border: 2px solid var(--ft-border);
+    padding: 0.5rem 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--ft-primary) !important;
+    box-shadow: 0 0 0 4px rgba(230,126,34,0.15) !important;
+}
+
+.form-label {
+    font-weight: 600;
+    font-size: 0.88rem;
+    margin-bottom: 0.3rem;
+}
+
+/* ============================================
+   BUTTONS — Tactile
+   ============================================ */
+.btn {
+    min-height: 44px;
+    font-size: 0.92rem;
+    border-radius: var(--ft-radius-sm) !important;
+    padding: 0.5rem 1.15rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-lg {
+    min-height: 52px;
+    font-size: 1.05rem;
+    padding: 0.65rem 1.75rem;
+}
+
+.btn-primary {
+    background-color: var(--ft-primary) !important;
+    border-color: var(--ft-primary) !important;
+}
+
+.btn-primary:hover, .btn-primary:focus {
+    background-color: var(--ft-primary-dark) !important;
+    border-color: var(--ft-primary-dark) !important;
+}
+
+.btn-outline-primary {
+    color: var(--ft-primary) !important;
+    border-color: var(--ft-primary) !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--ft-primary) !important;
+    color: #fff !important;
+}
+
+.btn-sm {
+    min-height: 34px;
+    font-size: 0.82rem;
+    padding: 0.3rem 0.7rem;
+}
+
+/* ============================================
+   ACTIVITY TYPE SELECTOR
+   ============================================ */
+.activity-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.activity-type-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--ft-border);
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s, transform 0.1s;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.activity-type-btn:hover {
+    border-color: var(--ft-primary);
+    background: var(--ft-primary-light);
+    box-shadow: 0 4px 12px rgba(230,126,34,0.15);
+    transform: translateY(-1px);
+}
+
+.activity-type-btn.selected {
+    border-color: var(--ft-primary);
+    background: var(--ft-primary-light);
+    box-shadow: 0 0 0 3px rgba(230,126,34,0.18);
+}
+
+.activity-type-btn .icon {
+    font-size: var(--ft-icon-size-types, 1.3rem);
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.activity-type-btn .act-img {
+    width: var(--ft-icon-size-types, 28px);
+    height: var(--ft-icon-size-types, 28px);
+    object-fit: contain;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.activity-type-btn .label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1f2937;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.activity-type-btn.selected .label {
+    color: #92400e;
+}
+
+.activity-type-btn:hover .label {
+    color: #92400e;
+}
+
+/* ============================================
+   FILTER TABS (pill-style like PretGo)
+   ============================================ */
+.filter-tabs {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-tab {
+    padding: 0.5rem 1rem;
+    border-radius: 25px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    border: 2px solid var(--ft-border);
+    color: var(--ft-text);
+    background: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.filter-tab:hover {
+    border-color: var(--ft-primary);
+    color: var(--ft-primary);
+}
+
+.filter-tab.active {
+    background-color: var(--ft-primary);
+    color: #fff;
+    border-color: var(--ft-primary);
+}
+
+/* ============================================
+   BADGES
+   ============================================ */
+.badge-type {
+    padding: 0.3rem 0.7rem;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.badge-3d { background: #fef3c7; color: #92400e; }
+.badge-laser { background: #fee2e2; color: #991b1b; }
+.badge-cnc { background: #dbeafe; color: #1e40af; }
+.badge-papier { background: #dcfce7; color: #166534; }
+.badge-thermo { background: #f3e8ff; color: #6b21a8; }
+.badge-bricolage { background: #e0e7ff; color: #3730a3; }
+.badge-broderie { background: #fce7f3; color: #9d174d; }
+
+/* ============================================
+   TABLE-TOUCH (like PretGo)
+   ============================================ */
+.table-touch {
+    font-size: 0.91rem;
+}
+
+.table-touch > thead > tr > th {
+    background-color: #f5f3f0;
+    font-weight: 700;
+    padding: 0.75rem;
+    border-bottom: 2px solid var(--ft-border);
+    white-space: nowrap;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--ft-text-muted);
+}
+
+.table-touch > tbody > tr > td {
+    padding: 0.7rem 0.75rem;
+    vertical-align: middle;
+}
+
+.table-touch > tbody > tr {
+    transition: background-color 0.15s;
+}
+
+.table-touch > tbody > tr:hover {
+    background-color: #fef3e2 !important;
+}
+
+/* ============================================
+   DYNAMIC FIELDS
+   ============================================ */
+.dynamic-fields {
+    background: #faf8f5;
+    border: 2px dashed var(--ft-border);
+    border-radius: 12px;
+    padding: 1.15rem;
+    margin-top: 0.5rem;
+}
+
+.dynamic-fields.hidden { display: none; }
+
+.dynamic-fields-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--ft-primary);
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ============================================
+   EMPTY STATE (like PretGo)
+   ============================================ */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--ft-text-muted);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.35;
+    display: block;
+}
+
+.empty-state p { font-size: 1.05rem; }
+
+/* ============================================
+   ACTION CARDS (like PretGo export)
+   ============================================ */
+.action-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    border-radius: 16px;
+    text-decoration: none;
+    color: #fff;
+    font-weight: 700;
+    min-height: 130px;
+    transition: box-shadow 0.2s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.action-card:hover {
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    color: #fff;
+}
+
+.action-card:active {
+    color: #fff;
+}
+
+.action-card i { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+.action-card.bg-saisie { background: linear-gradient(135deg, #d35400, #e67e22); }
+.action-card.bg-historique { background: linear-gradient(135deg, #0a7c42, #34a853); }
+.action-card.bg-stats { background: linear-gradient(135deg, #1557b0, #4285f4); }
+.action-card.bg-params { background: linear-gradient(135deg, #444950, #80868b); }
+.action-card.bg-export { background: linear-gradient(135deg, #6d28d9, #8b5cf6); }
+
+/* ============================================
+   CHART CONTAINERS
+   ============================================ */
+.chart-card {
+    background: var(--ft-card-bg);
+    border-radius: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    border: 1px solid var(--ft-border);
+    padding: 1.25rem;
+}
+
+.chart-card h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+}
+
+.chart-card canvas { max-height: 350px; }
+
+/* ============================================
+   SETTINGS TWO-COLUMN (like PretGo categories)
+   ============================================ */
+.settings-form-col .card {
+    position: sticky;
+    top: 80px;
+}
+
+/* ============================================
+   LIST GROUP ITEMS for settings
+   ============================================ */
+.list-group-item {
+    transition: background 0.15s;
+    border-radius: 0 !important;
+}
+
+.list-group-item:hover {
+    background-color: #fef3e2 !important;
+}
+
+.material-thumb {
+    width: var(--ft-icon-size, 38px);
+    height: var(--ft-icon-size, 38px);
+    border-radius: 8px;
+    object-fit: contain;
+    background: #f5f3f0;
+    padding: 3px;
+}
+
+.entity-img {
+    width: var(--ft-icon-size, 32px);
+    height: var(--ft-icon-size, 32px);
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.entity-img-machine {
+    width: var(--ft-icon-size-machines, 32px);
+    height: var(--ft-icon-size-machines, 32px);
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.entity-img-prep {
+    width: var(--ft-icon-size-preparateurs, 32px);
+    height: var(--ft-icon-size-preparateurs, 32px);
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+/* ============================================
+   SEARCH BOX (like PretGo)
+   ============================================ */
+.search-box {
+    position: relative;
+}
+
+.search-box .bi-search {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ft-text-muted);
+    font-size: 1.1rem;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.search-box input {
+    padding-left: 2.75rem !important;
+}
+
+/* ============================================
+   TOAST (custom)
+   ============================================ */
+.toast-container-ft {
+    position: fixed;
+    top: 80px;
+    right: 1.5rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.toast-ft {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    border: 1px solid var(--ft-border);
+    padding: 0.85rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 300px;
+    animation: ftSlideIn 0.3s ease;
+}
+
+.toast-ft.success { border-left: 4px solid var(--ft-success); }
+.toast-ft.error { border-left: 4px solid var(--ft-danger); }
+.toast-ft.info { border-left: 4px solid var(--ft-primary); }
+
+@keyframes ftSlideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* Button pulse animation (save state) */
+.btn-pulse {
+    animation: ftBtnPulse 0.6s ease;
+}
+@keyframes ftBtnPulse {
+    0% { box-shadow: 0 0 0 0 rgba(230,126,34,0.5); }
+    70% { box-shadow: 0 0 0 10px rgba(230,126,34,0); }
+    100% { box-shadow: 0 0 0 0 rgba(230,126,34,0); }
+}
+
+/* ============================================
+   DARK MODE TOGGLE
+   ============================================ */
+.dark-mode-toggle {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+}
+
+.dark-mode-toggle:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 5px; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+    .stat-card .stat-number { font-size: 1.8rem; }
+
+    .action-card {
+        min-height: 90px;
+        padding: 1.25rem 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .action-card i { font-size: 1.8rem; }
+
+    .page-title { font-size: 1.2rem; }
+
+    .activity-type-btn {
+        padding: 0.4rem 0.7rem;
+        font-size: 0.85rem;
+    }
+}
+
+/* ============================================
+   PRINT
+   ============================================ */
+@media print {
+    .navbar, .btn, .no-print, footer, .toast-container-ft { display: none !important; }
+    .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+    body { background: #fff; }
+    .chart-card { page-break-inside: avoid; margin-bottom: 1rem; }
+    .stat-card { border: 1px solid #ddd !important; }
+    .filter-tabs, .filter-tab { display: none !important; }
+    main { padding: 0 !important; }
+}

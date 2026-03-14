@@ -1,0 +1,210 @@
+/* FabBoard — Styles globaux */
+
+:root {
+    --primary-color: #ff6b35;
+    --secondary-color: #004e89;
+    --success-color: #06d6a0;
+    --warning-color: #f77f00;
+    --danger-color: #ef476f;
+    --app-font-family: 'Inter', sans-serif;
+    --dark-bg: #1a1a2e;
+    --dark-card: #16213e;
+    --dark-text: #eaeaea;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--app-font-family, 'Inter', sans-serif);
+    background: #f8f9fa;
+    color: #212529;
+}
+
+/* Navbar personnalisée */
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.navbar-logo {
+    width: 32px;
+    height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.navbar {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+/* Badges d'urgence */
+.badge-critique {
+    background-color: var(--danger-color);
+}
+
+.badge-urgent {
+    background-color: var(--warning-color);
+}
+
+.badge-normal {
+    background-color: var(--secondary-color);
+}
+
+.badge-faible {
+    background-color: #6c757d;
+}
+
+/* Badges de statut */
+.badge-en_attente {
+    background-color: #6c757d;
+}
+
+.badge-en_cours {
+    background-color: var(--secondary-color);
+}
+
+.badge-termine {
+    background-color: var(--success-color);
+}
+
+.badge-annule {
+    background-color: #dc3545;
+}
+
+/* Cards */
+.card {
+    border: none;
+    border-radius: 12px;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+/* Boutons */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #e8572f;
+    border-color: #e8572f;
+}
+
+/* Toasts */
+.toast {
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* MODE CLAIR */
+body.light-mode {
+    background: #ffffff;
+    color: #212529;
+}
+
+body.light-mode .navbar {
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #dee2e6;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+body.light-mode .navbar-brand,
+body.light-mode .nav-link {
+    color: #212529 !important;
+}
+
+body.light-mode .nav-link:hover {
+    color: var(--primary-color) !important;
+}
+
+body.light-mode .nav-link.active {
+    color: var(--primary-color) !important;
+    background-color: rgba(255, 107, 53, 0.1);
+}
+
+body.light-mode .btn-outline-light {
+    border-color: #212529;
+    color: #212529;
+}
+
+body.light-mode .btn-outline-light:hover {
+    background-color: #212529;
+    color: #ffffff;
+}
+
+body.light-mode .card {
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+}
+
+body.light-mode .table {
+    color: #212529;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1.2rem;
+    }
+
+    .navbar-logo {
+        width: 26px;
+        height: 26px;
+        max-width: 26px;
+        max-height: 26px;
+    }
+}
+
+/* Parametres - Sources */
+#sources-table-body code {
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+#sources-table-body .btn-group .btn {
+    min-width: 34px;
+}
+
+#sources-table-body tr td {
+    vertical-align: middle;
+}
+
+#source-type-help {
+    min-height: 1.25rem;
+}

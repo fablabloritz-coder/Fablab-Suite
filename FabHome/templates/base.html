@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="fr" data-bs-theme="{{ 'light' if settings.get('theme') == 'light' else 'dark' }}"
+      data-fh-theme="{{ settings.get('theme', 'dark') }}"
+      {% if settings.get('theme') == 'custom' %}style="--fh-custom-accent:{{ settings.get('custom_accent', '#ff6b35') }};--fh-custom-bg:{{ settings.get('custom_bg', '#0f0f1a') }};--fh-custom-card-bg:{{ settings.get('custom_card_bg', '#1a1a2e') }};--fh-custom-text:{{ settings.get('custom_text', '#e0e0e0') }}"{% endif %}>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ settings.get('title', 'FabHome') }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% block content %}{% endblock %}
+    <!-- Toast container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index:9999;"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

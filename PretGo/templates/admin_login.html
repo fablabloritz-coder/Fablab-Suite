@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Administration - Connexion{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-12 col-md-5 col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-dark text-white text-center py-4">
+                <i class="bi bi-shield-lock-fill fs-1"></i>
+                <h4 class="mt-2 mb-0">Administration</h4>
+            </div>
+            <div class="card-body p-4">
+                <!-- Formulaire de connexion classique -->
+                <div id="login-form-section">
+                    <p class="text-muted text-center mb-4">
+                        Entrez le mot de passe administrateur pour accéder aux réglages.
+                    </p>
+                    {% if password_changed == '0' %}
+                    <div class="alert alert-info small text-center">
+                        <i class="bi bi-info-circle-fill"></i>
+                        Première connexion ? Le mot de passe par défaut est <strong>1234</strong>
+                    </div>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('admin.admin_login', next=request.args.get('next', '')) if request.args.get('next') else url_for('admin.admin_login') }}">
+                        <div class="mb-4">
+                            <label for="password" class="form-label fw-bold">Mot de passe</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-key-fill"></i></span>
+                                <input type="password"
+                                       id="password"
+                                       name="password"
+                                       class="form-control form-control-lg"
+                                       placeholder="Mot de passe..."
+                                       required
+                                       autofocus>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-dark btn-lg w-100">
+                            <i class="bi bi-unlock-fill"></i> Se connecter
+                        </button>
+                    </form>
+
+                    {% if password_changed == '1' %}
+                    <div class="text-center mt-3">
+                        <a href="#" onclick="toggleRecovery()" class="text-muted small">
+                            <i class="bi bi-question-circle"></i> Mot de passe oublié ?
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Formulaire de récupération (masqué par défaut) -->
+                <div id="recovery-form-section" style="display:none">
+                    <p class="text-muted text-center mb-3">
+                        <i class="bi bi-file-earmark-lock"></i>
+                        Entrez le code de récupération que vous trouverez dans le fichier
+                        <code>data/code_recuperation.txt</code>
+                    </p>
+                    <form method="POST" action="{{ url_for('admin.admin_login') }}">
+                        <input type="hidden" name="action" value="recovery">
+                        <div class="mb-4">
+                            <label for="recovery_code" class="form-label fw-bold">Code de récupération</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-file-earmark-code"></i></span>
+                                <input type="text"
+                                       id="recovery_code"
+                                       name="recovery_code"
+                                       class="form-control form-control-lg text-center font-monospace"
+                                       placeholder="XXXX-XXXX-XXXX-XXXX"
+                                       required
+                                       maxlength="19"
+                                       style="letter-spacing: 2px;">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-warning btn-lg w-100">
+                            <i class="bi bi-key"></i> Vérifier le code
+                        </button>
+                    </form>
+
+                    <div class="text-center mt-3">
+                        <a href="#" onclick="toggleRecovery()" class="text-muted small">
+                            <i class="bi bi-arrow-left"></i> Retour à la connexion
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer text-center bg-white py-3">
+                <a href="{{ url_for('core.index') }}" class="text-muted text-decoration-none">
+                    <i class="bi bi-arrow-left"></i> Retour à l'accueil
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleRecovery() {
+    const login = document.getElementById('login-form-section');
+    const recovery = document.getElementById('recovery-form-section');
+    if (login.style.display === 'none') {
+        login.style.display = '';
+        recovery.style.display = 'none';
+    } else {
+        login.style.display = 'none';
+        recovery.style.display = '';
+    }
+}
+</script>
+{% endblock %}

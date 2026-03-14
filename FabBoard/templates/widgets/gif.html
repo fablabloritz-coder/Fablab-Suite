@@ -1,0 +1,61 @@
+<div class="widget widget-gif" id="widget-gif-{{ widget_id }}" data-widget-code="gif">
+    {% set gif_type = config.get('gif_type', 'local') %}
+    {% set gif_url = config.get('gif_url', '') %}
+    {% set gif_direct_url = config.get('gif_direct_url', '') %}
+    {% set legacy_tenor_url = config.get('tenor_gif_url', '') %}
+    {% set active_gif_url = gif_direct_url or legacy_tenor_url %}
+    {% set gif_object_fit = config.get('gif_object_fit', 'cover') %}
+    {% set gif_position = config.get('gif_position', 'center') %}
+
+    {% if gif_type == 'local' and gif_url %}
+    <img class="gif-display" src="{{ gif_url }}" alt="GIF" style="object-fit: {{ gif_object_fit }}; object-position: {{ gif_position }};">
+    {% elif (gif_type == 'url' and gif_direct_url) or (gif_type == 'tenor' and legacy_tenor_url) %}
+    <img class="gif-display" id="gif-display-{{ widget_id }}" src="{{ active_gif_url }}" alt="GIF" style="object-fit: {{ gif_object_fit }}; object-position: {{ gif_position }};">
+
+    <script>
+    (function() {
+        const img = document.getElementById('gif-display-{{ widget_id }}');
+        if (!img) return;
+
+        const originalUrl = img.getAttribute('src') || '';
+        if (!originalUrl) return;
+
+        img.addEventListener('error', function() {
+            fetch('/api/gif/resolve?url=' + encodeURIComponent(originalUrl))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.success && data.url && data.url !== originalUrl) {
+                        img.src = data.url;
+                        return;
+                    }
+
+                    const container = img.closest('.widget-gif');
+                    if (container) {
+                        container.innerHTML = '<div class="widget-empty">'
+                            + '<i class="bi bi-filetype-gif" style="font-size: 2.5rem; color: #818cf8;"></i>'
+                            + '<p>GIF inaccessible</p>'
+                            + '<small>Utilisez une URL GIF directe (ex: media.tenor.com/.../tenor.gif)</small>'
+                            + '</div>';
+                    }
+                })
+                .catch(function() {
+                    const container = img.closest('.widget-gif');
+                    if (container) {
+                        container.innerHTML = '<div class="widget-empty">'
+                            + '<i class="bi bi-filetype-gif" style="font-size: 2.5rem; color: #818cf8;"></i>'
+                            + '<p>GIF inaccessible</p>'
+                            + '<small>Vérifiez le lien GIF saisi</small>'
+                            + '</div>';
+                    }
+                });
+        }, { once: true });
+    })();
+    </script>
+    {% else %}
+    <div class="widget-empty">
+        <i class="bi bi-filetype-gif" style="font-size: 2.5rem; color: #818cf8;"></i>
+        <p>Aucun GIF configuré</p>
+        <small>Configurez un GIF local ou saisissez une URL</small>
+    </div>
+    {% endif %}
+</div>

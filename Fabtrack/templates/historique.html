@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Historique{% endblock %}
+
+{% block content %}
+<!-- Page Title -->
+<div class="mb-4">
+    <h1 class="page-title"><i class="bi bi-clock-history"></i> Historique</h1>
+    <p class="page-subtitle">Consultez et filtrez l'ensemble des saisies</p>
+</div>
+
+<!-- Filters Card -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Date début</label>
+                <input type="date" id="filterDateDebut" class="form-control" onchange="loadHistorique()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Date fin</label>
+                <input type="date" id="filterDateFin" class="form-control" onchange="loadHistorique()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Type d'activité</label>
+                <select id="filterType" class="form-select" onchange="loadHistorique()">
+                    <option value="">Tous</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Préparateur</label>
+                <select id="filterPrep" class="form-select" onchange="loadHistorique()">
+                    <option value="">Tous</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Classe</label>
+                <select id="filterClasse" class="form-select" onchange="loadHistorique()">
+                    <option value="">Toutes</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary flex-fill" onclick="loadHistorique()">
+                        <i class="bi bi-search"></i> Filtrer
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="resetFilters()" title="Réinitialiser">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                    <button class="btn btn-success" onclick="exportCSV()" title="Export CSV">
+                        <i class="bi bi-download"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- History Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center px-4">
+        <span class="text-muted small fw-bold" id="totalInfo">Chargement...</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-touch table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Préparateur</th>
+                        <th>Type</th>
+                        <th>Machine</th>
+                        <th>Matériau</th>
+                        <th>Classe</th>
+                        <th>Référent</th>
+                        <th>Projet</th>
+                        <th>Détails</th>
+                        <th>Commentaire</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="histoTable">
+                    <tr><td colspan="11" class="text-center text-muted py-4">Chargement...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <nav class="d-flex justify-content-center py-3" id="paginationNav"></nav>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+const perPage = 30;
+
+function onReferenceDataLoaded() {
+    const typeSel = document.getElementById('filterType');
+    REF_DATA.types_activite.forEach(t => {
+        typeSel.innerHTML += `<option value="${t.id}">${t.icone} ${t.nom}</option>`;
+    });
+
+    const prepSel = document.getElementById('filterPrep');
+    REF_DATA.preparateurs.forEach(p => {
+        prepSel.innerHTML += `<option value="${p.id}">${p.nom}</option>`;
+    });
+
+    const classeSel = document.getElementById('filterClasse');
+    REF_DATA.classes.forEach(c => {
+        classeSel.innerHTML += `<option value="${c.id}">${c.nom}</option>`;
+    });
+
+    loadHistorique();
+}
+
+function getFilters() {
+    return {
+        date_debut: document.getElementById('filterDateDebut').value,
+        date_fin: document.getElementById('filterDateFin').value,
+        type_activite_id: document.getElementById('filterType').value,
+        preparateur_id: document.getElementById('filterPrep').value,
+        classe_id: document.getElementById('filterClasse').value,
+    };
+}
+
+async function loadHistorique(page) {
+    if (page) currentPage = page;
+    const filters = getFilters();
+    const params = new URLSearchParams({page: currentPage, per_page: perPage, ...filters});
+
+    try {
+        const res = await fetch(`/api/consommations?${params}`);
+        const result = await res.json();
+
+        document.getElementById('totalInfo').textContent =
+            `${result.total} enregistrement${result.total > 1 ? 's' : ''} — Page ${result.page}/${result.pages}`;
+
+        const tbody = document.getElementById('histoTable');
+        if (!result.data || result.data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="11" class="text-center py-5">
+                <div class="empty-state"><i class="bi bi-search"></i><p>Aucun résultat trouvé</p></div>
+            </td></tr>`;
+            document.getElementById('paginationNav').innerHTML = '';
+            return;
+        }
+
+        tbody.innerHTML = result.data.map(row => `
+            <tr>
+                <td class="fw-medium">${formatDate(row.date_saisie)}</td>
+                <td>${escHtml(row.preparateur_nom) || '<span class="text-muted">—</span>'}</td>
+                <td>${getBadgeHTML(row.type_activite_nom, row.badge_class)}</td>
+                <td>${escHtml(row.machine_nom) || '<span class="text-muted">—</span>'}</td>
+                <td>${getMaterialImg(row.materiau_nom)}${escHtml(row.materiau_nom) || '<span class="text-muted">—</span>'}</td>
+                <td>${escHtml(row.classe_nom) || '<span class="text-muted">—</span>'}</td>
+                <td>${escHtml(row.referent_nom) || '<span class="text-muted">—</span>'}</td>
+                <td>${row.projet_nom ? `<span class="text-muted small">${escHtml(row.projet_nom)}</span>` : '<span class="text-muted">—</span>'}</td>
+                <td><small>${getDetailsText(row)}</small></td>
+                <td><small class="text-muted">${escHtml(row.commentaire) || '—'}</small></td>
+                <td>
+                    <button class="btn btn-outline-danger btn-sm" onclick="deleteEntry(${row.id})" title="Supprimer">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        buildPagination(result.page, result.pages);
+    } catch (err) {
+        console.error('Erreur:', err);
+        showToast('Erreur de chargement', 'error');
+    }
+}
+
+function getDetailsText(row) {
+    const parts = [];
+    if (row.poids_grammes) parts.push(`${row.poids_grammes}g`);
+    if (row.surface_m2) parts.push(`${row.surface_m2.toFixed(4)} m²`);
+    if (row.nb_feuilles) parts.push(`${row.nb_feuilles} feuilles`);
+    if (row.impression_couleur) parts.push(row.impression_couleur === 'couleur' ? '🎨 Couleur' : '⬛ N&B');
+    if (row.nb_feuilles_plastique) parts.push(`${row.nb_feuilles_plastique} f. plastique`);
+    return parts.join(', ') || '—';
+}
+
+function buildPagination(current, total) {
+    const container = document.getElementById('paginationNav');
+    if (total <= 1) { container.innerHTML = ''; return; }
+
+    let html = '<ul class="pagination pagination-sm mb-0">';
+    html += `<li class="page-item ${current <= 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="loadHistorique(${current - 1});return false;">
+            <i class="bi bi-chevron-left"></i>
+        </a></li>`;
+
+    for (let i = 1; i <= total; i++) {
+        if (i === 1 || i === total || (i >= current - 2 && i <= current + 2)) {
+            html += `<li class="page-item ${i === current ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="loadHistorique(${i});return false;">${i}</a></li>`;
+        } else if (i === current - 3 || i === current + 3) {
+            html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+        }
+    }
+
+    html += `<li class="page-item ${current >= total ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="loadHistorique(${current + 1});return false;">
+            <i class="bi bi-chevron-right"></i>
+        </a></li>`;
+    html += '</ul>';
+    container.innerHTML = html;
+}
+
+async function deleteEntry(id) {
+    showConfirm('Supprimer', 'Supprimer cette saisie ?', async () => {
+        const res = await fetch(`/api/consommations/${id}`, {method: 'DELETE'});
+        const result = await res.json();
+        if (result.success) {
+            showToast('Saisie supprimée');
+            loadHistorique();
+        } else {
+            showToast('Erreur suppression', 'error');
+        }
+    });
+}
+
+function resetFilters() {
+    ['filterDateDebut', 'filterDateFin'].forEach(id => document.getElementById(id).value = '');
+    ['filterType', 'filterPrep', 'filterClasse'].forEach(id => document.getElementById(id).value = '');
+    currentPage = 1;
+    loadHistorique();
+}
+
+function exportCSV() {
+    const filters = getFilters();
+    const params = new URLSearchParams(filters);
+    window.location.href = `/api/export/csv?${params}`;
+}
+</script>
+{% endblock %}

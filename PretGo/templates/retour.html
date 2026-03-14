@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Retour de Matériel - Gestion de Prêts{% endblock %}
+
+{% block content %}
+<h1 class="page-title">
+    <i class="bi bi-arrow-return-left text-success"></i> Retour de matériel
+</h1>
+
+<!-- Barre de recherche -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('prets.retour') }}">
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="text"
+                       name="q"
+                       class="form-control form-control-lg"
+                       placeholder="Rechercher par nom, prénom ou objet..."
+                       value="{{ recherche }}">
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Liste des prêts actifs -->
+{% if prets %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="text-muted">
+        <strong>{{ prets | length }}</strong> prêt(s) en cours
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="select-all-retour">
+            <label class="form-check-label text-muted small" for="select-all-retour">Tout sélectionner</label>
+        </div>
+        <button type="button" class="btn btn-success btn-sm" id="btn-retour-masse" disabled
+                data-bs-toggle="modal" data-bs-target="#modalRetourMasse">
+            <i class="bi bi-check2-all"></i> Retour en masse (<span id="nb-selection">0</span>)
+        </button>
+    </div>
+</div>
+
+<form id="form-retour-masse" method="POST" action="{{ url_for('prets.retour_masse') }}">
+{% for pret in prets %}
+{% set jours = pret.date_emprunt | jours_ecoules %}
+<div class="pret-card {% if jours > 14 %}border-danger{% elif jours > 7 %}border-warning{% endif %}">
+    <div class="pret-header">
+        <div class="d-flex align-items-center gap-2">
+            <input class="form-check-input cb-retour-masse" type="checkbox" name="pret_ids" value="{{ pret.id }}"
+                   data-nom="{{ pret.nom }} {{ pret.prenom }}" data-objet="{{ pret.descriptif_objets }}">
+            <div>
+                <div class="pret-name">{{ pret.nom }} {{ pret.prenom }}</div>
+                <span class="cat-badge" style="{{ pret.categorie | style_categorie }}">{{ pret.categorie | label_categorie }}</span>
+                {% if pret.classe_snapshot or pret.classe %}
+                    <span class="text-muted ms-2">{{ pret.classe_snapshot or pret.classe }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div>
+            {% set depasse, _ = calcul_depassement_heures(pret.date_emprunt, pret.duree_pret_heures, pret.duree_pret_jours, date_retour_prevue=pret.date_retour_prevue) %}
+            {% if depasse %}
+                <span class="badge-urgent"><i class="bi bi-exclamation-triangle"></i> En retard</span>
+            {% else %}
+                <span class="badge-actif">En cours</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="pret-objects">
+        <i class="bi bi-box text-primary"></i> {{ pret.descriptif_objets }}
+    </div>
+    <div class="d-flex justify-content-between align-items-center">
+        <div class="pret-date">
+            <i class="bi bi-calendar"></i> Emprunté le {{ pret.date_emprunt | format_date }}
+        </div>
+        <button class="btn btn-success btn-lg" type="button"
+                data-bs-toggle="collapse" data-bs-target="#confirm-{{ pret.id }}">
+            <i class="bi bi-check-lg"></i> Confirmer le retour
+        </button>
+    </div>
+    <!-- Zone de confirmation inline -->
+    <div class="collapse mt-3" id="confirm-{{ pret.id }}">
+        <div class="card card-body border-success bg-success bg-opacity-10">
+            <p class="mb-2 fw-bold text-success">
+                <i class="bi bi-question-circle"></i>
+                Confirmer le retour de <em>{{ pret.descriptif_objets }}</em> par {{ pret.nom }} {{ pret.prenom }} ?
+            </p>
+            <div class="d-flex gap-2 align-items-center">
+                <button type="submit" class="btn btn-success" formaction="{{ url_for('prets.confirmer_retour', pret_id=pret.id) }}">
+                    <i class="bi bi-check-lg"></i> Oui, valider le retour
+                </button>
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-toggle="collapse" data-bs-target="#confirm-{{ pret.id }}">
+                    Annuler
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+</form>
+
+<!-- Modal confirmation retour en masse -->
+<div class="modal fade" id="modalRetourMasse" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-check2-all"></i> Confirmer le retour en masse</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Vous allez confirmer le retour de <strong id="modal-nb-selection">0</strong> prêt(s) :</p>
+                <ul id="modal-liste-selection" class="list-group list-group-flush mb-3" style="max-height:250px;overflow-y:auto"></ul>
+                <p class="text-muted small mb-0"><i class="bi bi-info-circle"></i> Cette action est irréversible.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" id="btn-confirmer-masse">
+                    <i class="bi bi-check2-all"></i> Confirmer les retours
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-check-circle"></i>
+    {% if recherche %}
+        <p>Aucun prêt en cours ne correspond à « {{ recherche }} »</p>
+        <a href="{{ url_for('prets.retour') }}" class="btn btn-outline-primary">
+            <i class="bi bi-arrow-left"></i> Voir tous les prêts
+        </a>
+    {% else %}
+        <p class="mb-0">Aucun prêt en cours. Tout le matériel est retourné !</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const checkboxes = document.querySelectorAll('.cb-retour-masse');
+    const selectAll = document.getElementById('select-all-retour');
+    const btnMasse = document.getElementById('btn-retour-masse');
+    const nbSpan = document.getElementById('nb-selection');
+    const modalNb = document.getElementById('modal-nb-selection');
+    const modalListe = document.getElementById('modal-liste-selection');
+    const btnConfirmer = document.getElementById('btn-confirmer-masse');
+    const form = document.getElementById('form-retour-masse');
+
+    if (!selectAll) return;
+
+    function updateUI() {
+        const checked = document.querySelectorAll('.cb-retour-masse:checked');
+        const nb = checked.length;
+        nbSpan.textContent = nb;
+        btnMasse.disabled = nb === 0;
+        selectAll.checked = nb === checkboxes.length && nb > 0;
+        selectAll.indeterminate = nb > 0 && nb < checkboxes.length;
+    }
+
+    selectAll.addEventListener('change', function() {
+        checkboxes.forEach(cb => cb.checked = this.checked);
+        updateUI();
+    });
+
+    checkboxes.forEach(cb => cb.addEventListener('change', updateUI));
+
+    // Remplir la modal avant affichage
+    document.getElementById('modalRetourMasse').addEventListener('show.bs.modal', function() {
+        const checked = document.querySelectorAll('.cb-retour-masse:checked');
+        modalNb.textContent = checked.length;
+        modalListe.innerHTML = '';
+        checked.forEach(cb => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item py-1 px-2';
+            li.innerHTML = '<strong>' + cb.dataset.nom + '</strong> — <span class="text-muted">' + cb.dataset.objet + '</span>';
+            modalListe.appendChild(li);
+        });
+    });
+
+    btnConfirmer.addEventListener('click', function() {
+        form.submit();
+    });
+})();
+</script>
+{% endblock %}

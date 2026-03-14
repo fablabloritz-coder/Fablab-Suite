@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration des Slides — FabBoard{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/slides.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="slides-container">
+    <!-- PANEL GAUCHE : Liste des slides -->
+    <div class="slides-panel">
+        <div class="panel-header">
+            <h5><i class="bi bi-collection"></i> Slides</h5>
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-danger" id="btnDeleteAllSlides" title="Supprimer toutes les slides">
+                    <i class="bi bi-trash3"></i>
+                </button>
+                <button class="btn btn-sm btn-primary" id="btnAddSlide">
+                    <i class="bi bi-plus-lg"></i> Ajouter
+                </button>
+            </div>
+        </div>
+        
+        <div id="slidesList" class="slides-list">
+            <!-- Liste des slides chargée dynamiquement -->
+        </div>
+        
+        <div class="panel-footer">
+            <small class="text-muted">
+                <i class="bi bi-arrows-move"></i> Glisser-déposer pour réordonner
+            </small>
+        </div>
+    </div>
+
+    <!-- PANEL CENTRAL : Aperçu -->
+    <div class="preview-panel">
+        <div class="panel-header">
+            <h5><i class="bi bi-tv"></i> Aperçu Live</h5>
+            <div class="preview-controls">
+                <button class="btn btn-sm btn-outline-secondary" id="btnRefreshPreview">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="btnFullscreenPreview">
+                    <i class="bi bi-arrows-fullscreen"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="previewContainer" class="preview-container">
+            <div class="preview-placeholder">
+                <i class="bi bi-tv-fill"></i>
+                <p>Sélectionnez une slide pour voir l'aperçu</p>
+            </div>
+        </div>
+        
+        <div class="panel-footer">
+            <div id="previewInfo" class="preview-info">
+                <span id="previewLayoutName" class="badge bg-secondary">Aucune slide</span>
+                <span id="previewDuration" class="text-muted ms-2"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANEL DROIT : Configuration -->
+    <div class="config-panel">
+        <div class="panel-header">
+            <h5><i class="bi bi-gear"></i> Configuration</h5>
+            <button class="btn btn-sm btn-danger" id="btnDeleteSlide" style="display:none;">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+        
+        <div id="configContainer" class="config-container">
+            <div class="config-placeholder">
+                <i class="bi bi-info-circle"></i>
+                <p>Sélectionnez une slide pour la configurer</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL : Ajouter/Modifier Slide -->
+<div class="modal fade" id="slideModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="slideModalTitle">Nouvelle Slide</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="slideForm">
+                    <input type="hidden" id="slideId">
+                    
+                    <div class="mb-3">
+                        <label for="slideName" class="form-label">Nom de la slide</label>
+                        <input type="text" class="form-control" id="slideName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Choisir un gabarit</label>
+                        <div id="layoutSelector" class="layout-selector">
+                            <!-- Layouts chargés dynamiquement -->
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="slideDuration" class="form-label">
+                            Temps d'affichage (secondes)
+                        </label>
+                        <input type="number" class="form-control" id="slideDuration" min="5" max="300" value="30">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="slideActive" checked>
+                            <label class="form-check-label" for="slideActive">
+                                Slide active
+                            </label>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h6 class="mb-3"><i class="bi bi-palette"></i> Fond de la slide</h6>
+                    <div class="mb-3">
+                        <label for="slideFondType" class="form-label">Type de fond</label>
+                        <select class="form-select" id="slideFondType" onchange="toggleFondOptions()">
+                            <option value="defaut">Par défaut (thème)</option>
+                            <option value="couleur">Couleur personnalisée</option>
+                            <option value="image">Image personnalisée</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="fondCouleurGroup" style="display:none;">
+                        <label for="slideFondCouleur" class="form-label">Couleur de fond</label>
+                        <input type="color" class="form-control form-control-color w-100" id="slideFondCouleur" value="#0b1120">
+                    </div>
+                    <div class="mb-3" id="fondImageGroup" style="display:none;">
+                        <label class="form-label">Image de fond</label>
+                        <input type="hidden" id="slideFondImage" value="">
+                        <div id="fondImagePreview" class="mb-2"></div>
+                        <input type="file" class="form-control" id="slideFondImageFile" accept="image/*" onchange="uploadSlideBg(this)">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" id="btnSaveSlide">
+                    <i class="bi bi-check-lg"></i> Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL : Configuration Widget -->
+<div class="modal fade" id="widgetConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configurer le widget</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="widgetConfigForm">
+                    <!-- Configuration dynamique selon le type de widget -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" id="btnSaveWidgetConfig">
+                    <i class="bi bi-check-lg"></i> Appliquer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- SortableJS pour le drag & drop avec fallback -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script>
+// Vérification que SortableJS est bien chargé
+if (typeof Sortable === 'undefined') {
+    console.warn('[TEMPLATE] SortableJS n\'a pas pu être chargé depuis le CDN');
+}
+</script>
+<script src="{{ url_for('static', filename='js/slides.js') }}?v=20260308-no-tenor"></script>
+{% endblock %}

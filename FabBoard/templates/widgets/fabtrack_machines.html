@@ -1,0 +1,127 @@
+<div class="widget widget-fabtrack-machines" id="widget-fabtrack-machines-{{ widget_id }}" data-widget-code="fabtrack_machines">
+    <h3><i class="bi bi-tools"></i> Etat des machines</h3>
+    <div class="machines-grid js-machines-grid">
+        <div style="color: #475569;">Chargement...</div>
+    </div>
+</div>
+
+<style>
+.widget-fabtrack-machines {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.widget-fabtrack-machines h3 {
+    flex-shrink: 0;
+}
+.widget-fabtrack-machines .machines-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.5rem;
+    flex: 1;
+    overflow-y: auto;
+    align-content: start;
+}
+.widget-fabtrack-machines .machine-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 0.6rem 0.7rem;
+    min-width: 0;
+    overflow: hidden;
+}
+.widget-fabtrack-machines .machine-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.widget-fabtrack-machines .badge {
+    font-size: 0.7rem;
+}
+</style>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-fabtrack-machines-{{ widget_id }}');
+    if (!root) return;
+
+    const grid = root.querySelector('.js-machines-grid');
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function statusClass(statut) {
+        const v = String(statut || '').toLowerCase();
+        if (v.includes('maintenance')) return 'text-bg-warning';
+        if (v.includes('panne') || v.includes('hors') || v.includes('indispo')) return 'text-bg-danger';
+        if (v.includes('dispo')) return 'text-bg-success';
+        return 'text-bg-secondary';
+    }
+
+    function render(machines, fabtrackError) {
+        const visibleMachines = showInactive ? (machines || []) : (machines || []).filter(m => m.actif !== 0);
+
+        if (fabtrackError && !visibleMachines.length) {
+            grid.innerHTML = `<div style="text-align:center; padding:1.5rem; color:#64748b;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">🔧</div>
+                <div>Fabtrack non connecté</div>
+                <small style="color:#475569;">Configurez l'URL dans Paramètres → Sources</small>
+            </div>`;
+            return;
+        }
+
+        if (!visibleMachines.length) {
+            grid.innerHTML = '<div style="color: #475569;">Aucune machine visible avec ce filtre.</div>';
+            return;
+        }
+
+        grid.innerHTML = visibleMachines.map((m) => `
+            <div class="machine-card">
+                <div class="machine-name">${esc(m.nom || 'Machine')}</div>
+                <span class="badge ${statusClass(m.statut)}">${esc(m.statut || 'inconnu')}</span>
+                ${m.actif === 0 ? '<span class="badge text-bg-dark ms-1">inactive</span>' : ''}
+            </div>
+        `).join('');
+    }
+
+    const config = {{ config | tojson | safe }};
+    const sourceId = config.source_id || null;
+    const showInactive = config.afficher_inactives === true;
+
+    async function refresh() {
+        const store = window.FabBoardStore;
+        let machines = [];
+        let errorMsg = '';
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            machines = store.getSource(sourceId).machines || [];
+        } else if (store && store.data) {
+            machines = store.data.machines || [];
+            errorMsg = store.data.fabtrack_error || '';
+        } else {
+            return;
+        }
+
+        render(machines, errorMsg);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

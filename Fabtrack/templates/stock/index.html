@@ -1,0 +1,175 @@
+﻿{% extends "base.html" %}
+{% block title %}Stock — Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-boxes text-success"></i> Stock matières</h2>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('stock.stock_articles') }}" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-list-ul"></i> Articles
+        </a>
+        <a href="{{ url_for('stock.stock_mouvements') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left-right"></i> Mouvements
+        </a>
+        <a href="{{ url_for('stock.stock_inventaire') }}" class="btn btn-outline-warning btn-sm">
+            <i class="bi bi-clipboard-check"></i> Inventaire
+        </a>
+        <a href="{{ url_for('stock.stock_fournisseurs') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-truck"></i> Fournisseurs
+        </a>
+        <a href="{{ url_for('stock.stock_categories') }}" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-tags"></i> Catégories
+        </a>
+    </div>
+</div>
+
+<!-- Statistiques rapides -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <h3 class="text-success mb-0">{{ nb_articles }}</h3>
+                <small class="text-muted">Articles en stock</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <h3 class="{% if nb_alertes > 0 %}text-warning{% else %}text-success{% endif %} mb-0">{{ nb_alertes }}</h3>
+                <small class="text-muted">Alertes stock faible</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <h3 class="text-primary mb-0">{{ categories|length }}</h3>
+                <small class="text-muted">Catégories</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Articles par catégorie -->
+{% for cat in categories %}
+{% set arts = cat_articles.get(cat.id, []) %}
+{% if arts %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header d-flex align-items-center gap-2" style="border-left: 4px solid {{ cat.couleur }};">
+        <span>{{ cat.icone }}</span>
+        <strong>{{ cat.nom }}</strong>
+        <span class="badge bg-secondary ms-auto">{{ arts|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Article</th>
+                        <th class="text-end">Stock</th>
+                        <th class="text-end">Min</th>
+                        <th>Emplacement</th>
+                        <th>Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in arts %}
+                    <tr>
+                        <td>
+                            <strong>{{ a.nom }}</strong>
+                            {% if a.materiau_nom %}<br><small class="text-muted">{{ a.materiau_nom }}</small>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            {{ a.quantite_actuelle|fmt_qte }} {{ a.unite }}
+                            {% set unite_lower = (a.unite or '')|lower %}
+                            {% if a.longueur_cm and a.largeur_cm and a.longueur_cm > 0 and a.largeur_cm > 0 and unite_lower in ['m²', 'm2', 'mètre carré', 'metre carre'] %}
+                                {% set surface_unitaire_m2 = (a.longueur_cm * a.largeur_cm) / 10000 %}
+                                {% if surface_unitaire_m2 > 0 %}
+                                    <br><small class="text-muted">~ {{ (a.quantite_actuelle / surface_unitaire_m2)|fmt_qte }} planches</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-muted">
+                            {% if a.quantite_minimum is not none %}{{ a.quantite_minimum|fmt_qte }}{% else %}—{% endif %}
+                            {% set unite_lower = (a.unite or '')|lower %}
+                            {% if a.longueur_cm and a.largeur_cm and a.longueur_cm > 0 and a.largeur_cm > 0 and a.quantite_minimum is not none and unite_lower in ['m²', 'm2', 'mètre carré', 'metre carre'] %}
+                                {% set surface_unitaire_m2 = (a.longueur_cm * a.largeur_cm) / 10000 %}
+                                {% if surface_unitaire_m2 > 0 %}
+                                    <br><small>~ {{ (a.quantite_minimum / surface_unitaire_m2)|fmt_qte }} planches</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">{{ a.emplacement or '—' }}</td>
+                        <td>
+                            {% if a.quantite_minimum is not none and a.quantite_actuelle < a.quantite_minimum %}
+                                {% if a.quantite_actuelle <= 0 %}
+                                    <span class="badge bg-danger">Vide</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Faible</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-success">OK</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<!-- Derniers mouvements -->
+{% if mouvements %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header">
+        <i class="bi bi-clock-history"></i> Derniers mouvements
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type</th>
+                        <th>Article</th>
+                        <th class="text-end">Quantité</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in mouvements %}
+                    <tr>
+                        <td>
+                            {% if m.type == 'entree' %}
+                                <span class="badge bg-success">Entrée</span>
+                            {% elif m.type == 'sortie' %}
+                                <span class="badge bg-danger">Sortie</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Ajust.</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ m.article_nom }}</td>
+                        <td class="text-end">
+                            {{ m.quantite|fmt_qte }} {{ m.unite }}
+                            {% set unite_lower = (m.unite or '')|lower %}
+                            {% if m.longueur_cm and m.largeur_cm and m.longueur_cm > 0 and m.largeur_cm > 0 and unite_lower in ['m²', 'm2', 'mètre carré', 'metre carre'] %}
+                                {% set surface_unitaire_m2 = (m.longueur_cm * m.largeur_cm) / 10000 %}
+                                {% if surface_unitaire_m2 > 0 %}
+                                    <br><small class="text-muted">~ {{ (m.quantite / surface_unitaire_m2)|fmt_qte }} planches</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">{{ m.date[:16] if m.date else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,35 @@
+# Environnement virtuel Python
+.venv/
+venv/
+env/
+
+# Python embarqué (créé par installer.bat)
+python/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Données locales (base de données, code de récupération)
+data/
+
+# Uploads utilisateur
+static/uploads/
+
+# IDE / Éditeur
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Node (résiduel)
+node_modules/
+
+# Docker local
+docker-data/

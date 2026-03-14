@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FabBoard — Dashboard Fablab{% endblock %}</title>
+    
+    <!-- Bootstrap 5.3 (local — pas de dépendance CDN) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
+    
+    <!-- Google Fonts — chargement NON bloquant (pour Raspberry Pi sans internet) -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Poppins:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Poppins:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#ff6b35">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/favicon.png') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    
+    {% block navbar %}
+    <!-- Navbar (masquée sur le dashboard TV) -->
+    {% if page != 'dashboard' %}
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('pages.dashboard') }}">
+                <img src="{{ url_for('static', filename='img/logo-fabboard.png') }}" alt="FabBoard" class="navbar-logo me-2" width="32" height="32">
+                <span>FabBoard</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('pages.dashboard') }}">
+                            <i class="bi bi-tv"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if page == 'slides' %}active{% endif %}" href="{{ url_for('pages.slides') }}">
+                            <i class="bi bi-collection"></i> Slides
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if page == 'parametres' %}active{% endif %}" href="{{ url_for('pages.parametres') }}">
+                            <i class="bi bi-gear"></i> Paramètres
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if page == 'medias' %}active{% endif %}" href="{{ url_for('pages.medias') }}">
+                            <i class="bi bi-film"></i> Médias
+                        </a>
+                    </li>
+                </ul>
+                <button class="btn btn-outline-light btn-sm me-3" id="btnToggleTheme" title="Changer le thème">
+                    <i class="bi bi-moon-stars" id="themeIcon"></i>
+                </button>
+                <span class="navbar-text" id="navbar-clock">
+                    --:--
+                </span>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+    {% endblock %}
+    
+    <!-- Main Content -->
+    {% block content %}{% endblock %}
+    
+    <!-- Toast Container (notifications) -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container"></div>
+    
+    <!-- Bootstrap JS (local) -->
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+    
+    <!-- Horloge navbar -->
+    <script>
+        const fontFamilyMap = {
+            inter: "'Inter', sans-serif",
+            roboto: "'Roboto', sans-serif",
+            poppins: "'Poppins', sans-serif",
+            montserrat: "'Montserrat', sans-serif",
+            opensans: "'Open Sans', sans-serif",
+            sourcesans: "'Source Sans 3', sans-serif",
+            orbitron: "'Orbitron', sans-serif",
+            rajdhani: "'Rajdhani', sans-serif",
+            system: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+            serif: "Georgia, 'Times New Roman', serif",
+            mono: "'Consolas', 'Courier New', monospace"
+        };
+
+        function applyFontFamilyKey(fontKey) {
+            const key = fontFamilyMap[fontKey] ? fontKey : 'inter';
+            document.documentElement.style.setProperty('--app-font-family', fontFamilyMap[key]);
+        }
+
+        async function loadDisplaySettings() {
+            try {
+                const response = await fetch('/api/parametres');
+                const params = await response.json();
+                applyFontFamilyKey((params && (params.police_dashboard || params.font_family)) || 'inter');
+            } catch (error) {
+                console.error('Erreur chargement police:', error);
+            }
+        }
+
+        // ========== SYNC HORLOGE SERVEUR ==========
+        let _navbarTimeOffset = 0;
+        async function syncNavbarClock() {
+            try {
+                const before = Date.now();
+                const resp = await fetch('/api/server-time');
+                const after = Date.now();
+                const data = await resp.json();
+                const rtt = after - before;
+                _navbarTimeOffset = data.timestamp * 1000 - (before + rtt / 2);
+            } catch (e) { /* fallback: heure locale */ }
+        }
+
+        function updateNavbarClock() {
+            const now = new Date(Date.now() + _navbarTimeOffset);
+            const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            const el = document.getElementById('navbar-clock');
+            if (el) el.textContent = timeStr;
+        }
+        syncNavbarClock();
+        updateNavbarClock();
+        setInterval(updateNavbarClock, 1000);
+        setInterval(syncNavbarClock, 5 * 60 * 1000);
+        
+        // ========== SYSTÈME DE THÈME CLAIR/SOMBRE ==========
+        let currentTheme = 'dark';
+        
+        // Charger le thème depuis l'API
+        async function loadTheme() {
+            try {
+                const response = await fetch('/api/theme');
+                const result = await response.json();
+                if (result.success) {
+                    currentTheme = result.data.mode;
+                    applyTheme(currentTheme);
+                    
+                    // Appliquer les couleurs personnalisées
+                    document.documentElement.style.setProperty('--primary-color', result.data.couleur_primaire);
+                    document.documentElement.style.setProperty('--secondary-color', result.data.couleur_secondaire);
+                }
+            } catch (error) {
+                console.error('Erreur chargement thème:', error);
+            }
+        }
+        
+        function applyTheme(mode) {
+            if (mode === 'light') {
+                document.body.classList.add('light-mode');
+                const icon = document.getElementById('themeIcon');
+                if (icon) icon.className = 'bi bi-sun-fill';
+            } else {
+                document.body.classList.remove('light-mode');
+                const icon = document.getElementById('themeIcon');
+                if (icon) icon.className = 'bi bi-moon-stars';
+            }
+            currentTheme = mode;
+        }
+        
+        async function toggleTheme() {
+            const newMode = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            try {
+                const response = await fetch('/api/theme', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: newMode })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    applyTheme(newMode);
+                }
+            } catch (error) {
+                console.error('Erreur sauvegarde thème:', error);
+            }
+        }
+        
+        // Initialiser
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDisplaySettings();
+            loadTheme();
+            
+            const btnTheme = document.getElementById('btnToggleTheme');
+            if (btnTheme) {
+                btnTheme.addEventListener('click', toggleTheme);
+            }
+        });
+    </script>
+</body>
+</html>

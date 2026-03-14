@@ -1,0 +1,92 @@
+<div class="widget widget-imprimantes" id="widget-imprimantes-{{ widget_id }}" data-widget-code="imprimantes">
+    <h3><i class="bi bi-printer"></i> Imprimantes 3D</h3>
+    <div class="imprimantes-grid js-printers-grid">
+        <div style="color: #475569;">Chargement...</div>
+    </div>
+</div>
+
+<style>
+.widget-imprimantes .printer-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 0.7rem;
+}
+.widget-imprimantes .printer-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+}
+</style>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-imprimantes-{{ widget_id }}');
+    if (!root) return;
+
+    const grid = root.querySelector('.js-printers-grid');
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function statusClass(status) {
+        const v = String(status || '').toLowerCase();
+        if (v.includes('print') || v.includes('busy')) return 'text-bg-info';
+        if (v.includes('error') || v.includes('fail') || v.includes('offline')) return 'text-bg-danger';
+        if (v.includes('idle') || v.includes('ready') || v.includes('ok')) return 'text-bg-success';
+        return 'text-bg-secondary';
+    }
+
+    const config = {{ config | tojson | safe }};
+    const sourceId = config.source_id || null;
+
+    function render(printers) {
+        if (!printers.length) {
+            grid.innerHTML = `<div style="text-align:center; padding:1.5rem; color:#64748b;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">🖨️</div>
+                <div>Aucune imprimante configurée</div>
+                <small style="color:#475569;">Ajoutez une source Repetier/PrusaLink dans Paramètres</small>
+            </div>`;
+            return;
+        }
+
+        grid.innerHTML = printers.map((p) => `
+            <div class="printer-card">
+                <div class="printer-name">${esc(p.nom || p.name || 'Imprimante')}</div>
+                <span class="badge ${statusClass(p.statut || p.status)}">${esc(p.statut || p.status || 'inconnu')}</span>
+                ${p.progress !== undefined ? `<span class="ms-2 small">${esc(String(p.progress))}%</span>` : ''}
+            </div>
+        `).join('');
+    }
+
+    async function refresh() {
+        const store = window.FabBoardStore;
+        let printers = [];
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            printers = store.getSource(sourceId).printers || [];
+        } else if (store && store.data) {
+            printers = store.data.imprimantes || [];
+        } else {
+            return;
+        }
+
+        render(printers);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

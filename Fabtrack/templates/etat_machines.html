@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}État des machines{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="page-title"><i class="bi bi-activity"></i> État des machines</h1>
+    <p class="page-subtitle">Gérez la disponibilité de chaque machine du Fablab</p>
+</div>
+
+<!-- Machines en panne / réparation (bannière d'alerte) -->
+<div id="alertBanner" class="mb-4" style="display:none;"></div>
+
+<!-- Résumé -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="stat-card border-start border-4 border-success">
+            <div class="stat-number text-success" id="countDispo">0</div>
+            <div class="stat-label"><i class="bi bi-check-circle me-1"></i> Disponibles</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card border-start border-4 border-warning">
+            <div class="stat-number text-warning" id="countRepair">0</div>
+            <div class="stat-label"><i class="bi bi-wrench me-1"></i> En réparation</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card border-start border-4 border-danger">
+            <div class="stat-number text-danger" id="countHS">0</div>
+            <div class="stat-label"><i class="bi bi-x-octagon me-1"></i> Hors service</div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtre par type -->
+<div class="mb-3">
+    <div class="filter-tabs flex-wrap" id="typeFilter">
+        <button class="filter-tab active" onclick="filterMachines('all', this)">Toutes</button>
+    </div>
+</div>
+
+<!-- Liste des machines -->
+<div class="row g-3" id="machineCards"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUT_MAP = {
+    'disponible':    {label:'Disponible',   icon:'bi-check-circle-fill', color:'success', bg:'bg-success'},
+    'en_reparation': {label:'En réparation',icon:'bi-wrench',           color:'warning', bg:'bg-warning'},
+    'hors_service':  {label:'Hors service', icon:'bi-x-octagon-fill',   color:'danger',  bg:'bg-danger'},
+};
+let currentFilter = 'all';
+
+function onReferenceDataLoaded() {
+    buildTypeFilter();
+    renderMachineCards();
+    renderAlertBanner();
+}
+
+function buildTypeFilter() {
+    const container = document.getElementById('typeFilter');
+    container.innerHTML = '<button class="filter-tab active" onclick="filterMachines(\'all\', this)">Toutes</button>';
+    REF_DATA.types_activite.forEach(t => {
+        container.innerHTML += `<button class="filter-tab" onclick="filterMachines(${t.id}, this)">${t.icone} ${t.nom}</button>`;
+    });
+}
+
+function filterMachines(typeId, btn) {
+    currentFilter = typeId;
+    document.querySelectorAll('#typeFilter .filter-tab').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderMachineCards();
+}
+
+function renderAlertBanner() {
+    const banner = document.getElementById('alertBanner');
+    const problemMachines = REF_DATA.machines.filter(m =>
+        m.statut === 'en_reparation' || m.statut === 'hors_service'
+    );
+
+    if (!problemMachines.length) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    banner.style.display = '';
+    banner.innerHTML = `
+        <div class="card border-0 shadow-sm">
+            <div class="card-header d-flex align-items-center gap-2 py-3" style="background: linear-gradient(135deg, #fef3c7, #fee2e2);">
+                <i class="bi bi-exclamation-triangle-fill text-warning fs-5"></i>
+                <strong>Machines nécessitant une attention</strong>
+                <span class="badge bg-danger">${problemMachines.length}</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-touch mb-0">
+                        <thead>
+                            <tr>
+                                <th>Machine</th>
+                                <th>Statut</th>
+                                <th>Depuis</th>
+                                <th>Durée</th>
+                                <th>Raison</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${problemMachines.map(m => {
+                                const s = STATUT_MAP[m.statut] || STATUT_MAP['hors_service'];
+                                const duration = m.date_reparation ? getTimeSince(m.date_reparation) : '—';
+                                return `<tr>
+                                    <td class="fw-bold">${escHtml(m.nom)}</td>
+                                    <td><span class="badge ${s.bg} bg-opacity-10 text-${s.color}"><i class="bi ${s.icon} me-1"></i>${s.label}</span></td>
+                                    <td class="small">${m.date_reparation ? formatDate(m.date_reparation) : '<span class=\"text-muted\">Non enregistré</span>'}</td>
+                                    <td><span class="fw-bold ${m.statut === 'hors_service' ? 'text-danger' : 'text-warning'}">${duration}</span></td>
+                                    <td class="small text-muted">${escHtml(m.raison_reparation) || '—'}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getTimeSince(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return '—';
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return `${diffDays}j ${diffHours % 24}h`;
+    if (diffHours > 0) return `${diffHours}h ${diffMins % 60}min`;
+    return `${diffMins}min`;
+}
+
+function renderMachineCards() {
+    const container = document.getElementById('machineCards');
+    let machines = REF_DATA.machines;
+    if (currentFilter !== 'all') {
+        machines = machines.filter(m => m.type_activite_id === currentFilter);
+    }
+
+    // Compteurs
+    const all = REF_DATA.machines;
+    document.getElementById('countDispo').textContent = all.filter(m => (m.statut || 'disponible') === 'disponible').length;
+    document.getElementById('countRepair').textContent = all.filter(m => m.statut === 'en_reparation').length;
+    document.getElementById('countHS').textContent = all.filter(m => m.statut === 'hors_service').length;
+
+    if (!machines.length) {
+        container.innerHTML = '<div class="col-12"><div class="empty-state"><i class="bi bi-cpu"></i><p>Aucune machine trouvée</p></div></div>';
+        return;
+    }
+
+    container.innerHTML = machines.map(m => {
+        const currentStatut = m.statut || 'disponible';
+        const s = STATUT_MAP[currentStatut] || STATUT_MAP['disponible'];
+        const typeName = getTypeName(m.type_activite_id);
+        const imgHtml = m.image_path ? `<img src="${m.image_path}" class="rounded flex-shrink-0 machine-card-img">` : '';
+        const showRepair = (currentStatut === 'en_reparation' || currentStatut === 'hors_service');
+        const durationHtml = showRepair && m.date_reparation
+            ? `<div class="small mb-2"><span class="badge bg-${s.color} bg-opacity-10 text-${s.color}"><i class="bi bi-clock me-1"></i>${getTimeSince(m.date_reparation)} — depuis ${formatDate(m.date_reparation)}</span></div>`
+            : '';
+        // Always render the raison field, show/hide based on current or pending status
+        const raisonVisible = showRepair;
+        return `
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="d-flex align-items-start gap-3">
+                            ${imgHtml}
+                            <div>
+                                <h6 class="fw-bold mb-1">${escHtml(m.nom)}</h6>
+                                <small class="text-muted">${escHtml(typeName)}</small>
+                                ${m.marque ? `<br><small class="text-muted"><i class="bi bi-tag me-1"></i>${escHtml(m.marque)}</small>` : ''}
+                            </div>
+                        </div>
+                        <span class="badge ${s.bg} bg-opacity-10 text-${s.color} px-2 py-1">
+                            <i class="bi ${s.icon} me-1"></i>${s.label}
+                        </span>
+                    </div>
+                    ${durationHtml}
+                    <div class="mb-2 raison-block-${m.id}" style="${raisonVisible ? '' : 'display:none'}">
+                        <label class="form-label small fw-bold mb-1"><i class="bi bi-exclamation-triangle me-1"></i>Raison</label>
+                        <textarea class="form-control form-control-sm" rows="2" id="repair_${m.id}"
+                                  placeholder="Raison de la réparation / panne...">${escHtml(m.raison_reparation)}</textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold mb-1"><i class="bi bi-journal-text me-1"></i>Notes</label>
+                        <textarea class="form-control form-control-sm" rows="2" id="notes_${m.id}"
+                                  placeholder="Notes libres...">${escHtml(m.notes)}</textarea>
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label small fw-bold mb-1">Changer le statut</label>
+                        <div class="btn-group w-100 mb-2" role="group">
+                            <button class="btn btn-sm ${currentStatut==='disponible' ? 'btn-success' : 'btn-outline-success'}"
+                                    onclick="selectStatut(${m.id},'disponible',this)" title="Disponible">
+                                <i class="bi bi-check-circle"></i>
+                            </button>
+                            <button class="btn btn-sm ${currentStatut==='en_reparation' ? 'btn-warning' : 'btn-outline-warning'}"
+                                    onclick="selectStatut(${m.id},'en_reparation',this)" title="En réparation">
+                                <i class="bi bi-wrench"></i>
+                            </button>
+                            <button class="btn btn-sm ${currentStatut==='hors_service' ? 'btn-danger' : 'btn-outline-danger'}"
+                                    onclick="selectStatut(${m.id},'hors_service',this)" title="Hors service">
+                                <i class="bi bi-x-octagon"></i>
+                            </button>
+                        </div>
+                        <button class="btn btn-primary btn-sm w-100" onclick="saveStatut(${m.id})" id="saveBtn_${m.id}">
+                            <i class="bi bi-floppy me-1"></i> Enregistrer l'état
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function getTypeName(id) {
+    const t = REF_DATA.types_activite.find(x => x.id === id);
+    return t ? `${t.icone} ${t.nom}` : '—';
+}
+
+// Pending statut changes (before save)
+let pendingStatuts = {};
+
+function selectStatut(machineId, statut, btn) {
+    pendingStatuts[machineId] = statut;
+    // Update button group visually
+    const card = btn.closest('.card-body');
+    const group = card.querySelector('.btn-group');
+    group.querySelectorAll('.btn').forEach(b => {
+        b.className = b.className.replace(/btn-(success|warning|danger)\b/g, function(match) {
+            return 'btn-outline-' + match.replace('btn-', '');
+        });
+    });
+    // Highlight selected
+    const colorMap = {disponible:'success', en_reparation:'warning', hors_service:'danger'};
+    const color = colorMap[statut];
+    btn.className = btn.className.replace(`btn-outline-${color}`, `btn-${color}`);
+    // Show/hide raison block based on selected statut
+    const raisonBlock = document.querySelector(`.raison-block-${machineId}`);
+    if (raisonBlock) {
+        raisonBlock.style.display = (statut === 'en_reparation' || statut === 'hors_service') ? '' : 'none';
+    }
+    // Flash save button
+    const saveBtn = document.getElementById(`saveBtn_${machineId}`);
+    if (saveBtn) {
+        saveBtn.classList.add('btn-pulse');
+        setTimeout(() => saveBtn.classList.remove('btn-pulse'), 1000);
+    }
+}
+
+async function saveStatut(machineId) {
+    const m = REF_DATA.machines.find(x => x.id === machineId);
+    if (!m) return;
+    const newStatut = pendingStatuts[machineId] || m.statut || 'disponible';
+    const notes = document.getElementById(`notes_${machineId}`)?.value || m?.notes || '';
+    const raison = document.getElementById(`repair_${machineId}`)?.value || m?.raison_reparation || '';
+
+    // Determine date_reparation
+    let dateRep = m.date_reparation || '';
+    if (newStatut === 'disponible') {
+        dateRep = '';
+    } else if (newStatut !== (m.statut || 'disponible')) {
+        // Status changed to repair/HS: record new timestamp NOW
+        dateRep = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    }
+
+    try {
+        const saveBtn = document.getElementById(`saveBtn_${machineId}`);
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Enregistrement...';
+        }
+
+        const res = await fetch(`/api/machines/${machineId}/statut`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({statut: newStatut, notes, raison_reparation: raison, date_reparation: dateRep})
+        });
+        const data = await res.json();
+        if (data.success) {
+            m.statut = newStatut;
+            m.notes = notes;
+            m.raison_reparation = newStatut === 'disponible' ? '' : raison;
+            m.date_reparation = dateRep;
+            delete pendingStatuts[machineId];
+            renderMachineCards();
+            renderAlertBanner();
+            const labels = {disponible:'Disponible', en_reparation:'En réparation', hors_service:'Hors service'};
+            showToast(`${m.nom} → ${labels[newStatut]}`);
+        } else {
+            showToast('Erreur: ' + (data.error || ''), 'error');
+        }
+    } catch (err) {
+        showToast('Erreur réseau', 'error');
+    }
+}
+</script>
+{% endblock %}

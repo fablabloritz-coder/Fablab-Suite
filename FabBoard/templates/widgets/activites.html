@@ -1,0 +1,99 @@
+<div class="widget widget-activites" id="widget-activites-{{ widget_id }}" data-widget-code="activites" data-max-items="{{ config.get('max_items', 5) }}">
+    <h3><i class="bi bi-list-check"></i> Activites recentes</h3>
+    <div class="activites-list js-activites-list">
+        <div style="color: #475569;">Chargement...</div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-activites-{{ widget_id }}');
+    if (!root) return;
+
+    const list = root.querySelector('.js-activites-list');
+    const maxItems = Number(root.dataset.maxItems || 5) || 5;
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function fmtDate(value) {
+        if (!value) return '--';
+        const dt = new Date(value.replace(' ', 'T'));
+        if (Number.isNaN(dt.getTime())) return value;
+        return dt.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function render(items, fabtrackError, colorMap) {
+        if (fabtrackError && !items.length) {
+            list.innerHTML = `<div style="text-align:center; padding:1.5rem; color:#64748b;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">📋</div>
+                <div>Fabtrack non connecté</div>
+                <small style="color:#475569;">Configurez l'URL dans Paramètres → Sources</small>
+            </div>`;
+            return;
+        }
+
+        if (!items.length) {
+            list.innerHTML = '<div style="color: #475569;">Aucune activite recente.</div>';
+            return;
+        }
+
+        colorMap = colorMap || {};
+        list.innerHTML = items.slice(0, maxItems).map((item) => {
+            const typeName = item.type_activite_nom || item.nom_type_activite || 'Activite';
+            const typeColor = colorMap[typeName] || '#818cf8';
+            return `
+            <div class="activite-item" style="border-left: 3px solid ${esc(typeColor)}; padding-left: 0.6rem;">
+                <div class="activite-titre">${esc(typeName)}</div>
+                <div class="activite-meta">
+                    <span class="badge" style="background:${esc(typeColor)}22; color:${esc(typeColor)};">${esc(item.machine_nom || item.nom_machine || 'Machine n/a')}</span>
+                    <span>${esc(item.preparateur_nom || item.nom_preparateur || 'Preparateur n/a')}</span>
+                    <span style="color:#475569;">${esc(fmtDate(item.date_saisie || ''))}</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    const config = {{ config | tojson | safe }};
+    const sourceId = config.source_id || null;
+
+    function refresh() {
+        const store = window.FabBoardStore;
+        let items = [];
+        let errorMsg = '';
+        let colorMap = {};
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            const sd = store.getSource(sourceId);
+            items = sd.consommations || [];
+            (sd.summary?.by_type || []).forEach(t => {
+                if (t.nom && t.couleur) colorMap[t.nom] = t.couleur;
+            });
+        } else if (store && store.data) {
+            items = store.data.activites || [];
+            errorMsg = store.data.fabtrack_error || '';
+            ((store.data.fabtrack_stats || {}).by_type || []).forEach(t => {
+                if (t.nom && t.couleur) colorMap[t.nom] = t.couleur;
+            });
+        } else {
+            return;
+        }
+
+        render(items, errorMsg, colorMap);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

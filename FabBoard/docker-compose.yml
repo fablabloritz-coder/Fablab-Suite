@@ -1,0 +1,32 @@
+services:
+  fabboard:
+    build: .
+    container_name: fabboard
+    ports:
+      - "${FABBOARD_PORT:-5580}:5580"
+    volumes:
+      - ${FABBOARD_DATA_PATH:-./docker-data/data}:/app/data
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-}
+      FLASK_DEBUG: "0"
+      TZ: ${TZ:-Europe/Paris}
+      # Sources de données préconfigurées au premier lancement
+      # Adaptez les URLs si les apps tournent sur un autre hôte
+      FABTRACK_URL: ${FABTRACK_URL:-http://host.docker.internal:5555}
+      PRETGO_URL: ${PRETGO_URL:-http://host.docker.internal:5000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:5580/', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    mem_limit: 512m

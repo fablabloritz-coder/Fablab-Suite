@@ -1,0 +1,87 @@
+<div class="widget widget-timer" id="widget-timer-{{ widget_id }}" data-widget-code="timer">
+    {% set titre = config.get('titre', 'Compte à rebours') %}
+    {% set date_cible = config.get('date_cible', '') %}
+    {% set heure_cible = config.get('heure_cible', '00:00') %}
+    {% set datetime_cible = date_cible ~ 'T' ~ heure_cible if date_cible else '' %}
+    {% set afficher_secondes = config.get('afficher_secondes', true) %}
+
+    <h3><i class="bi bi-hourglass-split"></i> {{ titre }}</h3>
+
+    {% if date_cible %}
+    <div class="timer-display" data-target="{{ datetime_cible }}">
+        <div class="timer-unit">
+            <span class="timer-value timer-jours">--</span>
+            <span class="timer-label">jours</span>
+        </div>
+        <div class="timer-sep">:</div>
+        <div class="timer-unit">
+            <span class="timer-value timer-heures">--</span>
+            <span class="timer-label">heures</span>
+        </div>
+        <div class="timer-sep">:</div>
+        <div class="timer-unit">
+            <span class="timer-value timer-minutes">--</span>
+            <span class="timer-label">min</span>
+        </div>
+        {% if afficher_secondes %}
+        <div class="timer-sep">:</div>
+        <div class="timer-unit">
+            <span class="timer-value timer-secondes">--</span>
+            <span class="timer-label">sec</span>
+        </div>
+        {% endif %}
+    </div>
+    <div class="timer-target-date">
+        {% if date_cible %}{{ date_cible[8:10] ~ '/' ~ date_cible[5:7] ~ '/' ~ date_cible[:4] ~ ' à ' ~ heure_cible }}{% endif %}
+    </div>
+
+    <script>
+    (function() {
+        const el = document.getElementById('widget-timer-{{ widget_id }}');
+        if (!el) return;
+        const display = el.querySelector('.timer-display');
+        const target = new Date(display.dataset.target);
+        const showSec = {{ 'true' if afficher_secondes else 'false' }};
+
+        function pad(n) { return String(n).padStart(2, '0'); }
+
+        function update() {
+            const now = new Date();
+            let diff = target - now;
+
+            if (diff <= 0) {
+                el.querySelector('.timer-jours').textContent = '00';
+                el.querySelector('.timer-heures').textContent = '00';
+                el.querySelector('.timer-minutes').textContent = '00';
+                if (showSec) el.querySelector('.timer-secondes').textContent = '00';
+                display.classList.add('timer-expired');
+                return;
+            }
+
+            const jours = Math.floor(diff / 86400000);
+            diff %= 86400000;
+            const heures = Math.floor(diff / 3600000);
+            diff %= 3600000;
+            const minutes = Math.floor(diff / 60000);
+            diff %= 60000;
+            const secondes = Math.floor(diff / 1000);
+
+            el.querySelector('.timer-jours').textContent = pad(jours);
+            el.querySelector('.timer-heures').textContent = pad(heures);
+            el.querySelector('.timer-minutes').textContent = pad(minutes);
+            if (showSec) el.querySelector('.timer-secondes').textContent = pad(secondes);
+        }
+
+        update();
+        setInterval(update, 1000);
+    })();
+    </script>
+
+    {% else %}
+    <div class="widget-empty">
+        <i class="bi bi-hourglass" style="font-size: 2.5rem; color: #818cf8;"></i>
+        <p>Aucune date cible</p>
+        <small>Configurez la date dans les options du widget</small>
+    </div>
+    {% endif %}
+</div>

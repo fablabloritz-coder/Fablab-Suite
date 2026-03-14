@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% block title %}Missions{% endblock %}
+
+{% block head %}
+<style>
+/* ── Kanban Grid ── */
+.kanban-board {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    min-height: 60vh;
+}
+@media (max-width: 768px) {
+    .kanban-board { grid-template-columns: 1fr; }
+}
+.kanban-col {
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+}
+.kanban-col-header {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.6rem 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.kanban-count {
+    margin-left: auto;
+    background: rgba(0,0,0,0.1);
+    padding: 0.1em 0.5em;
+    border-radius: 9999px;
+    font-size: 0.8em;
+}
+.col-todo .kanban-col-header { background: rgba(99,102,241,0.12); color: #6366f1; }
+.col-doing .kanban-col-header { background: rgba(249,115,22,0.12); color: #ea580c; }
+.col-done .kanban-col-header { background: rgba(34,197,94,0.12); color: #16a34a; }
+
+[data-bs-theme="dark"] .col-todo .kanban-col-header { color: #a5b4fc; }
+[data-bs-theme="dark"] .col-doing .kanban-col-header { color: #fdba74; }
+[data-bs-theme="dark"] .col-done .kanban-col-header { color: #86efac; }
+
+.kanban-col-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-height: 80px;
+}
+.kanban-empty {
+    text-align: center;
+    color: var(--bs-secondary);
+    font-size: 0.85rem;
+    padding: 1rem 0.5rem;
+}
+
+/* ── Mission Card ── */
+.mission-card {
+    background: var(--bs-tertiary-bg);
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+    border-left: 4px solid transparent;
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+}
+.mission-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.mission-card.prio-haute {
+    border-left-color: #f59e0b;
+    background: rgba(245,158,11,0.06);
+}
+.mission-card.prio-urgente {
+    border-left-color: #ef4444;
+    background: rgba(239,68,68,0.06);
+}
+.mission-card.overdue {
+    box-shadow: 0 0 0 1px rgba(239,68,68,0.5);
+}
+.mission-titre {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+.mission-desc {
+    font-size: 0.78rem;
+    color: var(--bs-secondary);
+    margin-top: 0.2rem;
+    line-height: 1.35;
+}
+.mission-footer {
+    margin-top: 0.35rem;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.badge-prio {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15em 0.5em;
+    border-radius: 9999px;
+}
+.badge-prio.haute  { background: rgba(245,158,11,0.2); color: #d97706; }
+.badge-prio.urgente{ background: rgba(239,68,68,0.2);  color: #dc2626; }
+.badge-echeance {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.15em 0.5em;
+    border-radius: 4px;
+}
+.badge-echeance.late  { background: rgba(239,68,68,0.15);  color: #dc2626; }
+.badge-echeance.today { background: rgba(245,158,11,0.15); color: #d97706; }
+.badge-echeance.soon  { background: rgba(251,191,36,0.12); color: #ca8a04; }
+.badge-echeance.ok    { background: rgba(148,163,184,0.1); color: var(--bs-secondary); }
+
+[data-bs-theme="dark"] .badge-prio.haute  { color: #fbbf24; }
+[data-bs-theme="dark"] .badge-prio.urgente{ color: #f87171; }
+[data-bs-theme="dark"] .badge-echeance.late  { color: #f87171; }
+[data-bs-theme="dark"] .badge-echeance.today { color: #fbbf24; }
+[data-bs-theme="dark"] .badge-echeance.soon  { color: #fcd34d; }
+
+/* ── Actions ── */
+.mission-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 0.3rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.mission-card:hover .mission-actions { opacity: 1; }
+.mission-actions .btn { padding: 0.15rem 0.35rem; font-size: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-kanban me-2"></i>Missions</h4>
+        <small class="text-muted">Gestion des tâches et missions du FabLab</small>
+    </div>
+    <button class="btn btn-success" onclick="openCreateModal()">
+        <i class="bi bi-plus-lg me-1"></i>Nouvelle mission
+    </button>
+</div>
+
+<!-- Kanban Board -->
+<div class="kanban-board" id="kanbanBoard">
+    <!-- À faire -->
+    <div class="kanban-col col-todo">
+        <div class="kanban-col-header">
+            <i class="bi bi-circle"></i> À faire
+            <span class="kanban-count" id="countTodo">0</span>
+        </div>
+        <div class="kanban-col-body" id="colTodo"></div>
+    </div>
+    <!-- En cours -->
+    <div class="kanban-col col-doing">
+        <div class="kanban-col-header">
+            <i class="bi bi-arrow-repeat"></i> En cours
+            <span class="kanban-count" id="countDoing">0</span>
+        </div>
+        <div class="kanban-col-body" id="colDoing"></div>
+    </div>
+    <!-- Terminé -->
+    <div class="kanban-col col-done">
+        <div class="kanban-col-header">
+            <i class="bi bi-check-circle"></i> Terminé
+            <span class="kanban-count" id="countDone">0</span>
+        </div>
+        <div class="kanban-col-body" id="colDone"></div>
+    </div>
+</div>
+
+<!-- Modal Mission -->
+<div class="modal fade" id="modalMission" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalMissionTitle">Nouvelle mission</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="missionId">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Titre <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="missionTitre" required maxlength="200">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Description</label>
+                    <textarea class="form-control" id="missionDesc" rows="3" maxlength="1000"></textarea>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-semibold">Statut</label>
+                        <select class="form-select" id="missionStatut">
+                            <option value="a_faire">À faire</option>
+                            <option value="en_cours">En cours</option>
+                            <option value="termine">Terminé</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-semibold">Priorité</label>
+                        <select class="form-select" id="missionPriorite">
+                            <option value="0">Normale</option>
+                            <option value="1">Haute</option>
+                            <option value="2">Urgente</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-semibold">Échéance</label>
+                        <input type="date" class="form-control" id="missionEcheance">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" onclick="saveMission()">
+                    <i class="bi bi-check-lg me-1"></i>Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const API = '/missions/api';
+let missions = [];
+let modal;
+
+document.addEventListener('DOMContentLoaded', () => {
+    modal = new bootstrap.Modal(document.getElementById('modalMission'));
+    loadMissions();
+});
+
+async function loadMissions() {
+    try {
+        const r = await fetch(`${API}/list`);
+        const j = await r.json();
+        if (j.success) {
+            missions = j.data;
+            renderKanban();
+        }
+    } catch(e) {
+        console.error('Erreur chargement missions:', e);
+    }
+}
+
+function renderKanban() {
+    const todo = missions.filter(m => m.statut === 'a_faire');
+    const doing = missions.filter(m => m.statut === 'en_cours');
+    const done = missions.filter(m => m.statut === 'termine');
+
+    document.getElementById('countTodo').textContent = todo.length;
+    document.getElementById('countDoing').textContent = doing.length;
+    document.getElementById('countDone').textContent = done.length;
+
+    document.getElementById('colTodo').innerHTML = todo.length
+        ? todo.map(cardHtml).join('') : '<div class="kanban-empty">Aucune mission</div>';
+    document.getElementById('colDoing').innerHTML = doing.length
+        ? doing.map(cardHtml).join('') : '<div class="kanban-empty">Aucune mission</div>';
+    document.getElementById('colDone').innerHTML = done.length
+        ? done.map(cardHtml).join('') : '<div class="kanban-empty">Aucune mission</div>';
+}
+
+function cardHtml(m) {
+    const prioClass = m.priorite === 2 ? 'prio-urgente' : m.priorite === 1 ? 'prio-haute' : '';
+    const isOverdue = m.date_echeance && m.statut !== 'termine' && m.date_echeance < todayStr();
+    const overdueClass = isOverdue ? 'overdue' : '';
+
+    let footerBadges = '';
+    // Badge priorité
+    if (m.priorite === 2) footerBadges += '<span class="badge-prio urgente">Urgente</span>';
+    else if (m.priorite === 1) footerBadges += '<span class="badge-prio haute">Haute</span>';
+    // Badge échéance
+    if (m.date_echeance) footerBadges += echeanceBadge(m.date_echeance, m.statut);
+
+    // Actions rapides : avancer / reculer le statut
+    let actions = '<div class="mission-actions">';
+    if (m.statut === 'a_faire') {
+        actions += `<button class="btn btn-sm btn-outline-warning" title="En cours" onclick="event.stopPropagation();moveStatus(${m.id},'en_cours')"><i class="bi bi-arrow-right"></i></button>`;
+    } else if (m.statut === 'en_cours') {
+        actions += `<button class="btn btn-sm btn-outline-secondary" title="À faire" onclick="event.stopPropagation();moveStatus(${m.id},'a_faire')"><i class="bi bi-arrow-left"></i></button>`;
+        actions += `<button class="btn btn-sm btn-outline-success" title="Terminé" onclick="event.stopPropagation();moveStatus(${m.id},'termine')"><i class="bi bi-check-lg"></i></button>`;
+    } else {
+        actions += `<button class="btn btn-sm btn-outline-warning" title="En cours" onclick="event.stopPropagation();moveStatus(${m.id},'en_cours')"><i class="bi bi-arrow-left"></i></button>`;
+    }
+    actions += `<button class="btn btn-sm btn-outline-danger" title="Supprimer" onclick="event.stopPropagation();deleteMission(${m.id})"><i class="bi bi-trash"></i></button>`;
+    actions += '</div>';
+
+    const desc = m.description ? `<div class="mission-desc">${escapeHtml(m.description)}</div>` : '';
+    const footer = footerBadges ? `<div class="mission-footer">${footerBadges}${actions}</div>` : `<div class="mission-footer">${actions}</div>`;
+
+    return `<div class="mission-card ${prioClass} ${overdueClass}" onclick="openEditModal(${m.id})" data-id="${m.id}">
+        <div class="mission-titre">${escapeHtml(m.titre)}</div>
+        ${desc}
+        ${footer}
+    </div>`;
+}
+
+function echeanceBadge(dateStr, statut) {
+    if (statut === 'termine') return `<span class="badge-echeance ok"><i class="bi bi-calendar-check me-1"></i>${formatDate(dateStr)}</span>`;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const d = new Date(dateStr + 'T00:00:00'); d.setHours(0,0,0,0);
+    const diff = Math.ceil((d - today) / 86400000);
+    let cls = 'ok';
+    if (diff < 0) cls = 'late';
+    else if (diff === 0) cls = 'today';
+    else if (diff <= 7) cls = 'soon';
+    const icon = cls === 'late' ? 'bi-exclamation-triangle' : 'bi-calendar3';
+    const label = cls === 'late' ? `En retard (${formatDate(dateStr)})` :
+                  cls === 'today' ? "Aujourd'hui" :
+                  cls === 'soon' ? `${diff}j (${formatDate(dateStr)})` : formatDate(dateStr);
+    return `<span class="badge-echeance ${cls}"><i class="bi ${icon} me-1"></i>${label}</span>`;
+}
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function formatDate(d) { const p = d.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
+
+// ── CRUD ──
+
+function openCreateModal() {
+    document.getElementById('missionId').value = '';
+    document.getElementById('missionTitre').value = '';
+    document.getElementById('missionDesc').value = '';
+    document.getElementById('missionStatut').value = 'a_faire';
+    document.getElementById('missionPriorite').value = '0';
+    document.getElementById('missionEcheance').value = '';
+    document.getElementById('modalMissionTitle').textContent = 'Nouvelle mission';
+    modal.show();
+    setTimeout(() => document.getElementById('missionTitre').focus(), 300);
+}
+
+function openEditModal(id) {
+    const m = missions.find(x => x.id === id);
+    if (!m) return;
+    document.getElementById('missionId').value = m.id;
+    document.getElementById('missionTitre').value = m.titre;
+    document.getElementById('missionDesc').value = m.description || '';
+    document.getElementById('missionStatut').value = m.statut;
+    document.getElementById('missionPriorite').value = m.priorite;
+    document.getElementById('missionEcheance').value = m.date_echeance || '';
+    document.getElementById('modalMissionTitle').textContent = 'Modifier la mission';
+    modal.show();
+}
+
+async function saveMission() {
+    const id = document.getElementById('missionId').value;
+    const titre = document.getElementById('missionTitre').value.trim();
+    if (!titre) { showToast('Le titre est requis', 'warning'); return; }
+
+    const payload = {
+        titre,
+        description: document.getElementById('missionDesc').value.trim(),
+        statut: document.getElementById('missionStatut').value,
+        priorite: parseInt(document.getElementById('missionPriorite').value),
+        date_echeance: document.getElementById('missionEcheance').value || null,
+    };
+
+    try {
+        const url = id ? `${API}/${id}` : `${API}/create`;
+        const method = id ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (j.success) {
+            modal.hide();
+            showToast(id ? 'Mission modifiée' : 'Mission créée', 'success');
+            loadMissions();
+        } else {
+            showToast(j.error || 'Erreur', 'danger');
+        }
+    } catch(e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+async function moveStatus(id, newStatut) {
+    try {
+        const r = await fetch(`${API}/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ statut: newStatut })
+        });
+        const j = await r.json();
+        if (j.success) loadMissions();
+    } catch(e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+async function deleteMission(id) {
+    if (!confirm('Supprimer cette mission ?')) return;
+    try {
+        const r = await fetch(`${API}/${id}`, { method: 'DELETE' });
+        const j = await r.json();
+        if (j.success) {
+            showToast('Mission supprimée', 'success');
+            loadMissions();
+        }
+    } catch(e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+</script>
+{% endblock %}

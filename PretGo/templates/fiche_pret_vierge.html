@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiche de prêt vierge - PretGo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #333; padding: 12mm; }
+        .header { display: flex; align-items: center; border-bottom: 3px solid #0d6efd; padding-bottom: 10px; margin-bottom: 15px; gap: 15px; }
+        .header .logo { height: 50px; width: auto; flex-shrink: 0; }
+        .header .header-text { flex: 1; text-align: center; padding-right: 65px; }
+        .header h1 { font-size: 20px; color: #0d6efd; margin-bottom: 2px; letter-spacing: 0.5px; }
+        .header .etablissement { font-size: 13px; color: #666; margin-bottom: 2px; }
+        .section { margin-bottom: 12px; }
+        .section h2 { font-size: 14px; background: #f0f4f8; padding: 5px 10px; border-left: 4px solid #0d6efd; margin-bottom: 8px; }
+        .field { display: flex; margin-bottom: 8px; align-items: flex-end; }
+        .field .label { width: 160px; font-weight: bold; color: #555; flex-shrink: 0; font-size: 12px; }
+        .field .value { flex: 1; border-bottom: 1px solid #999; min-height: 20px; }
+        table.items { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        table.items th { background: #f0f4f8; padding: 6px 8px; text-align: left; font-size: 12px; border: 1px solid #ddd; }
+        table.items td { padding: 6px 8px; border: 1px solid #ddd; height: 24px; }
+        .engagement { border: 2px solid #0d6efd; border-radius: 6px; padding: 10px; margin: 15px 0; background: #f8f9ff; }
+        .engagement p { font-size: 11px; line-height: 1.4; }
+        .signatures { display: flex; gap: 30px; margin-top: 15px; }
+        .signatures .sig-box { flex: 1; text-align: center; }
+        .signatures .sig-box .sig-label { font-weight: bold; margin-bottom: 3px; font-size: 11px; }
+        .signatures .sig-box .sig-area { border: 1px solid #ccc; height: 55px; border-radius: 4px; background: #fafafa; }
+        .signatures .sig-box .sig-date { font-size: 10px; color: #888; margin-top: 3px; }
+        .footer { text-align: center; margin-top: 15px; font-size: 10px; color: #aaa; border-top: 1px solid #eee; padding-top: 5px; }
+        @media print {
+            body { padding: 10mm; }
+            .no-print { display: none !important; }
+            @page { size: A4; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="text-align:center; margin-bottom:20px;">
+        <button onclick="window.print()" style="padding:10px 30px;font-size:16px;cursor:pointer;background:#0d6efd;color:white;border:none;border-radius:6px;">
+            🖨️ Imprimer cette fiche
+        </button>
+        <button onclick="window.close()" style="padding:10px 20px;font-size:14px;cursor:pointer;background:#6c757d;color:white;border:none;border-radius:6px;margin-left:10px;">
+            Fermer
+        </button>
+    </div>
+
+    <div class="header">
+        <img src="{{ url_for('static', filename='PretGo.png') }}" alt="PretGo" class="logo">
+        <div class="header-text">
+            <h1>FICHE DE PRÊT DE MATÉRIEL</h1>
+            {% if nom_etablissement %}<div class="etablissement">{{ nom_etablissement }}</div>{% endif %}
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Emprunteur</h2>
+        <div class="field">
+            <div class="label">Nom et prénom :</div>
+            <div class="value"></div>
+        </div>
+        <div class="field">
+            <div class="label">Catégorie :</div>
+            <div class="value"></div>
+        </div>
+        <div class="field">
+            <div class="label">Classe / Service :</div>
+            <div class="value"></div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Matériel prêté</h2>
+        <table class="items">
+            <thead>
+                <tr>
+                    <th style="width:30px">#</th>
+                    <th>Description du matériel</th>
+                    <th style="width:140px">N° inventaire</th>
+                    <th style="width:140px">N° série</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in range(6) %}
+                <tr>
+                    <td>{{ i + 1 }}</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Conditions du prêt</h2>
+        <div class="field">
+            <div class="label">Date d'emprunt :</div>
+            <div class="value"></div>
+        </div>
+        <div class="field">
+            <div class="label">Date de retour prévue :</div>
+            <div class="value"></div>
+        </div>
+        <div class="field">
+            <div class="label">Lieu :</div>
+            <div class="value"></div>
+        </div>
+        <div class="field">
+            <div class="label">Observations :</div>
+            <div class="value"></div>
+        </div>
+    </div>
+
+    <div class="engagement">
+        <p><strong>Engagement de l'emprunteur :</strong> Je soussigné(e)
+        ____________________________________________,
+        reconnais avoir reçu le matériel décrit ci-dessus en bon état de fonctionnement.
+        Je m'engage à le restituer dans le même état dès que je n'en aurai plus l'usage,
+        et au plus tard à la date de retour prévue. En cas de dégradation, perte ou vol,
+        je m'engage à en informer immédiatement le service de prêt.</p>
+    </div>
+
+    <div class="signatures">
+        <div class="sig-box">
+            <div class="sig-label">Signature de l'emprunteur</div>
+            <div class="sig-area"></div>
+            <div class="sig-date">Date : ___/___/______</div>
+        </div>
+        <div class="sig-box">
+            <div class="sig-label">Signature du responsable</div>
+            <div class="sig-area"></div>
+            <div class="sig-date">Date : ___/___/______</div>
+        </div>
+    </div>
+
+    <hr style="margin-top:15px; border: 1px dashed #ccc;">
+
+    <div class="section" style="margin-top:12px;">
+        <h2>Retour du matériel</h2>
+        <div class="field">
+            <div class="label">Date de retour :</div>
+            <div class="value"></div>
+        </div>
+        <div class="field">
+            <div class="label">État du matériel :</div>
+            <div class="value"></div>
+        </div>
+        <div class="signatures" style="margin-top:10px;">
+            <div class="sig-box">
+                <div class="sig-label">Signature de l'emprunteur</div>
+                <div class="sig-area"></div>
+            </div>
+            <div class="sig-box">
+                <div class="sig-label">Signature du responsable</div>
+                <div class="sig-area"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        PretGo — Fiche vierge imprimée le {{ now().strftime('%d/%m/%Y à %H:%M') }}
+    </div>
+</body>
+</html>

@@ -1,0 +1,15 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+.pytest_cache
+.venv
+venv
+python
+installer.bat
+lancer.bat
+data
+static/uploads/materiel

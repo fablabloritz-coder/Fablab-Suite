@@ -1,0 +1,174 @@
+<div class="widget widget-calendrier" id="widget-calendrier-{{ widget_id }}" data-widget-code="calendrier">
+    <h3><i class="bi bi-calendar-event"></i> Événements calendrier</h3>
+    <div class="calendrier-list js-cal-list">
+        <div style="color: #475569; padding: 1rem;">Chargement...</div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-calendrier-{{ widget_id }}');
+    if (!root) return;
+
+    const list = root.querySelector('.js-cal-list');
+    const config = {{ config | tojson | safe }};
+    const sourceId = config.source_id || null;
+    const maxItems = config.nombre_max || 10;
+    const joursAvance = config.jours_avance || 7;
+    const tailleTexte = config.taille_texte || 'normal';
+    const tailleCartes = config.taille_cartes || 'normal';
+    const afficherDate = config.afficher_date_dessus !== false;
+    const codeUrgence = config.code_couleur_urgence !== false;
+
+    /* Apply size class to container */
+    root.classList.add('cal-text-' + tailleTexte, 'cal-card-' + tailleCartes);
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function toDate(value) {
+        if (!value) return null;
+        let s = value.replace(' ', 'T');
+        // Dates all-day (YYYY-MM-DD) : ajouter T00:00:00 pour éviter l'interprétation UTC
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00';
+        const dt = new Date(s);
+        return Number.isNaN(dt.getTime()) ? null : dt;
+    }
+
+    function fmtDayHeader(dt) {
+        return dt.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+
+    function fmtTime(dt) {
+        return dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function isAllDay(evt) {
+        if (evt.all_day) return true;
+        const s = toDate(evt.date_debut || evt.start);
+        const e = toDate(evt.date_fin || evt.end);
+        if (!s || !e) return false;
+        return (e - s) >= 86400000 && s.getHours() === 0 && s.getMinutes() === 0;
+    }
+
+    function dayKey(dt) {
+        return dt.toISOString().slice(0, 10);
+    }
+
+    function getUrgence(dt) {
+        if (!dt || !codeUrgence) return { classe: '', badge: '' };
+        const now = new Date();
+        const heures = (dt - now) / 3600000;
+        if (heures < 0) return { classe: '', badge: '' };
+        if (heures <= 24) return { classe: 'cal-urgence-critique', badge: '<span class="cal-urgence-badge critique">Imminent</span>' };
+        if (heures <= 72) return { classe: 'cal-urgence-proche', badge: '<span class="cal-urgence-badge proche">Proche</span>' };
+        if (heures <= 168) return { classe: 'cal-urgence-moyen', badge: '<span class="cal-urgence-badge moyen">Cette sem.</span>' };
+        return { classe: 'cal-urgence-loin', badge: '' };
+    }
+
+    function filterByDays(events) {
+        if (!joursAvance) return events;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const limit = new Date(today);
+        limit.setDate(limit.getDate() + joursAvance + 1);
+        return events.filter(evt => {
+            const dt = toDate(evt.date_debut || evt.start);
+            if (!dt) return true; // garder les événements sans date parsable
+            return dt >= today && dt < limit;
+        });
+    }
+
+    function render(events) {
+        if (!events.length) {
+            list.innerHTML = `
+                <div style="text-align:center; padding:2rem; color:#64748b;">
+                    <div style="font-size:2.5rem; margin-bottom:0.5rem;">📅</div>
+                    <div>Aucun événement à venir</div>
+                </div>
+            `;
+            return;
+        }
+
+        /* Filter by days range */
+        let filtered = filterByDays(events);
+        filtered = filtered.slice(0, maxItems);
+
+        if (!filtered.length) {
+            list.innerHTML = `
+                <div style="text-align:center; padding:2rem; color:#64748b;">
+                    <div style="font-size:2.5rem; margin-bottom:0.5rem;">📅</div>
+                    <div>Aucun événement dans les ${joursAvance} prochains jours</div>
+                </div>
+            `;
+            return;
+        }
+
+        /* Group by day */
+        const groups = new Map();
+        filtered.forEach(evt => {
+            const dt = toDate(evt.date_debut || evt.start);
+            const key = dt ? dayKey(dt) : 'unknown';
+            if (!groups.has(key)) groups.set(key, { date: dt, events: [] });
+            groups.get(key).events.push(evt);
+        });
+
+        let html = '';
+        groups.forEach((group) => {
+            if (afficherDate && group.date) {
+                html += `<div class="cal-day-header">${esc(fmtDayHeader(group.date))}</div>`;
+            }
+            group.events.forEach(evt => {
+                const dt = toDate(evt.date_debut || evt.start);
+                const allDay = isAllDay(evt);
+                const timeStr = allDay ? 'Toute la journée' : (dt ? fmtTime(dt) : '');
+                const lieu = evt.lieu || evt.location || '';
+                const titre = evt.titre || evt.summary || 'Événement';
+                const urg = getUrgence(dt);
+
+                html += `
+                    <div class="cal-event-card ${urg.classe}">
+                        <div class="cal-event-time">
+                            <i class="bi bi-${allDay ? 'calendar-check' : 'clock'}"></i>
+                            ${esc(timeStr)}${urg.badge}
+                        </div>
+                        <div class="cal-event-title">${esc(titre)}</div>
+                        ${lieu ? `<div class="cal-event-location"><i class="bi bi-geo-alt"></i> ${esc(lieu)}</div>` : ''}
+                    </div>
+                `;
+            });
+        });
+
+        list.innerHTML = html;
+    }
+
+    async function refresh() {
+        const store = window.FabBoardStore;
+        let events = [];
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            events = store.getSource(sourceId).events || [];
+        } else if (store && store.data) {
+            events = store.data.evenements || [];
+        } else {
+            return;
+        }
+
+        render(events);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

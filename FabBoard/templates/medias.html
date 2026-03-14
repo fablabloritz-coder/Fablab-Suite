@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}FabBoard — Médias{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <h2><i class="bi bi-film"></i> Gestion des médias</h2>
+    </div>
+
+    <!-- Upload -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold"><i class="bi bi-image"></i> Uploader une image</label>
+                    <input type="file" class="form-control" id="uploadImage" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold"><i class="bi bi-camera-video"></i> Uploader une vidéo</label>
+                    <input type="file" class="form-control" id="uploadVideo" accept="video/mp4,video/webm,video/ogg">
+                </div>
+            </div>
+            <div id="uploadProgress" class="mt-2" style="display:none">
+                <div class="spinner-border spinner-border-sm text-primary"></div>
+                <span>Upload en cours...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtres -->
+    <div class="btn-group mb-3" role="group">
+        <button type="button" class="btn btn-outline-secondary active" data-filter="all">Tous</button>
+        <button type="button" class="btn btn-outline-secondary" data-filter="image">Images</button>
+        <button type="button" class="btn btn-outline-secondary" data-filter="video">Vidéos</button>
+    </div>
+
+    <!-- Grille -->
+    <div class="row g-3" id="mediasGrid">
+        <div class="col-12 text-center text-muted py-5">
+            <div class="spinner-border"></div>
+            <p>Chargement...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal confirmation suppression -->
+<div class="modal fade" id="deleteMediaModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Supprimer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">Supprimer ce fichier ?</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger btn-sm" id="btnConfirmDelete">Supprimer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    let allMedias = [];
+    let currentFilter = 'all';
+    let deleteTarget = null;
+
+    function esc(s) {
+        const d = document.createElement('div');
+        d.textContent = s || '';
+        return d.innerHTML;
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' o';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko';
+        return (bytes / 1048576).toFixed(1) + ' Mo';
+    }
+
+    function loadMedias() {
+        fetch('/api/medias')
+            .then(r => r.json())
+            .then(result => {
+                allMedias = result.data || [];
+                render();
+            })
+            .catch(() => {
+                document.getElementById('mediasGrid').innerHTML =
+                    '<div class="col-12 text-center text-danger py-4">Erreur chargement</div>';
+            });
+    }
+
+    function render() {
+        const grid = document.getElementById('mediasGrid');
+        const filtered = currentFilter === 'all' ? allMedias : allMedias.filter(m => m.type === currentFilter);
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-center text-muted py-5"><i class="bi bi-inbox" style="font-size:2rem;"></i><p>Aucun média</p></div>';
+            return;
+        }
+
+        grid.innerHTML = filtered.map(m => {
+            const preview = m.type === 'image'
+                ? '<img src="' + esc(m.url) + '" class="card-img-top media-thumb" alt="">'
+                : '<video src="' + esc(m.url) + '" class="card-img-top media-thumb" muted></video>';
+            const badge = m.type === 'image'
+                ? '<span class="badge bg-primary">Image</span>'
+                : '<span class="badge bg-warning text-dark">Vidéo</span>';
+            return '<div class="col-6 col-sm-4 col-md-3 col-lg-2">' +
+                '<div class="card h-100 media-card">' +
+                preview +
+                '<div class="card-body p-2">' +
+                '<div class="d-flex justify-content-between align-items-center">' +
+                badge +
+                '<small class="text-muted">' + formatSize(m.size) + '</small>' +
+                '</div>' +
+                '<div class="mt-2 d-flex gap-1">' +
+                '<input type="text" class="form-control form-control-sm" value="' + esc(m.url) + '" readonly onclick="this.select()">' +
+                '<button class="btn btn-outline-danger btn-sm" title="Supprimer" onclick="window._deleteMedia(\'' + esc(m.filename) + '\')">' +
+                '<i class="bi bi-trash"></i></button>' +
+                '</div></div></div></div>';
+        }).join('');
+    }
+
+    // Filters
+    document.querySelectorAll('[data-filter]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            currentFilter = this.dataset.filter;
+            render();
+        });
+    });
+
+    // Upload image
+    document.getElementById('uploadImage').addEventListener('change', function() {
+        uploadFile(this, '/api/upload');
+    });
+
+    // Upload video
+    document.getElementById('uploadVideo').addEventListener('change', function() {
+        uploadFile(this, '/api/upload-video');
+    });
+
+    function uploadFile(input, endpoint) {
+        const file = input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        document.getElementById('uploadProgress').style.display = '';
+        fetch(endpoint, { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(result => {
+                document.getElementById('uploadProgress').style.display = 'none';
+                input.value = '';
+                if (result.success) {
+                    if (typeof showToast !== 'undefined') showToast('Fichier uploadé', 'success');
+                    loadMedias();
+                } else {
+                    if (typeof showToast !== 'undefined') showToast(result.error || 'Erreur', 'error');
+                }
+            })
+            .catch(() => {
+                document.getElementById('uploadProgress').style.display = 'none';
+                input.value = '';
+                if (typeof showToast !== 'undefined') showToast('Erreur upload', 'error');
+            });
+    }
+
+    // Delete
+    window._deleteMedia = function(filename) {
+        deleteTarget = filename;
+        new bootstrap.Modal(document.getElementById('deleteMediaModal')).show();
+    };
+
+    document.getElementById('btnConfirmDelete').addEventListener('click', function() {
+        if (!deleteTarget) return;
+        fetch('/api/medias/' + encodeURIComponent(deleteTarget), { method: 'DELETE' })
+            .then(r => r.json())
+            .then(result => {
+                bootstrap.Modal.getInstance(document.getElementById('deleteMediaModal')).hide();
+                if (result.success) {
+                    if (typeof showToast !== 'undefined') showToast('Fichier supprimé', 'success');
+                    loadMedias();
+                }
+            });
+        deleteTarget = null;
+    });
+
+    loadMedias();
+})();
+</script>
+<style>
+.media-thumb { height: 120px; object-fit: cover; background: #1e293b; }
+.media-card { border-color: #334155; background: #1e293b; }
+.media-card .card-body { color: #e2e8f0; }
+</style>
+{% endblock %}

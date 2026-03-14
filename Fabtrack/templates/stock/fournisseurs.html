@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}Stock — Fournisseurs{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-truck text-success"></i> Fournisseurs</h2>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('stock.stock_index') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-house"></i> Dashboard
+        </a>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addFournModal">
+            <i class="bi bi-plus-lg"></i> Ajouter
+        </button>
+    </div>
+</div>
+
+<div class="row g-3">
+    {% for f in fournisseurs %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-start gap-3 mb-2">
+                    {% if f.image_path %}
+                    <img src="{{ f.image_path }}" alt="Logo {{ f.nom }}" class="rounded border" style="width:56px;height:56px;object-fit:contain;background:#fff;">
+                    {% else %}
+                    <div class="rounded border d-flex align-items-center justify-content-center text-muted" style="width:56px;height:56px;">
+                        <i class="bi bi-building"></i>
+                    </div>
+                    {% endif %}
+                    <div class="flex-grow-1">
+                        <h5 class="card-title mb-1">{{ f.nom }}</h5>
+                        {% if f.materiaux_noms %}
+                        <p class="text-muted small mb-0">{{ f.materiaux_noms|join(', ') }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="small">
+                    {% if f.contact %}<div><i class="bi bi-person"></i> {{ f.contact }}</div>{% endif %}
+                    {% if f.email %}<div><i class="bi bi-envelope"></i> {{ f.email }}</div>{% endif %}
+                    {% if f.telephone %}<div><i class="bi bi-telephone"></i> {{ f.telephone }}</div>{% endif %}
+                    {% if f.telephone2 %}<div><i class="bi bi-telephone"></i> {{ f.telephone2 }}</div>{% endif %}
+                    {% if f.adresse_postale %}
+                    <div><i class="bi bi-geo-alt"></i> {{ f.adresse_postale }}</div>
+                    {% endif %}
+                </div>
+                {% if f.notes %}
+                <p class="text-muted small mt-2 mb-0">{{ f.notes }}</p>
+                {% endif %}
+            </div>
+            <div class="card-footer bg-transparent d-flex justify-content-between align-items-center">
+                <span class="badge bg-secondary">{{ f.nb_articles }} article(s)</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="editFournisseur({{ f.id }})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% if not fournisseurs %}
+    <div class="col-12 text-center text-muted py-5">Aucun fournisseur enregistré</div>
+    {% endif %}
+</div>
+
+<!-- Modal Ajouter Fournisseur -->
+<div class="modal fade" id="addFournModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form action="{{ url_for('stock.api_stock_add_fournisseur') }}" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg"></i> Nouveau fournisseur</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nom *</label>
+                            <input type="text" name="nom" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Contact</label>
+                            <input type="text" name="contact" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Téléphone</label>
+                            <input type="tel" name="telephone" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Téléphone 2</label>
+                            <input type="tel" name="telephone2" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Adresse postale</label>
+                            <textarea name="adresse_postale" class="form-control" rows="2" placeholder="Ex: 3 rue des Ateliers, 54000 Nancy"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Matériaux fournis</label>
+                            {% if materiaux %}
+                            <div id="addMateriaux" class="border rounded p-2" style="max-height: 190px; overflow: auto;">
+                                {% for m in materiaux %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="materiau_ids" value="{{ m.id }}" id="addMateriau{{ m.id }}">
+                                    <label class="form-check-label" for="addMateriau{{ m.id }}">{{ m.nom }}</label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <small class="form-text text-muted">Vous pouvez cocher plusieurs matériaux.</small>
+                            {% else %}
+                            <div class="text-muted small">Aucun matériau actif pour l'instant. Vous pouvez enregistrer le fournisseur sans sélection.</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Logo fournisseur</label>
+                            <input type="hidden" name="image_path" id="addLogoPath">
+                            <input type="file" id="addLogoFile" class="form-control" accept="image/*">
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <img id="addLogoPreview" class="rounded border d-none" alt="Logo" style="width:56px;height:56px;object-fit:contain;background:#fff;">
+                                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="addLogoClear">Retirer le logo</button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <textarea name="notes" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Éditer Fournisseur -->
+<div class="modal fade" id="editFournModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="editFournForm" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Modifier fournisseur</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nom *</label>
+                            <input type="text" name="nom" id="editNom" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Contact</label>
+                            <input type="text" name="contact" id="editContact" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" id="editEmail" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Téléphone</label>
+                            <input type="tel" name="telephone" id="editTelephone" class="form-control">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Téléphone 2</label>
+                            <input type="tel" name="telephone2" id="editTelephone2" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Adresse postale</label>
+                            <textarea name="adresse_postale" id="editAdressePostale" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Matériaux fournis</label>
+                            {% if materiaux %}
+                            <div id="editMateriaux" class="border rounded p-2" style="max-height: 190px; overflow: auto;">
+                                {% for m in materiaux %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="materiau_ids" value="{{ m.id }}" id="editMateriau{{ m.id }}">
+                                    <label class="form-check-label" for="editMateriau{{ m.id }}">{{ m.nom }}</label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <small class="form-text text-muted">Vous pouvez cocher plusieurs matériaux.</small>
+                            {% else %}
+                            <div class="text-muted small">Aucun matériau actif pour l'instant. Vous pouvez enregistrer le fournisseur sans sélection.</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Logo fournisseur</label>
+                            <input type="hidden" name="image_path" id="editLogoPath">
+                            <input type="file" id="editLogoFile" class="form-control" accept="image/*">
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <img id="editLogoPreview" class="rounded border d-none" alt="Logo" style="width:56px;height:56px;object-fit:contain;background:#fff;">
+                                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="editLogoClear">Retirer le logo</button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <textarea name="notes" id="editNotes" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-danger me-auto" id="btnArchiveFourn" onclick="archiveFournisseur()">
+                        <i class="bi bi-archive"></i> Archiver
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentFournId = null;
+
+function setLogoPreview(previewId, clearBtnId, path) {
+    const preview = document.getElementById(previewId);
+    const clearBtn = document.getElementById(clearBtnId);
+    if (path) {
+        preview.src = path;
+        preview.classList.remove('d-none');
+        clearBtn.classList.remove('d-none');
+    } else {
+        preview.src = '';
+        preview.classList.add('d-none');
+        clearBtn.classList.add('d-none');
+    }
+}
+
+function setSelectedValues(selectId, values) {
+    const target = document.getElementById(selectId);
+    if (!target) return;
+    const selected = new Set((values || []).map(v => Number(v)));
+    const checkboxes = target.querySelectorAll('input[name="materiau_ids"]');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selected.has(Number(checkbox.value));
+    });
+}
+
+function collectFormDataWithMateriaux(formEl, materiauxSelectId) {
+    const formData = new FormData(formEl);
+    const data = {};
+    formData.forEach((value, key) => {
+        if (key !== 'materiau_ids') {
+            data[key] = value;
+        }
+    });
+    const containerEl = document.getElementById(materiauxSelectId);
+    data.materiau_ids = containerEl
+        ? Array.from(containerEl.querySelectorAll('input[name="materiau_ids"]:checked'))
+            .map(cb => Number(cb.value))
+            .filter(v => Number.isInteger(v) && v > 0)
+        : [];
+    return data;
+}
+
+async function uploadLogo(file, entityId) {
+    const payload = new FormData();
+    payload.append('file', file);
+    payload.append('entity', 'fournisseur');
+    payload.append('entity_id', String(entityId || 0));
+
+    const response = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: payload
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Erreur upload logo');
+    }
+    return result.path;
+}
+
+async function handleLogoInputChange(fileInputId, pathInputId, previewId, clearBtnId, entityIdGetter) {
+    const fileInput = document.getElementById(fileInputId);
+    const pathInput = document.getElementById(pathInputId);
+    const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+    if (!file) return;
+
+    try {
+        fileInput.disabled = true;
+        const path = await uploadLogo(file, entityIdGetter());
+        pathInput.value = path;
+        setLogoPreview(previewId, clearBtnId, path);
+    } catch (err) {
+        alert(err.message || 'Erreur pendant l\'upload du logo');
+        fileInput.value = '';
+    } finally {
+        fileInput.disabled = false;
+    }
+}
+
+function editFournisseur(id) {
+    fetch('/stock/api/fournisseurs/' + id)
+        .then(r => r.json())
+        .then(f => {
+            currentFournId = id;
+            document.getElementById('editNom').value = f.nom || '';
+            document.getElementById('editContact').value = f.contact || '';
+            document.getElementById('editEmail').value = f.email || '';
+            document.getElementById('editTelephone').value = f.telephone || '';
+            document.getElementById('editTelephone2').value = f.telephone2 || '';
+            document.getElementById('editAdressePostale').value = f.adresse_postale || '';
+            document.getElementById('editLogoPath').value = f.image_path || '';
+            setLogoPreview('editLogoPreview', 'editLogoClear', f.image_path || '');
+            setSelectedValues('editMateriaux', f.materiau_ids || []);
+            document.getElementById('editNotes').value = f.notes || '';
+            document.getElementById('editLogoFile').value = '';
+            new bootstrap.Modal(document.getElementById('editFournModal')).show();
+        });
+}
+
+document.getElementById('editFournForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const data = collectFormDataWithMateriaux(this, 'editMateriaux');
+    fetch('/stock/api/fournisseurs/' + currentFournId, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) location.reload();
+        else alert(res.error || 'Erreur');
+    });
+});
+
+function archiveFournisseur() {
+    if (!confirm('Archiver ce fournisseur ?')) return;
+    fetch('/stock/api/fournisseurs/' + currentFournId + '/archiver', {method: 'POST'})
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) location.reload();
+            else alert(res.error || 'Erreur');
+        });
+}
+
+document.getElementById('addLogoFile').addEventListener('change', function() {
+    handleLogoInputChange('addLogoFile', 'addLogoPath', 'addLogoPreview', 'addLogoClear', () => 0);
+});
+
+document.getElementById('editLogoFile').addEventListener('change', function() {
+    handleLogoInputChange('editLogoFile', 'editLogoPath', 'editLogoPreview', 'editLogoClear', () => currentFournId || 0);
+});
+
+document.getElementById('addLogoClear').addEventListener('click', function() {
+    document.getElementById('addLogoPath').value = '';
+    document.getElementById('addLogoFile').value = '';
+    setLogoPreview('addLogoPreview', 'addLogoClear', '');
+});
+
+document.getElementById('editLogoClear').addEventListener('click', function() {
+    document.getElementById('editLogoPath').value = '';
+    document.getElementById('editLogoFile').value = '';
+    setLogoPreview('editLogoPreview', 'editLogoClear', '');
+});
+
+const addModal = document.getElementById('addFournModal');
+addModal.addEventListener('hidden.bs.modal', function() {
+    document.getElementById('addLogoPath').value = '';
+    document.getElementById('addLogoFile').value = '';
+    setLogoPreview('addLogoPreview', 'addLogoClear', '');
+    setSelectedValues('addMateriaux', []);
+});
+</script>
+{% endblock %}

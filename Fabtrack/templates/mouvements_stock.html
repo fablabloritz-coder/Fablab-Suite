@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Mouvements de stock{% endblock %}
+
+{% block content %}
+<!-- Page Title -->
+<div class="mb-4">
+    <h1 class="page-title"><i class="bi bi-arrow-left-right"></i> Mouvements de stock</h1>
+    <p class="page-subtitle">Historique complet des entrées, sorties et ajustements</p>
+</div>
+
+<!-- Filtres -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Matériau</label>
+                <select id="filterMateriau" class="form-select" onchange="loadMouvements()">
+                    <option value="">Tous</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Type</label>
+                <select id="filterType" class="form-select" onchange="loadMouvements()">
+                    <option value="">Tous</option>
+                    <option value="entree">Entrée</option>
+                    <option value="sortie">Sortie</option>
+                    <option value="ajustement">Ajustement</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Source</label>
+                <select id="filterSource" class="form-select" onchange="loadMouvements()">
+                    <option value="">Toutes</option>
+                    <option value="manuel">Manuel</option>
+                    <option value="consommation">Consommation</option>
+                    <option value="inventaire">Inventaire</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Date début</label>
+                <input type="date" id="filterDateDebut" class="form-control" onchange="loadMouvements()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Date fin</label>
+                <input type="date" id="filterDateFin" class="form-control" onchange="loadMouvements()">
+            </div>
+            <div class="col-md-1">
+                <button class="btn btn-outline-secondary w-100" onclick="resetFilters()">
+                    <i class="bi bi-x-circle"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Matériau</th>
+                        <th class="text-center">Type</th>
+                        <th class="text-end">Quantité</th>
+                        <th class="text-end">Avant</th>
+                        <th class="text-end">Après</th>
+                        <th>Source</th>
+                        <th>Utilisateur</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="mouvementsBody">
+                    <tr><td colspan="9" class="text-center text-muted py-4">
+                        <div class="spinner-border spinner-border-sm"></div> Chargement...
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Pagination -->
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <div class="text-muted small" id="paginationInfo"></div>
+    <div id="paginationControls"></div>
+</div>
+
+<script>
+let currentPage = 1;
+
+async function loadMateriaux() {
+    try {
+        const res = await fetch('/api/stock/dashboard');
+        const data = await res.json();
+        if (data.success) {
+            const sel = document.getElementById('filterMateriau');
+            const mats = [];
+            data.categories.forEach(c => c.materiaux.forEach(m => mats.push(m)));
+            mats.sort((a, b) => a.nom.localeCompare(b.nom));
+            mats.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = m.nom;
+                sel.appendChild(opt);
+            });
+        }
+    } catch(e) {}
+}
+
+async function loadMouvements(page) {
+    if (page) currentPage = page;
+    const params = new URLSearchParams({ page: currentPage, per_page: 50 });
+
+    const materiau = document.getElementById('filterMateriau').value;
+    const type = document.getElementById('filterType').value;
+    const source = document.getElementById('filterSource').value;
+    const dateDebut = document.getElementById('filterDateDebut').value;
+    const dateFin = document.getElementById('filterDateFin').value;
+
+    if (materiau) params.set('materiau_id', materiau);
+    if (type) params.set('type', type);
+    if (source) params.set('source', source);
+    if (dateDebut) params.set('date_debut', dateDebut);
+    if (dateFin) params.set('date_fin', dateFin);
+
+    try {
+        const res = await fetch('/api/mouvements-stock?' + params);
+        const data = await res.json();
+        if (!data.success) throw new Error();
+        renderMouvements(data);
+    } catch(e) {
+        document.getElementById('mouvementsBody').innerHTML =
+            '<tr><td colspan="9" class="text-center text-muted py-4">Erreur de chargement</td></tr>';
+    }
+}
+
+function renderMouvements(result) {
+    const tbody = document.getElementById('mouvementsBody');
+
+    if (!result.data.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Aucun mouvement</td></tr>';
+        document.getElementById('paginationInfo').textContent = '';
+        document.getElementById('paginationControls').innerHTML = '';
+        return;
+    }
+
+    const typeBadge = { entree: 'bg-success', sortie: 'bg-danger', ajustement: 'bg-info' };
+    const typeLabel = { entree: 'Entrée', sortie: 'Sortie', ajustement: 'Ajust.' };
+    const sourceLabel = { manuel: 'Manuel', consommation: 'Conso.', inventaire: 'Inventaire' };
+
+    tbody.innerHTML = result.data.map(m => {
+        const dateStr = (m.date || '').replace('T', ' ').slice(0, 16);
+        const badge = '<span class="badge ' + (typeBadge[m.type] || 'bg-secondary') + '">' +
+                      (typeLabel[m.type] || m.type) + '</span>';
+        const src = '<span class="badge bg-outline-secondary border text-muted">' +
+                    (sourceLabel[m.source] || m.source) + '</span>';
+
+        let notes = escHtml(m.notes || '');
+        if (m.source === 'consommation' && m.consommation_id) {
+            notes += ' <a href="/historique" class="small text-primary">#' + m.consommation_id + '</a>';
+        }
+
+        return '<tr>' +
+            '<td class="small">' + dateStr + '</td>' +
+            '<td>' + escHtml(m.materiau_nom || '—') + '</td>' +
+            '<td class="text-center">' + badge + '</td>' +
+            '<td class="text-end">' + m.quantite + ' ' + escHtml(m.unite || '') + '</td>' +
+            '<td class="text-end text-muted">' + m.quantite_avant + '</td>' +
+            '<td class="text-end fw-bold">' + m.quantite_apres + '</td>' +
+            '<td>' + src + '</td>' +
+            '<td class="small">' + escHtml(m.utilisateur || '') + '</td>' +
+            '<td class="small">' + notes + '</td>' +
+            '</tr>';
+    }).join('');
+
+    // Pagination info
+    const debut = (result.page - 1) * result.per_page + 1;
+    const fin = Math.min(result.page * result.per_page, result.total);
+    document.getElementById('paginationInfo').textContent =
+        debut + '–' + fin + ' sur ' + result.total;
+
+    // Pagination controls
+    let pagHtml = '<nav><ul class="pagination pagination-sm mb-0">';
+    if (result.page > 1) {
+        pagHtml += '<li class="page-item"><a class="page-link" href="#" onclick="loadMouvements(' + (result.page - 1) + ');return false;">Préc.</a></li>';
+    }
+    for (let p = 1; p <= result.pages; p++) {
+        if (p === result.page) {
+            pagHtml += '<li class="page-item active"><span class="page-link">' + p + '</span></li>';
+        } else if (Math.abs(p - result.page) <= 2 || p === 1 || p === result.pages) {
+            pagHtml += '<li class="page-item"><a class="page-link" href="#" onclick="loadMouvements(' + p + ');return false;">' + p + '</a></li>';
+        } else if (Math.abs(p - result.page) === 3) {
+            pagHtml += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+    }
+    if (result.page < result.pages) {
+        pagHtml += '<li class="page-item"><a class="page-link" href="#" onclick="loadMouvements(' + (result.page + 1) + ');return false;">Suiv.</a></li>';
+    }
+    pagHtml += '</ul></nav>';
+    document.getElementById('paginationControls').innerHTML = pagHtml;
+}
+
+function resetFilters() {
+    document.getElementById('filterMateriau').value = '';
+    document.getElementById('filterType').value = '';
+    document.getElementById('filterSource').value = '';
+    document.getElementById('filterDateDebut').value = '';
+    document.getElementById('filterDateFin').value = '';
+    loadMouvements(1);
+}
+
+loadMateriaux();
+loadMouvements();
+</script>
+{% endblock %}

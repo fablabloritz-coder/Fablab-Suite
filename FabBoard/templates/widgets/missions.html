@@ -1,0 +1,91 @@
+<div class="widget widget-missions" id="widget-missions-{{ widget_id }}" data-widget-code="missions">
+    {% set show_a_faire = config.get('afficher_a_faire', true) %}
+    {% set show_en_cours = config.get('afficher_en_cours', true) %}
+    {% set show_termine = config.get('afficher_termine', true) %}
+    {% set visible_count = [show_a_faire, show_en_cours, show_termine] | select | list | length %}
+    <div class="missions-kanban" style="grid-template-columns: repeat({{ visible_count if visible_count > 0 else 1 }}, 1fr);">
+        {% if show_a_faire %}
+        <div class="missions-col missions-col-todo">
+            <div class="missions-col-header">
+                <i class="bi bi-circle"></i> À faire
+                <span class="missions-count missions-count-todo">0</span>
+            </div>
+            <div class="missions-col-body" data-statut="a_faire"></div>
+        </div>
+        {% endif %}
+        {% if show_en_cours %}
+        <div class="missions-col missions-col-doing">
+            <div class="missions-col-header">
+                <i class="bi bi-play-circle"></i> En cours
+                <span class="missions-count missions-count-doing">0</span>
+            </div>
+            <div class="missions-col-body" data-statut="en_cours"></div>
+        </div>
+        {% endif %}
+        {% if show_termine %}
+        <div class="missions-col missions-col-done">
+            <div class="missions-col-header">
+                <i class="bi bi-check-circle"></i> Terminé
+                <span class="missions-count missions-count-done">0</span>
+            </div>
+            <div class="missions-col-body" data-statut="termine"></div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+    (function() {
+        const el = document.getElementById('widget-missions-{{ widget_id }}');
+        if (!el) return;
+
+        const prioriteClasses = { 0: '', 1: 'priorite-haute', 2: 'priorite-urgente' };
+        const maxItems = {{ config.get('nombre_max', 10) | int }};
+
+        function escTxt(s) {
+            const d = document.createElement('div');
+            d.textContent = s || '';
+            return d.innerHTML;
+        }
+
+        function render(missions) {
+            const cols = { a_faire: [], en_cours: [], termine: [] };
+            (missions || []).forEach(function(m) {
+                if (cols[m.statut]) cols[m.statut].push(m);
+            });
+
+            for (const [statut, items] of Object.entries(cols)) {
+                const body = el.querySelector('[data-statut="' + statut + '"]');
+                if (!body) continue;
+
+                const display = items.slice(0, maxItems);
+                body.innerHTML = display.map(function(m) {
+                    const pClass = prioriteClasses[m.priorite] || '';
+                    return '<div class="mission-card ' + pClass + '">'
+                        + '<div class="mission-titre">' + escTxt(m.titre) + '</div>'
+                        + (m.description ? '<div class="mission-desc">' + escTxt(m.description) + '</div>' : '')
+                        + '</div>';
+                }).join('') || '<div class="missions-empty">—</div>';
+            }
+
+            const todoCount = el.querySelector('.missions-count-todo');
+            const doingCount = el.querySelector('.missions-count-doing');
+            const doneCount = el.querySelector('.missions-count-done');
+            if (todoCount) todoCount.textContent = cols.a_faire.length;
+            if (doingCount) doingCount.textContent = cols.en_cours.length;
+            if (doneCount) doneCount.textContent = cols.termine.length;
+        }
+
+        function load() {
+            fetch('/api/missions')
+                .then(function(r) { return r.json(); })
+                .then(function(result) {
+                    if (result.success) render(result.data);
+                })
+                .catch(function(e) { console.error('Missions widget error:', e); });
+        }
+
+        load();
+        document.addEventListener('fabboard:refresh', load);
+    })();
+    </script>
+</div>

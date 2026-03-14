@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Inventaire physique{% endblock %}
+
+{% block content %}
+<!-- Page Title -->
+<div class="mb-4">
+    <h1 class="page-title"><i class="bi bi-clipboard-check"></i> Inventaire physique</h1>
+    <p class="page-subtitle">Comptez le stock réel et ajustez les écarts automatiquement</p>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle" id="inventaireTable">
+                <thead>
+                    <tr>
+                        <th>Matériau</th>
+                        <th>Catégorie</th>
+                        <th class="text-end">Stock théorique</th>
+                        <th class="text-center">Unité</th>
+                        <th class="text-center" style="width:160px;">Comptage réel</th>
+                        <th class="text-end">Écart</th>
+                    </tr>
+                </thead>
+                <tbody id="inventaireBody">
+                    <tr><td colspan="6" class="text-center text-muted py-4">
+                        <div class="spinner-border spinner-border-sm"></div> Chargement...
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div class="text-muted small" id="inventaireResume"></div>
+            <button class="btn btn-primary" onclick="validerInventaire()" id="btnValider" disabled>
+                <i class="bi bi-check-lg"></i> Valider les ajustements
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let inventaireData = [];
+
+async function loadInventaire() {
+    try {
+        const res = await fetch('/api/inventaire');
+        const data = await res.json();
+        if (!data.success) throw new Error();
+        inventaireData = data.data;
+        renderInventaire();
+    } catch(e) {
+        document.getElementById('inventaireBody').innerHTML =
+            '<tr><td colspan="6" class="text-center text-muted py-4">Erreur de chargement</td></tr>';
+    }
+}
+
+function renderInventaire() {
+    const tbody = document.getElementById('inventaireBody');
+
+    if (!inventaireData.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">' +
+            '<i class="bi bi-inbox" style="font-size:2rem;"></i><br>' +
+            'Aucun matériau avec suivi de stock<br>' +
+            '<small>Activez le suivi stock dans Paramètres → Matériaux</small></td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = inventaireData.map((m, i) => {
+        const qte = m.quantite_actuelle !== null ? m.quantite_actuelle : 0;
+        return '<tr>' +
+            '<td><strong>' + escHtml(m.nom) + '</strong></td>' +
+            '<td><span class="text-muted small">' + escHtml(m.categorie_nom || '—') + '</span></td>' +
+            '<td class="text-end">' + qte + '</td>' +
+            '<td class="text-center text-muted">' + escHtml(m.unite || '') + '</td>' +
+            '<td class="text-center">' +
+            '<input type="number" class="form-control form-control-sm text-center comptage-input" ' +
+            'data-idx="' + i + '" data-id="' + m.id + '" data-theorique="' + qte + '" ' +
+            'step="any" min="0" placeholder="—" oninput="updateEcart(this)">' +
+            '</td>' +
+            '<td class="text-end ecart-cell" data-idx="' + i + '">—</td>' +
+            '</tr>';
+    }).join('');
+}
+
+function updateEcart(input) {
+    const idx = input.dataset.idx;
+    const theorique = parseFloat(input.dataset.theorique) || 0;
+    const comptage = parseFloat(input.value);
+    const cell = document.querySelector('.ecart-cell[data-idx="' + idx + '"]');
+
+    if (isNaN(comptage)) {
+        cell.innerHTML = '—';
+        cell.className = 'text-end ecart-cell';
+    } else {
+        const ecart = comptage - theorique;
+        if (ecart === 0) {
+            cell.innerHTML = '<span class="text-success">= 0</span>';
+        } else if (ecart > 0) {
+            cell.innerHTML = '<span class="text-primary">+' + ecart + '</span>';
+        } else {
+            cell.innerHTML = '<span class="text-danger">' + ecart + '</span>';
+        }
+        cell.className = 'text-end ecart-cell';
+    }
+
+    updateResume();
+}
+
+function updateResume() {
+    const inputs = document.querySelectorAll('.comptage-input');
+    let filled = 0, ecarts = 0;
+    inputs.forEach(inp => {
+        const val = parseFloat(inp.value);
+        if (!isNaN(val)) {
+            filled++;
+            const theorique = parseFloat(inp.dataset.theorique) || 0;
+            if (val !== theorique) ecarts++;
+        }
+    });
+
+    document.getElementById('inventaireResume').textContent =
+        filled + '/' + inputs.length + ' comptés, ' + ecarts + ' écart' + (ecarts > 1 ? 's' : '');
+    document.getElementById('btnValider').disabled = ecarts === 0;
+}
+
+async function validerInventaire() {
+    const inputs = document.querySelectorAll('.comptage-input');
+    const ajustements = [];
+    inputs.forEach(inp => {
+        const val = parseFloat(inp.value);
+        const theorique = parseFloat(inp.dataset.theorique) || 0;
+        if (!isNaN(val) && val !== theorique) {
+            ajustements.push({ materiau_id: parseInt(inp.dataset.id), comptage: val });
+        }
+    });
+
+    if (!ajustements.length) return;
+    if (!confirm(ajustements.length + ' ajustement' + (ajustements.length > 1 ? 's' : '') + ' à valider. Confirmer ?')) return;
+
+    const user = typeof CURRENT_USER !== 'undefined' ? CURRENT_USER : '';
+
+    try {
+        const res = await fetch('/inventaire/valider', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ajustements, utilisateur: user })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.ajustements + ' ajustement(s) validé(s)', 'success');
+            loadInventaire();
+        } else {
+            alert(data.error || 'Erreur');
+        }
+    } catch(e) {
+        alert('Erreur réseau');
+    }
+}
+
+loadInventaire();
+</script>
+{% endblock %}

@@ -1,0 +1,123 @@
+<!-- Widget Horloge : Affiche l'heure et la date en temps réel (Pro Design) -->
+<div class="widget widget-horloge" data-widget-code="horloge">
+    <div class="horloge-bg"></div>
+    <div class="horloge-container">
+        <div class="horloge-top">
+            <div class="horloge-date" id="horloge-date-{{ widget_id }}">-- --- ----</div>
+        </div>
+        <div class="horloge-heure" id="horloge-heure-{{ widget_id }}">--:--:--</div>
+        <div class="horloge-bottom">
+            <div class="horloge-separator"></div>
+            <div class="horloge-info">Loritz'Lab</div>
+        </div>
+    </div>
+</div>
+
+<style>
+.widget-horloge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    background: #0b1120;
+}
+
+.horloge-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #111827 0%, #1e293b 50%, #0f172a 100%);
+}
+
+.horloge-container {
+    text-align: center;
+    color: #e2e8f0;
+    z-index: 1;
+    padding: 30px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.horloge-date {
+    font-size: clamp(13px, 1.4vw, 20px);
+    font-weight: 500;
+    color: #94a3b8;
+    text-transform: capitalize;
+    letter-spacing: 0.06em;
+}
+
+.horloge-heure {
+    font-size: clamp(48px, 8vw, 120px);
+    font-weight: 300;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-family: var(--app-font-family, 'SF Mono', 'Fira Code', 'Courier New', monospace);
+    color: #e2e8f0;
+    font-variant-numeric: tabular-nums;
+}
+
+.horloge-bottom {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.horloge-separator {
+    width: 32px;
+    height: 1px;
+    background: #1e293b;
+}
+
+.horloge-info {
+    font-size: clamp(10px, 1vw, 14px);
+    font-weight: 600;
+    color: #475569;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+    .horloge-container {
+        padding: 20px 10px;
+        gap: 8px;
+    }
+}
+</style>
+
+<script>
+(function() {
+    const widgetId = '{{ widget_id }}';
+    const heureEl = document.getElementById('horloge-heure-' + widgetId);
+    const dateEl = document.getElementById('horloge-date-' + widgetId);
+    
+    if (!heureEl || !dateEl) return;
+    
+    // Affichage initial seulement — la mise à jour est gérée
+    // globalement par updateClock() dans dashboard.js (heure serveur synchronisée).
+    // Ne PAS créer de setInterval ici pour éviter un conflit d'écriture.
+    var now = (typeof getServerNow === 'function') ? getServerNow() : new Date();
+    
+    heureEl.textContent = now.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    
+    dateEl.textContent = now.toLocaleDateString('fr-FR', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    });
+})();
+</script>

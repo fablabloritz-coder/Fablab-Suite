@@ -1,0 +1,190 @@
+<!-- Widget Météo : Affiche la météo via Open-Meteo (gratuit, sans clé API) -->
+<div class="widget widget-meteo" data-widget-code="meteo" id="widget-meteo-{{ widget_id }}">
+    <div class="meteo-container">
+        <div class="meteo-loading" id="meteo-loading-{{ widget_id }}">
+            <div class="spinner"></div>
+            <div>Chargement météo...</div>
+        </div>
+        
+        <div class="meteo-content" id="meteo-content-{{ widget_id }}" style="display: none;">
+            <div class="meteo-icon" id="meteo-icon-{{ widget_id }}">🌤️</div>
+            <div class="meteo-temp" id="meteo-temp-{{ widget_id }}">--°</div>
+            <div class="meteo-description" id="meteo-desc-{{ widget_id }}">--</div>
+            <div class="meteo-ville" id="meteo-ville-{{ widget_id }}">--</div>
+            <div class="meteo-details" id="meteo-details-{{ widget_id }}">
+                <span>💧 --%</span>
+                <span>💨 -- km/h</span>
+            </div>
+        </div>
+        
+        <div class="meteo-error" id="meteo-error-{{ widget_id }}" style="display: none;">
+            <div class="error-icon">⚠️</div>
+            <div class="error-text">Météo indisponible</div>
+        </div>
+    </div>
+</div>
+
+<style>
+.widget-meteo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: #111827;
+    border-radius: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.meteo-container {
+    text-align: center;
+    color: #e2e8f0;
+    z-index: 1;
+    padding: 20px;
+}
+
+.meteo-icon {
+    font-size: clamp(40px, 5vw, 64px);
+    margin-bottom: 8px;
+}
+
+.meteo-temp {
+    font-size: clamp(32px, 5vw, 60px);
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 8px;
+    color: #e2e8f0;
+}
+
+.meteo-description {
+    font-size: clamp(14px, 2vw, 22px);
+    font-weight: 500;
+    margin-bottom: 6px;
+    text-transform: capitalize;
+    color: #94a3b8;
+}
+
+.meteo-ville {
+    font-size: clamp(12px, 1.6vw, 16px);
+    color: #64748b;
+    margin-bottom: 12px;
+}
+
+.meteo-details {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    font-size: clamp(11px, 1.5vw, 15px);
+    color: #64748b;
+}
+
+.meteo-loading, .meteo-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    font-size: clamp(13px, 1.8vw, 18px);
+    color: #475569;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #1e293b;
+    border-top-color: #818cf8;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.error-icon {
+    font-size: 40px;
+}
+
+.error-text {
+    color: #64748b;
+}
+</style>
+
+<script>
+(function() {
+    const widgetId = '{{ widget_id }}';
+    const config = {{ config | tojson | safe }};
+    
+    const loadingEl = document.getElementById('meteo-loading-' + widgetId);
+    const contentEl = document.getElementById('meteo-content-' + widgetId);
+    const errorEl = document.getElementById('meteo-error-' + widgetId);
+    
+    const iconEl = document.getElementById('meteo-icon-' + widgetId);
+    const tempEl = document.getElementById('meteo-temp-' + widgetId);
+    const descEl = document.getElementById('meteo-desc-' + widgetId);
+    const villeEl = document.getElementById('meteo-ville-' + widgetId);
+    const detailsEl = document.getElementById('meteo-details-' + widgetId);
+    
+    function esc(v) {
+        const d = document.createElement('div');
+        d.textContent = v || '';
+        return d.innerHTML;
+    }
+    
+    async function fetchMeteo() {
+        try {
+            const ville = config.ville || 'Nancy, FR';
+            const store = window.FabBoardStore;
+            let m = null;
+
+            if (store) {
+                m = store.getMeteo(ville);
+            }
+
+            if (!m) {
+                throw new Error('Données météo non disponibles');
+            }
+            
+            iconEl.textContent = m.icon || '🌤️';
+            tempEl.textContent = m.temperature + '°C';
+            descEl.textContent = m.description || 'N/A';
+            villeEl.textContent = esc(m.ville + (m.pays ? ', ' + m.pays : ''));
+            detailsEl.innerHTML = '<span>💧 ' + esc(String(m.humidity)) + '%</span>'
+                + '<span>💨 ' + esc(String(m.wind_speed)) + ' km/h</span>';
+            
+            // Appliquer la classe d'animation selon le code météo
+            const widgetEl = document.getElementById('widget-meteo-' + widgetId);
+            if (widgetEl) {
+                widgetEl.classList.remove('meteo-sunny','meteo-cloudy','meteo-rain','meteo-snow','meteo-storm','meteo-fog');
+                const wc = m.weather_code || 0;
+                if (wc === 0 || wc === 1) widgetEl.classList.add('meteo-sunny');
+                else if (wc >= 2 && wc <= 3) widgetEl.classList.add('meteo-cloudy');
+                else if (wc >= 45 && wc <= 48) widgetEl.classList.add('meteo-fog');
+                else if ((wc >= 51 && wc <= 67) || (wc >= 80 && wc <= 82)) widgetEl.classList.add('meteo-rain');
+                else if ((wc >= 71 && wc <= 77) || (wc >= 85 && wc <= 86)) widgetEl.classList.add('meteo-snow');
+                else if (wc >= 95) widgetEl.classList.add('meteo-storm');
+            }
+
+            loadingEl.style.display = 'none';
+            contentEl.style.display = 'block';
+            errorEl.style.display = 'none';
+        } catch (error) {
+            console.error('Erreur météo:', error);
+            loadingEl.style.display = 'none';
+            contentEl.style.display = 'none';
+            errorEl.style.display = 'flex';
+            const errText = errorEl.querySelector('.error-text');
+            if (errText) errText.textContent = error.message || 'Météo indisponible';
+        }
+    }
+    
+    // Fetch initial
+    fetchMeteo();
+    
+    // Refresh via fabboard:refresh (piloté par le store)
+    document.addEventListener('fabboard:refresh', function() {
+        const root = document.getElementById('widget-meteo-' + widgetId);
+        if (!root || !root.isConnected) return;
+        fetchMeteo();
+    });
+})();
+</script>

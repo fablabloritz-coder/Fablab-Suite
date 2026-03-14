@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des images — PretGo{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-5">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="mb-0">
+                <i class="bi bi-images"></i> Bibliothèque d'images
+            </h1>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('inventaire.images_bulk_assign') }}" class="btn btn-info me-2">
+                <i class="bi bi-boxes"></i> Application en masse
+            </a>
+            <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#uploadForm">
+                <i class="bi bi-cloud-upload"></i> Nouvelle image
+            </button>
+        </div>
+    </div>
+
+    <!-- Formulaire d'upload (replié) -->
+    <div class="collapse mb-4" id="uploadForm">
+        <div class="card card-body bg-light">
+            <h5 class="card-title mb-3">Upload une nouvelle image</h5>
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="upload">
+                <div class="mb-3">
+                    <label for="imageInput" class="form-label">Sélectionner une image</label>
+                    <input type="file" class="form-control" id="imageInput" name="image" accept="image/*" required>
+                    <small class="text-muted">
+                        Format : JPG, PNG, GIF, WebP • Taille max : 2MB
+                    </small>
+                </div>
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-check-circle"></i> Uploader
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Galerie d'images -->
+    {% if images %}
+        <div class="row g-3">
+            {% for image in images %}
+                <div class="col-lg-4 col-md-6">
+                    <div class="card h-100 shadow-sm border-0">
+                        <!-- Aperçu image -->
+                        <div class="position-relative bg-light overflow-hidden" style="height: 200px;">
+                            <img src="{{ url_for('static', filename='uploads/materiel/' + image.nom) }}" 
+                                 alt="{{ image.nom }}" 
+                                 class="w-100 h-100 object-fit-cover"
+                                 loading="lazy">
+                        </div>
+
+                        <!-- Infos -->
+                        <div class="card-body">
+                            <h6 class="card-title small text-truncate" title="{{ image.nom }}">
+                                {{ image.nom }}
+                            </h6>
+                            
+                            <div class="small text-muted mb-2">
+                                <i class="bi bi-hdd"></i> {{ image.size_kb }} KB
+                            </div>
+
+                            <!-- Statut d'utilisation -->
+                            {% if image.nb_usage > 0 %}
+                                <div class="alert alert-info py-2 px-3 small mb-3">
+                                    <i class="bi bi-info-circle"></i>
+                                    Utilisée par <strong>{{ image.nb_usage }}</strong> matériel{% if image.nb_usage > 1 %}s{% endif %}
+                                </div>
+
+                                <!-- Liste des matériels -->
+                                <div class="mb-3">
+                                    <small class="d-block fw-bold mb-2">Matériels associés :</small>
+                                    <ul class="list-unstyled small">
+                                        {% for materiel in image.materiels %}
+                                            <li class="text-truncate">
+                                                <i class="bi bi-box"></i>
+                                                <a href="{{ url_for('inventaire.modifier_materiel', mat_id=materiel.id) }}" 
+                                                   class="text-decoration-none">
+                                                    {{ materiel.numero_inventaire }}{% if materiel.marque or materiel.modele %} — {{ materiel.marque }}{% if materiel.marque and materiel.modele %} {% endif %}{{ materiel.modele }}{% endif %} ({{ materiel.type_materiel }})
+                                                </a>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-warning py-2 px-3 small mb-3">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    Non utilisée
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="card-footer bg-white border-top-0 d-grid gap-2">
+                            {% if image.nb_usage > 0 %}
+                                <button class="btn btn-sm btn-outline-secondary" disabled>
+                                    <i class="bi bi-trash"></i> Impossible (utilisée)
+                                </button>
+                                <small class="text-center text-muted">
+                                    → Réassignez d'abord les matériels
+                                </small>
+                            {% else %}
+                                <form method="POST" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette image ?');">
+                                    <input type="hidden" name="action" value="supprimer">
+                                    <input type="hidden" name="nom_image" value="{{ image.nom }}">
+                                    <button type="submit" class="btn btn-sm btn-danger w-100">
+                                        <i class="bi bi-trash"></i> Supprimer
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-info text-center py-5">
+            <i class="bi bi-image" style="font-size: 3rem; opacity: 0.5;"></i>
+            <p class="mt-3 mb-0">
+                Aucune image dans la bibliothèque.<br>
+                <small class="text-muted">Commencez par en uploader une !</small>
+            </p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Filtre/recherche JS -->
+<script>
+    // Optional: ajouter une barre de recherche si beaucoup d'images
+    document.addEventListener('DOMContentLoaded', function() {
+        const imageCount = {{ images | length }};
+        if (imageCount > 6) {
+            // Pourrait ajouter un filtre en temps réel
+        }
+    });
+</script>
+
+<style>
+    .object-fit-cover {
+        object-fit: cover;
+    }
+    
+    .card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+</style>
+{% endblock %}

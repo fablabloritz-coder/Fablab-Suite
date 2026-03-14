@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+{% block title %}Champs & Fiches - Administration{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-input-cursor-text text-primary"></i> Champs & Fiches
+    </h1>
+    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-dark">
+        <i class="bi bi-arrow-left"></i> Administration
+    </a>
+</div>
+
+<div class="alert alert-info border-0 mb-4">
+    <i class="bi bi-info-circle-fill me-2"></i>
+    Définissez des champs supplémentaires pour les fiches <strong>Personnes</strong> et <strong>Matériel</strong>.
+    Ces champs apparaîtront automatiquement dans les formulaires d'ajout et de modification.
+</div>
+
+<div class="row g-4">
+    <!-- ═══ Champs pour les personnes ═══ -->
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-people-fill text-primary"></i> Fiches Personnes
+                </h5>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalAjoutChamp" onclick="setEntite('personne')">
+                    <i class="bi bi-plus-lg"></i> Ajouter
+                </button>
+            </div>
+            <div class="card-body p-0">
+                {% if champs_personnes %}
+                <div class="list-group list-group-flush" id="sortable-personnes">
+                    {% for champ in champs_personnes %}
+                    <div class="list-group-item d-flex align-items-center py-3" data-id="{{ champ.id }}">
+                        <i class="bi bi-grip-vertical text-muted me-3" style="cursor:grab;"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ champ.label }}</strong>
+                            <div class="d-flex gap-2 mt-1">
+                                <span class="badge bg-light text-dark border">
+                                    {% if champ.type_champ == 'texte' %}<i class="bi bi-fonts"></i> Texte
+                                    {% elif champ.type_champ == 'nombre' %}<i class="bi bi-123"></i> Nombre
+                                    {% elif champ.type_champ == 'date' %}<i class="bi bi-calendar"></i> Date
+                                    {% elif champ.type_champ == 'choix' %}<i class="bi bi-list-ul"></i> Choix
+                                    {% elif champ.type_champ == 'case_a_cocher' %}<i class="bi bi-check-square"></i> Case à cocher
+                                    {% elif champ.type_champ == 'texte_long' %}<i class="bi bi-text-paragraph"></i> Texte long
+                                    {% endif %}
+                                </span>
+                                {% if champ.obligatoire %}
+                                <span class="badge bg-danger"><i class="bi bi-asterisk"></i> Obligatoire</span>
+                                {% endif %}
+                                {% if champ.options %}
+                                <span class="badge bg-light text-muted border" title="{{ champ.options }}">
+                                    <i class="bi bi-list"></i> {{ champ.options.split(',')|length }} options
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalModifierChamp{{ champ.id }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{ url_for('admin.supprimer_champ_personnalise', champ_id=champ.id) }}"
+                                  onsubmit="return confirm('Supprimer le champ « {{ champ.label }} » et toutes ses valeurs ?')">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Modal modification -->
+                    <div class="modal fade" id="modalModifierChamp{{ champ.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('admin.modifier_champ_personnalise', champ_id=champ.id) }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title"><i class="bi bi-pencil"></i> Modifier le champ</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">Libellé *</label>
+                                            <input type="text" name="label" class="form-control" value="{{ champ.label }}" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">Type</label>
+                                            <select name="type_champ" class="form-select">
+                                                <option value="texte" {{ 'selected' if champ.type_champ == 'texte' }}>Texte court</option>
+                                                <option value="texte_long" {{ 'selected' if champ.type_champ == 'texte_long' }}>Texte long</option>
+                                                <option value="nombre" {{ 'selected' if champ.type_champ == 'nombre' }}>Nombre</option>
+                                                <option value="date" {{ 'selected' if champ.type_champ == 'date' }}>Date</option>
+                                                <option value="choix" {{ 'selected' if champ.type_champ == 'choix' }}>Liste de choix</option>
+                                                <option value="case_a_cocher" {{ 'selected' if champ.type_champ == 'case_a_cocher' }}>Case à cocher</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">Options (séparées par des virgules)</label>
+                                            <input type="text" name="options" class="form-control" value="{{ champ.options }}"
+                                                   placeholder="Option 1, Option 2, Option 3">
+                                            <div class="form-text">Uniquement pour le type « Liste de choix ».</div>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="obligatoire" id="oblig_mod_{{ champ.id }}"
+                                                   {{ 'checked' if champ.obligatoire }}>
+                                            <label class="form-check-label" for="oblig_mod_{{ champ.id }}">Champ obligatoire</label>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                                        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state py-4">
+                    <i class="bi bi-input-cursor-text"></i>
+                    <p>Aucun champ personnalisé pour les personnes</p>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalAjoutChamp" onclick="setEntite('personne')">
+                        <i class="bi bi-plus-lg"></i> Ajouter un champ
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Champs pour le matériel ═══ -->
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-pc-display text-primary"></i> Fiches Matériel
+                </h5>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalAjoutChamp" onclick="setEntite('materiel')">
+                    <i class="bi bi-plus-lg"></i> Ajouter
+                </button>
+            </div>
+            <div class="card-body p-0">
+                {% if champs_materiel %}
+                <div class="list-group list-group-flush" id="sortable-materiel">
+                    {% for champ in champs_materiel %}
+                    <div class="list-group-item d-flex align-items-center py-3" data-id="{{ champ.id }}">
+                        <i class="bi bi-grip-vertical text-muted me-3" style="cursor:grab;"></i>
+                        <div class="flex-grow-1">
+                            <strong>{{ champ.label }}</strong>
+                            <div class="d-flex gap-2 mt-1">
+                                <span class="badge bg-light text-dark border">
+                                    {% if champ.type_champ == 'texte' %}<i class="bi bi-fonts"></i> Texte
+                                    {% elif champ.type_champ == 'nombre' %}<i class="bi bi-123"></i> Nombre
+                                    {% elif champ.type_champ == 'date' %}<i class="bi bi-calendar"></i> Date
+                                    {% elif champ.type_champ == 'choix' %}<i class="bi bi-list-ul"></i> Choix
+                                    {% elif champ.type_champ == 'case_a_cocher' %}<i class="bi bi-check-square"></i> Case à cocher
+                                    {% elif champ.type_champ == 'texte_long' %}<i class="bi bi-text-paragraph"></i> Texte long
+                                    {% endif %}
+                                </span>
+                                {% if champ.obligatoire %}
+                                <span class="badge bg-danger"><i class="bi bi-asterisk"></i> Obligatoire</span>
+                                {% endif %}
+                                {% if champ.options %}
+                                <span class="badge bg-light text-muted border" title="{{ champ.options }}">
+                                    <i class="bi bi-list"></i> {{ champ.options.split(',')|length }} options
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalModifierChampM{{ champ.id }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{ url_for('admin.supprimer_champ_personnalise', champ_id=champ.id) }}"
+                                  onsubmit="return confirm('Supprimer le champ « {{ champ.label }} » et toutes ses valeurs ?')">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Modal modification matériel -->
+                    <div class="modal fade" id="modalModifierChampM{{ champ.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('admin.modifier_champ_personnalise', champ_id=champ.id) }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title"><i class="bi bi-pencil"></i> Modifier le champ</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">Libellé *</label>
+                                            <input type="text" name="label" class="form-control" value="{{ champ.label }}" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">Type</label>
+                                            <select name="type_champ" class="form-select">
+                                                <option value="texte" {{ 'selected' if champ.type_champ == 'texte' }}>Texte court</option>
+                                                <option value="texte_long" {{ 'selected' if champ.type_champ == 'texte_long' }}>Texte long</option>
+                                                <option value="nombre" {{ 'selected' if champ.type_champ == 'nombre' }}>Nombre</option>
+                                                <option value="date" {{ 'selected' if champ.type_champ == 'date' }}>Date</option>
+                                                <option value="choix" {{ 'selected' if champ.type_champ == 'choix' }}>Liste de choix</option>
+                                                <option value="case_a_cocher" {{ 'selected' if champ.type_champ == 'case_a_cocher' }}>Case à cocher</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold">Options (séparées par des virgules)</label>
+                                            <input type="text" name="options" class="form-control" value="{{ champ.options }}"
+                                                   placeholder="Option 1, Option 2, Option 3">
+                                            <div class="form-text">Uniquement pour le type « Liste de choix ».</div>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="obligatoire" id="oblig_matmod_{{ champ.id }}"
+                                                   {{ 'checked' if champ.obligatoire }}>
+                                            <label class="form-check-label" for="oblig_matmod_{{ champ.id }}">Champ obligatoire</label>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                                        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state py-4">
+                    <i class="bi bi-input-cursor-text"></i>
+                    <p>Aucun champ personnalisé pour le matériel</p>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalAjoutChamp" onclick="setEntite('materiel')">
+                        <i class="bi bi-plus-lg"></i> Ajouter un champ
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Aperçu live des formulaires ═══ -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0">
+            <i class="bi bi-eye-fill text-primary"></i> Aperçu des formulaires
+            <small class="text-muted fw-normal">— Rendu en temps réel de vos champs personnalisés</small>
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-4">
+            <!-- Aperçu formulaire Personnes -->
+            <div class="col-12 col-lg-6">
+                <div class="border rounded p-3" style="background: #f8f9fb;">
+                    <h6 class="fw-bold mb-3 text-center">
+                        <i class="bi bi-people-fill text-primary"></i> Formulaire « Ajouter une personne »
+                    </h6>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Nom <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" value="Dupont" disabled>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Prénom <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" value="Marie" disabled>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Catégorie</label>
+                        <select class="form-select form-select-sm" disabled>
+                            <option>Élève</option>
+                        </select>
+                    </div>
+                    {% if champs_personnes %}
+                    <hr class="my-2">
+                    <div class="small text-muted mb-2"><i class="bi bi-input-cursor-text"></i> Champs personnalisés :</div>
+                    {% for champ in champs_personnes %}
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">
+                            {{ champ.label }}
+                            {% if champ.obligatoire %}<span class="text-danger">*</span>{% endif %}
+                        </label>
+                        {% if champ.type_champ == 'texte' %}
+                        <input type="text" class="form-control form-control-sm" placeholder="{{ champ.label }}" disabled>
+                        {% elif champ.type_champ == 'texte_long' %}
+                        <textarea class="form-control form-control-sm" rows="2" placeholder="{{ champ.label }}" disabled></textarea>
+                        {% elif champ.type_champ == 'nombre' %}
+                        <input type="number" class="form-control form-control-sm" placeholder="0" disabled>
+                        {% elif champ.type_champ == 'date' %}
+                        <input type="date" class="form-control form-control-sm" disabled>
+                        {% elif champ.type_champ == 'choix' %}
+                        <select class="form-select form-select-sm" disabled>
+                            <option value="">— Choisir —</option>
+                            {% for opt in champ.options.split(',') %}
+                            <option>{{ opt.strip() }}</option>
+                            {% endfor %}
+                        </select>
+                        {% elif champ.type_champ == 'case_a_cocher' %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" disabled>
+                            <label class="form-check-label small">{{ champ.label }}</label>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-center text-muted small py-2">
+                        <i class="bi bi-plus-circle"></i> Ajoutez des champs pour voir l'aperçu
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Aperçu formulaire Matériel -->
+            <div class="col-12 col-lg-6">
+                <div class="border rounded p-3" style="background: #f8f9fb;">
+                    <h6 class="fw-bold mb-3 text-center">
+                        <i class="bi bi-pc-display text-primary"></i> Formulaire « Ajouter du matériel »
+                    </h6>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">N° inventaire <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" value="INV-00123" disabled>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Type <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" value="Ordinateur portable" disabled>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Marque / Modèle</label>
+                        <div class="row g-1">
+                            <div class="col-6"><input type="text" class="form-control form-control-sm" value="Lenovo" disabled></div>
+                            <div class="col-6"><input type="text" class="form-control form-control-sm" value="ThinkPad" disabled></div>
+                        </div>
+                    </div>
+                    {% if champs_materiel %}
+                    <hr class="my-2">
+                    <div class="small text-muted mb-2"><i class="bi bi-input-cursor-text"></i> Champs personnalisés :</div>
+                    {% for champ in champs_materiel %}
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">
+                            {{ champ.label }}
+                            {% if champ.obligatoire %}<span class="text-danger">*</span>{% endif %}
+                        </label>
+                        {% if champ.type_champ == 'texte' %}
+                        <input type="text" class="form-control form-control-sm" placeholder="{{ champ.label }}" disabled>
+                        {% elif champ.type_champ == 'texte_long' %}
+                        <textarea class="form-control form-control-sm" rows="2" placeholder="{{ champ.label }}" disabled></textarea>
+                        {% elif champ.type_champ == 'nombre' %}
+                        <input type="number" class="form-control form-control-sm" placeholder="0" disabled>
+                        {% elif champ.type_champ == 'date' %}
+                        <input type="date" class="form-control form-control-sm" disabled>
+                        {% elif champ.type_champ == 'choix' %}
+                        <select class="form-select form-select-sm" disabled>
+                            <option value="">— Choisir —</option>
+                            {% for opt in champ.options.split(',') %}
+                            <option>{{ opt.strip() }}</option>
+                            {% endfor %}
+                        </select>
+                        {% elif champ.type_champ == 'case_a_cocher' %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" disabled>
+                            <label class="form-check-label small">{{ champ.label }}</label>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-center text-muted small py-2">
+                        <i class="bi bi-plus-circle"></i> Ajoutez des champs pour voir l'aperçu
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Fiche de prêt vierge ═══ -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0">
+            <i class="bi bi-file-earmark-text text-info"></i> Fiche de prêt imprimable
+        </h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Générez une fiche de prêt vierge imprimable directement depuis le navigateur (Ctrl+P).
+            Les champs personnalisés définis ci-dessus y apparaîtront automatiquement.
+        </p>
+        <a href="{{ url_for('core.fiche_pret_vierge') }}" class="btn btn-primary" target="_blank">
+            <i class="bi bi-printer"></i> Ouvrir la fiche de prêt vierge
+        </a>
+    </div>
+</div>
+
+<!-- Modal Ajout de champ -->
+<div class="modal fade" id="modalAjoutChamp" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin.ajouter_champ_personnalise') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Ajouter un champ personnalisé</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="entite" id="entite_champ" value="personne">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Libellé du champ *</label>
+                        <input type="text" name="label" class="form-control" required
+                               placeholder="Ex: Numéro de téléphone, Salle, Département...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Type de champ</label>
+                        <select name="type_champ" class="form-select" id="type_champ_select" onchange="toggleOptions()">
+                            <option value="texte">Texte court</option>
+                            <option value="texte_long">Texte long (multilignes)</option>
+                            <option value="nombre">Nombre</option>
+                            <option value="date">Date</option>
+                            <option value="choix">Liste de choix</option>
+                            <option value="case_a_cocher">Case à cocher (oui/non)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="options_group" style="display:none;">
+                        <label class="form-label fw-bold">Options (séparées par des virgules)</label>
+                        <input type="text" name="options" class="form-control"
+                               placeholder="Option 1, Option 2, Option 3">
+                        <div class="form-text">Définissez les choix possibles pour la liste déroulante.</div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="obligatoire" id="obligatoire_check">
+                        <label class="form-check-label" for="obligatoire_check">Champ obligatoire</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function setEntite(entite) {
+    document.getElementById('entite_champ').value = entite;
+}
+function toggleOptions() {
+    const sel = document.getElementById('type_champ_select');
+    document.getElementById('options_group').style.display = sel.value === 'choix' ? '' : 'none';
+}
+</script>
+{% endblock %}

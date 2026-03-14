@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Rentrée scolaire - Administration{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-calendar2-event text-primary"></i> Assistant rentrée scolaire
+    </h1>
+    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Retour
+    </a>
+</div>
+
+<!-- Année scolaire en cours -->
+<div class="alert alert-primary d-flex align-items-center mb-4">
+    <i class="bi bi-info-circle-fill me-2 fs-5"></i>
+    <div>
+        Année scolaire en cours : <strong>{{ annee_courante }}</strong>
+        {% if annees_disponibles %}
+        — Années dans la base : {{ annees_disponibles | join(', ') }}
+        {% endif %}
+    </div>
+</div>
+
+<!-- Statistiques rapides -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="stat-card bg-primary bg-opacity-10">
+            <div class="number text-primary">{{ stats.personnes_actives }}</div>
+            <div class="label">Personnes actives</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card bg-secondary bg-opacity-10">
+            <div class="number text-secondary">{{ stats.personnes_inactives }}</div>
+            <div class="label">Personnes désactivées</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card {% if stats.prets_non_rendus > 0 %}bg-danger{% else %}bg-success{% endif %} bg-opacity-10">
+            <div class="number {% if stats.prets_non_rendus > 0 %}text-danger{% else %}text-success{% endif %}">{{ stats.prets_non_rendus }}</div>
+            <div class="label">Prêts non rendus</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card bg-info bg-opacity-10">
+            <div class="number text-info">{{ stats.prets_total_annee }}</div>
+            <div class="label">Prêts {{ annee_courante }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Étapes -->
+<div class="row g-4">
+    <!-- Étape 1 : Prêts non rendus -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex align-items-center">
+                <span class="badge bg-primary rounded-pill me-2">1</span>
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i> Vérifier les prêts non rendus</h5>
+            </div>
+            <div class="card-body">
+                {% if prets_non_rendus %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <strong>{{ stats.prets_non_rendus }} prêt(s) en cours</strong> — Avant d'importer la nouvelle liste, il est recommandé de clôturer les prêts non rendus.
+                </div>
+
+                <form action="{{ url_for('admin.rentree_retour_groupe') }}" method="POST" id="formRetourGroupe">
+                    <div class="table-responsive">
+                        <table class="table table-touch table-hover mb-3">
+                            <thead>
+                                <tr>
+                                    <th style="width:40px">
+                                        <input type="checkbox" class="form-check-input" id="selectAll"
+                                               onchange="document.querySelectorAll('.cb-pret').forEach(c=>c.checked=this.checked)">
+                                    </th>
+                                    <th>Emprunteur</th>
+                                    <th>Catégorie</th>
+                                    <th>Classe</th>
+                                    <th>Objet(s)</th>
+                                    <th>Date emprunt</th>
+                                    <th>Année</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pret in prets_non_rendus %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" class="form-check-input cb-pret"
+                                               name="pret_ids" value="{{ pret.id }}">
+                                    </td>
+                                    <td><strong>{{ pret.nom }} {{ pret.prenom }}</strong></td>
+                                    <td><span class="cat-badge" style="{{ pret.categorie | style_categorie }}">{{ pret.categorie | label_categorie }}</span></td>
+                                    <td>{{ pret.classe_snapshot or pret.classe or '—' }}</td>
+                                    <td>{{ pret.descriptif_objets }}</td>
+                                    <td>{{ pret.date_emprunt | format_date }}</td>
+                                    <td><span class="badge bg-secondary">{{ pret.annee_scolaire or '—' }}</span></td>
+                                    <td>
+                                        <a href="{{ url_for('prets.detail_pret', pret_id=pret.id) }}" class="btn btn-sm btn-outline-primary" title="Détail">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalRetourGroupe">
+                            <i class="bi bi-check2-all"></i> Retourner les prêts sélectionnés
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Modal confirmation retour groupé -->
+                <div class="modal fade" id="modalRetourGroupe" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"><i class="bi bi-check2-all"></i> Retour groupé</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Les prêts sélectionnés seront marqués comme <strong>retournés</strong> et les matériels associés seront libérés.</p>
+                                <div class="alert alert-info mb-0">
+                                    <i class="bi bi-info-circle-fill"></i> Cette action est irréversible.
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                                <button type="submit" form="formRetourGroupe" class="btn btn-danger">
+                                    <i class="bi bi-check2-all"></i> Confirmer les retours
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% else %}
+                <div class="alert alert-success mb-0">
+                    <i class="bi bi-check-circle-fill"></i> <strong>Parfait !</strong> Aucun prêt en cours. Vous pouvez passer à l'étape suivante.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Étape 2 : Importer la nouvelle liste -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex align-items-center">
+                <span class="badge bg-primary rounded-pill me-2">2</span>
+                <h5 class="mb-0"><i class="bi bi-file-earmark-arrow-up-fill text-success me-2"></i> Importer la nouvelle liste de personnes</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-lightbulb-fill"></i>
+                    <strong>Comment ça fonctionne ?</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Préparez un fichier CSV avec les colonnes : <code>nom;prenom;categorie;classe</code></li>
+                        <li>Utilisez le mode <strong>« Synchroniser »</strong> pour mettre à jour automatiquement</li>
+                        <li>Les <strong>nouveaux élèves</strong> seront ajoutés</li>
+                        <li>Les <strong>classes</strong> des élèves existants seront mises à jour (ex : 4A → 3A)</li>
+                        <li>Les élèves <strong>absents du fichier</strong> seront désactivés (sauf s'ils ont des prêts en cours)</li>
+                    </ul>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('personnes.importer_personnes') }}" class="btn btn-success">
+                        <i class="bi bi-upload"></i> Importer un fichier CSV
+                    </a>
+                    <a href="{{ url_for('personnes.telecharger_gabarit') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-download"></i> Télécharger le gabarit CSV
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Étape 3 : Vérifier le résultat -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex align-items-center">
+                <span class="badge bg-primary rounded-pill me-2">3</span>
+                <h5 class="mb-0"><i class="bi bi-clipboard-check text-primary me-2"></i> Vérifier le résultat</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">Après l'import, vérifiez que tout est en ordre :</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('personnes.personnes') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-people-fill"></i> Voir les personnes ({{ stats.personnes_actives }})
+                    </a>
+                    <a href="{{ url_for('core.historique', annee=annee_courante) }}" class="btn btn-outline-primary">
+                        <i class="bi bi-clock-history"></i> Historique {{ annee_courante }}
+                    </a>
+                    <a href="{{ url_for('core.index') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-house"></i> Tableau de bord
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info : snapshot de classe -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm border-start border-4 border-info">
+            <div class="card-body">
+                <h6 class="mb-2"><i class="bi bi-shield-check text-info"></i> Protection des données historiques</h6>
+                <p class="text-muted mb-0">
+                    Chaque prêt enregistre automatiquement la <strong>classe de l'emprunteur au moment du prêt</strong> (snapshot).
+                    Ainsi, même si un élève change de classe à la rentrée, l'historique des prêts conserve la bonne information.
+                    L'<strong>année scolaire</strong> est également enregistrée pour chaque prêt, ce qui permet de filtrer l'historique par année.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Gestion des lieux - PretGo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-geo-alt-fill text-primary"></i> Gestion des lieux
+    </h1>
+    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-dark">
+        <i class="bi bi-arrow-left"></i> Retour à l'administration
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Ajouter un lieu -->
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-plus-circle text-success"></i> Ajouter un lieu</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('inventaire.gestion_lieux') }}">
+                    <input type="hidden" name="action" value="ajouter">
+                    <div class="mb-3">
+                        <input type="text" name="nom" class="form-control form-control-lg"
+                               placeholder="Nom du lieu" required maxlength="100">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-plus-lg"></i> Ajouter
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste des lieux -->
+    <div class="col-12 col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Lieux existants ({{ lieux | length }})</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if lieux %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nom</th>
+                                <th class="text-center">Statut</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for lieu in lieux %}
+                            <tr {% if not lieu.actif %}class="table-secondary"{% endif %}>
+                                <td>
+                                    <i class="bi bi-geo-alt{% if lieu.actif %}-fill text-primary{% else %} text-muted{% endif %}"></i>
+                                    <strong>{{ lieu.nom }}</strong>
+                                </td>
+                                <td class="text-center">
+                                    {% if lieu.actif %}
+                                    <span class="badge bg-success">Actif</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Masqué</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-flex gap-1 justify-content-end">
+                                        <!-- Modifier -->
+                                        <button type="button" class="btn btn-sm btn-outline-warning"
+                                                data-bs-toggle="modal" data-bs-target="#modalModifier{{ lieu.id }}">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <!-- Supprimer -->
+                                        <form method="POST" action="{{ url_for('inventaire.gestion_lieux') }}"
+                                              onsubmit="return confirm('Supprimer le lieu « {{ lieu.nom }} » ?')">
+                                            <input type="hidden" name="action" value="supprimer">
+                                            <input type="hidden" name="lieu_id" value="{{ lieu.id }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            <!-- Modal modifier -->
+                            <div class="modal fade" id="modalModifier{{ lieu.id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <form method="POST" action="{{ url_for('inventaire.gestion_lieux') }}">
+                                            <input type="hidden" name="action" value="modifier">
+                                            <input type="hidden" name="lieu_id" value="{{ lieu.id }}">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Modifier le lieu</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <input type="text" name="nom" class="form-control form-control-lg"
+                                                       value="{{ lieu.nom }}" required maxlength="100">
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                                                <button type="submit" class="btn btn-warning">
+                                                    <i class="bi bi-check-lg"></i> Enregistrer
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-geo-alt" style="font-size:2rem;"></i>
+                    <p class="mt-2">Aucun lieu enregistré</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

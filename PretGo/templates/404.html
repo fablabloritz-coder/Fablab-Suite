@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Page introuvable — PretGo{% endblock %}
+{% block content %}
+<div class="container py-5 text-center">
+    <div class="mb-4">
+        <i class="bi bi-exclamation-triangle" style="font-size: 5rem; color: var(--bs-warning);"></i>
+    </div>
+    <h1 class="display-4 mb-3">404</h1>
+    <p class="lead text-muted mb-4">La page que vous cherchez n'existe pas ou a été déplacée.</p>
+    <a href="{{ url_for('core.index') }}" class="btn btn-primary">
+        <i class="bi bi-house-door me-1"></i> Retour à l'accueil
+    </a>
+</div>
+{% endblock %}

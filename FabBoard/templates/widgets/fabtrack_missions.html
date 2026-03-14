@@ -1,0 +1,205 @@
+<div class="widget widget-fabtrack-missions" id="widget-fabtrack-missions-{{ widget_id }}" data-widget-code="fabtrack_missions">
+    <h3><i class="bi bi-check2-square"></i> Missions</h3>
+    <div class="missions-kanban js-missions-kanban">
+        <div style="color: #475569;">Chargement...</div>
+    </div>
+</div>
+
+<style>
+.widget-fabtrack-missions {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.4rem;
+}
+.widget-fabtrack-missions h3 {
+    flex-shrink: 0;
+}
+.widget-fabtrack-missions .missions-kanban {
+    display: grid;
+    gap: 0.4rem;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+.widget-fabtrack-missions .missions-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.widget-fabtrack-missions .missions-col-header {
+    font-size: calc(0.7rem * var(--ws, 1));
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.4em 0.6em;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+}
+.widget-fabtrack-missions .missions-count {
+    margin-left: auto;
+    background: rgba(255,255,255,0.1);
+    padding: 0 0.45em;
+    border-radius: 9999px;
+    font-size: 0.85em;
+}
+.widget-fabtrack-missions .col-todo .missions-col-header { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+.widget-fabtrack-missions .col-doing .missions-col-header { background: rgba(249,115,22,0.15); color: #fdba74; }
+.widget-fabtrack-missions .col-done .missions-col-header { background: rgba(34,197,94,0.15); color: #86efac; }
+
+.widget-fabtrack-missions .missions-col-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.widget-fabtrack-missions .mission-card {
+    background: rgba(255,255,255,0.05);
+    border-radius: 6px;
+    padding: 0.4em 0.5em;
+    border-left: 4px solid transparent;
+}
+.widget-fabtrack-missions .mission-card.prio-haute {
+    border-left-color: #f59e0b;
+    background: rgba(245,158,11,0.08);
+}
+.widget-fabtrack-missions .mission-card.prio-urgente {
+    border-left-color: #ef4444;
+    background: rgba(239,68,68,0.1);
+}
+.widget-fabtrack-missions .mission-titre {
+    font-size: calc(0.72rem * var(--ws, 1));
+    font-weight: 600;
+    color: #e2e8f0;
+}
+.widget-fabtrack-missions .mission-desc {
+    font-size: calc(0.63rem * var(--ws, 1));
+    color: #94a3b8;
+    margin-top: 0.15em;
+    line-height: 1.3;
+}
+.widget-fabtrack-missions .mission-footer {
+    margin-top: 0.2em;
+    display: flex;
+    gap: 0.4em;
+    flex-wrap: wrap;
+}
+.widget-fabtrack-missions .mission-echeance {
+    font-size: calc(0.55rem * var(--ws, 1));
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    font-weight: 600;
+}
+.widget-fabtrack-missions .ech-late  { background: rgba(239,68,68,0.2); color: #f87171; }
+.widget-fabtrack-missions .ech-today { background: rgba(245,158,11,0.2); color: #fbbf24; }
+.widget-fabtrack-missions .ech-soon  { background: rgba(251,191,36,0.15); color: #fcd34d; }
+.widget-fabtrack-missions .ech-ok    { background: rgba(148,163,184,0.1); color: #94a3b8; }
+.widget-fabtrack-missions .missions-empty {
+    text-align: center;
+    color: #475569;
+    font-size: calc(0.7rem * var(--ws, 1));
+    padding: 0.5em;
+}
+</style>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-fabtrack-missions-{{ widget_id }}');
+    if (!root) return;
+
+    const kanban = root.querySelector('.js-missions-kanban');
+    const config = {{ config | tojson | safe }};
+    const maxItems = config.nombre_max || 10;
+    const showTodo = config.afficher_a_faire !== false;
+    const showDoing = config.afficher_en_cours !== false;
+    const showDone = config.afficher_termine === true;
+    const sourceId = config.source_id || null;
+
+    const cols = [];
+    if (showTodo) cols.push({ key: 'a_faire', label: 'À faire', icon: 'bi-circle', cls: 'col-todo' });
+    if (showDoing) cols.push({ key: 'en_cours', label: 'En cours', icon: 'bi-play-circle', cls: 'col-doing' });
+    if (showDone) cols.push({ key: 'termine', label: 'Terminé', icon: 'bi-check-circle', cls: 'col-done' });
+
+    kanban.style.gridTemplateColumns = 'repeat(' + (cols.length || 1) + ', 1fr)';
+
+    function esc(v) {
+        const d = document.createElement('div');
+        d.textContent = v || '';
+        return d.innerHTML;
+    }
+
+    function echeanceHtml(dateStr) {
+        if (!dateStr) return '';
+        try {
+            const d = new Date(dateStr);
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const diff = Math.round((d - now) / 86400000);
+            let cls = 'ech-ok', txt = '';
+            if (diff < 0) { cls = 'ech-late'; txt = 'En retard (' + Math.abs(diff) + 'j)'; }
+            else if (diff === 0) { cls = 'ech-today'; txt = "Aujourd'hui"; }
+            else if (diff <= 3) { cls = 'ech-soon'; txt = 'Dans ' + diff + 'j'; }
+            else { txt = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); }
+            return '<span class="mission-echeance ' + cls + '">\u{1F4C5} ' + txt + '</span>';
+        } catch (e) { return ''; }
+    }
+
+    function render(missions) {
+        const grouped = { a_faire: [], en_cours: [], termine: [] };
+        (missions || []).forEach(function (m) {
+            if (grouped[m.statut]) grouped[m.statut].push(m);
+        });
+
+        kanban.innerHTML = cols.map(function (col) {
+            const items = grouped[col.key] || [];
+            const display = items.slice(0, maxItems);
+            const cardsHtml = display.length
+                ? display.map(function (m) {
+                      const pCls = m.priorite === 2 ? 'prio-urgente' : m.priorite === 1 ? 'prio-haute' : '';
+                      const desc = m.description ? '<div class="mission-desc">' + esc(m.description) + '</div>' : '';
+                      const ech = echeanceHtml(m.date_echeance);
+                      const footer = ech ? '<div class="mission-footer">' + ech + '</div>' : '';
+                      return '<div class="mission-card ' + pCls + '">'
+                          + '<div class="mission-titre">' + esc(m.titre) + '</div>'
+                          + desc + footer + '</div>';
+                  }).join('')
+                : '<div class="missions-empty">\u2014</div>';
+
+            return '<div class="missions-col ' + col.cls + '">'
+                + '<div class="missions-col-header"><i class="bi ' + col.icon + '"></i> ' + col.label
+                + ' <span class="missions-count">' + items.length + '</span></div>'
+                + '<div class="missions-col-body">' + cardsHtml + '</div></div>';
+        }).join('') || '<div style="color:#475569; text-align:center; padding:1.5rem;">Aucune colonne visible</div>';
+    }
+
+    function refresh() {
+        const store = window.FabBoardStore;
+        let missions = [];
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            missions = store.getSource(sourceId).missions || [];
+        } else if (store && store.data) {
+            missions = store.data.missions || [];
+        }
+
+        render(missions);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

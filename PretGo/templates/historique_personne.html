@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Historique — {{ personne.prenom }} {{ personne.nom }} — PretGo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+    <div>
+        <h1 class="page-title mb-1">
+            <i class="bi bi-clock-history text-dark"></i> Historique d'emprunts
+        </h1>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="fw-bold fs-5">{{ personne.prenom }} {{ personne.nom }}</span>
+            <span class="cat-badge" style="{{ personne.categorie | style_categorie }}">{{ personne.categorie | label_categorie }}</span>
+            {% if personne.classe %}
+            <span class="text-muted">{{ personne.classe }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('personnes.modifier_personne', personne_id=personne.id) }}" class="btn btn-outline-primary">
+            <i class="bi bi-pencil"></i> Modifier
+        </a>
+        <a href="{{ url_for('personnes.personnes') }}" class="btn btn-outline-dark">
+            <i class="bi bi-arrow-left"></i> Retour personnes
+        </a>
+    </div>
+</div>
+
+<!-- Statistiques -->
+<div class="row g-3 mb-4">
+    <div class="col-auto">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-2 px-4">
+                <div class="fs-3 fw-bold text-primary">{{ stats.total }}</div>
+                <small class="text-muted">Emprunt{{ 's' if stats.total != 1 }} au total</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-2 px-4">
+                <div class="fs-3 fw-bold text-warning">{{ stats.en_cours }}</div>
+                <small class="text-muted">En cours</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-2 px-4">
+                <div class="fs-3 fw-bold text-success">{{ stats.retournes }}</div>
+                <small class="text-muted">Retourné{{ 's' if stats.retournes != 1 }}</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if prets_data %}
+<!-- Timeline des emprunts -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 50px"></th>
+                        <th>Matériel emprunté</th>
+                        <th>Date d'emprunt</th>
+                        <th>Date de retour</th>
+                        <th>Durée prévue</th>
+                        <th>Lieu</th>
+                        <th>Notes</th>
+                        <th class="text-end">Détail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in prets_data %}
+                    {% set pret = entry.pret %}
+                    <tr>
+                        <td class="text-center">
+                            {% if not pret.retour_confirme %}
+                                <i class="bi bi-circle-fill text-warning" title="En cours"></i>
+                            {% else %}
+                                <i class="bi bi-check-circle-fill text-success" title="Retourné"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if entry.materiels %}
+                                {% for item in entry.materiels %}
+                                <div{% if not loop.first %} class="mt-1"{% endif %}>
+                                    <span class="fw-semibold">{{ item.description }}</span>
+                                    {% if item.numero_inventaire %}
+                                    <br><small class="text-muted font-monospace">{{ item.numero_inventaire }}</small>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <span class="fw-semibold">{{ pret.descriptif_objets }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="text-nowrap">{{ pret.date_emprunt | format_date_court }}</span>
+                            <br>
+                            <small class="text-muted">{{ pret.date_emprunt | format_heure }}</small>
+                        </td>
+                        <td>
+                            {% if pret.retour_confirme and pret.date_retour %}
+                                <span class="text-nowrap">{{ pret.date_retour | format_date_court }}</span>
+                                <br>
+                                <small class="text-muted">{{ pret.date_retour | format_heure }}</small>
+                            {% elif not pret.retour_confirme %}
+                                {% set depasse, _ = calcul_depassement_heures(pret.date_emprunt, pret.duree_pret_heures, pret.duree_pret_jours, date_retour_prevue=pret.date_retour_prevue) %}
+                                {% if depasse %}
+                                    <span class="badge-urgent"><i class="bi bi-exclamation-triangle"></i> En retard</span>
+                                {% else %}
+                                    <span class="badge-actif">En cours</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if pret.duree_pret_heures %}
+                                {{ pret.duree_pret_heures }} h
+                            {% elif pret.duree_pret_jours %}
+                                {{ pret.duree_pret_jours }} jour{{ 's' if pret.duree_pret_jours != 1 }}
+                            {% else %}
+                                <span class="text-muted">Par défaut</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if pret.lieu_nom %}
+                                <small>{{ pret.lieu_nom }}</small>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if pret.notes %}
+                                <small>{{ pret.notes }}</small>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('prets.detail_pret', pret_id=pret.id) }}"
+                               class="btn btn-sm btn-outline-primary" title="Voir le détail">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-clock-history text-muted" style="font-size: 4rem;"></i>
+    <p class="mt-3 fs-5">Aucun emprunt enregistré pour cette personne</p>
+    <p class="text-muted">L'historique apparaîtra ici dès qu'un prêt sera créé pour {{ personne.prenom }} {{ personne.nom }}.</p>
+</div>
+{% endif %}
+
+{% endblock %}

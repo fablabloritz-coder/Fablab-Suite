@@ -1,0 +1,915 @@
+/* ====================================
+   DASHBOARD.CSS — Dashboard TV Full Screen
+   Mode sombre uniquement — pas de conflit Bootstrap
+   ==================================== */
+
+/* ========== FORCER LE MODE SOMBRE SUR LE DASHBOARD ========== */
+.dashboard-tv {
+    background: #0b1120 !important;
+    color: #e2e8f0 !important;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: var(--app-font-family, 'Inter'), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ========== CONTENEUR PRINCIPAL ========== */
+.dashboard-full {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ========== LOADING ========== */
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #94a3b8;
+    gap: 1.5rem;
+}
+
+.loading-state .spinner-border {
+    color: #818cf8 !important;
+    border-right-color: transparent;
+}
+
+.loading-state p {
+    color: #94a3b8;
+    font-size: 0.95rem;
+}
+
+/* ========== EMPTY STATE ========== */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #94a3b8;
+    gap: 1.5rem;
+    text-align: center;
+    padding: 2rem;
+}
+
+.empty-state i {
+    font-size: 3.5rem;
+    color: #818cf8;
+    opacity: 0.6;
+}
+
+.empty-state h2 {
+    color: #e2e8f0;
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.empty-state p {
+    margin: 0;
+    color: #94a3b8;
+}
+
+.empty-state a {
+    color: #818cf8;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    background: rgba(129, 140, 248, 0.12);
+    border: 1px solid rgba(129, 140, 248, 0.25);
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.empty-state a:hover {
+    background: rgba(129, 140, 248, 0.2);
+    border-color: rgba(129, 140, 248, 0.4);
+}
+
+/* ========== GRILLE ========== */
+.dashboard-grid {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    overflow: hidden;
+}
+
+/* ========== CELLULE WIDGET ========== */
+.dashboard-widget {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+}
+
+/* ========== WIDGET INNER ========== */
+.dashboard-widget > .widget {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #e2e8f0;
+}
+
+/* ========== TITRES WIDGETS ========== */
+.dashboard-widget h3 {
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.9rem 1.1rem 0.6rem;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid #1e293b;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.dashboard-widget h3 i {
+    color: #818cf8;
+    font-size: 0.95rem;
+}
+
+/* ========== COMPTEURS ========== */
+.widget-compteurs { padding: 0; }
+
+.compteurs-grid,
+.fabtrack-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 0.7rem;
+    padding: 0.9rem 1.1rem;
+    flex: 1;
+    align-content: center;
+}
+
+.compteur-item {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 0.9rem 0.5rem;
+    text-align: center;
+}
+
+.compteur-value {
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #818cf8;
+    line-height: 1.1;
+    margin-bottom: 0.35rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.compteur-label {
+    font-size: 0.68rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+
+/* ========== LISTES ========== */
+.widget-activites,
+.widget-fabtrack-conso,
+.widget-calendrier { padding: 0; }
+
+.activites-list,
+.conso-list,
+.calendrier-list,
+.js-activites-list,
+.js-conso-list,
+.js-cal-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.7rem 1.1rem;
+}
+
+.activite-item {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-left: 3px solid #818cf8;
+    border-radius: 6px;
+    padding: 0.7rem 0.9rem;
+}
+
+.activite-titre {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.82rem;
+    margin-bottom: 0.25rem;
+}
+
+.activite-meta {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ========== MACHINES ========== */
+.widget-fabtrack-machines {
+    padding: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.machines-grid,
+.js-machines-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr));
+    gap: 0.7rem;
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.7rem 1.1rem;
+    align-content: start;
+}
+
+.machine-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 0.7rem;
+    text-align: center;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.machine-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ========== IMPRIMANTES ========== */
+.widget-imprimantes { padding: 0; }
+
+.imprimantes-grid,
+.js-printers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.7rem;
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.7rem 1.1rem;
+    align-content: start;
+}
+
+.printer-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 0.7rem;
+    text-align: center;
+}
+
+.printer-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+}
+
+/* ========== STATS ========== */
+.widget-fabtrack-stats { padding: 0; }
+
+/* ========== CALENDRIER TV ========== */
+.cal-day-header {
+    font-weight: 700;
+    color: #818cf8;
+    text-transform: capitalize;
+    padding: 0.5rem 0.2rem 0.3rem;
+    border-bottom: 1px solid #1e293b;
+    margin-bottom: 0.3rem;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+}
+.cal-day-header:not(:first-child) {
+    margin-top: 0.5rem;
+}
+
+.cal-event-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-left: 3px solid #818cf8;
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+}
+
+.cal-event-time {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: #94a3b8;
+    font-size: 0.78rem;
+    margin-bottom: 0.3rem;
+}
+.cal-event-time i { color: #818cf8; font-size: 0.8rem; }
+
+.cal-event-title {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.88rem;
+    line-height: 1.3;
+}
+
+.cal-event-location {
+    color: #64748b;
+    font-size: 0.75rem;
+    margin-top: 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+/* ---- Text sizes ---- */
+.cal-text-small .cal-day-header { font-size: 0.75rem; }
+.cal-text-small .cal-event-title { font-size: 0.78rem; }
+.cal-text-small .cal-event-time { font-size: 0.7rem; }
+.cal-text-small .cal-event-location { font-size: 0.65rem; }
+
+.cal-text-large .cal-day-header { font-size: 1.1rem; }
+.cal-text-large .cal-event-title { font-size: 1.15rem; }
+.cal-text-large .cal-event-time { font-size: 0.95rem; }
+.cal-text-large .cal-event-location { font-size: 0.85rem; }
+
+.cal-text-xlarge .cal-day-header { font-size: 1.4rem; }
+.cal-text-xlarge .cal-event-title { font-size: 1.5rem; }
+.cal-text-xlarge .cal-event-time { font-size: 1.15rem; }
+.cal-text-xlarge .cal-event-location { font-size: 1rem; }
+
+/* ---- Card sizes ---- */
+.cal-card-compact .cal-event-card { padding: 0.5rem 0.7rem; }
+.cal-card-compact .js-cal-list { gap: 0.3rem; }
+
+.cal-card-large .cal-event-card { padding: 1.1rem 1.3rem; }
+.cal-card-large .js-cal-list { gap: 0.7rem; }
+.cal-card-large .cal-day-header { padding: 0.7rem 0.2rem 0.4rem; }
+
+.cal-card-xlarge .cal-event-card { padding: 1.4rem 1.6rem; border-left-width: 5px; border-radius: 10px; }
+.cal-card-xlarge .js-cal-list { gap: 1rem; }
+.cal-card-xlarge .cal-day-header { padding: 0.9rem 0.2rem 0.5rem; font-size: 1.2rem; }
+
+/* ========== HORLOGE ========== */
+.widget-horloge { height: 100%; }
+
+/* ========== BADGES — Override Bootstrap en sombre ========== */
+.dashboard-widget .badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+}
+
+.dashboard-widget .badge.bg-secondary,
+.dashboard-widget .badge.text-bg-secondary {
+    background: #1e293b !important;
+    color: #94a3b8 !important;
+}
+
+.dashboard-widget .badge.text-bg-success {
+    background: rgba(16, 185, 129, 0.15) !important;
+    color: #34d399 !important;
+}
+
+.dashboard-widget .badge.text-bg-warning {
+    background: rgba(245, 158, 11, 0.15) !important;
+    color: #fbbf24 !important;
+}
+
+.dashboard-widget .badge.text-bg-danger {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: #f87171 !important;
+}
+
+.dashboard-widget .badge.text-bg-info {
+    background: rgba(59, 130, 246, 0.15) !important;
+    color: #60a5fa !important;
+}
+
+.dashboard-widget .badge.text-bg-dark {
+    background: #0f172a !important;
+    color: #64748b !important;
+}
+
+/* ========== TEXT UTILITIES — Override Bootstrap sombre ========== */
+.dashboard-widget .text-muted,
+.dashboard-widget small.text-muted {
+    color: #475569 !important;
+    font-size: 0.75rem;
+    padding: 0 1.1rem 0.5rem;
+}
+
+.dashboard-widget .text-danger {
+    color: #f87171 !important;
+}
+
+.dashboard-widget .text-info {
+    color: #60a5fa !important;
+}
+
+/* ========== WIDGET EMPTY / ERROR ========== */
+.widget-empty,
+.widget-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    color: #475569;
+    gap: 0.7rem;
+    padding: 1rem;
+}
+
+.widget-empty i,
+.widget-error i {
+    font-size: 2rem;
+    opacity: 0.5;
+}
+
+.widget-empty p,
+.widget-error p {
+    font-weight: 500;
+    color: #64748b;
+    font-size: 0.82rem;
+    margin: 0;
+}
+
+.widget-empty small,
+.widget-error small {
+    font-size: 0.72rem;
+    color: #475569;
+}
+
+/* ========== SLIDE INDICATORS ========== */
+.slide-indicator {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.5rem;
+    z-index: 1000;
+    padding: 0.4rem 0.8rem;
+    background: rgba(11, 17, 32, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid #1e293b;
+    border-radius: 16px;
+}
+
+.slide-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #1e293b;
+    border: 1px solid #334155;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.slide-dot:hover {
+    background: #334155;
+}
+
+.slide-dot.active {
+    background: #818cf8;
+    border-color: #818cf8;
+    box-shadow: 0 0 6px rgba(129, 140, 248, 0.5);
+}
+
+/* ========== SCROLLBAR ========== */
+.dashboard-widget ::-webkit-scrollbar {
+    width: 4px;
+}
+
+.dashboard-widget ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.dashboard-widget ::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 2px;
+}
+
+.dashboard-widget ::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+}
+
+/* ========== ANIMATIONS ========== */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.dashboard-grid > * {
+    animation: fadeIn 0.3s ease backwards;
+}
+.dashboard-grid > *:nth-child(1) { animation-delay: 0.04s; }
+.dashboard-grid > *:nth-child(2) { animation-delay: 0.07s; }
+.dashboard-grid > *:nth-child(3) { animation-delay: 0.10s; }
+.dashboard-grid > *:nth-child(4) { animation-delay: 0.13s; }
+.dashboard-grid > *:nth-child(5) { animation-delay: 0.16s; }
+.dashboard-grid > *:nth-child(6) { animation-delay: 0.19s; }
+.dashboard-grid > *:nth-child(7) { animation-delay: 0.22s; }
+.dashboard-grid > *:nth-child(8) { animation-delay: 0.25s; }
+.dashboard-grid > *:nth-child(9) { animation-delay: 0.28s; }
+
+.slide-transition {
+    animation: fadeIn 0.3s ease reverse;
+}
+
+/* ========== ÉCHELLE GLOBALE DES WIDGETS ========== */
+/* Chaque classe définit la variable --ws utilisée par les propriétés ci-dessous */
+.dashboard-widget.widget-scale-1-25 { --ws: 1.25; }
+.dashboard-widget.widget-scale-1-5  { --ws: 1.5; }
+.dashboard-widget.widget-scale-2    { --ws: 2; }
+.dashboard-widget.widget-scale-2-5  { --ws: 2.5; }
+.dashboard-widget.widget-scale-3    { --ws: 3; }
+.dashboard-widget.widget-scale-4    { --ws: 4; }
+
+/* --- Tailles texte (uniquement quand --ws est défini) --- */
+.dashboard-widget[class*="widget-scale-"] h3 { font-size: calc(0.85rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .compteur-value { font-size: calc(1.7rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .compteur-label { font-size: calc(0.68rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .compteur-sub { font-size: calc(0.6rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .activite-titre { font-size: calc(0.82rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .activite-meta { font-size: calc(0.75rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .machine-name { font-size: clamp(0.7rem, calc(0.8rem * var(--ws)), 1.4rem); }
+.dashboard-widget[class*="widget-scale-"] .machine-card .badge { font-size: clamp(0.6rem, calc(0.65rem * var(--ws)), 1.1rem); }
+.dashboard-widget[class*="widget-scale-"] .printer-name { font-size: calc(0.8rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .cal-day-header { font-size: calc(0.85rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .cal-event-title { font-size: calc(0.88rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .cal-event-time { font-size: calc(0.78rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .cal-event-location { font-size: calc(0.75rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .badge { font-size: calc(0.7rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .widget-empty p,
+.dashboard-widget[class*="widget-scale-"] .widget-error p { font-size: calc(0.82rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .widget-empty small,
+.dashboard-widget[class*="widget-scale-"] .widget-error small { font-size: calc(0.72rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .type-name { font-size: calc(0.85rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .type-count { font-size: calc(1.1rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .total-row { font-size: calc(0.8rem * var(--ws)); }
+.dashboard-widget[class*="widget-scale-"] .total-value { font-size: calc(1rem * var(--ws)); }
+
+/* --- Machines grid : colonnes plus larges avec le scale --- */
+.dashboard-widget[class*="widget-scale-"] .machines-grid,
+.dashboard-widget[class*="widget-scale-"] .js-machines-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(calc(120px * var(--ws)), 100%), 1fr));
+    gap: calc(0.5rem * var(--ws));
+}
+.dashboard-widget[class*="widget-scale-"] .machine-card {
+    padding: calc(0.5rem * var(--ws));
+}
+
+/* --- Horloge : multiplier les clamp() --- */
+.dashboard-widget[class*="widget-scale-"] .horloge-heure {
+    font-size: clamp(calc(48px * var(--ws)), calc(8vw * var(--ws)), calc(120px * var(--ws))) !important;
+}
+.dashboard-widget[class*="widget-scale-"] .horloge-date {
+    font-size: clamp(calc(13px * var(--ws)), calc(1.4vw * var(--ws)), calc(20px * var(--ws))) !important;
+}
+.dashboard-widget[class*="widget-scale-"] .horloge-info {
+    font-size: clamp(calc(10px * var(--ws)), calc(1vw * var(--ws)), calc(14px * var(--ws))) !important;
+}
+
+/* --- Météo : multiplier les clamp() --- */
+.dashboard-widget[class*="widget-scale-"] .meteo-icon {
+    font-size: clamp(calc(40px * var(--ws)), calc(5vw * var(--ws)), calc(64px * var(--ws))) !important;
+}
+.dashboard-widget[class*="widget-scale-"] .meteo-temp {
+    font-size: clamp(calc(32px * var(--ws)), calc(5vw * var(--ws)), calc(60px * var(--ws))) !important;
+}
+.dashboard-widget[class*="widget-scale-"] .meteo-description {
+    font-size: clamp(calc(14px * var(--ws)), calc(2vw * var(--ws)), calc(22px * var(--ws))) !important;
+}
+.dashboard-widget[class*="widget-scale-"] .meteo-ville {
+    font-size: clamp(calc(12px * var(--ws)), calc(1.6vw * var(--ws)), calc(16px * var(--ws))) !important;
+}
+.dashboard-widget[class*="widget-scale-"] .meteo-details {
+    font-size: clamp(calc(11px * var(--ws)), calc(1.5vw * var(--ws)), calc(15px * var(--ws))) !important;
+}
+
+/* ========== ANIMATIONS MÉTÉO ========== */
+.widget-meteo.meteo-sunny {
+    background: linear-gradient(135deg, #111827 0%, #1a1a2e 100%);
+    animation: sunny-glow 4s ease-in-out infinite alternate;
+}
+@keyframes sunny-glow {
+    0% { box-shadow: inset 0 0 30px rgba(250,204,21,0.05); }
+    100% { box-shadow: inset 0 0 60px rgba(250,204,21,0.12); }
+}
+
+.widget-meteo.meteo-cloudy {
+    animation: cloudy-drift 6s ease-in-out infinite alternate;
+}
+@keyframes cloudy-drift {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 100% 50%; }
+}
+.widget-meteo.meteo-cloudy {
+    background: linear-gradient(270deg, #111827, #1e293b, #111827);
+    background-size: 200% 100%;
+}
+
+.widget-meteo.meteo-rain {
+    position: relative;
+}
+.widget-meteo.meteo-rain::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        transparent 0%,
+        transparent 92%,
+        rgba(96,165,250,0.06) 94%,
+        transparent 96%
+    );
+    background-size: 3px 20px;
+    animation: rain-fall 0.7s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+@keyframes rain-fall {
+    0% { background-position: 0 -20px; }
+    100% { background-position: 0 20px; }
+}
+
+.widget-meteo.meteo-snow {
+    position: relative;
+}
+.widget-meteo.meteo-snow::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.15) 50%, transparent 100%),
+        radial-gradient(2px 2px at 60% 70%, rgba(255,255,255,0.12) 50%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 80% 20%, rgba(255,255,255,0.1) 50%, transparent 100%),
+        radial-gradient(2px 2px at 40% 80%, rgba(255,255,255,0.13) 50%, transparent 100%);
+    background-size: 100px 100px, 80px 80px, 120px 120px, 90px 90px;
+    animation: snow-fall 5s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+@keyframes snow-fall {
+    0% { background-position: 0 0, 0 0, 0 0, 0 0; }
+    100% { background-position: 20px 100px, -10px 80px, 15px 120px, -5px 90px; }
+}
+
+.widget-meteo.meteo-storm {
+    animation: storm-flash 3s ease-in-out infinite;
+}
+@keyframes storm-flash {
+    0%, 90%, 100% { background: #111827; }
+    92% { background: #1e293b; }
+    94% { background: #111827; }
+    96% { background: #1a1a2e; }
+}
+
+.widget-meteo.meteo-fog {
+    animation: fog-pulse 5s ease-in-out infinite alternate;
+}
+@keyframes fog-pulse {
+    0% { background: #111827; opacity: 1; }
+    100% { background: #1e293b; opacity: 0.92; }
+}
+
+/* ========== POLICES PERSONNALISÉES ========== */
+.dashboard-tv.font-inter { font-family: 'Inter', sans-serif; }
+.dashboard-tv.font-roboto { font-family: 'Roboto', sans-serif; }
+.dashboard-tv.font-poppins { font-family: 'Poppins', sans-serif; }
+.dashboard-tv.font-montserrat { font-family: 'Montserrat', sans-serif; }
+.dashboard-tv.font-opensans { font-family: 'Open Sans', sans-serif; }
+.dashboard-tv.font-sourcesans { font-family: 'Source Sans 3', sans-serif; }
+.dashboard-tv.font-orbitron { font-family: 'Orbitron', sans-serif; }
+.dashboard-tv.font-rajdhani { font-family: 'Rajdhani', sans-serif; }
+
+/* Police héritée pour l'horloge quand une police custom est choisie */
+.dashboard-tv[class*="font-"] .horloge-heure {
+    font-family: inherit !important;
+}
+.dashboard-tv[class*="font-"] .horloge-date,
+.dashboard-tv[class*="font-"] .horloge-info {
+    font-family: inherit !important;
+}
+
+/* ========== EMPLACEMENTS VIDES (TRANSPARENTS) ========== */
+.dashboard-widget.widget-slot-empty {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* ========== URGENCE CALENDRIER ========== */
+.cal-event-card.cal-urgence-critique {
+    border-left-color: #ef4444;
+    background: linear-gradient(90deg, rgba(239,68,68,0.08) 0%, #0f172a 30%);
+}
+.cal-event-card.cal-urgence-proche {
+    border-left-color: #f97316;
+    background: linear-gradient(90deg, rgba(249,115,22,0.07) 0%, #0f172a 30%);
+}
+.cal-event-card.cal-urgence-moyen {
+    border-left-color: #eab308;
+    background: linear-gradient(90deg, rgba(234,179,8,0.05) 0%, #0f172a 30%);
+}
+.cal-event-card.cal-urgence-loin {
+    border-left-color: #22c55e;
+}
+
+.cal-urgence-badge {
+    display: inline-block;
+    font-size: 0.65em;
+    font-weight: 600;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    margin-left: 0.5em;
+    vertical-align: middle;
+}
+.cal-urgence-badge.critique { background: rgba(239,68,68,0.2); color: #f87171; }
+.cal-urgence-badge.proche { background: rgba(249,115,22,0.2); color: #fb923c; }
+.cal-urgence-badge.moyen { background: rgba(234,179,8,0.15); color: #fbbf24; }
+.cal-urgence-badge.loin { background: rgba(34,197,94,0.15); color: #4ade80; }
+
+/* ========== WIDGET IMAGE ========== */
+.widget-image {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0;
+}
+.widget-image img {
+    max-width: 100%;
+    max-height: 100%;
+}
+.widget-image.fit-contain img { object-fit: contain; width: 100%; height: 100%; }
+.widget-image.fit-cover img { object-fit: cover; width: 100%; height: 100%; }
+.widget-image.fit-fill img { object-fit: fill; width: 100%; height: 100%; }
+.widget-image.with-title {
+    flex-direction: column;
+}
+.widget-image.with-title img {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ========== WIDGET VIDÉO ========== */
+.widget-video {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0;
+}
+.widget-video video,
+.widget-video iframe {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border: none;
+}
+
+/* ========== WIDGET TIMER ========== */
+.widget-timer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 1rem;
+}
+.widget-timer h3 {
+    font-size: calc(1.1rem * var(--ws, 1));
+    margin-bottom: 0.8em;
+    color: #e2e8f0;
+    font-weight: 600;
+}
+.timer-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3em;
+}
+.timer-unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.timer-value {
+    font-size: clamp(calc(28px * var(--ws, 1)), calc(4vw * var(--ws, 1)), calc(64px * var(--ws, 1)));
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    color: #f1f5f9;
+}
+.timer-label {
+    font-size: calc(0.65rem * var(--ws, 1));
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    margin-top: 0.15em;
+}
+.timer-sep {
+    font-size: clamp(calc(20px * var(--ws, 1)), calc(3vw * var(--ws, 1)), calc(48px * var(--ws, 1)));
+    font-weight: 700;
+    color: #475569;
+    padding-bottom: 1em;
+}
+.timer-target-date {
+    margin-top: 0.6em;
+    font-size: calc(0.75rem * var(--ws, 1));
+    color: #64748b;
+}
+.timer-expired .timer-value {
+    color: #f87171;
+}
+
+/* ========== WIDGET GIF ========== */
+.widget-gif {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+}
+.widget-gif .gif-display {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.widget-gif .gif-tenor-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.widget-gif .gif-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: #64748b;
+    font-size: 0.85rem;
+}
+.widget-gif .gif-error {
+    text-align: center;
+    color: #64748b;
+    font-size: 0.85rem;
+}
+.widget-gif .gif-error i {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 0.4em;
+}
+
+/* ========== FOND DE SLIDE ========== */
+.dashboard-full.slide-bg-color {
+    background-size: cover;
+    background-position: center;
+}
+.dashboard-full.slide-bg-image {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+    .slide-indicator {
+        bottom: 0.5rem;
+        padding: 0.3rem 0.6rem;
+    }
+}

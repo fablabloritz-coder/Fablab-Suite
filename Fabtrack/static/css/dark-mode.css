@@ -1,0 +1,190 @@
+/* ==============================================
+   FABTRACK — Dark Mode Override
+   Activé via data-bs-theme="dark"
+   ============================================== */
+
+[data-bs-theme="dark"] {
+    --ft-bg: #111827;
+    --ft-card-bg: #1f2937;
+    --ft-text: #e5e7eb;
+    --ft-text-muted: #9ca3af;
+    --ft-border: #374151;
+    --ft-primary-light: #3d2510;
+}
+
+[data-bs-theme="dark"] body {
+    background-color: #111827;
+}
+
+[data-bs-theme="dark"] .navbar-fabtrack {
+    background: linear-gradient(135deg, #7f1d1d 0%, #92400e 100%) !important;
+}
+
+[data-bs-theme="dark"] .card {
+    background: #1f2937 !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+[data-bs-theme="dark"] .card-header {
+    border-color: #374151;
+}
+
+[data-bs-theme="dark"] .stat-card {
+    background: #1f2937;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+    background: #263040;
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus {
+    background: #263040;
+    border-color: var(--ft-primary) !important;
+}
+
+[data-bs-theme="dark"] .activity-type-btn {
+    background: #263040;
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .activity-type-btn:hover,
+[data-bs-theme="dark"] .activity-type-btn.selected {
+    background: #3d2510;
+    border-color: var(--ft-primary);
+}
+
+[data-bs-theme="dark"] .activity-type-btn .label {
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .activity-type-btn.selected .label,
+[data-bs-theme="dark"] .activity-type-btn:hover .label {
+    color: #fcd9b6;
+}
+
+[data-bs-theme="dark"] .filter-tab {
+    background: #263040;
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .filter-tab.active {
+    background: var(--ft-primary);
+    color: #fff;
+    border-color: var(--ft-primary);
+}
+
+[data-bs-theme="dark"] .table-touch > thead > tr > th {
+    background-color: #1a2332 !important;
+    color: #9ca3af;
+    border-color: #374151;
+}
+
+[data-bs-theme="dark"] .table-touch > tbody > tr:hover {
+    background-color: #263040 !important;
+}
+
+[data-bs-theme="dark"] .table {
+    --bs-table-bg: transparent;
+    --bs-table-hover-bg: #263040;
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .table > :not(caption) > * > * {
+    border-color: #374151;
+}
+
+[data-bs-theme="dark"] .dynamic-fields {
+    background: #1a2332;
+    border-color: #374151;
+}
+
+[data-bs-theme="dark"] .chart-card {
+    background: #1f2937;
+    border-color: #374151;
+}
+
+[data-bs-theme="dark"] .list-group-item {
+    background: #1f2937;
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .list-group-item:hover {
+    background-color: #263040 !important;
+}
+
+[data-bs-theme="dark"] .toast-ft {
+    background: #1f2937;
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .modal-content {
+    background: #1f2937;
+    border-color: #374151;
+}
+
+[data-bs-theme="dark"] .page-title,
+[data-bs-theme="dark"] h1, [data-bs-theme="dark"] h2,
+[data-bs-theme="dark"] h3, [data-bs-theme="dark"] h4 {
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .text-muted,
+[data-bs-theme="dark"] .page-subtitle {
+    color: #9ca3af !important;
+}
+
+[data-bs-theme="dark"] .material-thumb {
+    background: #263040;
+}
+
+[data-bs-theme="dark"] .search-box input {
+    background: #263040;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+}
+
+[data-bs-theme="dark"] footer {
+    color: #6b7280 !important;
+}
+
+/* Personnalisation section */
+[data-bs-theme="dark"] .bg-light {
+    background-color: #263040 !important;
+}
+
+/* Badge types – softer in dark mode */
+[data-bs-theme="dark"] .badge-3d { background: #422006; color: #fcd34d; }
+[data-bs-theme="dark"] .badge-laser { background: #450a0a; color: #fca5a5; }
+[data-bs-theme="dark"] .badge-cnc { background: #172554; color: #93c5fd; }
+[data-bs-theme="dark"] .badge-papier { background: #052e16; color: #86efac; }
+[data-bs-theme="dark"] .badge-thermo { background: #3b0764; color: #d8b4fe; }
+[data-bs-theme="dark"] .badge-bricolage { background: #1e1b4b; color: #a5b4fc; }
+[data-bs-theme="dark"] .badge-broderie { background: #500724; color: #f9a8d4; }
+
+/* Alerts */
+[data-bs-theme="dark"] .alert-info {
+    background: #1e3a5f;
+    border-color: #2563eb;
+    color: #93c5fd;
+}
+
+/* Color picker input */
+[data-bs-theme="dark"] .form-control-color {
+    background: #263040;
+    border-color: #374151;
+}

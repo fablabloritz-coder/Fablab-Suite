@@ -1,0 +1,98 @@
+<div class="widget widget-compteurs" id="widget-compteurs-{{ widget_id }}" data-widget-code="compteurs">
+    <h3><i class="bi bi-bar-chart"></i> Compteurs Fabtrack</h3>
+    <div class="compteurs-grid js-compteurs-grid">
+        <div class="compteur-item"><div class="compteur-value">--</div><div class="compteur-label">Interventions</div></div>
+        <div class="compteur-item"><div class="compteur-value">--</div><div class="compteur-label">Filament 3D</div></div>
+        <div class="compteur-item"><div class="compteur-value">--</div><div class="compteur-label">Surface découpe</div></div>
+        <div class="compteur-item"><div class="compteur-value">--</div><div class="compteur-label">Feuilles imprimées</div></div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-compteurs-{{ widget_id }}');
+    if (!root) return;
+
+    const grid = root.querySelector('.js-compteurs-grid');
+
+    function fmtInt(v) {
+        if (v === null || v === undefined) return '0';
+        return Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+    }
+
+    function fmtKg(grammes) {
+        if (!grammes) return '0 kg';
+        const kg = grammes / 1000;
+        return kg.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kg';
+    }
+
+    function fmtM2(m2) {
+        if (!m2) return '0 m²';
+        return Number(m2).toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' m²';
+    }
+
+    function render(stats, errorMsg) {
+        if (errorMsg && !stats.total_interventions) {
+            grid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align:center; padding:1.5rem; color:#64748b;">
+                    <div style="font-size:2rem; margin-bottom:0.5rem;">📊</div>
+                    <div>Fabtrack non connecté</div>
+                    <small style="color:#475569;">Configurez l'URL dans Paramètres → Sources</small>
+                </div>
+            `;
+            return;
+        }
+        grid.innerHTML = `
+            <div class="compteur-item">
+                <div class="compteur-value" style="color:#818cf8">${fmtInt(stats.total_interventions)}</div>
+                <div class="compteur-label"><i class="bi bi-clipboard-check"></i> Interventions</div>
+            </div>
+            <div class="compteur-item">
+                <div class="compteur-value" style="color:#34d399">${fmtKg(stats.total_3d_grammes)}</div>
+                <div class="compteur-label"><i class="bi bi-filetype-stl"></i> Filament 3D</div>
+            </div>
+            <div class="compteur-item">
+                <div class="compteur-value" style="color:#fb923c">${fmtM2(stats.total_decoupe_m2)}</div>
+                <div class="compteur-label"><i class="bi bi-scissors"></i> Surface découpe</div>
+            </div>
+            <div class="compteur-item">
+                <div class="compteur-value" style="color:#60a5fa">${fmtInt(stats.total_papier_feuilles)}</div>
+                <div class="compteur-label"><i class="bi bi-file-earmark"></i> Feuilles imprimées</div>
+                <div class="compteur-sub">${fmtInt(stats.total_papier_couleur)} couleur · ${fmtInt(stats.total_papier_nb)} N&B</div>
+            </div>
+        `;
+    }
+
+    const config = {{ config | tojson | safe }};
+    const sourceId = config.source_id || null;
+
+    async function refresh() {
+        const store = window.FabBoardStore;
+        let stats = {};
+        let errorMsg = '';
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            const sd = store.getSource(sourceId);
+            stats = sd.summary || sd;
+        } else if (store && store.data) {
+            stats = store.data.fabtrack_stats || {};
+            errorMsg = store.data.fabtrack_error || '';
+        } else {
+            return;
+        }
+
+        render(stats, errorMsg);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

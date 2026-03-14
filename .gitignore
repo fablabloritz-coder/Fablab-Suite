@@ -1,0 +1,67 @@
+# ============================================================
+# FabLab Suite - Monorepo ignore rules
+# ============================================================
+
+# Local/editor
+.claude/
+.vscode/
+*.code-workspace
+
+# Python virtualenv / cache
+.venv/
+**/.venv/
+**/venv/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Logs / OS noise
+*.log
+.DS_Store
+Thumbs.db
+
+# Secrets / local runtime config
+.env
+fabsuite-ubuntu.env
+.fabsuite_ssh_gui.json
+*.pem
+*.key
+id_rsa*
+
+# Runtime data (generated)
+**/data/
+**/docker-data/
+**/static/uploads/
+
+# Projects excluded from this suite repo
+FrigoScan/
+FabStock/
+fabsuite-spec/
+
+# Local docs and scratch notes
+plan claude code.txt
+CLAUDE.md
+CORRECTIONS_APPLIQUEES.md
+INTEGRATION_RESUME.md
+google_business_extraction.md
+
+# Local research/debug scripts not required by the suite
+analyse_raise3d_proto.ps1
+explore_raise3d_data.ps1
+find_ideamaker.ps1
+find_ideamaker_data.ps1
+find_ideamaker_ipc.ps1
+netstat_raise3d.ps1
+read_printer_file.ps1
+read_raise3d_config.ps1
+scan_raise3d.ps1
+telnet_raise3d.ps1
+test_raise3d.ps1
+test_raise3d_31625.ps1
+test_raise3d_adb.ps1
+test_raise3d_api.py
+test_raise3d_passwords.py
+test_raise3d_proto.ps1
+test_raise3d_ssh.ps1
+test_raise3d_telnet.ps1
+setup_test_data.py

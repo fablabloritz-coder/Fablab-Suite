@@ -1,0 +1,598 @@
+{% extends "base.html" %}
+{% block title %}Nouveau Prêt - PretGo{% endblock %}
+
+{% block content %}
+<h1 class="page-title">
+    <i class="bi bi-plus-circle-fill text-primary"></i> Enregistrer un nouveau prêt
+</h1>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('prets.nouveau_pret') }}" id="formNouveauPret">
+            <input type="hidden" id="personne_id" name="personne_id" value="">
+
+            <!-- Étape 1 : Sélection de la personne -->
+            <div class="mb-4">
+                <label class="form-label fw-bold fs-5">
+                    <i class="bi bi-person-fill text-primary"></i> 1. Qui emprunte ?
+                </label>
+                <div class="position-relative">
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="text"
+                               id="personne-search"
+                               class="form-control form-control-lg"
+                               placeholder="Tapez un nom ou prénom pour rechercher..."
+                               autocomplete="off">
+                    </div>
+                    <div id="autocomplete-results" class="autocomplete-results" style="display:none"></div>
+                </div>
+                <div id="personne-selected" style="display:none" class="mt-2"></div>
+            </div>
+
+            <!-- Étape 2 : Objets empruntés (multi-matériel) -->
+            <div class="mb-4">
+                <label class="form-label fw-bold fs-5">
+                    <i class="bi bi-box-fill text-primary"></i> 2. Quel(s) objet(s) ?
+                </label>
+                <p class="text-muted small mb-2">
+                    Ajoutez un ou plusieurs objets. Tapez pour chercher dans l'inventaire, ou saisissez un texte libre.
+                </p>
+
+                <div id="items-container">
+                    <!-- Item 1 (par défaut) -->
+                    <div class="item-row mb-2 position-relative" data-index="0">
+                        <div class="input-group">
+                            <input type="text"
+                                   name="items_description[]"
+                                   class="form-control form-control-lg item-input"
+                                   placeholder="N° inventaire, marque, modèle ou texte libre..."
+                                   autocomplete="off"
+                                   required>
+                            <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="">
+                            {% if mode_scanner != 'douchette' %}
+                            <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
+                                <i class="bi bi-upc-scan"></i>
+                            </button>
+                            {% endif %}
+                            <button type="button" class="btn btn-outline-danger btn-remove-item" title="Retirer" style="display:none">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        <div class="item-linked mt-1" style="display:none">
+                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label"></span></span>
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-unlink-item">délier</button>
+                        </div>
+                        <div class="item-suggestions autocomplete-results" style="display:none"></div>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <button type="button" id="btn-add-item" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-plus-circle"></i> Ajouter un objet
+                    </button>
+                    <button type="button" id="btn-simuler-scan"
+                            class="btn btn-link btn-sm text-muted p-0 opacity-50 position-relative"
+                            title="Test: simuler une impulsion de douchette USB">
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark"
+                              style="font-size: 0.55rem; line-height: 1;">TEST</span>
+                        <i class="bi bi-lightning-charge"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Étape 3 : Lieu (optionnel) -->
+            {% if lieux %}
+            <div class="mb-4">
+                <label class="form-label fw-bold fs-5">
+                    <i class="bi bi-geo-alt-fill text-primary"></i> 3. Lieu de prêt (optionnel)
+                </label>
+                <select name="lieu_id" class="form-select">
+                    <option value="">— Aucun lieu spécifié —</option>
+                    {% for lieu in lieux %}
+                    <option value="{{ lieu.id }}">{{ lieu.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            <!-- Durée du prêt (optionnel) -->
+            <div class="mb-4">
+                <label class="form-label fw-bold fs-5">
+                    <i class="bi bi-calendar-event-fill text-primary"></i> {{ '4' if lieux else '3' }}. Durée prévue du prêt (optionnel)
+                </label>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-auto">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="duree_type"
+                                   id="duree_aucune" value="aucune" checked onchange="toggleDuree()">
+                            <label class="form-check-label" for="duree_aucune">
+                                Aucune durée (utilisera la durée d'alerte admin)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="duree_type"
+                                   id="duree_type_heures" value="heures" onchange="toggleDuree()">
+                            <label class="form-check-label" for="duree_type_heures">Heures</label>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="duree_type"
+                                   id="duree_type_jours" value="jours" onchange="toggleDuree()">
+                            <label class="form-check-label" for="duree_type_jours">Jours</label>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="duree_type"
+                                   id="duree_type_fin" value="fin_journee" onchange="toggleDuree()">
+                            <label class="form-check-label" for="duree_type_fin">
+                                <i class="bi bi-sunset"></i> Fin de journée ({{ heure_fin_journee | replace(':', 'h') }})
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="duree_type"
+                                   id="duree_type_date" value="date_precise" onchange="toggleDuree()">
+                            <label class="form-check-label" for="duree_type_date">
+                                <i class="bi bi-calendar-date"></i> Date précise
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="zone_heures" style="display:none" class="row align-items-center g-2">
+                    <div class="col-auto">
+                        <input type="number" name="duree_heures" class="form-control form-control-lg"
+                               min="0.5" step="0.5" placeholder="2" style="width: 120px">
+                    </div>
+                    <div class="col-auto fs-5">heure(s)</div>
+                    <div class="col-12">
+                        <div class="d-flex flex-wrap gap-2 mt-1">
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="document.querySelector('[name=duree_heures]').value='1'">1h</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="document.querySelector('[name=duree_heures]').value='2'">2h</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="document.querySelector('[name=duree_heures]').value='4'">4h</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="document.querySelector('[name=duree_heures]').value='8'">8h (1 journée)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="zone_jours" style="display:none" class="row align-items-center g-2">
+                    <div class="col-auto">
+                        <input type="number" name="duree_jours" class="form-control form-control-lg"
+                               min="1" placeholder="7" style="width: 120px">
+                    </div>
+                    <div class="col-auto fs-5">jour(s)</div>
+                </div>
+
+                <div id="zone_fin_journee" style="display:none" class="mt-2">
+                    <div class="alert alert-info small py-2 mb-0">
+                        <i class="bi bi-sunset"></i>
+                        Le prêt sera considéré en dépassement après <strong>{{ heure_fin_journee | replace(':', 'h') }} aujourd'hui</strong>.
+                    </div>
+                </div>
+
+                <div id="zone_date_precise" style="display:none" class="mt-2">
+                    <div class="d-flex align-items-start gap-3 flex-wrap">
+                        <div>
+                            <input type="text" name="date_retour_prevue" id="datepicker_retour"
+                                   class="form-control form-control-lg" style="width: 220px"
+                               placeholder="Sélectionner une date..." readonly>
+                        </div>
+                        <div id="calendrier_inline" class="border rounded"></div>
+                    </div>
+                    <small class="text-muted mt-1 d-block">
+                        <i class="bi bi-info-circle"></i>
+                        Le prêt devra être retourné avant cette date (à {{ heure_fin_journee | replace(':', 'h') }}).
+                    </small>
+                </div>
+            </div>
+
+            <!-- Notes (optionnel) -->
+            <div class="mb-4">
+                <label for="notes" class="form-label fw-bold fs-5">
+                    <i class="bi bi-chat-text-fill text-primary"></i> {{ '5' if lieux else '4' }}. Notes (optionnel)
+                </label>
+                <input type="text"
+                       id="notes"
+                       name="notes"
+                       class="form-control"
+                       placeholder="Informations complémentaires...">
+            </div>
+
+            <!-- Date et heure automatiques -->
+            <div class="alert alert-info d-flex align-items-center mb-4">
+                <i class="bi bi-clock-fill me-2 fs-5"></i>
+                <div>
+                    <strong>Date et heure d'emprunt :</strong>
+                    <span id="date-emprunt-display"></span>
+                    <br><small class="text-muted">Enregistrées automatiquement au moment de la validation</small>
+                </div>
+            </div>
+
+            <!-- Boutons -->
+            <div class="d-flex gap-3">
+                <button type="button" id="btn-valider-pret" class="btn btn-primary btn-lg flex-grow-1">
+                    <i class="bi bi-check-lg"></i> Enregistrer le prêt
+                </button>
+                <a href="{{ url_for('core.index') }}" class="btn btn-outline-secondary btn-lg">
+                    <i class="bi bi-x-lg"></i> Annuler
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal d'engagement -->
+<div class="modal fade" id="modalEngagement" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-shield-check"></i> Engagement de restitution
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <i class="bi bi-file-earmark-check text-primary" style="font-size: 3rem;"></i>
+                <p class="fs-5 mt-3 mb-0">
+                    En validant ce prêt, l'emprunteur(euse) s'engage à restituer
+                    l'ensemble du matériel confié <strong>dès lors qu'il n'en a plus l'usage</strong>,
+                    et ce dans les meilleurs délais.
+                </p>
+            </div>
+            <div class="modal-footer justify-content-center gap-3 border-0 pb-4">
+                <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg"></i> Annuler le prêt
+                </button>
+                <button type="button" id="btn-confirmer-pret" class="btn btn-primary btn-lg">
+                    <i class="bi bi-check-circle-fill"></i> Je m'y engage
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if mode_scanner != 'douchette' %}
+<!-- Modal Scanner -->
+<div class="modal fade" id="modalScanner" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upc-scan"></i> Scanner un code-barres</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="scanner-reader" style="width:100%"></div>
+                <p class="text-muted text-center small mt-2">Placez le code-barres devant la caméra</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/fr.js"></script>
+{% if mode_scanner != 'douchette' %}
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+{% endif %}
+<script>
+// ── Flatpickr calendrier inline ──
+document.addEventListener('DOMContentLoaded', function() {
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    flatpickr('#datepicker_retour', {
+        locale: 'fr',
+        dateFormat: 'Y-m-d',
+        altInput: true,
+        altFormat: 'j F Y',
+        minDate: 'today',
+        appendTo: document.getElementById('calendrier_inline'),
+        inline: true,
+        theme: isDark ? 'dark' : 'default'
+    });
+});
+
+// ── Date/heure en temps réel ──
+function updateDateTime() {
+    const el = document.getElementById('date-emprunt-display');
+    if (el) {
+        const now = new Date();
+        el.textContent = now.toLocaleDateString('fr-FR', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    }
+}
+updateDateTime();
+setInterval(updateDateTime, 1000);
+
+// ── Toggle durée ──
+function toggleDuree() {
+    const val = document.querySelector('input[name="duree_type"]:checked').value;
+    document.getElementById('zone_heures').style.display = (val === 'heures') ? '' : 'none';
+    document.getElementById('zone_jours').style.display = (val === 'jours') ? '' : 'none';
+    document.getElementById('zone_fin_journee').style.display = (val === 'fin_journee') ? '' : 'none';
+    document.getElementById('zone_date_precise').style.display = (val === 'date_precise') ? '' : 'none';
+}
+
+// ══════════════════════════════════════
+//  MULTI-MATÉRIEL : gestion des items
+// ══════════════════════════════════════
+(function() {
+    const container = document.getElementById('items-container');
+    const btnAdd = document.getElementById('btn-add-item');
+    const btnSimulerScan = document.getElementById('btn-simuler-scan');
+    let itemIndex = 1;
+    let debounceTimers = {};
+    let activeScanTarget = null;
+    let html5QrCode = null;
+
+    function updateRemoveButtons() {
+        const rows = container.querySelectorAll('.item-row');
+        rows.forEach(row => {
+            row.querySelector('.btn-remove-item').style.display = rows.length > 1 ? '' : 'none';
+        });
+    }
+
+    function getTargetRowForSimulatedScan() {
+        const activeEl = document.activeElement;
+        if (activeEl && activeEl.classList && activeEl.classList.contains('item-input')) {
+            return activeEl.closest('.item-row');
+        }
+        const rows = Array.from(container.querySelectorAll('.item-row'));
+        const emptyRow = rows.find(row => !row.querySelector('.item-materiel-id').value);
+        return emptyRow || rows[0] || null;
+    }
+
+    function simulerImpulsionDouchette() {
+        fetch('{{ url_for("api.api_inventaire_random_scan") }}')
+            .then(r => r.json())
+            .then(payload => {
+                if (!payload || !payload.ok || !payload.code) return;
+                const row = getTargetRowForSimulatedScan();
+                if (!row) return;
+                const input = row.querySelector('.item-input');
+                if (!input) return;
+
+                // Simulation d'un scan clavier : injection du code puis déclenchement de l'autocomplete.
+                input.focus();
+                input.value = payload.code;
+                row.dataset.scanSource = 'simulated';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            })
+            .catch(() => {});
+    }
+
+    if (btnSimulerScan) {
+        btnSimulerScan.addEventListener('click', function(e) {
+            e.preventDefault();
+            simulerImpulsionDouchette();
+        });
+    }
+
+    // Ajouter un item
+    btnAdd.addEventListener('click', function() {
+        const row = document.createElement('div');
+        row.className = 'item-row mb-2 position-relative';
+        row.dataset.index = itemIndex;
+        row.innerHTML = `
+            <div class="input-group">
+                <input type="text" name="items_description[]"
+                       class="form-control form-control-lg item-input"
+                       placeholder="N° inventaire, marque, modèle ou texte libre..."
+                       autocomplete="off" required>
+                <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="">
+                {% if mode_scanner != 'douchette' %}
+                <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
+                    <i class="bi bi-upc-scan"></i>
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-outline-danger btn-remove-item" title="Retirer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="item-linked mt-1" style="display:none">
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label"></span></span>
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-unlink-item">délier</button>
+            </div>
+            <div class="item-suggestions autocomplete-results" style="display:none"></div>
+        `;
+        container.appendChild(row);
+        itemIndex++;
+        updateRemoveButtons();
+        row.querySelector('.item-input').focus();
+    });
+
+    // Event delegation
+    container.addEventListener('click', function(e) {
+        if (e.target.closest('.btn-remove-item')) {
+            e.target.closest('.item-row').remove();
+            updateRemoveButtons();
+        }
+        if (e.target.closest('.btn-unlink-item')) {
+            const row = e.target.closest('.item-row');
+            row.querySelector('.item-materiel-id').value = '';
+            row.querySelector('.item-linked').style.display = 'none';
+        }
+        if (e.target.closest('.btn-scan-item')) {
+            activeScanTarget = e.target.closest('.item-row');
+            openScanner();
+        }
+    });
+
+    // Autocomplete inventaire
+    container.addEventListener('input', function(e) {
+        if (!e.target.classList.contains('item-input')) return;
+        const row = e.target.closest('.item-row');
+        const idx = row.dataset.index;
+        // Délier si l'utilisateur édite
+        row.querySelector('.item-materiel-id').value = '';
+        row.querySelector('.item-linked').style.display = 'none';
+        clearTimeout(debounceTimers[idx]);
+        const val = e.target.value.trim();
+        if (val.length < 2) { row.querySelector('.item-suggestions').style.display = 'none'; return; }
+        debounceTimers[idx] = setTimeout(() => searchInventaire(row, val), 300);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.item-row')) {
+            container.querySelectorAll('.item-suggestions').forEach(s => s.style.display = 'none');
+        }
+    });
+
+    // Intercepter Entrée sur les champs item (évite soumission du form + recherche immédiate)
+    container.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && e.target.classList.contains('item-input')) {
+            e.preventDefault();
+            const row = e.target.closest('.item-row');
+            const val = e.target.value.trim();
+            if (val.length >= 2) searchInventaire(row, val);
+        }
+    });
+
+    function searchInventaire(row, query) {
+        fetch('{{ url_for("api.api_inventaire") }}?q=' + encodeURIComponent(query))
+            .then(r => r.json())
+            .then(items => {
+                const box = row.querySelector('.item-suggestions');
+                if (!items.length) {
+                    row.dataset.scanSource = '';
+                    box.style.display = 'none';
+                    return;
+                }
+                
+                // Si 1 seul résultat → validation automatique
+                if (items.length === 1) {
+                    const item = items[0];
+                    const shouldBeep = row.dataset.scanSource === 'webcam';
+                    row.dataset.scanSource = '';
+                    let label = item.type_materiel;
+                    if (item.marque) label += ' — ' + item.marque;
+                    if (item.modele) label += ' ' + item.modele;
+                    if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
+                        label += ' (' + item.numero_inventaire + ')';
+                    
+                    // Assigner automatiquement
+                    row.querySelector('.item-input').value = label;
+                    row.querySelector('.item-materiel-id').value = item.id;
+                    row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
+                    row.querySelector('.item-linked').style.display = 'block';
+                    box.style.display = 'none';
+                    
+                    // Bip uniquement pour un scan webcam (pas douchette USB, pas simulation)
+                    if (shouldBeep && typeof window.playBeep === 'function') {
+                        window.playBeep(0.15, 'up');
+                    }
+                    
+                    // Focus sur le bouton "Ajouter un autre objet" ou prochain champ
+                    const addBtn = document.getElementById('btn-add-item');
+                    if (addBtn) {
+                        addBtn.focus();
+                    }
+                    return;
+                }
+                
+                // Sinon, afficher la liste complète
+                row.dataset.scanSource = '';
+                box.innerHTML = '';
+                items.forEach(item => {
+                    let label = item.type_materiel;
+                    if (item.marque) label += ' — ' + item.marque;
+                    if (item.modele) label += ' ' + item.modele;
+                    if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
+                        label += ' (' + item.numero_inventaire + ')';
+                    const div = document.createElement('div');
+                    div.className = 'autocomplete-item d-flex align-items-center gap-2';
+                    if (item.image) {
+                        const img = document.createElement('img');
+                        img.src = '{{ url_for("static", filename="uploads/materiel/") }}' + encodeURIComponent(item.image);
+                        img.style.cssText = 'width:35px;height:35px;object-fit:cover;border-radius:4px;';
+                        div.appendChild(img);
+                    } else {
+                        const ic = document.createElement('i');
+                        ic.className = 'bi bi-pc-display text-primary';
+                        ic.style.cssText = 'font-size:1.2rem;min-width:30px;text-align:center;';
+                        div.appendChild(ic);
+                    }
+                    const sp = document.createElement('span');
+                    sp.className = 'flex-grow-1'; sp.textContent = label;
+                    div.appendChild(sp);
+                    const bd = document.createElement('span');
+                    bd.className = 'badge ' + (item.etat === 'disponible' ? 'bg-success' : 'bg-secondary');
+                    bd.textContent = item.etat === 'disponible' ? 'Disponible' : item.etat;
+                    div.appendChild(bd);
+                    div.addEventListener('click', () => {
+                        row.querySelector('.item-input').value = label;
+                        row.querySelector('.item-materiel-id').value = item.id;
+                        row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
+                        row.querySelector('.item-linked').style.display = 'block';
+                        box.style.display = 'none';
+                    });
+                    box.appendChild(div);
+                });
+                box.style.display = 'block';
+            }).catch(() => {});
+    }
+
+    // ── Scanner code-barres ──
+    {% if mode_scanner != 'douchette' %}
+    function openScanner() {
+        const modal = new bootstrap.Modal(document.getElementById('modalScanner'));
+        modal.show();
+        setTimeout(() => {
+            if (html5QrCode) try { html5QrCode.stop(); } catch(e) {}
+            html5QrCode = new Html5Qrcode("scanner-reader");
+            html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 100 } },
+                (decoded) => {
+                    html5QrCode.stop().then(() => {
+                        modal.hide();
+                        if (activeScanTarget) {
+                            const inp = activeScanTarget.querySelector('.item-input');
+                            activeScanTarget.dataset.scanSource = 'webcam';
+                            inp.value = decoded;
+                            inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    });
+                }, () => {}
+            ).catch(err => {
+                document.getElementById('scanner-reader').innerHTML =
+                    '<div class="alert alert-warning text-center"><i class="bi bi-camera-video-off"></i> Caméra non disponible<br><small>' + err + '</small></div>';
+            });
+        }, 500);
+    }
+
+    document.getElementById('modalScanner').addEventListener('hidden.bs.modal', function() {
+        if (html5QrCode) try { html5QrCode.stop(); } catch(e) {}
+    });
+    {% endif %}
+
+    // ── Modal d'engagement ──
+    document.getElementById('btn-valider-pret').addEventListener('click', function() {
+        const pid = document.getElementById('personne_id').value;
+        let hasItem = false;
+        container.querySelectorAll('.item-input').forEach(i => { if (i.value.trim()) hasItem = true; });
+        if (!pid) { alert('Veuillez sélectionner une personne.'); return; }
+        if (!hasItem) { alert('Veuillez ajouter au moins un objet.'); return; }
+        new bootstrap.Modal(document.getElementById('modalEngagement')).show();
+    });
+
+    document.getElementById('btn-confirmer-pret').addEventListener('click', function() {
+        document.getElementById('formNouveauPret').submit();
+    });
+})();
+</script>
+{% endblock %}

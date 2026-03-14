@@ -1,0 +1,1172 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- ═══ HEADER SYSTÈME ═══ -->
+<header class="system-header">
+    <!-- Profil + Logo -->
+    <div class="system-header-left">
+        <div class="header-profile" id="profileSelector">
+            <button class="header-profile-btn" id="currentProfileBtn" title="Changer de profil">
+                <span class="profile-icon">{{ current_profile.icon if current_profile else '👤' }}</span>
+                <span class="profile-name">{{ current_profile.name if current_profile else 'Principal' }}</span>
+                <i class="bi bi-chevron-down"></i>
+            </button>
+            <div class="profile-dropdown hidden" id="profileDropdown">
+                {% for profile in profiles %}
+                <div class="profile-item {% if profile.id == current_profile.id %}active{% endif %}"
+                     data-profile-id="{{ profile.id }}"
+                     style="border-left: 3px solid {{ profile.color }};">
+                    <span class="profile-icon">{{ profile.icon }}</span>
+                    <span class="profile-name">{{ profile.name }}</span>
+                    {% if profile.id == current_profile.id %}
+                    <i class="bi bi-check-lg ms-auto"></i>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                <hr style="margin: 8px 0; border-color: rgba(255,255,255,0.1);">
+                <div class="profile-item profile-add" data-action="add-profile">
+                    <i class="bi bi-plus-circle"></i>
+                    <span>Nouveau profil</span>
+                </div>
+                <div class="profile-item profile-manage" data-action="manage-profiles">
+                    <i class="bi bi-gear"></i>
+                    <span>Gérer les profils</span>
+                </div>
+            </div>
+        </div>
+        <div class="header-logo">
+            <i class="bi bi-house-heart"></i>
+            <span>FabHome</span>
+        </div>
+    </div>
+
+    <!-- Santé serveur -->
+    {% if widgets.get('health') and widgets.health.enabled %}
+    <div class="header-section header-health" id="health-widget-header">
+        <div class="health-item-compact" title="CPU">
+            <i class="bi bi-cpu"></i>
+            <small id="health-cpu-pct-header">--%</small>
+        </div>
+        <div class="health-item-compact" title="RAM">
+            <i class="bi bi-memory"></i>
+            <small id="health-ram-pct-header">--%</small>
+        </div>
+        <div class="health-item-compact" title="Disque">
+            <i class="bi bi-device-hdd"></i>
+            <small id="health-disk-pct-header">--%</small>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Date & Heure -->
+    {% if widgets.get('clock') and widgets.clock.enabled %}
+    <div class="header-section header-clock">
+        <span id="header-date" class="header-date"></span>
+        <span class="header-sep">·</span>
+        <span id="header-time" class="header-time"></span>
+    </div>
+    {% endif %}
+
+    <!-- Météo -->
+    {% if widgets.get('weather') and widgets.weather.enabled %}
+    <div class="header-section header-weather" id="weather-widget">
+        <i class="bi bi-cloud"></i>
+        <span id="weather-temp">--</span>°C
+        <small id="weather-city">{{ widgets.weather.config.get('city', '') }}</small>
+    </div>
+    {% endif %}
+
+    <!-- Notifications FabLab Suite -->
+    <div class="header-section header-notifications" id="suiteNotifications">
+        <button class="header-notif-btn" id="suiteNotifBtn" type="button" title="Notifications FabLab Suite">
+            <i class="bi bi-bell"></i>
+            <span class="header-notif-badge hidden" id="suiteNotifBadge">0</span>
+        </button>
+        <div class="header-notif-panel hidden" id="suiteNotifPanel">
+            <div class="header-notif-title">Alertes FabLab Suite</div>
+            <div class="header-notif-list" id="suiteNotifList">
+                <div class="header-notif-empty">Chargement…</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recherche -->
+    {% if widgets.get('search') and widgets.search.enabled %}
+    <div class="header-section header-search">
+        <form id="search-form" class="search-form-header">
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control" id="search-input"
+                       placeholder="Rechercher sur le web…" autocomplete="off">
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</header>
+
+<div class="homepage"
+     {% if settings.background_url %}style="background-image: url('{{ settings.background_url }}');"{% endif %}>
+
+    <!-- ═══ ONGLETS PAGES ═══ -->
+    {% if pages|length > 0 %}
+    <div class="page-tabs" id="pageTabs">
+        {% for page in pages %}
+        <a href="/?page={{ page.id }}"
+           class="page-tab{% if page.id == current_page %} active{% endif %}"
+           data-page-id="{{ page.id }}">
+            <i class="bi {{ page.icon }}"></i>
+            <span>{{ page.name }}</span>
+        </a>
+        {% endfor %}
+        <button class="page-tab page-tab-add edit-only" data-action="new-page" title="Nouvelle page">
+            <i class="bi bi-plus-lg"></i>
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- ═══ CONTENEUR (grille + palette) ═══ -->
+    <div class="main-container">
+
+        <!-- GRILLE DE GROUPES -->
+        <div class="grid-board" id="gridBoard"
+             style="--grid-cols: {{ settings.get('grid_cols', '4') }}; --grid-rows: {{ settings.get('grid_rows', '3') }};">
+
+            {% for group in groups if group.grid_row >= 0 %}
+            <div class="group-card size-icon-{{ group.icon_size or 'medium' }} size-text-{{ group.text_size or 'medium' }}"
+                 data-group-id="{{ group.id }}"
+                 draggable="false"
+                 style="grid-column: {{ group.grid_col + 1 }} / span {{ group.col_span }}; grid-row: {{ group.grid_row + 1 }} / span {{ group.row_span }};">
+
+                <div class="edit-overlay group-overlay">
+                    <button class="ov-btn drag-handle" title="Déplacer"><i class="bi bi-grip-vertical"></i></button>
+                    <button class="ov-btn" title="Modifier" data-action="edit-group"
+                            data-id="{{ group.id }}"><i class="bi bi-pencil"></i></button>
+                    <button class="ov-btn ov-warning" title="Retirer de la grille" data-action="unplace-group"
+                            data-id="{{ group.id }}"><i class="bi bi-arrow-bar-right"></i></button>
+                    <button class="ov-btn ov-danger" title="Supprimer" data-action="delete-group"
+                            data-id="{{ group.id }}" data-name="{{ group.name }}"><i class="bi bi-trash"></i></button>
+                </div>
+
+                <div class="group-header">
+                    {% if group.icon.startswith('http') or group.icon.startswith('/') %}
+                    <img src="{{ group.icon }}" class="group-icon-img" alt="">
+                    {% elif group.icon|length <= 2 %}
+                    <span class="group-icon-emoji">{{ group.icon }}</span>
+                    {% else %}
+                    <i class="bi {{ group.icon }}"></i>
+                    {% endif %}
+                    <span>{{ group.name }}</span>
+                </div>
+
+                <div class="group-links" data-group-id="{{ group.id }}">
+                    {% for link in group.links %}
+                    <div class="link-wrap" data-link-id="{{ link.id }}" draggable="false">
+                        <a href="{{ link.url }}" class="link-item" target="_blank" rel="noopener noreferrer">
+                            <div class="link-icon">
+                                {% if link.icon.startswith('http') or link.icon.startswith('/') %}
+                                <img src="{{ link.icon }}" alt="">
+                                {% elif link.icon|length <= 2 %}
+                                <span>{{ link.icon }}</span>
+                                {% else %}
+                                <i class="bi {{ link.icon }}"></i>
+                                {% endif %}
+                            </div>
+                            <div class="link-info">
+                                <div class="link-name">{{ link.name }}</div>
+                                {% if link.description %}
+                                <div class="link-desc">{{ link.description }}</div>
+                                {% endif %}
+                            </div>
+                            {% if link.check_status %}
+                            <span class="status-dot" data-status-id="{{ link.id }}"></span>
+                            {% endif %}
+                        </a>
+                        <div class="edit-overlay link-overlay">
+                            <button class="ov-btn ov-sm link-drag-handle" title="Déplacer"><i class="bi bi-grip-vertical"></i></button>
+                            <button class="ov-btn ov-sm" title="Modifier" data-action="edit-link"
+                                    data-id="{{ link.id }}"><i class="bi bi-pencil"></i></button>
+                            <button class="ov-btn ov-sm ov-danger" title="Supprimer" data-action="delete-link"
+                                    data-id="{{ link.id }}" data-name="{{ link.name }}"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <button class="btn-add-link edit-only" data-action="new-link" data-group-id="{{ group.id }}">
+                    <i class="bi bi-plus"></i> Ajouter un lien
+                </button>
+            </div>
+            {% endfor %}
+
+            {% for gw in grid_widgets if gw.grid_row >= 0 %}
+            <div class="grid-widget-card size-icon-{{ gw.icon_size }} size-text-{{ gw.text_size }}"
+                 data-grid-widget-id="{{ gw.id }}" data-widget-type="{{ gw.type }}"
+                 style="grid-column: {{ gw.grid_col + 1 }} / span {{ gw.col_span }}; grid-row: {{ gw.grid_row + 1 }} / span {{ gw.row_span }};">
+
+                <div class="edit-overlay group-overlay">
+                    <button class="ov-btn drag-handle" title="Déplacer"><i class="bi bi-grip-vertical"></i></button>
+                    <button class="ov-btn" title="Modifier" data-action="edit-grid-widget"
+                            data-id="{{ gw.id }}"><i class="bi bi-pencil"></i></button>
+                    <button class="ov-btn ov-danger" title="Supprimer" data-action="delete-grid-widget"
+                            data-id="{{ gw.id }}"><i class="bi bi-trash"></i></button>
+                </div>
+
+                {% if gw.type == 'clock' %}
+                <div class="gw-card-body gw-clock">
+                    <div class="gw-clock-time">--:--</div>
+                    <div class="gw-clock-date"></div>
+                </div>
+                {% elif gw.type == 'weather' %}
+                <div class="gw-card-body gw-weather">
+                    <i class="bi bi-cloud-sun"></i>
+                    <span class="gw-temp">--°C</span>
+                    <small>{{ gw.config.get('city', '') }}</small>
+                </div>
+                {% elif gw.type == 'note' %}
+                <div class="gw-card-body gw-note">
+                    <div class="gw-note-content">{{ gw.config.get('text', 'Note vide') }}</div>
+                </div>
+                {% elif gw.type == 'health' %}
+                <div class="gw-card-body gw-health">
+                    <div class="gw-health-item"><i class="bi bi-cpu"></i> <span class="gw-health-value">--%</span></div>
+                    <div class="gw-health-item"><i class="bi bi-memory"></i> <span class="gw-health-value">--%</span></div>
+                    <div class="gw-health-item"><i class="bi bi-device-hdd"></i> <span class="gw-health-value">--%</span></div>
+                </div>
+                {% elif gw.type == 'calendar' %}
+                <div class="gw-card-body gw-calendar">
+                    <div class="widget-cal-header">
+                        <i class="bi bi-calendar3"></i>
+                        <span>Calendrier</span>
+                    </div>
+                    <div class="calendar-events gw-calendar-events"></div>
+                </div>
+                {% elif gw.type == 'camera' %}
+                {% set cam_url = gw.config.get('camera_url', '') %}
+                <div class="gw-card-body gw-camera" data-camera-url="{{ cam_url }}">
+                    {% if cam_url %}
+                    <img class="gw-camera-img" src="{{ cam_url }}" alt="Caméra" loading="lazy">
+                    {% else %}
+                    <div class="gw-camera-placeholder"><i class="bi bi-camera-video"></i><span>Aucune URL configurée</span></div>
+                    {% endif %}
+                </div>
+                {% elif gw.type == 'fabsuite' %}
+                <div class="gw-card-body gw-fabsuite" data-gw-id="{{ gw.id }}">
+                    <div class="gw-fabsuite-header">
+                        <i class="bi bi-boxes"></i>
+                        <span>FabLab Suite</span>
+                        <button class="btn btn-sm btn-outline-light gw-suite-refresh" title="Rafraîchir"><i class="bi bi-arrow-clockwise"></i></button>
+                    </div>
+                    <div class="gw-fabsuite-apps">
+                        {% for sa in suite_apps %}
+                        <div class="suite-app-card" data-suite-app-id="{{ sa.id }}" data-url="{{ sa.browser_url }}">
+                            <div class="suite-app-icon" style="background:{{ sa.color }}">
+                                <i class="bi {{ sa.icon }}"></i>
+                            </div>
+                            <div class="suite-app-info">
+                                <a href="{{ sa.browser_url }}" target="_blank" class="suite-app-name">{{ sa.name }}</a>
+                                {% if sa.app_id == 'fabboard' %}
+                                <a href="{{ (sa.browser_url or sa.url).rstrip('/') }}/parametres" target="_blank" class="suite-app-desc" style="text-decoration: underline;">
+                                    Paramètres FabBoard
+                                </a>
+                                {% endif %}
+                                <span class="suite-app-desc">{{ sa.description }}</span>
+                            </div>
+                            <span class="suite-app-status suite-status-{{ sa.status }}" title="{{ sa.status }}"></span>
+                        </div>
+                        {% endfor %}
+                        {% if not suite_apps %}
+                        <div class="suite-empty">
+                            <i class="bi bi-plus-circle"></i>
+                            <span>Aucune app. Ajoutez-en depuis les paramètres.</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="gw-fabsuite-widgets"></div>
+                </div>
+                {% elif gw.type == 'service' %}
+                {% set svc_id = gw.config.get('service_id', 0)|int %}
+                {% set svc_match = services|selectattr('id', 'equalto', svc_id)|list %}
+                <div class="gw-card-body gw-service" data-service-id="{{ svc_id }}">
+                    <div class="gw-service-header">
+                        <i class="bi bi-plug"></i>
+                        <span>{{ svc_match[0].name if svc_match else 'Service' }}</span>
+                        <span class="gw-service-status">…</span>
+                    </div>
+                    <div class="gw-service-data"></div>
+                </div>
+                {% else %}
+                <div class="gw-card-body gw-generic">
+                    <i class="bi bi-puzzle"></i>
+                    <span>{{ gw.type }}</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <!-- Highlight de snap (invisible par défaut) -->
+            <div class="grid-highlight" id="gridHighlight"></div>
+        </div>
+
+        <!-- PALETTE (mode édition) -->
+        <aside class="edit-palette edit-only" id="editPalette">
+            <div class="palette-header">
+                <i class="bi bi-grid-3x3-gap"></i> Édition
+            </div>
+
+            <div class="palette-section">
+                <div class="palette-label">Taille de la grille</div>
+                <div class="grid-size-ctrl">
+                    <label>Col</label>
+                    <input type="number" id="gridColsInput" min="2" max="16"
+                           value="{{ settings.get('grid_cols', '4') }}" class="form-control form-control-sm">
+                </div>
+                <div class="grid-size-ctrl">
+                    <label>Lig</label>
+                    <input type="number" id="gridRowsInput" min="1" max="12"
+                           value="{{ settings.get('grid_rows', '3') }}" class="form-control form-control-sm">
+                </div>
+                <button class="btn btn-sm btn-outline-light w-100 mt-2" id="applyGridSize">
+                    <i class="bi bi-check-lg"></i> Appliquer
+                </button>
+            </div>
+
+            <div class="palette-section">
+                <button class="btn-palette" data-action="new-group">
+                    <i class="bi bi-plus-lg"></i> Nouveau groupe
+                </button>
+            </div>
+
+            <div class="palette-section" id="unplacedSection" style="display:none">
+                <div class="palette-label">Non placés</div>
+                <div id="unplacedList">
+                    {% for group in groups if group.grid_row < 0 %}
+                    <div class="palette-block" draggable="true" data-group-id="{{ group.id }}">
+                        {% if group.icon.startswith('http') or group.icon.startswith('/') %}
+                        <img src="{{ group.icon }}" class="palette-block-icon" alt="">
+                        {% elif group.icon|length <= 2 %}
+                        <span>{{ group.icon }}</span>
+                        {% else %}
+                        <i class="bi {{ group.icon }}"></i>
+                        {% endif %}
+                        <span>{{ group.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="palette-section mt-auto">
+                <button class="btn-palette btn-palette-muted" data-action="open-settings">
+                    <i class="bi bi-gear"></i> Réglages
+                </button>
+                <button class="btn-palette btn-palette-muted mt-1" data-action="edit-current-page" title="Modifier cette page">
+                    <i class="bi bi-pencil-square"></i> Page courante
+                </button>
+            </div>
+        </aside>
+
+    </div>
+
+    {% if not groups %}
+    <div class="empty-state" id="emptyState">
+        <i class="bi bi-house-add"></i>
+        <p>Bienvenue ! Cliquez sur le <strong>crayon</strong> en bas à droite<br>pour personnaliser votre page.</p>
+    </div>
+    {% endif %}
+
+
+
+    <!-- FAB toggle -->
+    <button class="fab edit-toggle" id="editToggle" title="Mode édition">
+        <i class="bi bi-pencil" id="editToggleIcon"></i>
+    </button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODALES
+     ═══════════════════════════════════════════════════════ -->
+
+<!-- MODAL GROUPE -->
+<div class="modal fade" id="groupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="groupForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="groupModalTitle">Nouveau groupe</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nom</label>
+                        <input type="text" class="form-control" name="name" required maxlength="100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Icône</label>
+                        <div class="input-group mb-1">
+                            <input type="text" class="form-control" name="icon" value="bi-folder">
+                            <label class="btn btn-outline-secondary" title="Upload icône">
+                                <i class="bi bi-upload"></i>
+                                <input type="file" accept="image/*" class="icon-upload-input d-none"
+                                       data-target="groupForm">
+                            </label>
+                        </div>
+                        <div class="form-text">Bootstrap Icon, émoji, URL d'image ou upload</div>
+                        <div class="icon-grid mt-2">
+                            <span class="ig" data-v="bi-folder"><i class="bi bi-folder"></i></span>
+                            <span class="ig" data-v="bi-server"><i class="bi bi-server"></i></span>
+                            <span class="ig" data-v="bi-house"><i class="bi bi-house"></i></span>
+                            <span class="ig" data-v="bi-globe"><i class="bi bi-globe"></i></span>
+                            <span class="ig" data-v="bi-tools"><i class="bi bi-tools"></i></span>
+                            <span class="ig" data-v="bi-book"><i class="bi bi-book"></i></span>
+                            <span class="ig" data-v="bi-camera-video"><i class="bi bi-camera-video"></i></span>
+                            <span class="ig" data-v="bi-music-note"><i class="bi bi-music-note"></i></span>
+                            <span class="ig" data-v="bi-controller"><i class="bi bi-controller"></i></span>
+                            <span class="ig" data-v="bi-cloud"><i class="bi bi-cloud"></i></span>
+                            <span class="ig" data-v="bi-shield-lock"><i class="bi bi-shield-lock"></i></span>
+                            <span class="ig" data-v="bi-cpu"><i class="bi bi-cpu"></i></span>
+                            <span class="ig" data-v="bi-router"><i class="bi bi-router"></i></span>
+                            <span class="ig" data-v="bi-hdd-network"><i class="bi bi-hdd-network"></i></span>
+                            <span class="ig" data-v="bi-printer"><i class="bi bi-printer"></i></span>
+                            <span class="ig" data-v="bi-film"><i class="bi bi-film"></i></span>
+                            <span class="ig" data-v="bi-cart"><i class="bi bi-cart"></i></span>
+                            <span class="ig" data-v="bi-bank"><i class="bi bi-bank"></i></span>
+                            <span class="ig" data-v="bi-star"><i class="bi bi-star"></i></span>
+                            <span class="ig" data-v="bi-heart"><i class="bi bi-heart"></i></span>
+                        </div>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label">Largeur</label>
+                            <select class="form-select" name="col_span">
+                                <option value="1">1 col</option>
+                                <option value="2">2 col</option>
+                                <option value="3">3 col</option>
+                                <option value="4">4 col</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Hauteur</label>
+                            <select class="form-select" name="row_span">
+                                <option value="1">1 lig</option>
+                                <option value="2">2 lig</option>
+                                <option value="3">3 lig</option>
+                                <option value="4">4 lig</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col-6">
+                            <label class="form-label">Taille des icônes</label>
+                            <select class="form-select" name="icon_size">
+                                <option value="small">Petit</option>
+                                <option value="medium" selected>Moyen</option>
+                                <option value="large">Grand</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Taille du texte</label>
+                            <select class="form-select" name="text_size">
+                                <option value="small">Petit</option>
+                                <option value="medium" selected>Moyen</option>
+                                <option value="large">Grand</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL LIEN -->
+<div class="modal fade" id="linkModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="linkForm">
+                <input type="hidden" name="group_id">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="linkModalTitle">Ajouter un lien</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nom</label>
+                        <input type="text" class="form-control" name="name" required maxlength="100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL</label>
+                        <input type="text" class="form-control" name="url" required maxlength="2000"
+                               placeholder="https://exemple.com">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Icône</label>
+                        <div class="input-group mb-1">
+                            <input type="text" class="form-control" name="icon" value="bi-link-45deg">
+                            <button type="button" class="btn btn-outline-secondary" id="fetchFavicon"
+                                    title="Récupérer l'icône du site">
+                                <i class="bi bi-globe2"></i>
+                            </button>
+                            <label class="btn btn-outline-secondary" title="Upload icône">
+                                <i class="bi bi-upload"></i>
+                                <input type="file" accept="image/*" class="icon-upload-input d-none"
+                                       data-target="linkForm">
+                            </label>
+                        </div>
+                        <div class="icon-grid mt-2">
+                            <span class="ig" data-v="bi-link-45deg"><i class="bi bi-link-45deg"></i></span>
+                            <span class="ig" data-v="bi-globe"><i class="bi bi-globe"></i></span>
+                            <span class="ig" data-v="bi-server"><i class="bi bi-server"></i></span>
+                            <span class="ig" data-v="bi-display"><i class="bi bi-display"></i></span>
+                            <span class="ig" data-v="bi-hdd-rack"><i class="bi bi-hdd-rack"></i></span>
+                            <span class="ig" data-v="bi-router"><i class="bi bi-router"></i></span>
+                            <span class="ig" data-v="bi-camera-video"><i class="bi bi-camera-video"></i></span>
+                            <span class="ig" data-v="bi-envelope"><i class="bi bi-envelope"></i></span>
+                            <span class="ig" data-v="bi-calendar"><i class="bi bi-calendar"></i></span>
+                            <span class="ig" data-v="bi-github"><i class="bi bi-github"></i></span>
+                            <span class="ig" data-v="bi-download"><i class="bi bi-download"></i></span>
+                            <span class="ig" data-v="bi-newspaper"><i class="bi bi-newspaper"></i></span>
+                            <span class="ig" data-v="bi-speedometer2"><i class="bi bi-speedometer2"></i></span>
+                            <span class="ig" data-v="bi-shield-check"><i class="bi bi-shield-check"></i></span>
+                            <span class="ig" data-v="bi-database"><i class="bi bi-database"></i></span>
+                            <span class="ig" data-v="bi-printer"><i class="bi bi-printer"></i></span>
+                            <span class="ig" data-v="bi-wifi"><i class="bi bi-wifi"></i></span>
+                            <span class="ig" data-v="bi-file-earmark-text"><i class="bi bi-file-earmark-text"></i></span>
+                            <span class="ig" data-v="bi-box"><i class="bi bi-box"></i></span>
+                            <span class="ig" data-v="bi-cart"><i class="bi bi-cart"></i></span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description <small class="text-muted">(optionnel)</small></label>
+                        <input type="text" class="form-control" name="description" maxlength="200">
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="check_status" id="chkStatus">
+                        <label class="form-check-label" for="chkStatus">Surveiller le statut</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL GRID WIDGET -->
+<div class="modal fade" id="gridWidgetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="gridWidgetForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="gridWidgetModalTitle">Ajouter un widget</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="grid_widget_id" id="gridWidgetId">
+                    <input type="hidden" name="grid_col" id="gridWidgetCol">
+                    <input type="hidden" name="grid_row" id="gridWidgetRow">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Type de widget</label>
+                        <select class="form-select" name="type" id="gridWidgetType" required>
+                            <option value="">-- Choisir --</option>
+                            <option value="note">📝 Note</option>
+                            <option value="calendar">📅 Calendrier</option>
+                            <option value="camera">📷 Caméra</option>
+                            <option value="service">🔌 Service</option>
+                            <option value="fabsuite">🔗 FabLab Suite</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="widgetConfigFabsuite" style="display: none;">
+                        <div class="alert alert-info small mb-0">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Ce widget affiche toutes vos applications FabLab Suite enregistrées avec leur statut en temps réel.
+                            Ajoutez des apps dans <strong>Réglages › FabLab Suite</strong>.
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="widgetConfigNote" style="display: none;">
+                        <label class="form-label">Texte de la note</label>
+                        <textarea class="form-control" name="note_text" rows="3" maxlength="500"></textarea>
+                    </div>
+                    
+                    <div class="mb-3" id="widgetConfigWeather" style="display: none;">
+                        <label class="form-label">Ville</label>
+                        <input type="text" class="form-control" name="weather_city" maxlength="100">
+                        <div class="row mt-2">
+                            <div class="col-6">
+                                <label class="form-label">Latitude</label>
+                                <input type="number" step="0.01" class="form-control" name="weather_lat">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Longitude</label>
+                                <input type="number" step="0.01" class="form-control" name="weather_lon">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3" id="widgetConfigCamera" style="display: none;">
+                        <label class="form-label">URL du flux caméra (snapshot JPEG)</label>
+                        <input type="text" class="form-control" name="camera_url" placeholder="http://192.168.1.100/snapshot.jpg">
+                        <small class="form-text text-muted">URL d'un snapshot JPEG — rafraîchi automatiquement</small>
+                    </div>
+                    
+                    <div class="mb-3" id="widgetConfigService" style="display: none;">
+                        <label class="form-label">Service à afficher</label>
+                        <select class="form-select" name="service_id" id="gridWidgetServiceId">
+                            <option value="">-- Choisir un service --</option>
+                            {% for svc in services %}
+                            <option value="{{ svc.id }}">{{ svc.name }} ({{ svc.type }})</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">Ajoutez vos services dans Réglages > Services</small>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label">Largeur (colonnes)</label>
+                            <input type="number" class="form-control" name="col_span" id="gridWidgetColSpan" min="1" max="4" value="1">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Hauteur (lignes)</label>
+                            <input type="number" class="form-control" name="row_span" id="gridWidgetRowSpan" min="1" max="4" value="1">
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label">Taille des icônes</label>
+                            <select class="form-select" name="icon_size">
+                                <option value="small">Petit</option>
+                                <option value="medium" selected>Moyen</option>
+                                <option value="large">Grand</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Taille du texte</label>
+                            <select class="form-select" name="text_size">
+                                <option value="small">Petit</option>
+                                <option value="medium" selected>Moyen</option>
+                                <option value="large">Grand</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL RÉGLAGES -->
+<div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="settingsForm">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-gear"></i> Réglages</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs mb-3" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#stAppearance" type="button">Apparence</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stWidgets" type="button">Widgets</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stServices" type="button">Services</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stSuite" type="button">FabLab Suite</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stFabBoard" type="button">FabBoard</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stData" type="button">Données</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="stAppearance">
+                            <div class="mb-3">
+                                <label class="form-label">Titre de la page</label>
+                                <input type="text" class="form-control" name="title"
+                                       value="{{ settings.get('title', '') }}">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Thème</label>
+                                <select class="form-select" name="theme">
+                                    <option value="dark" {% if settings.get('theme')=='dark' %}selected{% endif %}>🌙 Sombre</option>
+                                    <option value="light" {% if settings.get('theme')=='light' %}selected{% endif %}>☀️ Clair</option>
+                                    <option value="nord" {% if settings.get('theme')=='nord' %}selected{% endif %}>🧊 Nord</option>
+                                    <option value="dracula" {% if settings.get('theme')=='dracula' %}selected{% endif %}>🧛 Dracula</option>
+                                    <option value="ocean" {% if settings.get('theme')=='ocean' %}selected{% endif %}>🌊 Océan</option>
+                                    <option value="forest" {% if settings.get('theme')=='forest' %}selected{% endif %}>🌲 Forêt</option>
+                                    <option value="sunset" {% if settings.get('theme')=='sunset' %}selected{% endif %}>🌅 Coucher de soleil</option>
+                                    <option value="custom" {% if settings.get('theme')=='custom' %}selected{% endif %}>🎨 Personnalisé</option>
+                                </select>
+                            </div>
+                            <div id="customThemeOptions" class="mb-3" style="display:{% if settings.get('theme')=='custom' %}block{% else %}none{% endif %}">
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label small">Couleur d'accent</label>
+                                        <input type="color" class="form-control form-control-color w-100" name="custom_accent"
+                                               value="{{ settings.get('custom_accent', '#ff6b35') }}">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Fond</label>
+                                        <input type="color" class="form-control form-control-color w-100" name="custom_bg"
+                                               value="{{ settings.get('custom_bg', '#0f0f1a') }}">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Carte</label>
+                                        <input type="color" class="form-control form-control-color w-100" name="custom_card_bg"
+                                               value="{{ settings.get('custom_card_bg', '#1a1a2e') }}">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Texte</label>
+                                        <input type="color" class="form-control form-control-color w-100" name="custom_text"
+                                               value="{{ settings.get('custom_text', '#e0e0e0') }}">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Image de fond</label>
+                                <div class="input-group mb-1">
+                                    <input type="text" class="form-control" name="background_url"
+                                           value="{{ settings.get('background_url', '') }}"
+                                           placeholder="https://exemple.com/fond.jpg">
+                                    <label class="btn btn-outline-secondary" title="Upload image">
+                                        <i class="bi bi-upload"></i>
+                                        <input type="file" accept="image/*" id="bgUploadInput" class="d-none">
+                                    </label>
+                                </div>
+                                <div class="form-text">URL ou upload (max 2 Mo)</div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="stWidgets">
+                            <p class="text-muted mb-3 small">Widgets affichés dans le header. Désactivez ceux que vous ne souhaitez pas voir.</p>
+                            {% set wc = widgets.get('clock', {}) %}
+                            {% set ws = widgets.get('search', {}) %}
+                            {% set ww = widgets.get('weather', {}) %}
+                            {% set wwc = ww.config if ww and ww.config else {} %}
+                            <div class="settings-widget-row">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <strong><i class="bi bi-clock"></i> Horloge</strong>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="clock_enabled"
+                                               {% if wc and wc.enabled %}checked{% endif %}>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">Date et heure dans le header</small>
+                            </div>
+                            <div class="settings-widget-row">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <strong><i class="bi bi-search"></i> Barre de recherche</strong>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="search_enabled"
+                                               {% if ws and ws.enabled %}checked{% endif %}>
+                                    </div>
+                                </div>
+                                <select class="form-select form-select-sm mt-2" name="search_provider">
+                                    {% set sp = settings.get('search_provider', 'google') %}
+                                    <option value="google" {% if sp=='google' %}selected{% endif %}>Google</option>
+                                    <option value="duckduckgo" {% if sp=='duckduckgo' %}selected{% endif %}>DuckDuckGo</option>
+                                    <option value="bing" {% if sp=='bing' %}selected{% endif %}>Bing</option>
+                                    <option value="startpage" {% if sp=='startpage' %}selected{% endif %}>Startpage</option>
+                                </select>
+                            </div>
+                            <div class="settings-widget-row">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <strong><i class="bi bi-cloud-sun"></i> Météo</strong>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="weather_enabled"
+                                               {% if ww and ww.enabled %}checked{% endif %}>
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-1">
+                                    <div class="col-12">
+                                        <input type="text" class="form-control form-control-sm" name="weather_city"
+                                               value="{{ wwc.get('city', 'Nancy') }}" placeholder="Ville">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="number" class="form-control form-control-sm" name="weather_lat"
+                                               value="{{ wwc.get('latitude', 48.69) }}" step="0.01" placeholder="Latitude">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="number" class="form-control form-control-sm" name="weather_lon"
+                                               value="{{ wwc.get('longitude', 6.18) }}" step="0.01" placeholder="Longitude">
+                                    </div>
+                                </div>
+                            </div>
+                            {% set wh = widgets.get('health', {}) %}
+                            <div class="settings-widget-row">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <strong><i class="bi bi-speedometer2"></i> Santé serveur</strong>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="health_enabled"
+                                               {% if wh and wh.enabled %}checked{% endif %}>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">CPU, RAM et disque du serveur</small>
+                            </div>
+                            <hr>
+                            <div class="settings-widget-row">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <strong><i class="bi bi-arrow-repeat"></i> Rafraîchissement auto</strong>
+                                </div>
+                                <small class="form-text text-muted">Intervalle de mise à jour des widgets services et caméras</small>
+                                <select class="form-select form-select-sm mt-2" name="refresh_interval">
+                                    {% set ri = settings.get('refresh_interval', '30') %}
+                                    <option value="5" {% if ri=='5' %}selected{% endif %}>5 secondes</option>
+                                    <option value="10" {% if ri=='10' %}selected{% endif %}>10 secondes</option>
+                                    <option value="15" {% if ri=='15' %}selected{% endif %}>15 secondes</option>
+                                    <option value="30" {% if ri=='30' %}selected{% endif %}>30 secondes</option>
+                                    <option value="60" {% if ri=='60' %}selected{% endif %}>60 secondes</option>
+                                    <option value="0" {% if ri=='0' %}selected{% endif %}>Désactivé</option>
+                                </select>
+                            </div>
+                            <hr>
+                            <p class="text-muted mb-3 small"><strong>Connexions</strong> — Paramètres utilisés par les widgets du dashboard.</p>
+                            <div class="settings-widget-row">
+                                <strong><i class="bi bi-calendar3"></i> Calendrier CalDAV</strong>
+                                <div class="row g-2 mt-1">
+                                    <div class="col-12">
+                                        <input type="text" class="form-control form-control-sm" name="caldav_url"
+                                               value="{{ settings.get('caldav_url', '') }}" 
+                                               placeholder="https://nextcloud.exemple.com/remote.php/dav">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="text" class="form-control form-control-sm" name="caldav_username"
+                                               value="{{ settings.get('caldav_username', '') }}" 
+                                               placeholder="Utilisateur">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="password" class="form-control form-control-sm" name="caldav_password"
+                                               value="{{ settings.get('caldav_password', '') }}" 
+                                               placeholder="Mot de passe">
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">Connexion CalDAV — ajoutez un widget Calendrier sur le dashboard pour voir les événements</small>
+                            </div>
+                            {% set wcam = widgets.get('camera', {}) %}
+                            <div class="settings-widget-row">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <strong><i class="bi bi-camera-video"></i> Caméras de sécurité</strong>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="camera_enabled"
+                                               {% if wcam and wcam.enabled %}checked{% endif %}>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <textarea class="form-control form-control-sm" name="camera_urls" rows="4" 
+                                              placeholder="Une URL par ligne:&#10;Caméra Entrée|http://192.168.1.100/snapshot.jpg&#10;Caméra Jardin|http://192.168.1.101/snapshot.jpg">{{ settings.get('camera_urls', '') }}</textarea>
+                                    <small class="form-text text-muted">Format: Nom|URL (un flux par ligne)</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="stServices">
+                            <p class="text-muted mb-3">Intégrations API — ajoutez des services pour afficher leurs informations sur la page d'accueil.</p>
+                            <div id="servicesList">
+                                {% for svc in services %}
+                                <div class="settings-widget-row" data-service-id="{{ svc.id }}">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <strong>{{ svc.name }}</strong>
+                                        <div class="d-flex gap-1">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" data-action="edit-service" data-id="{{ svc.id }}">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" data-action="delete-service" data-id="{{ svc.id }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">{{ svc.type }} — {{ svc.url }}</small>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <button type="button" class="btn btn-outline-primary w-100 mt-2" data-action="new-service">
+                                <i class="bi bi-plus-lg"></i> Ajouter un service
+                            </button>
+                        </div>
+                        <div class="tab-pane fade" id="stSuite">
+                            <p class="text-muted mb-3">Connectez les applications de la FabLab Suite pour afficher leurs informations sur le dashboard.</p>
+                            <div class="input-group mb-3">
+                                <input type="text" class="form-control" id="suiteUrlInput"
+                                       placeholder="http://192.168.1.x:5555">
+                                <button class="btn btn-primary" type="button" id="suiteAddBtn">
+                                    <i class="bi bi-plus-lg"></i> Ajouter
+                                </button>
+                            </div>
+                            <div id="suiteAppsAdmin">
+                                {% for sa in suite_apps %}
+                                <div class="settings-widget-row suite-admin-row" data-suite-id="{{ sa.id }}">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="suite-app-icon-sm" style="background:{{ sa.color }}">
+                                                <i class="bi {{ sa.icon }}"></i>
+                                            </span>
+                                            <div>
+                                                <strong>{{ sa.name }}</strong> <small class="text-muted">v{{ sa.version }}</small>
+                                                <br><small class="text-muted">{{ sa.url }}</small>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            {% if sa.app_id == 'fabboard' %}
+                                            <a href="{{ sa.browser_url }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Ouvrir FabBoard">
+                                                <i class="bi bi-display"></i>
+                                            </a>
+                                            <a href="{{ (sa.browser_url or sa.url).rstrip('/') }}/parametres" target="_blank" class="btn btn-sm btn-outline-secondary" title="Paramètres FabBoard">
+                                                <i class="bi bi-gear"></i>
+                                            </a>
+                                            {% endif %}
+                                            <span class="suite-app-status suite-status-{{ sa.status }}"></span>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" data-action="delete-suite-app" data-id="{{ sa.id }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">{{ sa.description }}</small>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% if suite_apps %}
+                            <button type="button" class="btn btn-outline-secondary w-100 mt-2" id="suiteRefreshBtn">
+                                <i class="bi bi-arrow-clockwise"></i> Rafraîchir toutes les apps
+                            </button>
+                            {% endif %}
+                            <div class="alert alert-info mt-3 small">
+                                <i class="bi bi-info-circle"></i>
+                                Ajoutez un widget <strong>FabLab Suite</strong> sur votre dashboard pour voir les informations en temps réel.
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="stFabBoard">
+                            <p class="text-muted mb-3">Configuration de FabBoard — le tableau de bord TV pour l'affichage des informations en temps réel.</p>
+                            <div class="settings-widget-row">
+                                <strong><i class="bi bi-tv"></i> URL de FabBoard</strong>
+                                <div class="input-group mt-2">
+                                    <input type="text" class="form-control" name="fabboard_url"
+                                           value="{{ settings.get('fabboard_url', 'http://localhost:5580') }}"
+                                           placeholder="http://192.168.1.x:5580">
+                                    <button class="btn btn-outline-secondary" type="button" id="testFabBoardBtn">
+                                        <i class="bi bi-check-circle"></i> Tester
+                                    </button>
+                                </div>
+                                <small class="form-text text-muted">URL de votre instance FabBoard (généralement port 5580)</small>
+                            </div>
+                            <div class="settings-widget-row">
+                                <strong><i class="bi bi-grid-3x3-gap"></i> Widget par défaut</strong>
+                                <select class="form-select mt-2" name="fabboard_default_widget">
+                                    {% set default_widget = settings.get('fabboard_default_widget', 'missions') %}
+                                    <option value="missions" {% if default_widget=='missions' %}selected{% endif %}>Missions Fabtrack</option>
+                                    <option value="horloge" {% if default_widget=='horloge' %}selected{% endif %}>Horloge</option>
+                                    <option value="machines" {% if default_widget=='machines' %}selected{% endif %}>État des machines</option>
+                                    <option value="fabtrack_conso" {% if default_widget=='fabtrack_conso' %}selected{% endif %}>Consommations Fabtrack</option>
+                                </select>
+                                <small class="form-text text-muted">Widget à afficher par défaut lors de l'ajout d'un raccourci FabBoard</small>
+                            </div>
+                            <div class="settings-widget-row">
+                                <strong><i class="bi bi-plus-square"></i> Actions rapides</strong>
+                                <div class="d-grid gap-2 mt-2">
+                                    <button type="button" class="btn btn-outline-primary" id="addFabBoardShortcut">
+                                        <i class="bi bi-bookmark-plus"></i> Ajouter un raccourci FabBoard au dashboard
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="openFabBoardFullscreen">
+                                        <i class="bi bi-arrows-fullscreen"></i> Ouvrir FabBoard en plein écran
+                                    </button>
+                                </div>
+                                <small class="form-text text-muted">Créer rapidement un accès à FabBoard depuis FabHome</small>
+                            </div>
+                            <div class="alert alert-warning mt-3 small">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <strong>Note :</strong> FabBoard doit être démarré et accessible à l'URL configurée pour que la fonctionnalité soit disponible.
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="stData">
+                            <div class="settings-widget-row">
+                                <strong><i class="bi bi-download"></i> Exporter la configuration</strong>
+                                <p class="text-muted small mb-2">Télécharger toutes les données (groupes, liens, réglages, pages, services) en JSON.</p>
+                                <button type="button" class="btn btn-outline-primary w-100" id="exportConfigBtn">
+                                    <i class="bi bi-file-earmark-arrow-down"></i> Exporter
+                                </button>
+                            </div>
+                            <div class="settings-widget-row">
+                                <strong><i class="bi bi-upload"></i> Importer une configuration</strong>
+                                <p class="text-muted small mb-2">Restaurer depuis un fichier JSON. <strong class="text-danger">Cela remplacera toutes les données actuelles.</strong></p>
+                                <label class="btn btn-outline-warning w-100">
+                                    <i class="bi bi-file-earmark-arrow-up"></i> Importer
+                                    <input type="file" accept=".json" id="importConfigInput" class="d-none">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL SERVICE -->
+<div class="modal fade" id="serviceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="serviceForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="serviceModalTitle">Ajouter un service</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nom</label>
+                        <input type="text" class="form-control" name="name" required maxlength="100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Type</label>
+                        <select class="form-select" name="type">
+                            <option value="generic">Générique (JSON)</option>
+                            <optgroup label="Impression 3D">
+                            <option value="repetier">Repetier-Server</option>
+                            </optgroup>
+                            <optgroup label="Infrastructure">
+                            <option value="docker">Docker</option>
+                            <option value="portainer">Portainer</option>
+                            <option value="proxmox">Proxmox</option>
+                            <option value="truenas">TrueNAS</option>
+                            <option value="uptimekuma">Uptime Kuma</option>
+                            </optgroup>
+                            <optgroup label="Réseau">
+                            <option value="pihole">Pi-hole</option>
+                            <option value="adguard">AdGuard Home</option>
+                            </optgroup>
+                            <optgroup label="Médias">
+                            <option value="plex">Plex</option>
+                            <option value="radarr">Radarr</option>
+                            <option value="sonarr">Sonarr</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL</label>
+                        <input type="text" class="form-control" name="url" required maxlength="2000"
+                               placeholder="http://192.168.1.x:port">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Clé API <small class="text-muted">(optionnel)</small></label>
+                        <input type="text" class="form-control" name="api_key" maxlength="500">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL PAGE -->
+<div class="modal fade" id="pageModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form id="pageForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="pageModalTitle">Nouvelle page</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nom</label>
+                        <input type="text" class="form-control" name="name" required maxlength="100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Icône</label>
+                        <input type="text" class="form-control" name="icon" value="bi-file-earmark">
+                        <div class="icon-grid mt-2">
+                            <span class="ig" data-v="bi-house"><i class="bi bi-house"></i></span>
+                            <span class="ig" data-v="bi-file-earmark"><i class="bi bi-file-earmark"></i></span>
+                            <span class="ig" data-v="bi-server"><i class="bi bi-server"></i></span>
+                            <span class="ig" data-v="bi-camera-video"><i class="bi bi-camera-video"></i></span>
+                            <span class="ig" data-v="bi-tools"><i class="bi bi-tools"></i></span>
+                            <span class="ig" data-v="bi-controller"><i class="bi bi-controller"></i></span>
+                            <span class="ig" data-v="bi-book"><i class="bi bi-book"></i></span>
+                            <span class="ig" data-v="bi-star"><i class="bi bi-star"></i></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- MODAL FABLAB SUITE -->
+<div class="modal fade" id="suiteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-boxes"></i> FabLab Suite</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Ajouter une application</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="suiteAppUrl"
+                               placeholder="http://192.168.1.x:5555">
+                        <button class="btn btn-primary" type="button" id="suiteAppAdd">
+                            <i class="bi bi-plus-lg"></i> Ajouter
+                        </button>
+                    </div>
+                    <div class="form-text">Entrez l'URL d'une application FabLab Suite (Fabtrack, PretGo, FabBoard...)</div>
+                </div>
+                <hr>
+                <div id="suiteAppsList"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="suiteRefreshAll">
+                    <i class="bi bi-arrow-clockwise"></i> Tout rafraîchir
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PAGE_DATA = {
+    settings: {{ settings | tojson }},
+    groups: {{ groups_json | safe }},
+    widgets: {{ widgets_json | safe }},
+    grid_widgets: {{ grid_widgets_json | safe }},
+    pages: {{ pages_json | safe }},
+    services: {{ services_json | safe }},
+    profiles: {{ profiles_json | safe }},
+    currentPage: {{ current_page }},
+    editOnLoad: {{ 'true' if request.args.get('edit') else 'false' }},
+    suiteApps: {{ suite_apps_json | safe }}
+};
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}

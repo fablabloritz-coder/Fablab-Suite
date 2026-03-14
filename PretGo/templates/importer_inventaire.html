@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Importer l'inventaire - Administration{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-file-earmark-arrow-up-fill text-success"></i> Importer l'inventaire
+    </h1>
+    <a href="{{ url_for('inventaire.inventaire') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Retour à l'inventaire
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Zone d'import -->
+    <div class="col-12 col-md-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-upload text-success"></i> Charger un fichier CSV</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('inventaire.importer_inventaire') }}"
+                      enctype="multipart/form-data" id="form-import-inv">
+                    <!-- Zone de drag & drop -->
+                    <div id="drop-zone-inv" class="drop-zone mb-3"
+                         ondragover="event.preventDefault(); this.classList.add('drop-zone-active')"
+                         ondragleave="this.classList.remove('drop-zone-active')"
+                         ondrop="handleDropInv(event)">
+                        <i class="bi bi-cloud-arrow-up text-success" style="font-size: 3rem;"></i>
+                        <p class="mt-2 mb-1 fw-bold">Glissez votre fichier CSV ici</p>
+                        <p class="text-muted small mb-2">ou</p>
+                        <label for="fichier_csv_inv" class="btn btn-outline-success">
+                            <i class="bi bi-folder2-open"></i> Parcourir...
+                        </label>
+                        <input type="file" name="fichier_csv" id="fichier_csv_inv"
+                               accept=".csv" class="d-none"
+                               onchange="showFileNameInv(this)">
+                        <div id="file-name-inv" class="mt-2 text-muted small"></div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success btn-lg w-100">
+                        <i class="bi bi-upload"></i> Importer le matériel
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aide -->
+    <div class="col-12 col-md-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-info-circle text-primary"></i> Format attendu</h5>
+            </div>
+            <div class="card-body p-4">
+                <p>Le fichier CSV doit contenir les colonnes :</p>
+                <table class="table table-sm small">
+                    <thead>
+                        <tr>
+                            <th>Colonne</th>
+                            <th>Obligatoire</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>type_materiel</code></td><td>✅ Oui</td></tr>
+                        <tr><td><code>numero_inventaire</code></td><td>Non (auto si vide)</td></tr>
+                        <tr><td><code>marque</code></td><td>Non</td></tr>
+                        <tr><td><code>modele</code></td><td>Non</td></tr>
+                        <tr><td><code>numero_serie</code></td><td>Non</td></tr>
+                        <tr><td><code>notes</code></td><td>Non</td></tr>
+                        {% for champ in champs_custom %}
+                        <tr>
+                            <td><code>custom_{{ champ.nom_champ }}</code></td>
+                            <td>{% if champ.obligatoire %}✅ Oui{% else %}Non{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <div class="alert alert-info small mb-3">
+                    <i class="bi bi-lightbulb"></i>
+                    Les doublons (même n° inventaire) seront ignorés.
+                    Les types sont normalisés automatiquement
+                    (pc → Ordinateur, vp → Vidéoprojecteur, etc.)
+                    <br>Si <code>numero_inventaire</code> est vide, il est généré automatiquement selon le préfixe de catégorie.
+                    {% if champs_custom %}
+                    <br>Les champs personnalisés sont importables via les colonnes <code>custom_&lt;nom_champ&gt;</code>.
+                    {% endif %}
+                </div>
+
+                <a href="{{ url_for('inventaire.telecharger_gabarit_inventaire') }}"
+                   class="btn btn-outline-primary w-100">
+                    <i class="bi bi-download"></i> Télécharger le gabarit CSV
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function handleDropInv(event) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drop-zone-active');
+    const files = event.dataTransfer.files;
+    if (files.length > 0) {
+        const input = document.getElementById('fichier_csv_inv');
+        input.files = files;
+        showFileNameInv(input);
+    }
+}
+
+function showFileNameInv(input) {
+    const nameEl = document.getElementById('file-name-inv');
+    if (input.files.length > 0) {
+        nameEl.innerHTML = '<i class="bi bi-file-earmark-check text-success"></i> ' + input.files[0].name;
+    }
+}
+</script>
+{% endblock %}

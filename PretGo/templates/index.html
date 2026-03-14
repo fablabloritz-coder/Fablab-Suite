@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord - Gestion de Prêts{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-speedometer2"></i> Tableau de bord
+    </h1>
+    <div id="current-datetime" class="text-muted fs-6"></div>
+</div>
+
+<!-- Actions rapides -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('prets.nouveau_pret') }}" class="action-card nouveau">
+            <i class="bi bi-plus-circle-fill"></i>
+            Nouveau Prêt
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('prets.retour') }}" class="action-card retour">
+            <i class="bi bi-arrow-return-left"></i>
+            Retour Matériel
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('core.alertes') }}" class="action-card {% if nb_alertes > 0 %}alerte-active{% else %}recherche{% endif %}">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            Alertes
+            {% if nb_alertes > 0 %}
+                <span class="badge bg-white text-danger fw-bold">{{ nb_alertes }}</span>
+            {% endif %}
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('personnes.personnes') }}" class="action-card personnes">
+            <i class="bi bi-people-fill"></i>
+            Personnes
+        </a>
+    </div>
+</div>
+
+<!-- Statistiques -->
+<div class="row g-3 mb-4">
+    <div class="col-4">
+        <div class="stat-card bg-warning bg-opacity-10">
+            <div class="number text-warning">{{ stats.actifs }}</div>
+            <div class="label">Prêts en cours</div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="stat-card bg-success bg-opacity-10">
+            <div class="number text-success">{{ stats.retournes }}</div>
+            <div class="label">Retours effectués</div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="stat-card bg-primary bg-opacity-10">
+            <div class="number text-primary">{{ stats.personnes }}</div>
+            <div class="label">Personnes enregistrées</div>
+        </div>
+    </div>
+</div>
+
+<!-- Prêts en cours -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+        <h5 class="mb-0">
+            <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+            Prêts en cours ({{ stats.actifs }})
+        </h5>
+        {% if prets_actifs %}
+        <a href="{{ url_for('prets.retour') }}" class="btn btn-success">
+            <i class="bi bi-arrow-return-left"></i> Gérer les retours
+        </a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if prets_actifs %}
+        <div class="table-responsive">
+            <table class="table table-touch table-hover mb-0 table-sortable">
+                <thead>
+                    <tr>
+                        <th data-sort="text">Emprunteur</th>
+                        <th data-sort="text">Catégorie</th>
+                        <th data-sort="text">Classe</th>
+                        <th>Objet(s) emprunté(s)</th>
+                        <th data-sort="date">Date d'emprunt</th>
+                        <th>Retour prévu</th>
+                        <th>Durée</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pret in prets_actifs %}
+                    {% set jours = pret.date_emprunt | jours_ecoules %}
+                    <tr onclick="window.location='{{ url_for('prets.detail_pret', pret_id=pret.id) }}'" style="cursor:pointer">
+                        <td>
+                            <strong>{{ pret.nom }} {{ pret.prenom }}</strong>
+                            {% if pret.date_modification %}
+                            <i class="bi bi-pencil-square text-warning" title="Modifié le {{ pret.date_modification | format_date }}"></i>
+                            {% endif %}
+                        </td>
+                        <td><span class="cat-badge" style="{{ pret.categorie | style_categorie }}">{{ pret.categorie | label_categorie }}</span></td>
+                        <td>{{ pret.classe_snapshot or pret.classe or '—' }}</td>
+                        <td>{{ pret.descriptif_objets }}</td>
+                        <td>{{ pret.date_emprunt | format_date }}</td>
+                        <td>{{ pret | retour_theorique }}</td>
+                        <td>
+                            {% if jours > 14 %}
+                                <span class="badge-urgent"><i class="bi bi-exclamation-triangle"></i> {{ jours }}j</span>
+                            {% elif jours > 7 %}
+                                <span class="badge-actif">{{ jours }}j</span>
+                            {% else %}
+                                <span class="text-muted">{{ jours }}j</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- Pagination prêts actifs -->
+        {% if total_pages > 1 %}
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+            <small class="text-muted">Page {{ page }}/{{ total_pages }}</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    {% if page > 1 %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('core.index', page=page-1) }}">&laquo;</a>
+                    </li>
+                    {% endif %}
+                    {% for p in range(1, total_pages + 1) %}
+                        {% if p == page %}
+                        <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                        {% elif p <= 3 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+                        <li class="page-item"><a class="page-link" href="{{ url_for('core.index', page=p) }}">{{ p }}</a></li>
+                        {% elif p == 4 or p == total_pages - 2 %}
+                        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    {% if page < total_pages %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('core.index', page=page+1) }}">&raquo;</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-check-circle"></i>
+            <p class="mb-0">Aucun prêt en cours. Tout le matériel est retourné !</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Derniers retours -->
+{% if derniers_retours %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0">
+            <i class="bi bi-check-circle-fill text-success me-2"></i>
+            Derniers retours
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-touch table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Emprunteur</th>
+                        <th>Objet(s)</th>
+                        <th>Date de retour</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pret in derniers_retours %}
+                    <tr onclick="window.location='{{ url_for('prets.detail_pret', pret_id=pret.id) }}'" style="cursor:pointer">
+                        <td>{{ pret.nom }} {{ pret.prenom }}</td>
+                        <td>{{ pret.descriptif_objets }}</td>
+                        <td>{{ pret.date_retour | format_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

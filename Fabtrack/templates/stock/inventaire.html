@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Stock — Inventaire{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-clipboard-check text-warning"></i> Inventaire physique</h2>
+    <a href="{{ url_for('stock.stock_index') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-house"></i> Dashboard
+    </a>
+</div>
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Comptez physiquement chaque article et saisissez la quantité réelle.
+    Les écarts seront automatiquement enregistrés comme ajustements.
+</div>
+
+<form id="inventaireForm">
+    {% set ns = namespace(current_cat='') %}
+    {% for a in articles %}
+        {% if a.cat_nom != ns.current_cat %}
+            {% if ns.current_cat %}
+                        </tbody></table></div></div></div>
+            {% endif %}
+            {% set ns.current_cat = a.cat_nom or 'Sans catégorie' %}
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header" style="border-left: 4px solid {{ a.cat_couleur or '#6c757d' }};">
+                    <strong>{{ ns.current_cat }}</strong>
+                </div>
+                <div class="card-body p-0"><div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Article</th>
+                                <th class="text-end">Stock théorique</th>
+                                <th style="width:200px;">Comptage réel</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        {% endif %}
+        <tr>
+            <td>
+                {{ a.nom }}
+                <small class="text-muted">
+                    ({{ a.unite }}{% if a.longueur_cm and a.largeur_cm and a.longueur_cm > 0 and a.largeur_cm > 0 %}, {{ a.longueur_cm|fmt_qte }} x {{ a.largeur_cm|fmt_qte }} cm{% endif %})
+                </small>
+            </td>
+            <td class="text-end">
+                {{ a.quantite_actuelle|fmt_qte }} {{ a.unite }}
+                {% set unite_lower = (a.unite or '')|lower %}
+                {% if a.longueur_cm and a.largeur_cm and a.longueur_cm > 0 and a.largeur_cm > 0 and unite_lower in ['m²', 'm2', 'mètre carré', 'metre carre'] %}
+                    {% set surface_unitaire_m2 = (a.longueur_cm * a.largeur_cm) / 10000 %}
+                    {% if surface_unitaire_m2 > 0 %}
+                        <br><small class="text-muted">~ {{ (a.quantite_actuelle / surface_unitaire_m2)|fmt_qte }} planches</small>
+                    {% endif %}
+                {% endif %}
+            </td>
+            <td>
+                <input type="number" name="compte_{{ a.id }}" class="form-control form-control-sm"
+                       step="any" min="0" placeholder="Comptage...">
+            </td>
+        </tr>
+    {% endfor %}
+    {% if articles %}
+                        </tbody></table></div></div></div>
+    {% endif %}
+
+    <div class="text-center mt-4 mb-4">
+        <button type="submit" class="btn btn-warning btn-lg">
+            <i class="bi bi-check2-all"></i> Valider l'inventaire
+        </button>
+    </div>
+</form>
+
+{% if not articles %}
+<div class="text-center text-muted py-5">Aucun article en stock. Ajoutez des articles d'abord.</div>
+{% endif %}
+
+<script>
+document.getElementById('inventaireForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const data = {};
+    for (const [key, value] of formData.entries()) {
+        if (value !== '') data[key] = value;
+    }
+    if (Object.keys(data).length === 0) {
+        alert('Aucun comptage saisi.');
+        return;
+    }
+    if (!confirm('Valider cet inventaire ? Les écarts seront enregistrés comme ajustements.')) return;
+
+    fetch('{{ url_for("stock.api_stock_validate_inventaire") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            alert('Inventaire validé — ' + d.ajustements + ' ajustement(s)');
+            location.href = '{{ url_for("stock.stock_index") }}';
+        } else {
+            alert(d.error || 'Erreur');
+        }
+    })
+    .catch(() => alert('Erreur réseau'));
+});
+</script>
+{% endblock %}

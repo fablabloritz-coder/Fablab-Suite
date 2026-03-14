@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="fr" data-bs-theme="{{ 'dark' if theme.mode_sombre else 'light' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}PretGo{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet" integrity="sha384-DeN988K4Vg0cDrUgVHjrVM0+ogMrXsv0AZYIH40/9VGpjC7zi8TFGdnPwL1EkU/T" crossorigin="anonymous">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='PretGo.png') }}">
+    <!-- Thème personnalisable -->
+    <style>
+        :root {
+            --primary: {{ theme.couleur_primaire }};
+            --primary-dark: {{ theme.couleur_navbar }};
+        }
+        .navbar {
+            background: linear-gradient(135deg, {{ theme.couleur_navbar }}, {{ theme.couleur_primaire }}) !important;
+        }
+        .btn-primary {
+            background-color: {{ theme.couleur_primaire }} !important;
+            border-color: {{ theme.couleur_primaire }} !important;
+        }
+        .btn-primary:hover {
+            background-color: {{ theme.couleur_navbar }} !important;
+            border-color: {{ theme.couleur_navbar }} !important;
+        }
+        .btn-outline-primary {
+            color: {{ theme.couleur_primaire }} !important;
+            border-color: {{ theme.couleur_primaire }} !important;
+        }
+        .btn-outline-primary:hover {
+            background-color: {{ theme.couleur_primaire }} !important;
+            color: white !important;
+        }
+        .text-primary { color: {{ theme.couleur_primaire }} !important; }
+        .bg-primary { background-color: {{ theme.couleur_primaire }} !important; }
+        .bg-primary.bg-opacity-10 { background-color: {{ theme.couleur_primaire }}1a !important; }
+        .bg-primary.bg-opacity-25 { background-color: {{ theme.couleur_primaire }}40 !important; }
+        .form-control:focus, .form-select:focus {
+            border-color: {{ theme.couleur_primaire }};
+            box-shadow: 0 0 0 4px {{ theme.couleur_primaire }}26;
+        }
+        .filter-tab.active {
+            background-color: {{ theme.couleur_primaire }};
+            border-color: {{ theme.couleur_primaire }};
+        }
+        .action-card.nouveau {
+            background: linear-gradient(135deg, {{ theme.couleur_navbar }}, {{ theme.couleur_primaire }});
+        }
+    </style>
+    {% if theme.mode_sombre %}
+    <link href="{{ url_for('static', filename='css/dark-mode.css') }}" rel="stylesheet">
+    {% endif %}
+</head>
+<body data-mode-scanner="{{ mode_scanner }}" data-scan-url="{{ url_for('api.api_scan') }}">
+    <!-- Barre de navigation principale -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Navigation principale">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('core.index') }}">
+                {% if theme.logo %}
+                <img src="{{ url_for('static', filename=theme.logo) }}" alt="{{ theme.nom_application }}" height="32" class="d-inline-block" style="border-radius:4px;">
+                {% else %}
+                <img src="{{ url_for('static', filename='PretGo.png') }}" alt="PretGo" height="32" class="d-inline-block">
+                {% endif %}
+                <span>{{ theme.nom_application }}</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Ouvrir le menu de navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto gap-1">
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav" href="{{ url_for('core.index') }}">
+                            <i class="bi bi-house-fill"></i> Accueil
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav btn-nav-highlight-new" href="{{ url_for('prets.nouveau_pret') }}">
+                            <i class="bi bi-plus-circle-fill"></i> Nouveau Prêt
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav btn-nav-highlight-return" href="{{ url_for('prets.retour') }}">
+                            <i class="bi bi-arrow-return-left"></i> Retour
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav btn-nav-highlight-alert" href="{{ url_for('core.alertes') }}">
+                            <i class="bi bi-exclamation-triangle-fill"></i> Alertes
+                            {% if nb_alertes > 0 %}
+                            <span class="badge-alerte-nav">{{ nb_alertes }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav" href="{{ url_for('core.recherche') }}">
+                            <i class="bi bi-search"></i> Recherche
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        {% if mode_scanner == 'les_deux' %}
+                        <div class="nav-item d-flex align-items-center gap-1">
+                            <a class="nav-link btn-nav" href="#" id="btn-scan-webcam" title="Scanner avec la webcam">
+                                <i class="bi bi-camera-video"></i> <span class="d-lg-none">Webcam</span>
+                            </a>
+                            <a class="nav-link btn-nav" href="#" id="btn-scan-douchette" title="Scanner avec la douchette">
+                                <i class="bi bi-upc-scan"></i> <span class="d-lg-none">Douchette</span>
+                            </a>
+                        </div>
+                        {% elif mode_scanner == 'webcam' %}
+                        <a class="nav-link btn-nav" href="#" id="btn-scan-global" title="Scanner avec la webcam">
+                            <i class="bi bi-camera-video"></i> <span class="d-lg-none">Webcam</span>
+                        </a>
+                        {% elif mode_scanner == 'douchette' %}
+                        <a class="nav-link btn-nav" href="#" id="btn-scan-global" title="Scanner avec la douchette">
+                            <i class="bi bi-upc-scan"></i> <span class="d-lg-none">Douchette</span>
+                        </a>
+                        {% endif %}
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav" href="{{ url_for('core.historique') }}">
+                            <i class="bi bi-clock-history"></i> Historique
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav" href="{{ url_for('inventaire.etiquettes') }}">
+                            <i class="bi bi-printer"></i> Étiquettes
+                        </a>
+                    </li>
+                    {% if is_admin %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link btn-nav btn-nav-admin dropdown-toggle" href="#"
+                           role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-shield-lock-fill"></i> Admin
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.admin_dashboard') }}">
+                                <i class="bi bi-speedometer2"></i> Tableau de bord</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.statistiques') }}">
+                                <i class="bi bi-graph-up"></i> Statistiques</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('personnes.personnes') }}">
+                                <i class="bi bi-people-fill"></i> Personnes</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('inventaire.inventaire') }}">
+                                <i class="bi bi-pc-display"></i> Matériel</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('inventaire.categories') }}">
+                                <i class="bi bi-tags"></i> Catégories matériel</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('personnes.categories_personnes_admin') }}">
+                                <i class="bi bi-person-lines-fill"></i> Catégories personnes</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('inventaire.gestion_lieux') }}">
+                                <i class="bi bi-geo-alt"></i> Lieux de prêt</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.champs_personnalises') }}">
+                                <i class="bi bi-input-cursor-text"></i> Champs & Fiches</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.admin_reglages') }}">
+                                <i class="bi bi-gear"></i> Réglages</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.admin_rentree') }}">
+                                <i class="bi bi-calendar2-event"></i> Rentrée scolaire</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="{{ url_for('admin.admin_logout') }}">
+                                <i class="bi bi-box-arrow-right"></i> Déconnexion</a></li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link btn-nav btn-nav-admin" href="{{ url_for('admin.admin_login') }}">
+                            <i class="bi bi-shield-lock-fill"></i> Admin
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Contenu principal -->
+    <main class="container-fluid py-3 px-3 px-md-4" role="main">
+        <!-- Messages flash -->
+        <div aria-live="polite" aria-atomic="false">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {% if category == 'success' %}
+                            <i class="bi bi-check-circle-fill me-2" aria-hidden="true"></i>
+                        {% elif category == 'danger' %}
+                            <i class="bi bi-exclamation-triangle-fill me-2" aria-hidden="true"></i>
+                        {% elif category == 'warning' %}
+                            <i class="bi bi-exclamation-circle-fill me-2" aria-hidden="true"></i>
+                        {% else %}
+                            <i class="bi bi-info-circle-fill me-2" aria-hidden="true"></i>
+                        {% endif %}
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        </div>
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center text-muted py-3 mt-4 border-top">
+        <small>PretGo &mdash; Données stockées localement</small>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v={{ now().timestamp()|int }}"></script>
+
+
+    <!-- Modal Scanner Global (toujours présent) -->
+    <div class="modal fade" id="modalScanGlobal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-upc-scan"></i> Scanner un code-barres</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="global-scanner-reader" style="width:100%"></div>
+                    <p class="text-muted text-center small mt-2" id="global-scan-hint">Placez le code-barres devant la caméra</p>
+                    <div id="global-scan-result" class="mt-2" style="display:none"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="{{ url_for('static', filename='js/scanner.js') }}?v={{ now().timestamp()|int }}"></script>
+
+    <!-- Douchette : toast notification -->
+    {% if mode_scanner != 'webcam' %}
+    <div id="douchette-toast" class="position-fixed bottom-0 end-0 p-3" style="z-index:9999;display:none">
+        <div class="toast show align-items-center text-bg-primary border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body" id="douchette-toast-body">
+                    <i class="bi bi-upc-scan"></i> Recherche...
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!-- Widget Texte Libre : Affiche du texte personnalisé -->
+<div class="widget widget-texte-libre" data-widget-code="texte_libre" id="widget-texte-{{ widget_id }}">
+    <div class="texte-container">
+        <h2 class="texte-titre">{{ config.titre | default('Titre', true) }}</h2>
+        <div class="texte-contenu">{{ config.contenu | default('Contenu du widget texte libre. Configurez-le dans les paramètres de la slide.', true) }}</div>
+    </div>
+</div>
+
+<style>
+.widget-texte-libre {
+    --text-scale: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: #111827;
+    border-radius: 0;
+    padding: 24px;
+    overflow: hidden;
+    position: relative;
+}
+
+.texte-container {
+    text-align: left;
+    color: #e2e8f0;
+    z-index: 1;
+    max-width: 90%;
+}
+
+.texte-titre {
+    font-size: clamp(
+        calc(20px * var(--ws, 1) * var(--text-scale, 1)),
+        calc(3.5vw * var(--ws, 1) * var(--text-scale, 1)),
+        calc(48px * var(--ws, 1) * var(--text-scale, 1))
+    );
+    font-weight: 700;
+    margin: 0 0 16px 0;
+    line-height: 1.2;
+    color: #e2e8f0;
+}
+
+.texte-contenu {
+    font-size: clamp(
+        calc(14px * var(--ws, 1) * var(--text-scale, 1)),
+        calc(2vw * var(--ws, 1) * var(--text-scale, 1)),
+        calc(28px * var(--ws, 1) * var(--text-scale, 1))
+    );
+    font-weight: 400;
+    line-height: 1.5;
+    color: #94a3b8;
+    white-space: pre-wrap;
+}
+
+.widget-texte-libre.text-size-small { --text-scale: 0.82; }
+.widget-texte-libre.text-size-normal { --text-scale: 1; }
+.widget-texte-libre.text-size-large { --text-scale: 1.25; }
+.widget-texte-libre.text-size-xlarge { --text-scale: 1.6; }
+
+.widget-texte-libre.text-align-left .texte-container { text-align: left; }
+.widget-texte-libre.text-align-center .texte-container { text-align: center; }
+.widget-texte-libre.text-align-right .texte-container { text-align: right; }
+</style>
+
+<script>
+(function() {
+    const widgetId = '{{ widget_id }}';
+    const config = {{ config | tojson | safe }};
+    const root = document.getElementById('widget-texte-' + widgetId);
+
+    if (root) {
+        const textSize = config.taille_texte || 'normal';
+        const align = config.alignement || 'left';
+        root.classList.add('text-size-' + textSize);
+        root.classList.add('text-align-' + align);
+    }
+    
+    // Si emoji configuré, l'ajouter au titre
+    if (config.emoji) {
+        const titreEl = document.querySelector('#widget-texte-' + widgetId + ' .texte-titre');
+        if (titreEl && !titreEl.textContent.includes(config.emoji)) {
+            titreEl.textContent = config.emoji + ' ' + titreEl.textContent;
+        }
+    }
+    
+    // Support Markdown basique (optionnel)
+    if (config.markdown) {
+        const contenuEl = document.querySelector('#widget-texte-' + widgetId + ' .texte-contenu');
+        if (contenuEl) {
+            let html = contenuEl.textContent;
+            // Gras **texte**
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            // Italique *texte*
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            // Retour ligne
+            html = html.replace(/\n/g, '<br>');
+            contenuEl.innerHTML = html;
+        }
+    }
+})();
+</script>

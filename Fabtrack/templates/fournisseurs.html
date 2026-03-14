@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}Fournisseurs{% endblock %}
+
+{% block content %}
+<!-- Page Title -->
+<div class="mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+        <h1 class="page-title"><i class="bi bi-building"></i> Fournisseurs</h1>
+        <p class="page-subtitle">Répertoire des fournisseurs et coffre-fort documents</p>
+    </div>
+    <button class="btn btn-primary" onclick="openFournisseurModal()">
+        <i class="bi bi-plus-circle"></i> Ajouter
+    </button>
+</div>
+
+<div id="fournisseursList" class="row g-4">
+    <div class="text-center text-muted py-5">
+        <div class="spinner-border spinner-border-sm"></div> Chargement...
+    </div>
+</div>
+
+<!-- Modal Fournisseur -->
+<div class="modal fade" id="fournisseurModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="fournisseurModalTitle"><i class="bi bi-building"></i> Fournisseur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="f-id">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nom *</label>
+                        <input type="text" id="f-nom" class="form-control" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Contact</label>
+                        <input type="text" id="f-contact" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Email</label>
+                        <input type="email" id="f-email" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Téléphone</label>
+                        <input type="tel" id="f-telephone" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Téléphone 2</label>
+                        <input type="tel" id="f-telephone2" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Lien Google Business / Maps</label>
+                        <input type="url" id="f-url_google" class="form-control" placeholder="https://...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Spécialités</label>
+                        <input type="text" id="f-specialites" class="form-control" placeholder="Filament 3D, Bois, Visserie...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Notes</label>
+                        <textarea id="f-notes" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+
+                <!-- Section documents (visible seulement en édition) -->
+                <div id="docsSection" class="d-none mt-4">
+                    <hr>
+                    <h6><i class="bi bi-folder"></i> Documents (devis, factures...)</h6>
+                    <div id="docsList" class="mb-3"></div>
+                    <div class="d-flex gap-2 align-items-end">
+                        <div class="flex-grow-1">
+                            <label class="form-label small">Ajouter un document</label>
+                            <input type="file" id="docFile" class="form-control form-control-sm">
+                        </div>
+                        <div>
+                            <input type="text" id="docNom" class="form-control form-control-sm" placeholder="Nom du document">
+                        </div>
+                        <div>
+                            <select id="docType" class="form-select form-select-sm">
+                                <option value="">Type...</option>
+                                <option value="devis">Devis</option>
+                                <option value="facture">Facture</option>
+                                <option value="bon_commande">Bon de commande</option>
+                                <option value="autre">Autre</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="uploadDoc()">
+                            <i class="bi bi-upload"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                <button type="button" class="btn btn-primary" onclick="saveFournisseur()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadFournisseurs() {
+    try {
+        const res = await fetch('/api/fournisseurs');
+        const data = await res.json();
+        if (!data.success) throw new Error();
+        renderFournisseurs(data.data);
+    } catch(e) {
+        document.getElementById('fournisseursList').innerHTML =
+            '<div class="text-center text-muted py-5"><i class="bi bi-exclamation-circle"></i> Erreur de chargement</div>';
+    }
+}
+
+function renderFournisseurs(list) {
+    const el = document.getElementById('fournisseursList');
+    if (!list.length) {
+        el.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-building" style="font-size:3rem;"></i><br>' +
+            '<p class="mt-2">Aucun fournisseur</p><small>Cliquez sur "Ajouter" pour commencer</small></div>';
+        return;
+    }
+
+    el.innerHTML = list.map(f => {
+        let infos = [];
+        if (f.email) infos.push('<i class="bi bi-envelope"></i> ' + escHtml(f.email));
+        if (f.telephone) infos.push('<i class="bi bi-telephone"></i> ' + escHtml(f.telephone));
+        if (f.specialites) infos.push('<i class="bi bi-tags"></i> ' + escHtml(f.specialites));
+
+        let actions = '<a href="#" class="text-primary" onclick="editFournisseur(' + f.id + ');return false;"><i class="bi bi-pencil"></i> Modifier</a>';
+        if (f.url_google) {
+            actions += ' <a href="' + escHtml(f.url_google) + '" target="_blank" class="text-muted ms-2"><i class="bi bi-geo-alt"></i></a>';
+        }
+
+        return '<div class="col-md-6 col-lg-4"><div class="card h-100 border-0 shadow-sm">' +
+            '<div class="card-body">' +
+            '<h6 class="card-title">' + escHtml(f.nom) + '</h6>' +
+            (f.contact ? '<div class="text-muted small mb-1"><i class="bi bi-person"></i> ' + escHtml(f.contact) + '</div>' : '') +
+            '<div class="small text-muted">' + infos.join('<br>') + '</div>' +
+            '<div class="mt-2 small">' + actions + '</div>' +
+            '</div></div></div>';
+    }).join('');
+}
+
+function openFournisseurModal(data) {
+    const d = data || {};
+    document.getElementById('f-id').value = d.id || '';
+    document.getElementById('f-nom').value = d.nom || '';
+    document.getElementById('f-contact').value = d.contact || '';
+    document.getElementById('f-email').value = d.email || '';
+    document.getElementById('f-telephone').value = d.telephone || '';
+    document.getElementById('f-telephone2').value = d.telephone2 || '';
+    document.getElementById('f-url_google').value = d.url_google || '';
+    document.getElementById('f-specialites').value = d.specialites || '';
+    document.getElementById('f-notes').value = d.notes || '';
+
+    const isEdit = !!d.id;
+    document.getElementById('fournisseurModalTitle').innerHTML =
+        '<i class="bi bi-building"></i> ' + (isEdit ? 'Modifier le fournisseur' : 'Nouveau fournisseur');
+    document.getElementById('docsSection').classList.toggle('d-none', !isEdit);
+
+    if (isEdit && d.documents) {
+        renderDocs(d.documents, d.id);
+    }
+
+    new bootstrap.Modal(document.getElementById('fournisseurModal')).show();
+}
+
+async function editFournisseur(id) {
+    try {
+        const res = await fetch('/api/fournisseurs/' + id);
+        const data = await res.json();
+        if (data.success) openFournisseurModal(data.data);
+    } catch(e) {
+        alert('Erreur chargement fournisseur');
+    }
+}
+
+async function saveFournisseur() {
+    const id = document.getElementById('f-id').value;
+    const payload = {
+        nom: document.getElementById('f-nom').value.trim(),
+        contact: document.getElementById('f-contact').value.trim(),
+        email: document.getElementById('f-email').value.trim(),
+        telephone: document.getElementById('f-telephone').value.trim(),
+        telephone2: document.getElementById('f-telephone2').value.trim(),
+        url_google: document.getElementById('f-url_google').value.trim(),
+        specialites: document.getElementById('f-specialites').value.trim(),
+        notes: document.getElementById('f-notes').value.trim(),
+    };
+
+    if (!payload.nom) { alert('Nom requis'); return; }
+
+    const url = id ? '/fournisseurs/' + id + '/modifier' : '/fournisseurs/ajouter';
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('fournisseurModal')).hide();
+            loadFournisseurs();
+            if (typeof showToast === 'function') showToast('Fournisseur enregistré', 'success');
+        } else {
+            alert(data.error || 'Erreur');
+        }
+    } catch(e) {
+        alert('Erreur réseau');
+    }
+}
+
+function renderDocs(docs, fournisseurId) {
+    const el = document.getElementById('docsList');
+    if (!docs || !docs.length) {
+        el.innerHTML = '<div class="text-muted small">Aucun document</div>';
+        return;
+    }
+    el.innerHTML = '<ul class="list-group list-group-flush">' + docs.map(d => {
+        const typeBadge = d.type_document ? '<span class="badge bg-secondary">' + escHtml(d.type_document) + '</span>' : '';
+        return '<li class="list-group-item d-flex justify-content-between align-items-center px-0">' +
+            '<div><i class="bi bi-file-earmark"></i> ' + escHtml(d.nom) + ' ' + typeBadge +
+            ' <small class="text-muted">' + (d.date_upload || '').slice(0, 10) + '</small></div>' +
+            '<div class="btn-group btn-group-sm">' +
+            '<a href="/fournisseurs/' + fournisseurId + '/documents/' + d.id + '/telecharger" class="btn btn-outline-primary"><i class="bi bi-download"></i></a>' +
+            '<button class="btn btn-outline-danger" onclick="deleteDoc(' + fournisseurId + ',' + d.id + ')"><i class="bi bi-trash"></i></button>' +
+            '</div></li>';
+    }).join('') + '</ul>';
+}
+
+async function uploadDoc() {
+    const fId = document.getElementById('f-id').value;
+    if (!fId) return;
+    const fileInput = document.getElementById('docFile');
+    if (!fileInput.files.length) { alert('Sélectionnez un fichier'); return; }
+
+    const formData = new FormData();
+    formData.append('fichier', fileInput.files[0]);
+    formData.append('nom', document.getElementById('docNom').value || fileInput.files[0].name);
+    formData.append('type_document', document.getElementById('docType').value);
+
+    try {
+        const res = await fetch('/fournisseurs/' + fId + '/documents/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            fileInput.value = '';
+            document.getElementById('docNom').value = '';
+            editFournisseur(parseInt(fId));
+            if (typeof showToast === 'function') showToast('Document uploadé', 'success');
+        } else {
+            alert(data.error || 'Erreur upload');
+        }
+    } catch(e) {
+        alert('Erreur réseau');
+    }
+}
+
+async function deleteDoc(fId, docId) {
+    if (!confirm('Supprimer ce document ?')) return;
+    try {
+        await fetch('/fournisseurs/' + fId + '/documents/' + docId + '/supprimer', { method: 'POST' });
+        editFournisseur(fId);
+    } catch(e) {}
+}
+
+loadFournisseurs();
+</script>
+{% endblock %}

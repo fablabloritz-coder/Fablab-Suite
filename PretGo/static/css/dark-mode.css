@@ -1,0 +1,272 @@
+/* ══════════════════════════════════════════════════════════
+   PRETGO — MODE SOMBRE
+   Palette : bg=#111827, surface=#1f2937, light-surface=#263040
+             border=#374151, muted=#9ca3af, text=#e5e7eb
+   ══════════════════════════════════════════════════════════ */
+
+/* ─── 1. FONDATIONS ─── */
+body { background-color: #111827 !important; color: #e5e7eb !important; }
+strong, b, h1, h2, h3, h4, h5, h6, th, label, legend, dt { color: #f3f4f6 !important; }
+.page-title { color: #f3f4f6 !important; }
+
+/* ─── 2. UTILITAIRES BOOTSTRAP — FOND ─── */
+.bg-white { background-color: #1f2937 !important; }
+.bg-light { background-color: #1a2233 !important; }
+.bg-body, .bg-body-secondary, .bg-body-tertiary { background-color: #111827 !important; }
+.bg-primary.bg-opacity-10 { background-color: color-mix(in srgb, var(--primary) 10%, transparent) !important; }
+.bg-warning.bg-opacity-10 { background-color: rgba(234,179,8,0.12) !important; }
+.bg-success.bg-opacity-10 { background-color: rgba(34,197,94,0.12) !important; }
+.bg-danger.bg-opacity-10 { background-color: rgba(239,68,68,0.12) !important; }
+.bg-info.bg-opacity-10 { background-color: rgba(6,182,212,0.12) !important; }
+.bg-secondary.bg-opacity-10 { background-color: rgba(107,114,128,0.12) !important; }
+.bg-primary.bg-opacity-25 { background-color: color-mix(in srgb, var(--primary) 25%, transparent) !important; }
+
+/* ─── 3. UTILITAIRES BOOTSTRAP — TEXTE ─── */
+.text-dark { color: #e5e7eb !important; }
+.text-muted { color: #9ca3af !important; }
+.text-body { color: #e5e7eb !important; }
+.text-body-secondary { color: #9ca3af !important; }
+
+/* ─── 4. CARTES ─── */
+.card { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.card-header { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.card-body { background-color: #1f2937 !important; color: #e5e7eb !important; }
+.card-footer { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.card.border-danger { border-color: #991b1b !important; }
+
+/* ─── 5. MODALS ─── */
+.modal-content { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.modal-header { border-color: #374151 !important; }
+.modal-footer { border-color: #374151 !important; background-color: #1f2937 !important; }
+.modal-header.bg-primary.text-white,
+.modal-header.bg-success.text-white,
+.modal-header.bg-danger.text-white { color: white !important; }
+.modal-header.bg-danger.bg-opacity-10 { background-color: rgba(239,68,68,0.15) !important; }
+.btn-close { filter: invert(1) grayscale(100%) brightness(200%); }
+
+/* ─── 6. LIST GROUPS ─── */
+.list-group-item { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.list-group-item:hover, .list-group-item-action:hover,
+.list-group-item-action:focus { background-color: #263040 !important; }
+
+/* ─── 7. TABLEAUX ─── */
+.table { color: #e5e7eb !important; --bs-table-bg: #1f2937; --bs-table-striped-bg: #263040; --bs-table-hover-bg: #2d3a4f; }
+.table th, .table thead th, table.table-touch th,
+.table-light th, thead.table-light th { background-color: #263040 !important; color: #d1d5db !important; border-color: #374151 !important; }
+.table td { border-color: #374151 !important; color: #e5e7eb !important; }
+.table-hover tbody tr:hover,
+.table-touch tbody tr:hover { background-color: #2d3a4f !important; }
+.table-touch tbody tr:active { background-color: #374151 !important; }
+.table-touch th { background-color: #263040 !important; color: #d1d5db !important; border-color: #374151 !important; }
+.table-light, thead.table-light { --bs-table-bg: #263040 !important; }
+
+/* ─── 8. FORMULAIRES ─── */
+.form-control, .form-select, .input-group-text {
+    background-color: #111827 !important; color: #e5e7eb !important; border-color: #4b5563 !important;
+}
+.form-control::placeholder { color: #6b7280 !important; }
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent) !important;
+}
+.form-control:disabled, .form-select:disabled,
+.form-control[readonly] { background-color: #0d1117 !important; opacity: 0.65; }
+.form-control-color { border-color: #4b5563 !important; }
+.form-check-input { background-color: #374151 !important; border-color: #4b5563 !important; }
+.form-check-input:checked { background-color: var(--primary) !important; border-color: var(--primary) !important; }
+.form-label { color: #d1d5db !important; }
+.form-text { color: #9ca3af !important; }
+.form-check-label { color: #d1d5db !important; }
+.form-range::-webkit-slider-runnable-track { background: #374151; }
+.form-range::-webkit-slider-thumb { background: var(--primary); }
+.form-range::-moz-range-track { background: #374151; }
+.form-range::-moz-range-thumb { background: var(--primary); }
+
+/* ─── 9. BOUTONS ─── */
+.btn-outline-secondary { color: #d1d5db !important; border-color: #4b5563 !important; }
+.btn-outline-secondary:hover { background-color: #374151 !important; color: #f3f4f6 !important; border-color: #6b7280 !important; }
+.btn-outline-dark { color: #d1d5db !important; border-color: #4b5563 !important; }
+.btn-outline-dark:hover { background-color: #374151 !important; color: #f3f4f6 !important; }
+.btn-secondary { background-color: #4b5563 !important; border-color: #4b5563 !important; }
+.btn-dark { background-color: #374151 !important; border-color: #4b5563 !important; color: #e5e7eb !important; }
+.btn-light { background-color: #374151 !important; border-color: #4b5563 !important; color: #e5e7eb !important; }
+.btn-outline-info { color: #67e8f9 !important; border-color: #0891b2 !important; }
+.btn-outline-info:hover { background-color: #0891b2 !important; color: white !important; }
+.btn-outline-danger { color: #fca5a5 !important; border-color: #dc2626 !important; }
+.btn-outline-danger:hover { background-color: #dc2626 !important; color: white !important; }
+
+/* ─── 10. ACTION CARDS (accueil) ─── */
+.action-card { color: white !important; text-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+.action-card i { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4)); }
+.action-card.nouveau { background: linear-gradient(135deg, #0f3460, #1a56db) !important; }
+.action-card.retour { background: linear-gradient(135deg, #064e2b, #22804a) !important; }
+.action-card.alerte-active { background: linear-gradient(135deg, #7f1d1d, #dc2626) !important; }
+.action-card.recherche { background: linear-gradient(135deg, #78350f, #d97706) !important; }
+.action-card.personnes { background: linear-gradient(135deg, #1f2937, #4b5563) !important; }
+.action-card .badge.bg-white { background-color: rgba(255,255,255,0.9) !important; color: #dc2626 !important; }
+
+/* ─── 11. STAT CARDS ─── */
+.stat-card { border: 1px solid #374151 !important; background-color: #1f2937 !important; }
+.stat-card .label { color: #9ca3af !important; }
+.stat-card.bg-warning.bg-opacity-10 { background-color: rgba(234,179,8,0.15) !important; }
+.stat-card.bg-success.bg-opacity-10 { background-color: rgba(34,197,94,0.15) !important; }
+.stat-card.bg-primary.bg-opacity-10 { background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important; }
+.stat-card.bg-info.bg-opacity-10 { background-color: rgba(6,182,212,0.15) !important; }
+.stat-card.bg-secondary.bg-opacity-10 { background-color: rgba(107,114,128,0.15) !important; }
+.stat-card.bg-danger.bg-opacity-10 { background-color: rgba(239,68,68,0.15) !important; }
+
+/* ─── 12. PRÊT CARDS (page Retour) ─── */
+.pret-card { background: #1f2937 !important; border-color: #374151 !important; color: #e5e7eb !important; }
+.pret-card:active { background-color: #263040 !important; }
+.pret-card .pret-name { color: #f3f4f6 !important; }
+.pret-card .pret-objects { color: #d1d5db !important; }
+.pret-card .pret-date { color: #9ca3af !important; }
+
+/* ─── 13. ALERTE CARDS (page Alertes) ─── */
+.alerte-card { background: #1f2937 !important; border-color: #991b1b !important; border-left-color: #dc2626 !important;
+               box-shadow: 0 2px 8px rgba(220,38,38,0.15); color: #e5e7eb !important; }
+.alerte-card:hover { box-shadow: 0 4px 16px rgba(220,38,38,0.25); }
+
+/* ─── 14. BADGES ─── */
+.badge.bg-light { background-color: #374151 !important; color: #e5e7eb !important; }
+.badge.bg-light.text-dark { background-color: #374151 !important; color: #e5e7eb !important; }
+.badge.bg-secondary { background-color: #4b5563 !important; }
+.badge.rounded-pill.bg-success { background-color: #166534 !important; }
+.badge.rounded-pill.bg-warning { background-color: #92400e !important; color: #fbbf24 !important; }
+.badge.rounded-pill.bg-danger { background-color: #991b1b !important; }
+
+/* ─── 15. ALERTES BOOTSTRAP ─── */
+.alert-light { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.alert-info { background-color: #1e3a5f !important; color: #93c5fd !important; border-color: #1e40af50 !important; }
+.alert-warning { background-color: #422006 !important; color: #fbbf24 !important; border-color: #92400e !important; }
+.alert-success { background-color: #052e16 !important; color: #86efac !important; border-color: #166534 !important; }
+.alert-danger { background-color: #450a0a !important; color: #fca5a5 !important; border-color: #991b1b !important; }
+.alert-secondary { background-color: #1f2937 !important; color: #d1d5db !important; border-color: #374151 !important; }
+
+/* ─── 16. SEARCH BOX ─── */
+.search-box input { background-color: #111827 !important; color: #e5e7eb !important; border-color: #4b5563 !important; }
+.search-box .bi-search { color: #6b7280 !important; }
+
+/* ─── 17. AUTOCOMPLETE ─── */
+.autocomplete-results { background: #1f2937 !important; border-color: var(--primary) !important;
+                        box-shadow: 0 8px 16px rgba(0,0,0,0.35) !important; }
+.autocomplete-item { border-color: #374151 !important; color: #e5e7eb !important; }
+.autocomplete-item:hover, .autocomplete-item:active { background-color: #263040 !important; }
+.autocomplete-item .name { color: #f3f4f6 !important; }
+.autocomplete-item .details { color: #9ca3af !important; }
+
+/* ─── 18. FILTER TABS (personnes) ─── */
+.filter-tab { color: #9ca3af !important; border-color: #4b5563 !important; background: #1f2937 !important; }
+.filter-tab:hover { border-color: var(--primary) !important; color: var(--primary) !important; }
+.filter-tab.active { background-color: var(--primary) !important; color: white !important; border-color: var(--primary) !important; }
+
+/* ─── 19. CAT-BADGE ─── */
+.cat-badge {
+    filter: brightness(0.78) saturate(1.3) !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+/* ─── 20. DROPDOWN ─── */
+.dropdown-menu { background-color: #1f2937 !important; border-color: #374151 !important; }
+.dropdown-item { color: #e5e7eb !important; }
+.dropdown-item:hover, .dropdown-item:focus { background-color: #263040 !important; }
+.dropdown-divider { border-color: #374151 !important; }
+
+/* ─── 21. LIENS ─── */
+a:not(.btn):not(.nav-link):not(.navbar-brand):not(.dropdown-item):not(.list-group-item):not(.action-card) {
+    color: var(--primary);
+}
+
+/* ─── 22. BORDURES GÉNÉRALES ─── */
+.border, .border-top, .border-bottom, .border-start, .border-end { border-color: #374151 !important; }
+hr, .dropdown-divider { border-color: #374151 !important; }
+
+/* ─── 23. ACCORDIONS ─── */
+.accordion-item { background-color: #1f2937 !important; border-color: #374151 !important; }
+.accordion-button { background-color: #1f2937 !important; color: #e5e7eb !important; }
+.accordion-button:not(.collapsed) { background-color: #263040 !important; color: #f3f4f6 !important; }
+.accordion-button::after { filter: invert(1); }
+.accordion-body { background-color: #1f2937 !important; color: #e5e7eb !important; }
+
+/* ─── 24. TABS, NAV-PILLS ─── */
+.nav-tabs { border-color: #374151 !important; }
+.nav-tabs .nav-link { color: #9ca3af !important; }
+.nav-tabs .nav-link.active { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 #374151 #1f2937 !important; }
+.nav-pills .nav-link { color: #9ca3af !important; }
+.nav-pills .nav-link.active { background-color: var(--primary) !important; color: white !important; }
+
+/* ─── 25. PAGINATION ─── */
+.page-link { background-color: #1f2937 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.page-link:hover { background-color: #263040 !important; }
+.page-item.active .page-link { background-color: var(--primary) !important; border-color: var(--primary) !important; color: white !important; }
+.page-item.disabled .page-link { background-color: #111827 !important; color: #4b5563 !important; }
+
+/* ─── 26. IMPORT CSV ─── */
+.import-step-card { background-color: #1f2937 !important; }
+.gabarit-preview { background-color: #111827 !important; border-color: #374151 !important; color: #e5e7eb !important; }
+.gabarit-section { border-color: #374151 !important; }
+.gabarit-eleve { background-color: #1e3a5f !important; }
+.gabarit-enseignant { background-color: #052e16 !important; }
+.gabarit-agent { background-color: #422006 !important; }
+.gabarit-header { color: #9ca3af !important; }
+.gabarit-empty { color: #6b7280 !important; }
+.mode-option { border-color: #374151 !important; background: #1f2937 !important; color: #e5e7eb !important; }
+.mode-option:hover { border-color: var(--primary) !important; background: #263040 !important; }
+.mode-option.selected { border-color: var(--primary) !important; background: color-mix(in srgb, var(--primary) 10%, transparent) !important; }
+.drop-zone { background: #1a2233 !important; border-color: #4b5563 !important; color: #9ca3af !important; }
+.drop-zone.drag-over, .drop-zone.drop-zone-active { border-color: var(--primary) !important; background: color-mix(in srgb, var(--primary) 8%, transparent) !important; }
+
+/* ─── 27. CHART THUMBS (statistiques) ─── */
+.chart-thumb { background-color: #1f2937 !important; border-color: #374151 !important; }
+.chart-thumb:hover { box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important; }
+.zoom-hint { color: #9ca3af !important; }
+
+/* ─── 28. EMPTY STATE ─── */
+.empty-state { color: #9ca3af !important; }
+.empty-state i { color: #4b5563 !important; }
+
+/* ─── 29. TOASTS (douchette) ─── */
+.toast { background-color: #1f2937 !important; border-color: #374151 !important; color: #e5e7eb !important; }
+.toast-body { color: #e5e7eb !important; }
+
+/* ─── 30. TOOLTIPS & POPOVERS ─── */
+.tooltip-inner { background-color: #374151 !important; color: #e5e7eb !important; }
+.popover { background-color: #1f2937 !important; border-color: #374151 !important; }
+.popover-header { background-color: #263040 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+.popover-body { color: #e5e7eb !important; }
+
+/* ─── 31. BREADCRUMB ─── */
+.breadcrumb-item + .breadcrumb-item::before { color: #6b7280 !important; }
+.breadcrumb-item.active { color: #9ca3af !important; }
+
+/* ─── 32. OFFCANVAS ─── */
+.offcanvas { background-color: #1f2937 !important; color: #e5e7eb !important; }
+
+/* ─── 33. CODE / PRE ─── */
+code { color: #f472b6 !important; background-color: #263040 !important; padding: 2px 4px; border-radius: 3px; }
+pre { background-color: #111827 !important; color: #e5e7eb !important; border-color: #374151 !important; }
+
+/* ─── 34. FOOTER ─── */
+footer { color: #6b7280 !important; border-color: #374151 !important; background-color: transparent !important; }
+
+/* ─── 35. DETAIL PRÊT — signature ─── */
+img[alt="Signature"] { background: #263040 !important; border-radius: 8px; padding: 4px; }
+
+/* ─── 36. ADMIN RÉGLAGES — aperçu étiquette ─── */
+.bg-light.rounded.border { background-color: #1a2233 !important; border-color: #374151 !important; }
+
+/* ─── 37. CHAMPS PERSO — aperçu ─── */
+[style*="background: #f8f9fb"],
+[style*="background:#f8f9fb"] { background: #1a2233 !important; }
+
+/* ─── 38. GALERIE MATÉRIEL ─── */
+.galerie-item { border-color: #374151 !important; }
+
+/* ─── 39. SPINNERS ─── */
+.spinner-border { color: var(--primary) !important; }
+
+/* ─── 40. SCROLLBAR (Webkit) ─── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #111827; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5563; }

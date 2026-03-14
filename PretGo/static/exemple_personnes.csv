@@ -1,0 +1,17 @@
+nom;prenom;categorie;classe;email
+DUPONT;Marie;eleve;3A;marie.dupont@ecole.fr
+MARTIN;Lucas;eleve;4B;lucas.martin@ecole.fr
+BERNARD;Emma;eleve;3A;emma.bernard@ecole.fr
+PETIT;Thomas;eleve;5C;thomas.petit@ecole.fr
+ROBERT;Léa;eleve;6A;lea.robert@ecole.fr
+RICHARD;Hugo;eleve;4B;hugo.richard@ecole.fr
+DURAND;Camille;eleve;3B;camille.durand@ecole.fr
+LEROY;Nathan;eleve;5A;nathan.leroy@ecole.fr
+MOREAU;Chloé;eleve;6B;chloe.moreau@ecole.fr
+SIMON;Enzo;eleve;4A;enzo.simon@ecole.fr
+DUBOIS;Sophie;enseignant;;sophie.dubois@ecole.fr
+LAURENT;Philippe;enseignant;;philippe.laurent@ecole.fr
+LEFEVRE;Isabelle;enseignant;;isabelle.lefevre@ecole.fr
+GARCIA;Antonio;agent;;antonio.garcia@ecole.fr
+FOURNIER;Nathalie;agent;;nathalie.fournier@ecole.fr
+GIRARD;Marc;non_enseignant;;marc.girard@ecole.fr

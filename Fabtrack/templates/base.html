@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="fr" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FabTrack — {% block title %}Suivi Fablab{% endblock %}</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5.3 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+    <!-- FabTrack CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dark-mode.css') }}" id="darkModeCSS" disabled>
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- ===== NAVBAR ===== -->
+<nav class="navbar navbar-expand-lg navbar-dark navbar-fabtrack sticky-top">
+    <div class="container-fluid">
+        <!-- Brand -->
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+            <img src="{{ url_for('static', filename='img/Fabtrack (clair).png') }}" alt="FabTrack" height="36" id="navLogoLight">
+            <img src="{{ url_for('static', filename='img/Fabtrack (sombre).png') }}" alt="FabTrack" height="36" id="navLogoDark" style="display:none;">
+            FabTrack
+        </a>
+
+        <!-- Toggler (mobile) -->
+        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navContent">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <!-- Nav content -->
+        <div class="collapse navbar-collapse" id="navContent">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-1">
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'saisie' %}active{% endif %}" href="/">
+                        <i class="bi bi-pencil-square"></i> Saisie
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'historique' %}active{% endif %}" href="/historique">
+                        <i class="bi bi-clock-history"></i> Historique
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'statistiques' %}active{% endif %}" href="/statistiques">
+                        <i class="bi bi-bar-chart-line"></i> Statistiques
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'parametres' %}active{% endif %}" href="/parametres">
+                        <i class="bi bi-gear"></i> Paramètres
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'calculateur' %}active{% endif %}" href="/calculateur">
+                        <i class="bi bi-rulers"></i> Calculateur
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'etat_machines' %}active{% endif %}" href="/etat-machines">
+                        <i class="bi bi-activity"></i> État machines
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'export' %}active{% endif %}" href="/export">
+                        <i class="bi bi-arrow-left-right"></i> Import / Export
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'stock' %}active{% endif %}" href="/stock/">
+                        <i class="bi bi-boxes"></i> Stock
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if page == 'missions' %}active{% endif %}" href="/missions/">
+                        <i class="bi bi-kanban"></i> Missions
+                    </a>
+                </li>
+            </ul>
+
+            <!-- Right: user select + dark mode -->
+            <div class="d-flex align-items-center gap-2">
+                <select class="user-select-nav" id="currentUser" title="Utilisateur actif">
+                    <option value="">Choisir utilisateur...</option>
+                </select>
+                <button class="dark-mode-toggle" id="darkToggle" title="Mode sombre / clair" onclick="toggleDarkMode()">
+                    <i class="bi bi-moon-fill" id="darkIcon"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- ===== TOASTS ===== -->
+<div class="toast-container-ft" id="toastContainer"></div>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main class="container-fluid py-4" style="max-width:1400px;">
+    {% block content %}{% endblock %}
+</main>
+
+<!-- ===== Flask Flash Messages → Toasts ===== -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    {% for category, message in messages %}
+    showToast({{ message|tojson }}, {{ category|tojson }});
+    {% endfor %}
+});
+</script>
+{% endif %}
+{% endwith %}
+
+<!-- ===== FOOTER ===== -->
+<footer class="text-center text-muted small py-3 no-print">
+    FabTrack v2.0 — Fablab Loritz &copy; 2025-2026
+</footer>
+
+<!-- ===== BOOTSTRAP JS ===== -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- ===== GLOBAL JS ===== -->
+<script>
+// ========== Safe localStorage helper ==========
+function safeGetItem(key, fallback) {
+    try { const v = localStorage.getItem(key); return v !== null ? v : fallback; }
+    catch(e) { return fallback; }
+}
+function safeSetItem(key, value) {
+    try { localStorage.setItem(key, value); } catch(e) { /* quota exceeded or private mode */ }
+}
+
+// ========== Icon Sizes (per section) ==========
+const ICON_DEFAULTS = { materiaux: 32, machines: 32, preparateurs: 32, types_activite: 28 };
+let ICON_SIZES = JSON.parse(safeGetItem('fabtrack_icon_sizes', 'null')) || {...ICON_DEFAULTS};
+
+function setIconSize(val) {
+    // Legacy compatibility: update all sections
+    const v = parseInt(val);
+    Object.keys(ICON_SIZES).forEach(k => ICON_SIZES[k] = v);
+    saveIconSizes();
+}
+
+function setIconSizeSection(section, val) {
+    ICON_SIZES[section] = parseInt(val);
+    saveIconSizes();
+}
+
+function saveIconSizes() {
+    safeSetItem('fabtrack_icon_sizes', JSON.stringify(ICON_SIZES));
+    applyIconSizes();
+}
+
+function applyIconSizes() {
+    document.documentElement.style.setProperty('--ft-icon-size', ICON_SIZES.materiaux + 'px');
+    document.documentElement.style.setProperty('--ft-icon-size-machines', ICON_SIZES.machines + 'px');
+    document.documentElement.style.setProperty('--ft-icon-size-preparateurs', ICON_SIZES.preparateurs + 'px');
+    document.documentElement.style.setProperty('--ft-icon-size-types', (ICON_SIZES.types_activite || 28) + 'px');
+}
+
+// ========== HTML Escaping ==========
+function escHtml(s) {
+    if (!s && s !== 0) return '';
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+}
+
+// ========== Globals ==========
+let REF_DATA = null;
+let CURRENT_USER = safeGetItem('fabtrack_user', '');
+
+// ========== Load Reference Data ==========
+async function loadReferenceData() {
+    try {
+        const res = await fetch('/api/reference');
+        REF_DATA = await res.json();
+        populateUserSelect();
+        if (typeof onReferenceDataLoaded === 'function') {
+            onReferenceDataLoaded();
+        }
+    } catch (err) {
+        console.error('Erreur chargement données:', err);
+    }
+}
+
+function populateUserSelect() {
+    const sel = document.getElementById('currentUser');
+    sel.innerHTML = '<option value="">Choisir utilisateur...</option>';
+    (REF_DATA.preparateurs || []).forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.nom;
+        if (String(p.id) === CURRENT_USER) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => {
+        CURRENT_USER = sel.value;
+        safeSetItem('fabtrack_user', CURRENT_USER);
+    });
+}
+
+// ========== Toast Notifications ==========
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toastContainer');
+    const icons = {
+        success: '<i class="bi bi-check-circle-fill text-success"></i>',
+        error: '<i class="bi bi-x-circle-fill text-danger"></i>',
+        info: '<i class="bi bi-info-circle-fill text-primary"></i>'
+    };
+    const toast = document.createElement('div');
+    toast.className = `toast-ft ${type}`;
+    toast.innerHTML = `${icons[type] || icons.info} <span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%)';
+        toast.style.transition = 'all 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// ========== Confirm Dialog (Bootstrap Modal) ==========
+let _confirmCallback = null;
+
+function showConfirm(title, message, callback) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').innerHTML = message;
+    _confirmCallback = callback;
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal'));
+    modal.show();
+}
+
+function doConfirm() {
+    if (_confirmCallback) _confirmCallback();
+    const modal = bootstrap.Modal.getInstance(document.getElementById('confirmModal'));
+    if (modal) modal.hide();
+    _confirmCallback = null;
+}
+
+// ========== Dark Mode ==========
+function toggleDarkMode() {
+    const html = document.documentElement;
+    const isDark = html.getAttribute('data-bs-theme') === 'dark';
+    const newTheme = isDark ? 'light' : 'dark';
+    html.setAttribute('data-bs-theme', newTheme);
+    safeSetItem('fabtrack_theme', newTheme);
+    updateDarkModeUI(newTheme);
+}
+
+function updateDarkModeUI(theme) {
+    const icon = document.getElementById('darkIcon');
+    const cssLink = document.getElementById('darkModeCSS');
+    const logoLight = document.getElementById('navLogoLight');
+    const logoDark = document.getElementById('navLogoDark');
+
+    if (theme === 'dark') {
+        icon.className = 'bi bi-sun-fill';
+        cssLink.disabled = false;
+        if (logoLight) logoLight.style.display = 'none';
+        if (logoDark) logoDark.style.display = '';
+    } else {
+        icon.className = 'bi bi-moon-fill';
+        cssLink.disabled = true;
+        if (logoLight) logoLight.style.display = '';
+        if (logoDark) logoDark.style.display = 'none';
+    }
+}
+
+// ========== Helpers ==========
+function formatDate(d) {
+    if (!d) return '';
+    // Handle both 'YYYY-MM-DD HH:MM' and 'YYYY-MM-DDTHH:MM' formats
+    const normalized = d.replace('T', ' ');
+    const [datePart, timePart] = normalized.split(' ');
+    if (!datePart) return d;
+    const parts = datePart.split('-');
+    if (parts.length !== 3) return d;
+    const dateStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+    if (timePart) {
+        const hm = timePart.substring(0, 5); // HH:MM
+        return `${dateStr} - ${hm}`;
+    }
+    return dateStr;
+}
+
+function getBadgeHTML(typeNom, badgeClass) {
+    return `<span class="badge-type ${badgeClass || ''}">${typeNom || ''}</span>`;
+}
+
+// Récupère une image matériau si elle existe
+function getMaterialImg(matName) {
+    if (!matName) return '';
+    const nameMap = {
+        'PLA': 'pla', 'PETG': 'petg', 'ABS': 'abs', 'TPU': 'tpu',
+        'MDF': 'mdf', 'PLEXI': 'plexi', 'Plexiglas': 'plexi', 'Plexy': 'plexi',
+        'Carton': 'carton', 'Aluminium': 'alu', 'Mousse': 'mousse',
+        'Polystyrène extrudé': 'polystyrene_extrude', 'Contre-plaqué': 'contre_plaqué',
+        'Papier A0 Couleur': 'papier_a0', 'Papier A0 N&B': 'papier_a0_noir_et_blanc',
+        'Papier A1 Couleur': 'papier_a1', 'Papier A1 N&B': 'papier_a1_noir_et_blanc',
+        'Papier A2 Couleur': 'papier_a2', 'Papier A2 N&B': 'papier_a2_noir_et_blanc',
+        'Papier A3 Couleur': 'papier_a3', 'Papier A3 N&B': 'papier_a3_noir_et_blanc',
+        'Papier A4 Couleur': 'papier_a4', 'Papier A4 N&B': 'papier_a4_noir_et_blanc',
+        'Papier A5 Couleur': 'papier_a5', 'Papier A5 N&B': 'papier_a5_noir_et_blanc',
+    };
+    // Try exact match first, then partial match
+    let file = nameMap[matName];
+    if (!file) {
+        const key = Object.keys(nameMap).find(k => matName.toLowerCase().includes(k.toLowerCase()));
+        if (key) file = nameMap[key];
+    }
+    if (file) {
+        return `<img src="/static/img/${file}.png" class="material-thumb me-2" alt="${matName}" onerror="this.style.display='none'">`;
+    }
+    return '';
+}
+
+// ========== Init ==========
+document.addEventListener('DOMContentLoaded', () => {
+    // Apply saved theme
+    const savedTheme = safeGetItem('fabtrack_theme', 'light');
+    document.documentElement.setAttribute('data-bs-theme', savedTheme);
+    updateDarkModeUI(savedTheme);
+
+    // Apply saved icon sizes
+    ICON_SIZES = JSON.parse(safeGetItem('fabtrack_icon_sizes', 'null')) || {...ICON_DEFAULTS};
+    applyIconSizes();
+
+    // Load reference data
+    loadReferenceData();
+});
+</script>
+
+<!-- ===== CONFIRM MODAL (Bootstrap) ===== -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold" id="confirmTitle">Confirmer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <p id="confirmMessage" class="text-muted">Êtes-vous sûr ?</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="doConfirm()">
+                    <i class="bi bi-trash"></i> Confirmer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

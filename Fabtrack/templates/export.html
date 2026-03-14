@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+{% block title %}Import / Export{% endblock %}
+
+{% block content %}
+<!-- Page Title -->
+<div class="mb-4">
+    <h1 class="page-title"><i class="bi bi-arrow-left-right"></i> Import / Export des données</h1>
+    <p class="page-subtitle">Importez et exportez les données du Fablab dans différents formats</p>
+</div>
+
+<!-- Action Cards (like PretGo export page) -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <a href="#" class="action-card bg-saisie" onclick="exportCSV(); return false;">
+            <i class="bi bi-filetype-csv"></i>
+            <span>Export CSV complet</span>
+            <small class="mt-1 opacity-75">Toutes les consommations</small>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="#" class="action-card bg-historique" onclick="exportCSVFiltered(); return false;">
+            <i class="bi bi-funnel"></i>
+            <span>Export CSV filtré</span>
+            <small class="mt-1 opacity-75">Par période et critères</small>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="#" class="action-card bg-stats" onclick="exportStats(); return false;">
+            <i class="bi bi-file-earmark-bar-graph"></i>
+            <span>Export Statistiques</span>
+            <small class="mt-1 opacity-75">Résumé des consommations</small>
+        </a>
+    </div>
+</div>
+
+<!-- Filtered Export Section -->
+<div class="card border-0 shadow-sm mb-4" id="filteredExportCard" style="display:none;">
+    <div class="card-header d-flex justify-content-between align-items-center px-4 py-3">
+        <strong><i class="bi bi-funnel me-1"></i> Export filtré</strong>
+        <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('filteredExportCard').style.display='none'">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+    <div class="card-body px-4">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Date début</label>
+                <input type="date" id="exportDateDebut" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Date fin</label>
+                <input type="date" id="exportDateFin" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Type d'activité</label>
+                <select id="exportType" class="form-select">
+                    <option value="">Tous</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-success w-100 btn-lg" onclick="doFilteredExport()">
+                    <i class="bi bi-download"></i> Télécharger CSV
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Summary -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header px-4 py-3">
+        <strong><i class="bi bi-database me-1"></i> Résumé de la base de données</strong>
+    </div>
+    <div class="card-body px-4">
+        <div class="row g-3">
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number text-primary" id="dbTotal">—</div>
+                    <div class="stat-label">Consommations</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number text-secondary" id="dbMachines">—</div>
+                    <div class="stat-label">Machines</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number text-info" id="dbMateriaux">—</div>
+                    <div class="stat-label">Matériaux</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number text-warning" id="dbClasses">—</div>
+                    <div class="stat-label">Classes</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CSV Templates (Gabarits) -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header px-4 py-3">
+        <strong><i class="bi bi-file-earmark-arrow-down me-1"></i> Gabarits CSV (modèles d'import)</strong>
+    </div>
+    <div class="card-body px-4">
+        <p class="text-muted small mb-3">Téléchargez un gabarit CSV, remplissez-le, puis importez-le ci-dessous.</p>
+        <div class="row g-2">
+            <div class="col-6 col-md-4 col-lg-2">
+                <a href="/api/template/machines" class="btn btn-outline-secondary w-100 btn-sm">
+                    <i class="bi bi-cpu d-block mb-1 fs-5"></i> Machines
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <a href="/api/template/materiaux" class="btn btn-outline-secondary w-100 btn-sm">
+                    <i class="bi bi-box-seam d-block mb-1 fs-5"></i> Matériaux
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <a href="/api/template/classes" class="btn btn-outline-secondary w-100 btn-sm">
+                    <i class="bi bi-mortarboard d-block mb-1 fs-5"></i> Classes
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <a href="/api/template/referents" class="btn btn-outline-secondary w-100 btn-sm">
+                    <i class="bi bi-person-badge d-block mb-1 fs-5"></i> Référents
+                </a>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <a href="/api/template/preparateurs" class="btn btn-outline-secondary w-100 btn-sm">
+                    <i class="bi bi-people d-block mb-1 fs-5"></i> Préparateurs
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CSV Import -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header px-4 py-3">
+        <strong><i class="bi bi-upload me-1"></i> Importer un fichier CSV</strong>
+    </div>
+    <div class="card-body px-4">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold">Type de données</label>
+                <select id="importEntity" class="form-select">
+                    <option value="machines">Machines</option>
+                    <option value="materiaux">Matériaux</option>
+                    <option value="classes">Classes</option>
+                    <option value="referents">Référents</option>
+                    <option value="preparateurs">Préparateurs</option>
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small fw-bold">Fichier CSV</label>
+                <input type="file" id="importFile" class="form-control" accept=".csv,.txt">
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100" onclick="doImport()">
+                    <i class="bi bi-upload"></i> Importer
+                </button>
+            </div>
+        </div>
+        <div id="importResult" class="mt-3" style="display:none;"></div>
+    </div>
+</div>
+
+<!-- Demo & Reset -->
+<div class="row g-4 mt-2">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-info">
+            <div class="card-body px-4">
+                <h5 class="fw-bold"><i class="bi bi-database-add me-1 text-info"></i> Données de démonstration</h5>
+                <p class="text-muted small mb-3">La génération de données de test est désormais centralisée dans Paramètres.</p>
+                <a class="btn btn-info text-white" href="/parametres#donnees_test">
+                    <i class="bi bi-arrow-right-circle"></i> Ouvrir Paramètres → Données de test
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm border-start border-4 border-danger">
+            <div class="card-body px-4">
+                <h5 class="fw-bold"><i class="bi bi-exclamation-triangle me-1 text-danger"></i> Réinitialisation</h5>
+                <p class="text-muted small">Supprime <strong>toutes</strong> les données et recrée les tables vierges. Action irréversible.</p>
+                <div class="input-group" style="max-width:600px;">
+                    <input type="text" id="resetConfirmInput" class="form-control" placeholder='Tapez "REINITIALISER" pour confirmer' style="min-width:350px;">
+                    <button class="btn btn-danger" onclick="doReset()" id="resetBtn">
+                        <i class="bi bi-trash"></i> Réinitialiser
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SAUVEGARDE & RESTAURATION                                     -->
+<!-- ============================================================ -->
+<div class="card border-0 shadow-sm mt-4 border-top border-4 border-warning">
+    <div class="card-header px-4 py-3 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-shield-check me-1 text-warning"></i> Sauvegarde & Restauration</strong>
+        <span class="badge bg-warning text-dark" id="backupFreqBadge">—</span>
+    </div>
+    <div class="card-body px-4">
+
+        <!-- Emplacement de sauvegarde -->
+        <div class="mb-4 p-3 border rounded bg-light">
+            <label class="form-label small fw-bold"><i class="bi bi-folder2-open me-1"></i> Emplacement de sauvegarde</label>
+            <div class="row g-2 align-items-start">
+                <div class="col">
+                    <input type="text" id="backupPath" class="form-control" placeholder="Par défaut : dossier local ./backups/">
+                    <div class="form-text" id="backupPathInfo">
+                        <i class="bi bi-info-circle me-1"></i> Laissez vide pour utiliser le dossier par défaut. Saisissez un chemin réseau (ex : <code>\\\\serveur\partage\sauvegardes</code>) ou local (ex : <code>D:\sauvegardes</code>) pour stocker les fichiers ailleurs.
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-outline-secondary" onclick="testBackupPath()" title="Tester le chemin">
+                        <i class="bi bi-check2-circle"></i> Tester
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary" onclick="saveBackupPath()" title="Enregistrer le chemin">
+                        <i class="bi bi-save2"></i> Enregistrer
+                    </button>
+                </div>
+            </div>
+            <div id="backupPathResult" class="mt-2" style="display:none;"></div>
+        </div>
+
+        <!-- Fréquence + actions rapides -->
+        <div class="row g-3 align-items-end mb-4">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold"><i class="bi bi-clock-history me-1"></i> Fréquence de sauvegarde automatique</label>
+                <select id="backupFrequency" class="form-select" onchange="updateBackupFrequency()">
+                    <option value="off">Désactivée</option>
+                    <option value="daily">Journalière</option>
+                    <option value="weekly">Hebdomadaire</option>
+                </select>
+                <div class="form-text" id="backupLastInfo">—</div>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-warning w-100" onclick="createManualBackup()">
+                    <i class="bi bi-save"></i> Sauvegarder maintenant
+                </button>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-outline-success w-100" onclick="exportCurrentDB()">
+                    <i class="bi bi-box-arrow-up-right"></i> Exporter la base (.fabtrack)
+                </button>
+            </div>
+        </div>
+
+        <!-- Import .fabtrack -->
+        <div class="row g-3 align-items-end mb-4">
+            <div class="col-md-8">
+                <label class="form-label small fw-bold"><i class="bi bi-box-arrow-in-down me-1"></i> Importer une base de données (.fabtrack)</label>
+                <input type="file" id="backupImportFile" class="form-control" accept=".fabtrack">
+                <div class="form-text">Remplace la base actuelle par le fichier importé. Une sauvegarde de sécurité sera créée avant le remplacement.</div>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-success w-100" onclick="importBackup()">
+                    <i class="bi bi-upload"></i> Importer et restaurer
+                </button>
+            </div>
+        </div>
+
+        <!-- Liste des sauvegardes existantes -->
+        <div class="border rounded p-3 bg-light">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong class="small"><i class="bi bi-archive me-1"></i> Sauvegardes disponibles</strong>
+                <button class="btn btn-sm btn-outline-secondary" onclick="loadBackupList()">
+                    <i class="bi bi-arrow-clockwise"></i> Rafraîchir
+                </button>
+            </div>
+            <div id="backupListContainer">
+                <div class="text-muted small text-center py-3">Chargement…</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const FREQ_LABELS = { off: 'Désactivée', daily: 'Journalière', weekly: 'Hebdomadaire' };
+
+function onReferenceDataLoaded() {
+    // Populate type filter
+    const sel = document.getElementById('exportType');
+    REF_DATA.types_activite.forEach(t => {
+        sel.innerHTML += `<option value="${t.id}">${escHtml(t.icone)} ${escHtml(t.nom)}</option>`;
+    });
+
+    // DB stats
+    document.getElementById('dbMachines').textContent = REF_DATA.machines.length;
+    document.getElementById('dbMateriaux').textContent = REF_DATA.materiaux.length;
+    document.getElementById('dbClasses').textContent = REF_DATA.classes.length;
+
+    // Get total consommations count
+    fetch('/api/consommations?per_page=1&page=1')
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('dbTotal').textContent = d.total || 0;
+        });
+
+    // Load backup settings & list
+    loadBackupSettings();
+    loadBackupList();
+}
+
+function exportCSV() {
+    window.location.href = '/api/export/csv';
+    showToast('Téléchargement lancé', 'info');
+}
+
+function exportCSVFiltered() {
+    document.getElementById('filteredExportCard').style.display = '';
+    document.getElementById('filteredExportCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+function doFilteredExport() {
+    const params = new URLSearchParams({
+        date_debut: document.getElementById('exportDateDebut').value,
+        date_fin: document.getElementById('exportDateFin').value,
+        type_activite_id: document.getElementById('exportType').value,
+    });
+    window.location.href = `/api/export/csv?${params}`;
+    showToast('Export filtré téléchargé', 'info');
+}
+
+function exportStats() {
+    // Generate a simple stats export
+    fetch('/api/stats/summary')
+        .then(r => r.json())
+        .then(data => {
+            let csv = 'Statistique;Valeur\n';
+            csv += `Total interventions;${data.total_interventions}\n`;
+            csv += `Filament 3D (g);${data.total_3d_grammes}\n`;
+            csv += `Surface découpe (m²);${data.total_decoupe_m2}\n`;
+            csv += `Feuilles papier;${data.total_papier_feuilles}\n\n`;
+            csv += 'Type activité;Nombre\n';
+            data.by_type.forEach(t => {
+                csv += `${t.nom};${t.count}\n`;
+            });
+            csv += '\nPréparateur;Nombre\n';
+            data.by_preparateur.forEach(p => {
+                csv += `${p.nom};${p.count}\n`;
+            });
+
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fabtrack_stats_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Statistiques exportées', 'info');
+        });
+}
+
+// ========== IMPORT CSV ==========
+async function doImport() {
+    const entity = document.getElementById('importEntity').value;
+    const fileInput = document.getElementById('importFile');
+    const resultDiv = document.getElementById('importResult');
+    if (!fileInput.files.length) {
+        showToast('Veuillez sélectionner un fichier CSV', 'error');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    try {
+        const res = await fetch(`/api/import/${entity}`, { method:'POST', body:formData });
+        const data = await res.json();
+        resultDiv.style.display = '';
+        if (data.success) {
+            resultDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle me-1"></i> ${data.imported} élément(s) importé(s) avec succès !</div>`;
+            showToast(`${data.imported} élément(s) importé(s)`, 'success');
+            fileInput.value = '';
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-x-circle me-1"></i> Erreur: ${data.error || 'Inconnu'}</div>`;
+            showToast('Erreur lors de l\'import', 'error');
+        }
+    } catch (err) {
+        resultDiv.style.display = '';
+        resultDiv.innerHTML = `<div class="alert alert-danger">Erreur réseau: ${err.message}</div>`;
+    }
+}
+
+// ========== DEMO ==========
+async function generateDemo() {
+    showConfirm('Générer démo', 'Cela va ajouter ~150 consommations fictives. Continuer ?', async () => {
+        try {
+            const res = await fetch('/api/demo/generate', { method:'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast(`${data.count} entrées de démonstration créées !`, 'success');
+                onReferenceDataLoaded(); // refresh stats
+            } else {
+                showToast('Erreur: ' + (data.error||''), 'error');
+            }
+        } catch (err) {
+            showToast('Erreur réseau', 'error');
+        }
+    });
+}
+
+// ========== RESET ==========
+async function doReset() {
+    const input = document.getElementById('resetConfirmInput');
+    if (input.value !== 'REINITIALISER') {
+        showToast('Tapez exactement "REINITIALISER" en majuscules pour confirmer', 'error');
+        input.classList.add('is-invalid');
+        setTimeout(() => input.classList.remove('is-invalid'), 2000);
+        return;
+    }
+    // Double confirmation via modal
+    showConfirm(
+        '⚠️ Confirmation finale',
+        '<strong class="text-danger">Attention :</strong> Toutes les données seront supprimées de façon irréversible (consommations, machines, matériaux, classes, référents, préparateurs…).<br><br>Êtes-vous absolument sûr de vouloir réinitialiser la base de données ?',
+        async () => {
+            try {
+                const res = await fetch('/api/reset', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ confirmation: 'REINITIALISER' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('Base de données réinitialisée avec succès', 'success');
+                    input.value = '';
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    showToast('Erreur: ' + (data.error||''), 'error');
+                }
+            } catch (err) {
+                showToast('Erreur réseau', 'error');
+            }
+        }
+    );
+}
+
+// ========== SAUVEGARDE (.fabtrack) ==========
+
+async function loadBackupSettings() {
+    try {
+        const res = await fetch('/api/backup/settings');
+        const cfg = await res.json();
+        document.getElementById('backupFrequency').value = cfg.frequency || 'off';
+        document.getElementById('backupFreqBadge').textContent = FREQ_LABELS[cfg.frequency] || 'Désactivée';
+        const badge = document.getElementById('backupFreqBadge');
+        badge.className = cfg.frequency === 'off'
+            ? 'badge bg-secondary' : 'badge bg-success';
+        if (cfg.last_backup) {
+            document.getElementById('backupLastInfo').innerHTML =
+                `<i class="bi bi-check-circle text-success me-1"></i> Dernière sauvegarde : <strong>${escHtml(cfg.last_backup)}</strong>`;
+        } else {
+            document.getElementById('backupLastInfo').textContent = 'Aucune sauvegarde effectuée';
+        }
+        // Chemin de sauvegarde
+        const pathInput = document.getElementById('backupPath');
+        pathInput.value = cfg.backup_path || '';
+        if (cfg.backup_path) {
+            pathInput.classList.add('border-success');
+            document.getElementById('backupPathInfo').innerHTML =
+                `<i class="bi bi-check-circle text-success me-1"></i> Chemin actif : <strong>${escHtml(cfg.backup_path)}</strong>`;
+        } else {
+            pathInput.classList.remove('border-success');
+            document.getElementById('backupPathInfo').innerHTML =
+                `<i class="bi bi-info-circle me-1"></i> Laissez vide pour utiliser le dossier par défaut. Saisissez un chemin réseau (ex : <code>\\\\serveur\\partage\\sauvegardes</code>) ou local (ex : <code>D:\\sauvegardes</code>) pour stocker les fichiers ailleurs.`;
+        }
+    } catch (err) {
+        console.error('Erreur chargement config backup:', err);
+    }
+}
+
+async function testBackupPath() {
+    const path = document.getElementById('backupPath').value.trim();
+    const resultDiv = document.getElementById('backupPathResult');
+    if (!path) {
+        resultDiv.style.display = '';
+        resultDiv.innerHTML = '<div class="alert alert-info alert-sm py-2 small mb-0"><i class="bi bi-info-circle me-1"></i> Chemin vide = dossier par défaut (<code>./backups/</code>)</div>';
+        return;
+    }
+    resultDiv.style.display = '';
+    resultDiv.innerHTML = '<div class="text-muted small"><i class="bi bi-hourglass-split me-1"></i> Vérification en cours…</div>';
+    try {
+        const res = await fetch('/api/backup/validate-path', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+        const data = await res.json();
+        if (data.valid) {
+            resultDiv.innerHTML = `<div class="alert alert-success alert-sm py-2 small mb-0"><i class="bi bi-check-circle me-1"></i> ${escHtml(data.message)}<br><span class="text-muted">Chemin absolu : <code>${escHtml(data.path)}</code></span></div>`;
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger alert-sm py-2 small mb-0"><i class="bi bi-x-circle me-1"></i> ${escHtml(data.error)}</div>`;
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="alert alert-danger alert-sm py-2 small mb-0">Erreur réseau : ${escHtml(err.message)}</div>`;
+    }
+}
+
+async function saveBackupPath() {
+    const path = document.getElementById('backupPath').value.trim();
+    const resultDiv = document.getElementById('backupPathResult');
+    // Si vide, on remet au défaut
+    try {
+        const res = await fetch('/api/backup/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backup_path: path })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(path ? `Chemin de sauvegarde enregistré : ${path}` : 'Chemin de sauvegarde remis par défaut', 'success');
+            loadBackupSettings();
+            loadBackupList();
+            resultDiv.style.display = 'none';
+        } else {
+            resultDiv.style.display = '';
+            resultDiv.innerHTML = `<div class="alert alert-danger alert-sm py-2 small mb-0"><i class="bi bi-x-circle me-1"></i> ${escHtml(data.error)}</div>`;
+        }
+    } catch (err) {
+        showToast('Erreur réseau', 'error');
+    }
+}
+
+async function updateBackupFrequency() {
+    const freq = document.getElementById('backupFrequency').value;
+    try {
+        const res = await fetch('/api/backup/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frequency: freq })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`Fréquence de sauvegarde : ${FREQ_LABELS[freq]}`, 'success');
+            loadBackupSettings();
+        } else {
+            showToast('Erreur : ' + (data.error || ''), 'error');
+        }
+    } catch (err) {
+        showToast('Erreur réseau', 'error');
+    }
+}
+
+async function createManualBackup() {
+    try {
+        const res = await fetch('/api/backup/create', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showToast(data.message, 'success');
+            loadBackupList();
+            loadBackupSettings();
+        } else {
+            showToast('Erreur : ' + (data.error || ''), 'error');
+        }
+    } catch (err) {
+        showToast('Erreur réseau', 'error');
+    }
+}
+
+function exportCurrentDB() {
+    window.location.href = '/api/backup/export-current';
+    showToast('Téléchargement de la base en cours…', 'info');
+}
+
+async function importBackup() {
+    const fileInput = document.getElementById('backupImportFile');
+    if (!fileInput.files.length) {
+        showToast('Veuillez sélectionner un fichier .fabtrack', 'error');
+        return;
+    }
+    const file = fileInput.files[0];
+    if (!file.name.endsWith('.fabtrack')) {
+        showToast('Le fichier doit avoir l\'extension .fabtrack', 'error');
+        return;
+    }
+    showConfirm(
+        '⚠️ Import de base de données',
+        `<strong>Attention :</strong> La base actuelle sera <strong class="text-danger">remplacée</strong> par le fichier <code>${escHtml(file.name)}</code>.<br><br>Une sauvegarde de sécurité sera créée automatiquement avant le remplacement.<br><br>Voulez-vous continuer ?`,
+        async () => {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await fetch('/api/backup/import', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('Base de données importée avec succès ! Rechargement…', 'success');
+                    fileInput.value = '';
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    showToast('Erreur : ' + (data.error || ''), 'error');
+                }
+            } catch (err) {
+                showToast('Erreur réseau : ' + err.message, 'error');
+            }
+        }
+    );
+}
+
+async function loadBackupList() {
+    const container = document.getElementById('backupListContainer');
+    try {
+        const res = await fetch('/api/backup/list');
+        const backups = await res.json();
+        if (!backups.length) {
+            container.innerHTML = '<div class="text-muted small text-center py-3"><i class="bi bi-inbox me-1"></i> Aucune sauvegarde disponible</div>';
+            return;
+        }
+        let html = '<div class="table-responsive"><table class="table table-sm table-hover mb-0 align-middle">';
+        html += '<thead><tr><th>Fichier</th><th>Date</th><th>Taille</th><th class="text-end">Actions</th></tr></thead><tbody>';
+        backups.forEach(b => {
+            const isAuto = b.filename.includes('auto_');
+            const isBeforeImport = b.filename.includes('avant_import');
+            let badge = '';
+            if (isAuto) badge = '<span class="badge bg-info ms-1">auto</span>';
+            else if (isBeforeImport) badge = '<span class="badge bg-secondary ms-1">pré-import</span>';
+            else badge = '<span class="badge bg-warning text-dark ms-1">manuel</span>';
+
+            html += `<tr>
+                <td class="small"><i class="bi bi-file-earmark-lock2 me-1 text-warning"></i>${escHtml(b.filename)}${badge}</td>
+                <td class="small text-muted">${escHtml(b.created)}</td>
+                <td class="small text-muted">${escHtml(b.size_human)}</td>
+                <td class="text-end">
+                    <a href="/api/backup/export/${encodeURIComponent(b.filename)}" class="btn btn-sm btn-outline-primary" title="Télécharger">
+                        <i class="bi bi-download"></i>
+                    </a>
+                    <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteBackup('${escHtml(b.filename)}')" title="Supprimer">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = '<div class="text-danger small text-center py-3">Erreur de chargement</div>';
+    }
+}
+
+async function deleteBackup(filename) {
+    showConfirm('Supprimer la sauvegarde', `Supprimer <strong>${escHtml(filename)}</strong> ?`, async () => {
+        try {
+            const res = await fetch(`/api/backup/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Sauvegarde supprimée', 'success');
+                loadBackupList();
+            } else {
+                showToast('Erreur : ' + (data.error || ''), 'error');
+            }
+        } catch (err) {
+            showToast('Erreur réseau', 'error');
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}Ajouter un matériel - Inventaire{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-plus-circle-fill text-primary"></i> Ajouter un matériel
+    </h1>
+    <a href="{{ url_for('inventaire.inventaire') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Retour à l'inventaire
+    </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('inventaire.ajouter_materiel') }}">
+            <div class="row g-3">
+                <!-- Type de matériel -->
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold">Type de matériel <span class="text-danger">*</span></label>
+                    <select name="type_materiel" id="type_materiel" class="form-select form-select-lg"
+                            required onchange="toggleTypeFields()">
+                        <option value="">— Choisir un type —</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.nom }}" {{ 'selected' if form.get('type_materiel') == cat.nom }}>{{ cat.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Numéro d'inventaire -->
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold">Numéro d'inventaire</label>
+                    <input type="text" name="numero_inventaire" class="form-control form-control-lg"
+                           placeholder="ex: 24007 (laisser vide pour générer automatiquement)"
+                           value="{{ form.get('numero_inventaire', '') }}">
+                    <small class="text-muted">Facultatif — un identifiant automatique sera généré si non renseigné</small>
+                </div>
+
+                <!-- Marque -->
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold">Marque</label>
+                    <input type="text" name="marque" class="form-control"
+                           placeholder="ex: HP, Dell, Epson, Logitech..."
+                           value="{{ form.get('marque', '') }}">
+                </div>
+
+                <!-- Modèle -->
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold">Modèle</label>
+                    <input type="text" name="modele" class="form-control"
+                           placeholder="ex: EliteBook 840, EB-W52..."
+                           value="{{ form.get('modele', '') }}">
+                </div>
+
+                <!-- Numéro de série (ordinateurs surtout) -->
+                <div class="col-12 col-md-6 zone-type-detail" id="zone_numero_serie">
+                    <label class="form-label fw-bold">Numéro de série</label>
+                    <input type="text" name="numero_serie" class="form-control font-monospace"
+                           placeholder="ex: SN-HP-001"
+                           value="{{ form.get('numero_serie', '') }}">
+                </div>
+
+                <!-- Notes -->
+                <div class="col-12">
+                    <label class="form-label fw-bold">Notes</label>
+                    <textarea name="notes" class="form-control" rows="2"
+                              placeholder="Informations complémentaires...">{{ form.get('notes', '') }}</textarea>
+                </div>
+
+                <!-- Image du matériel -->
+                <div class="col-12">
+                    <label class="form-label fw-bold">Image du matériel</label>
+                    <input type="hidden" name="image" id="image_selectionnee" value="">
+                    <div class="d-flex align-items-start gap-3">
+                        <!-- Aperçu de l'image sélectionnée -->
+                        <div id="apercu_image" class="border rounded d-flex align-items-center justify-content-center bg-light"
+                             style="width:120px; height:120px; min-width:120px; overflow:hidden;">
+                            <i class="bi bi-image text-muted" style="font-size:2.5rem" id="apercu_placeholder"></i>
+                            <img id="apercu_img" src="" alt="" class="d-none" style="width:100%; height:100%; object-fit:cover;">
+                        </div>
+                        <div class="flex-grow-1">
+                            <button type="button" class="btn btn-outline-primary btn-sm mb-2" onclick="ouvrirGalerie()">
+                                <i class="bi bi-images"></i> Choisir dans la bibliothèque
+                            </button>
+                            <div class="d-flex gap-2 align-items-center">
+                                <span class="text-muted small">ou</span>
+                                <label class="btn btn-outline-secondary btn-sm mb-0">
+                                    <i class="bi bi-upload"></i> Uploader une nouvelle image
+                                    <input type="file" accept="image/*" class="d-none" id="upload_nouvelle_image" onchange="uploadImage(this)">
+                                </label>
+                            </div>
+                            <div id="upload_status" class="small mt-1"></div>
+                            <button type="button" class="btn btn-outline-danger btn-sm mt-1 d-none" id="btn_retirer_image" onclick="retirerImage()">
+                                <i class="bi bi-x-lg"></i> Retirer l'image
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Champs personnalisés -->
+            {% if champs_custom %}
+            <hr>
+            <h5 class="mb-3"><i class="bi bi-input-cursor-text text-primary"></i> Champs supplémentaires</h5>
+            <div class="row g-3">
+                {% for champ in champs_custom %}
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold">{{ champ.label }}{% if champ.obligatoire %} <span class="text-danger">*</span>{% endif %}</label>
+                    {% if champ.type_champ == 'texte' %}
+                    <input type="text" name="custom_{{ champ.nom_champ }}" class="form-control" {{ 'required' if champ.obligatoire }}>
+                    {% elif champ.type_champ == 'texte_long' %}
+                    <textarea name="custom_{{ champ.nom_champ }}" class="form-control" rows="2" {{ 'required' if champ.obligatoire }}></textarea>
+                    {% elif champ.type_champ == 'nombre' %}
+                    <input type="number" name="custom_{{ champ.nom_champ }}" class="form-control" step="any" {{ 'required' if champ.obligatoire }}>
+                    {% elif champ.type_champ == 'date' %}
+                    <input type="date" name="custom_{{ champ.nom_champ }}" class="form-control" {{ 'required' if champ.obligatoire }}>
+                    {% elif champ.type_champ == 'choix' %}
+                    <select name="custom_{{ champ.nom_champ }}" class="form-select" {{ 'required' if champ.obligatoire }}>
+                        <option value="">— Choisir —</option>
+                        {% for opt in champ.options.split(',') %}
+                        <option value="{{ opt.strip() }}">{{ opt.strip() }}</option>
+                        {% endfor %}
+                    </select>
+                    {% elif champ.type_champ == 'case_a_cocher' %}
+                    <div class="form-check mt-1">
+                        <input type="checkbox" name="custom_{{ champ.nom_champ }}" class="form-check-input" value="oui">
+                        <label class="form-check-label">{{ champ.label }}</label>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <hr>
+
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn btn-primary btn-lg flex-grow-1">
+                    <i class="bi bi-check-lg"></i> Ajouter le matériel
+                </button>
+                <a href="{{ url_for('inventaire.inventaire') }}" class="btn btn-outline-secondary btn-lg">
+                    <i class="bi bi-x-lg"></i> Annuler
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Modal Galerie d'images -->
+<div class="modal fade" id="modalGalerie" tabindex="-1" aria-labelledby="modalGalerieLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalGalerieLabel"><i class="bi bi-images"></i> Bibliothèque d'images</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="galerie_images" class="d-flex flex-wrap gap-2 justify-content-center"></div>
+                <div id="galerie_vide" class="text-center text-muted py-4 d-none">
+                    <i class="bi bi-image" style="font-size:3rem"></i>
+                    <p class="mt-2">Aucune image dans la bibliothèque.<br>Uploadez-en une avec le bouton ci-dessus.</p>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <label class="btn btn-outline-secondary btn-sm mb-0">
+                    <i class="bi bi-upload"></i> Uploader une image
+                    <input type="file" accept="image/*" class="d-none" onchange="uploadImageGalerie(this)">
+                </label>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const UPLOAD_URL = '{{ url_for("api.api_upload_image") }}';
+const LIST_URL = '{{ url_for("api.api_liste_images") }}';
+const BASE_IMG_URL = '{{ url_for("static", filename="uploads/materiel/") }}';
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+function selectionnerImage(filename) {
+    document.getElementById('image_selectionnee').value = filename;
+    const img = document.getElementById('apercu_img');
+    const placeholder = document.getElementById('apercu_placeholder');
+    img.src = BASE_IMG_URL + filename;
+    img.classList.remove('d-none');
+    placeholder.classList.add('d-none');
+    document.getElementById('btn_retirer_image').classList.remove('d-none');
+    // Fermer la modal si ouverte
+    const modal = bootstrap.Modal.getInstance(document.getElementById('modalGalerie'));
+    if (modal) modal.hide();
+}
+
+function retirerImage() {
+    document.getElementById('image_selectionnee').value = '';
+    document.getElementById('apercu_img').classList.add('d-none');
+    document.getElementById('apercu_placeholder').classList.remove('d-none');
+    document.getElementById('btn_retirer_image').classList.add('d-none');
+}
+
+function ouvrirGalerie() {
+    const galerie = document.getElementById('galerie_images');
+    const vide = document.getElementById('galerie_vide');
+    galerie.innerHTML = '<div class="text-center w-100 py-3"><div class="spinner-border text-primary"></div></div>';
+    vide.classList.add('d-none');
+
+    const modal = new bootstrap.Modal(document.getElementById('modalGalerie'));
+    modal.show();
+
+    fetch(LIST_URL)
+        .then(r => r.json())
+        .then(images => {
+            galerie.innerHTML = '';
+            if (images.length === 0) {
+                vide.classList.remove('d-none');
+                return;
+            }
+            const current = document.getElementById('image_selectionnee').value;
+            images.forEach(f => {
+                const div = document.createElement('div');
+                div.className = 'galerie-item position-relative';
+                div.style.cssText = 'width:130px; height:130px; cursor:pointer; border:3px solid transparent; border-radius:8px; overflow:hidden; transition: border-color 0.2s;';
+                if (f === current) div.style.borderColor = '#0d6efd';
+                div.innerHTML = `<img src="${BASE_IMG_URL}${encodeURIComponent(f)}" style="width:100%; height:100%; object-fit:cover;">
+                    <div class="position-absolute bottom-0 start-0 end-0 bg-dark bg-opacity-75 text-white text-center small py-1 text-truncate px-1"></div>`;
+                div.querySelector('.text-truncate').textContent = f;
+                div.onclick = () => selectionnerImage(f);
+                div.onmouseenter = () => div.style.borderColor = '#0d6efd';
+                div.onmouseleave = () => { if (f !== document.getElementById('image_selectionnee').value) div.style.borderColor = 'transparent'; };
+                galerie.appendChild(div);
+            });
+        });
+}
+
+function uploadImage(input) {
+    if (!input.files[0]) return;
+    const status = document.getElementById('upload_status');
+    status.innerHTML = '<span class="text-primary"><i class="bi bi-hourglass-split"></i> Upload en cours...</span>';
+    const fd = new FormData();
+    fd.append('image', input.files[0]);
+    fetch(UPLOAD_URL, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': CSRF_TOKEN },
+        body: fd
+    })
+        .then(async (r) => {
+            const contentType = r.headers.get('content-type') || '';
+            const data = contentType.includes('application/json') ? await r.json() : { error: 'Réponse serveur invalide.' };
+            if (!r.ok || data.error) {
+                throw new Error(data.error || ('Erreur HTTP ' + r.status));
+            }
+            return data;
+        })
+        .then(data => {
+            status.innerHTML = '<span class="text-success"><i class="bi bi-check-lg"></i> Image uploadée !</span>';
+            selectionnerImage(data.filename);
+            setTimeout(() => status.innerHTML = '', 3000);
+        })
+        .catch((e) => { status.innerHTML = `<span class="text-danger">${e.message}</span>`; });
+    input.value = '';
+}
+
+function uploadImageGalerie(input) {
+    if (!input.files[0]) return;
+    const fd = new FormData();
+    fd.append('image', input.files[0]);
+    fetch(UPLOAD_URL, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': CSRF_TOKEN },
+        body: fd
+    })
+        .then(async (r) => {
+            const contentType = r.headers.get('content-type') || '';
+            const data = contentType.includes('application/json') ? await r.json() : { error: 'Réponse serveur invalide.' };
+            if (!r.ok || data.error) {
+                throw new Error(data.error || ('Erreur HTTP ' + r.status));
+            }
+            return data;
+        })
+        .then(data => {
+            if (!data.error) ouvrirGalerie();
+        });
+    input.value = '';
+}
+
+function toggleTypeFields() {
+    return;
+}
+
+document.addEventListener('DOMContentLoaded', toggleTypeFields);
+</script>
+{% endblock %}

@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Importer un CSV - Gestion de Prêts{% endblock %}
+
+{% block content %}
+<h1 class="page-title">
+    <i class="bi bi-file-earmark-arrow-up-fill text-primary"></i> Importer des personnes
+</h1>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  ÉTAPES VISUELLES                                     -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="row g-4 mb-4">
+
+    <!-- ÉTAPE 1 : Télécharger le gabarit -->
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100 import-step-card">
+            <div class="card-body text-center p-4">
+                <div class="step-number">1</div>
+                <div class="step-icon text-success mb-2">
+                    <i class="bi bi-download fs-1"></i>
+                </div>
+                <h5 class="fw-bold">Télécharger le gabarit</h5>
+                <p class="text-muted small mb-3">
+                    Un fichier CSV pré-organisé par catégorie (élèves, enseignants, agents…).
+                    Ouvrez-le avec <strong>Excel</strong> ou <strong>LibreOffice</strong>.
+                </p>
+                <a href="{{ url_for('personnes.telecharger_gabarit') }}"
+                   class="btn btn-success btn-lg w-100"
+                   download>
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Télécharger le gabarit
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ÉTAPE 2 : Remplir le fichier -->
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100 import-step-card">
+            <div class="card-body text-center p-4">
+                <div class="step-number">2</div>
+                <div class="step-icon text-primary mb-2">
+                    <i class="bi bi-pencil-square fs-1"></i>
+                </div>
+                <h5 class="fw-bold">Remplir le fichier</h5>
+                <p class="text-muted small mb-3">
+                    Chaque catégorie a sa section séparée.
+                    Remplissez seulement les colonnes <strong>nom</strong>,
+                    <strong>prénom</strong>, <strong>classe</strong> et <strong>email</strong> (optionnel).
+                </p>
+                <div class="gabarit-preview">
+                    {% for cle, cat in cats_personnes.items() %}
+                    <div class="gabarit-section">
+                        <div class="gabarit-header">═══ {{ cat.libelle|upper }} ═══</div>
+                        {% if loop.first %}
+                        <div class="gabarit-row">DUPONT ; Marie ; {{ cle }} ; <em>3A</em> ; <em>marie.dupont@ecole.fr</em></div>
+                        {% endif %}
+                        <div class="gabarit-row gabarit-empty">… ; … ; {{ cle }} ; … ; …</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ÉTAPE 3 : Importer -->
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100 import-step-card">
+            <div class="card-body text-center p-4">
+                <div class="step-number">3</div>
+                <div class="step-icon text-warning mb-2">
+                    <i class="bi bi-cloud-upload fs-1"></i>
+                </div>
+                <h5 class="fw-bold">Importer le fichier</h5>
+                <p class="text-muted small mb-3">
+                    Choisissez le mode d'import puis envoyez votre fichier.
+                    Un résumé détaillé s'affichera.
+                </p>
+                <div class="text-start small">
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                        Les doublons sont détectés
+                    </div>
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                        Les lignes vides sont ignorées
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-shield-fill-check text-primary me-2"></i>
+                        Les prêts en cours sont protégés
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  FORMULAIRE D'IMPORT                                  -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="row g-4">
+    <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-upload text-primary"></i> Envoyer votre fichier</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('personnes.importer_personnes') }}" enctype="multipart/form-data">
+
+                    <!-- Choix du mode -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Mode d'import</label>
+
+                        <div class="mode-option mode-ajouter selected" onclick="selectMode(this, 'ajouter')">
+                            <div class="d-flex align-items-start">
+                                <input type="radio" name="mode" value="ajouter" id="mode_ajouter"
+                                       class="form-check-input mt-1 me-3" checked>
+                                <div>
+                                    <label for="mode_ajouter" class="fw-bold mb-1 d-block" style="cursor:pointer">
+                                        <i class="bi bi-plus-circle text-success"></i> Ajouter uniquement
+                                    </label>
+                                    <small class="text-muted">
+                                        Ajoute les nouvelles personnes. Les personnes déjà existantes
+                                        sont ignorées (aucune modification, aucune suppression).
+                                        <strong>Idéal pour ajouter quelques personnes.</strong>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mode-option mode-sync mt-2" onclick="selectMode(this, 'synchroniser')">
+                            <div class="d-flex align-items-start">
+                                <input type="radio" name="mode" value="synchroniser" id="mode_sync"
+                                       class="form-check-input mt-1 me-3">
+                                <div>
+                                    <label for="mode_sync" class="fw-bold mb-1 d-block" style="cursor:pointer">
+                                        <i class="bi bi-arrow-repeat text-primary"></i> Synchroniser la base
+                                    </label>
+                                    <small class="text-muted">
+                                        Ajoute les nouvelles personnes, met à jour les existantes
+                                        (classe, catégorie), et <strong>désactive automatiquement</strong>
+                                        celles qui ne sont plus dans le fichier.
+                                    </small>
+                                    <div class="alert alert-warning small mt-2 mb-0 py-2 px-3">
+                                        <i class="bi bi-shield-exclamation"></i>
+                                        <strong>Protection :</strong> les personnes ayant un prêt en cours
+                                        ne seront <em>jamais</em> désactivées, même si elles sont absentes du fichier.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zone de fichier -->
+                    <div class="mb-4">
+                        <label for="fichier_csv" class="form-label fw-bold">Fichier CSV</label>
+                        <div class="drop-zone" id="dropZone">
+                            <input type="file"
+                                   id="fichier_csv"
+                                   name="fichier_csv"
+                                   class="form-control d-none"
+                                   accept=".csv"
+                                   required
+                                   onchange="showFileName(this)">
+                            <div class="drop-zone-content text-center" id="dropContent">
+                                <i class="bi bi-file-earmark-arrow-up fs-1 text-muted"></i>
+                                <p class="mb-1">Glissez votre fichier CSV ici</p>
+                                <p class="text-muted small mb-2">ou</p>
+                                <label for="fichier_csv" class="btn btn-outline-primary" style="cursor:pointer">
+                                    <i class="bi bi-folder2-open"></i> Parcourir…
+                                </label>
+                            </div>
+                            <div class="drop-zone-file d-none text-center" id="fileInfo">
+                                <i class="bi bi-file-earmark-check fs-1 text-success"></i>
+                                <p class="fw-bold mb-0" id="fileName"></p>
+                                <small class="text-muted" id="fileSize"></small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-3">
+                        <button type="submit" class="btn btn-primary btn-lg flex-grow-1" id="btnImport" disabled>
+                            <i class="bi bi-upload"></i> Importer le fichier
+                        </button>
+                        <a href="{{ url_for('personnes.personnes') }}" class="btn btn-outline-secondary btn-lg">
+                            <i class="bi bi-x-lg"></i> Annuler
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANEL FAQ -->
+    <div class="col-12 col-lg-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-question-circle text-info"></i> Questions fréquentes</h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion accordion-flush" id="faqAccordion">
+
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed px-0" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#faq1">
+                                <i class="bi bi-arrow-repeat text-primary me-2"></i>
+                                Puis-je réimporter mon fichier ?
+                            </button>
+                        </h2>
+                        <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body px-0 small">
+                                <strong>Oui, sans risque !</strong> En mode « Ajouter », les doublons
+                                (même nom + prénom + catégorie) sont automatiquement ignorés.
+                                Vous pouvez réimporter le même fichier autant de fois que nécessaire
+                                pour ajouter de nouvelles personnes.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed px-0" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#faq2">
+                                <i class="bi bi-person-plus text-success me-2"></i>
+                                Comment ajouter 1 ou 2 personnes ?
+                            </button>
+                        </h2>
+                        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body px-0 small">
+                                Deux solutions :<br>
+                                <strong>1.</strong> Ajoutez-les directement depuis la page
+                                <a href="{{ url_for('personnes.ajouter_personne') }}">Ajouter une personne</a>.<br>
+                                <strong>2.</strong> Ajoutez-les dans votre fichier CSV et réimportez-le
+                                en mode « Ajouter » — seules les nouvelles personnes seront créées.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed px-0" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#faq3">
+                                <i class="bi bi-trash text-danger me-2"></i>
+                                Si je supprime quelqu'un qui avait un prêt ?
+                            </button>
+                        </h2>
+                        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body px-0 small">
+                                <strong>C'est bloqué !</strong> Le logiciel empêche la suppression
+                                d'une personne ayant un prêt non retourné. Vous verrez un message
+                                d'erreur vous invitant à effectuer d'abord le retour du matériel.<br><br>
+                                En mode « Synchroniser », même si la personne est absente du fichier CSV,
+                                elle sera <strong>conservée automatiquement</strong> tant que son prêt
+                                n'est pas retourné.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed px-0" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#faq4">
+                                <i class="bi bi-file-earmark-text text-warning me-2"></i>
+                                Quel format de fichier ?
+                            </button>
+                        </h2>
+                        <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body px-0 small">
+                                Fichier <strong>.csv</strong> avec les colonnes :
+                                <code>nom</code>, <code>prenom</code>, <code>categorie</code>,
+                                <code>classe</code>, <code>email</code>
+                                {% if champs_custom %},
+                                {% for champ in champs_custom %}
+                                <code>custom_{{ champ.nom_champ }}</code>{% if not loop.last %}, {% else %}.{% endif %}
+                                {% endfor %}
+                                {% else %}.
+                                {% endif %}<br>
+                                Séparateur : <strong>point-virgule</strong> (;) ou virgule (,).<br>
+                                Encodage : UTF-8 (par défaut dans Excel et LibreOffice).<br><br>
+                                {% if champs_custom %}
+                                <strong>Champs personnalisés :</strong> utilisez le préfixe
+                                <code>custom_</code> + le nom technique du champ.<br><br>
+                                {% endif %}
+                                <strong>Catégories acceptées :</strong><br>
+                                {% for cle, cat in cats_personnes.items() %}
+                                <span class="badge me-1" style="{{ cle | style_categorie }}">{{ cle }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function selectMode(el, mode) {
+    document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    el.querySelector('input[type=radio]').checked = true;
+}
+
+function showFileName(input) {
+    if (input.files.length > 0) {
+        const file = input.files[0];
+        document.getElementById('dropContent').classList.add('d-none');
+        document.getElementById('fileInfo').classList.remove('d-none');
+        document.getElementById('fileName').textContent = file.name;
+        const kb = (file.size / 1024).toFixed(1);
+        document.getElementById('fileSize').textContent = kb + ' Ko';
+        document.getElementById('btnImport').disabled = false;
+    }
+}
+
+// Drag & drop
+const dropZone = document.getElementById('dropZone');
+if (dropZone) {
+    ['dragenter', 'dragover'].forEach(evt => {
+        dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+        dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
+    });
+    dropZone.addEventListener('drop', e => {
+        const dt = e.dataTransfer;
+        if (dt.files.length > 0) {
+            document.getElementById('fichier_csv').files = dt.files;
+            showFileName(document.getElementById('fichier_csv'));
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Application d'images en masse — PretGo{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-5">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="mb-0">
+                <i class="bi bi-images"></i> Application d'images en masse
+            </h1>
+            <small class="text-muted">Assigner la même image à plusieurs matériels rapidement</small>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('inventaire.gestion_images') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Retour à la bibliothèque
+            </a>
+        </div>
+    </div>
+
+    <!-- Étapes du processus -->
+    <div class="row g-4">
+        <!-- ÉTAPE 1 : Sélectionner l'image -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">
+                        <span class="badge bg-primary rounded-pill me-2">1</span>
+                        Sélectionner une image
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if images %}
+                        <form id="formSelectImage">
+                            <div class="row g-2">
+                                {% for image in images %}
+                                    <div class="col-6">
+                                        <div class="image-selector position-relative">
+                                            <input type="radio" name="image_name" value="{{ image }}" 
+                                                   id="img_{{ loop.index }}" class="d-none">
+                                            <label for="img_{{ loop.index }}" class="w-100 h-100 mb-0 cursor-pointer">
+                                                <div class="bg-light border rounded overflow-hidden" style="height: 120px; cursor: pointer;">
+                                                    <img src="{{ url_for('static', filename='uploads/materiel/' + image) }}"
+                                                         alt="{{ image }}"
+                                                         class="w-100 h-100 object-fit-cover">
+                                                </div>
+                                                <small class="d-block text-center text-truncate mt-2">{{ image }}</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </form>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="bi bi-exclamation-circle"></i>
+                            Aucune image disponible. <a href="{{ url_for('inventaire.gestion_images') }}">Uploadez d'abord des images</a>.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ÉTAPE 2 : Sélectionner les matériels -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">
+                        <span class="badge bg-primary rounded-pill me-2">2</span>
+                        Sélectionner les matériels
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="formApply" method="POST">
+                        <input type="hidden" name="action" value="apply">
+                        <input type="hidden" name="image_name" id="inputImage" value="">
+                        <input type="hidden" name="filtre_type" value="{{ filtre_type }}">
+                        <!-- Filtrer par catégorie -->
+                        {% if categories %}
+                            <div class="mb-3">
+                                <label for="filterType" class="form-label">Filtrer par type de matériel :</label>
+                                <select class="form-select" id="filterType">
+                                    <option value="tous">Tous les matériels</option>
+                                    {% for cat in categories %}
+                                        <option value="{{ cat.type_materiel }}" {% if filtre_type == cat.type_materiel %}selected{% endif %}>
+                                            {{ cat.type_materiel }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">Sera appliquée à <strong id="countMateriels">0</strong> matériel(s)</small>
+                            </div>
+                        {% endif %}
+
+                        <!-- Liste des matériels à mettre à jour -->
+                        {% if materiel_no_image %}
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="selectAll">
+                                    <label class="form-check-label fw-bold" for="selectAll">
+                                        Tous les matériels affichés
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="border rounded p-3 bg-light" style="max-height: 400px; overflow-y: auto;">
+                                {% for materiel in materiel_no_image %}
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input materiel-checkbox" type="checkbox" 
+                                               name="materiel_ids[]" value="{{ materiel.id }}"
+                                               id="mat_{{ materiel.id }}"
+                                               data-has-image="{% if materiel.image %}true{% else %}false{% endif %}">
+                                        <label class="form-check-label" for="mat_{{ materiel.id }}">
+                                            <strong>{{ materiel.numero_inventaire }}</strong>
+                                            {% if materiel.marque or materiel.modele %}<small class="text-muted"> — {{ materiel.marque }}{% if materiel.marque and materiel.modele %} {% endif %}{{ materiel.modele }}</small>{% endif %}
+                                            <small class="text-muted">({{ materiel.type_materiel }})</small>
+                                            {% if materiel.image %}<span class="badge bg-success ms-2"><i class="bi bi-check"></i> Image</span>{% endif %}
+                                        </label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+
+                            <small class="text-muted d-block mt-2">
+                                {{ materiel_no_image | length }} matériel(s) au total
+                            </small>
+                        {% else %}
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i>
+                                Aucun matériel disponible pour cette catégorie.
+                            </div>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bouton d'application -->
+    {% if materiel_no_image %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card border-0 bg-light">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong id="finalCount">0</strong> matériel(s) sera/seront mis à jour
+                        </div>
+                        <button type="submit" form="formApply" class="btn btn-success btn-lg" id="btnApply" disabled>
+                            <i class="bi bi-check-circle"></i> Appliquer l'image
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .object-fit-cover {
+        object-fit: cover;
+    }
+
+    .image-selector input:checked + label {
+        filter: drop-shadow(0 0 8px rgba(13, 110, 253, 0.5));
+    }
+
+    .image-selector label {
+        cursor: pointer;
+    }
+
+    .image-selector label:hover .bg-light {
+        border-color: var(--bs-primary) !important;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const formSelectImage = document.getElementById('formSelectImage');
+    const formApply = document.getElementById('formApply');
+    const inputImage = document.getElementById('inputImage');
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const materielCheckboxes = document.querySelectorAll('.materiel-checkbox');
+    const filterType = document.getElementById('filterType');
+    const btnApply = document.getElementById('btnApply');
+    const finalCount = document.getElementById('finalCount');
+    const countMateriels = document.getElementById('countMateriels');
+
+    // Initialiser le compteur avec le nombre de matériels disponibles
+    if (countMateriels && materielCheckboxes.length > 0) {
+        countMateriels.textContent = materielCheckboxes.length;
+    }
+
+    // Mise à jour du bouton en fonction de la sélection
+    function updateButtonState() {
+        const imagSelected = document.querySelector('input[name="image_name"]:checked');
+        const hasMateriels = Array.from(materielCheckboxes).some(cb => cb.checked);
+        
+        btnApply.disabled = !imagSelected || !hasMateriels;
+        
+        if (imagSelected) {
+            inputImage.value = imagSelected.value;
+        }
+
+        // Compter les matériels sélectionnés
+        const count = Array.from(materielCheckboxes).filter(cb => cb.checked).length;
+        finalCount.textContent = count;
+    }
+
+    // Écouter les changements
+    if (formSelectImage) {
+        formSelectImage.addEventListener('change', updateButtonState);
+    }
+
+    materielCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateButtonState);
+    });
+
+    // Sélectionner/désélectionner tous
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            materielCheckboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            updateButtonState();
+        });
+    }
+
+    // Filtrer par type
+    if (filterType) {
+        filterType.addEventListener('change', function() {
+            const type = this.value;
+            const url = type === 'tous' 
+                ? '/images-bulk'
+                : `/images-bulk?filtre=${encodeURIComponent(type)}`;
+            window.location.href = url;
+        });
+    }
+
+    updateButtonState();
+});
+</script>
+{% endblock %}

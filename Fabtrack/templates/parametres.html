@@ -1,0 +1,1904 @@
+{% extends "base.html" %}
+{% block title %}Paramètres{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="page-title"><i class="bi bi-gear"></i> Paramètres</h1>
+    <p class="page-subtitle">Gérer les machines, matériaux, types d'activité, classes, référents et champs personnalisés</p>
+</div>
+
+<!-- Tabs -->
+<div class="filter-tabs mb-4 flex-wrap" id="paramTabs">
+    <button class="filter-tab active" onclick="showSection('types_activite',this)">
+        <i class="bi bi-grid-3x3-gap"></i> Types d'activité
+    </button>
+    <button class="filter-tab" onclick="showSection('machines',this)">
+        <i class="bi bi-cpu"></i> Machines
+    </button>
+    <button class="filter-tab" onclick="showSection('materiaux',this)">
+        <i class="bi bi-box-seam"></i> Matériaux
+    </button>
+    <button class="filter-tab" onclick="showSection('classes',this)">
+        <i class="bi bi-mortarboard"></i> Classes
+    </button>
+    <button class="filter-tab" onclick="showSection('referents',this)">
+        <i class="bi bi-person-badge"></i> Référents
+    </button>
+    <button class="filter-tab" onclick="showSection('preparateurs',this)">
+        <i class="bi bi-people"></i> Préparateurs
+    </button>
+    <button class="filter-tab" onclick="showSection('custom_fields',this)">
+        <i class="bi bi-sliders"></i> Champs perso
+    </button>
+    <button class="filter-tab" onclick="showSection('personnalisation',this)">
+        <i class="bi bi-aspect-ratio"></i> Personnalisation
+    </button>
+    <button class="filter-tab" onclick="showSection('fablab_info',this)">
+        <i class="bi bi-building"></i> Fablab
+    </button>
+    <button class="filter-tab" onclick="showSection('donnees_test',this)">
+        <i class="bi bi-database-add"></i> Données de test
+    </button>
+</div>
+
+<!-- ================ TYPES D'ACTIVITÉ ================ -->
+<div class="section-panel" id="section-types_activite">
+    <div class="row g-4">
+        <div class="col-lg-4 settings-form-col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-plus-circle text-primary"></i>
+                    <strong id="typeFormTitle">Ajouter un type d'activité</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return saveTypeActivite(event)" id="typeForm">
+                        <input type="hidden" id="editTypeId">
+                        <div class="mb-3">
+                            <label class="form-label">Nom</label>
+                            <input type="text" class="form-control" id="newTypeName" placeholder="Ex: Soudure" required>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Icône (emoji)</label>
+                                <input type="text" class="form-control" id="newTypeIcon" value="🔧" maxlength="4">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Couleur</label>
+                                <input type="color" class="form-control form-control-color w-100" id="newTypeColor" value="#6b7280">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Unité par défaut</label>
+                            <select class="form-select" id="newTypeUnite">
+                                <option value="">Aucune</option>
+                                <option value="g">Grammes (g)</option>
+                                <option value="m²">Mètres carrés (m²)</option>
+                                <option value="feuilles">Feuilles</option>
+                                <option value="pièces">Pièces</option>
+                                <option value="mètres">Mètres linéaires</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
+                            <input type="file" class="form-control form-control-sm" id="typeImageFile" accept="image/*" onchange="previewImg(this,'typeImgPreview')">
+                            <img id="typeImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <input type="hidden" id="typeImagePath">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-cpu me-1"></i> Machines associées (optionnel)</label>
+                            <div id="typeMachineCheckboxes" class="border rounded p-2" style="max-height:300px;overflow-y:auto;">
+                                <small class="text-muted">Chargement...</small>
+                            </div>
+                            <small class="text-muted">Cochez les machines à réaffecter à ce type</small>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" id="typeSubmitBtn">
+                                <i class="bi bi-plus-lg"></i> Ajouter
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="resetTypeForm()" style="display:none" id="typeCancelBtn">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong><i class="bi bi-grid-3x3-gap me-1"></i> Types d'activité</strong>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary" id="typeCount">0</span>
+                        <button class="btn btn-outline-danger btn-sm" onclick="massDeleteSelected('types_activite')" id="massDeleteTypes_activiteBtn" style="display:none">
+                            <i class="bi bi-trash"></i> Supprimer sélection
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom search-box d-flex gap-2 align-items-center">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="form-control" placeholder="Rechercher..." onkeyup="filterList('types_activite',this.value)">
+                        <div class="form-check ms-2" style="white-space:nowrap">
+                            <input type="checkbox" class="form-check-input" id="selectAllTypes_activite" onchange="toggleSelectAll('types_activite',this.checked)">
+                            <label class="form-check-label small" for="selectAllTypes_activite">Tout</label>
+                        </div>
+                    </div>
+                    <div class="list-group list-group-flush" id="typesActiviteList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ MACHINES ================ -->
+<div class="section-panel" id="section-machines" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-5 settings-form-col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-plus-circle text-primary"></i>
+                    <strong>Ajouter / Modifier une machine</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return saveMachine(event)" id="machineForm">
+                        <input type="hidden" id="editMachineId">
+                        <div class="mb-3">
+                            <label class="form-label">Nom de la machine *</label>
+                            <input type="text" class="form-control" id="newMachineName" placeholder="Ex: Raise 3D Pro 3" required>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-8">
+                                <label class="form-label">Type d'activité *</label>
+                                <select class="form-select" id="newMachineType" required>
+                                    <option value="">Sélectionner...</option>
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label">Quantité</label>
+                                <input type="number" class="form-control" id="newMachineQte" min="1" value="1">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Marque</label>
+                            <input type="text" class="form-control" id="newMachineMarque" placeholder="Ex: Raise3D">
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Zone de travail</label>
+                                <input type="text" class="form-control" id="newMachineZone" placeholder="Ex: 300×300×400 mm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Puissance</label>
+                                <input type="text" class="form-control" id="newMachinePuiss" placeholder="Ex: 80W CO2">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description / Fiche technique</label>
+                            <textarea class="form-control" id="newMachineDesc" rows="2" placeholder="Description libre..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-tools me-1"></i> Principes de conception</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <div class="form-check"><input class="form-check-input principes-cb" type="checkbox" value="ajout" id="princAjout">
+                                    <label class="form-check-label small" for="princAjout">Ajout de matière</label></div>
+                                <div class="form-check"><input class="form-check-input principes-cb" type="checkbox" value="enlevement" id="princEnlev">
+                                    <label class="form-check-label small" for="princEnlev">Enlèvement de matière</label></div>
+                                <div class="form-check"><input class="form-check-input principes-cb" type="checkbox" value="deformation" id="princDeform">
+                                    <label class="form-check-label small" for="princDeform">Déformation</label></div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
+                            <input type="file" class="form-control form-control-sm" id="machineImageFile" accept="image/*" onchange="previewImg(this,'machineImgPreview')">
+                            <img id="machineImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <input type="hidden" id="machineImagePath">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" id="machineSubmitBtn">
+                                <i class="bi bi-plus-lg"></i> Ajouter
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="resetMachineForm()" style="display:none" id="machineCancelBtn">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong><i class="bi bi-cpu me-1"></i> Machines</strong>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary" id="machineCount">0</span>
+                        <button class="btn btn-outline-danger btn-sm" onclick="massDeleteSelected('machines')" id="massDeleteMachinesBtn" style="display:none">
+                            <i class="bi bi-trash"></i> Supprimer la sélection
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom search-box d-flex gap-2 align-items-center">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="form-control" placeholder="Rechercher..." onkeyup="filterList('machines',this.value)">
+                        <div class="form-check ms-2" style="white-space:nowrap">
+                            <input type="checkbox" class="form-check-input" id="selectAllMachines" onchange="toggleSelectAll('machines',this.checked)">
+                            <label class="form-check-label small" for="selectAllMachines">Tout</label>
+                        </div>
+                    </div>
+                    <div class="list-group list-group-flush" id="machinesList" style="max-height:500px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ MATÉRIAUX ================ -->
+<div class="section-panel" id="section-materiaux" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-4 settings-form-col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-plus-circle text-primary"></i><strong id="matFormTitle">Ajouter un matériau</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return saveMateriau(event)" id="matForm">
+                        <input type="hidden" id="editMatId">
+                        <div class="mb-3">
+                            <label class="form-label">Nom</label>
+                            <input type="text" class="form-control" id="newMatName" placeholder="Ex: PLA Noir" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Machines associées <small class="text-muted">(vide = disponible pour activités sans machine)</small></label>
+                            <div id="matMachineCheckboxes" class="border rounded p-2" style="max-height:160px;overflow-y:auto;"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Unité</label>
+                            <select class="form-select" id="newMatUnite">
+                                <option value="g">Grammes (g)</option>
+                                <option value="m²">Mètres carrés (m²)</option>
+                                <option value="feuilles">Feuilles</option>
+                                <option value="pièces">Pièces</option>
+                                <option value="">Autre</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
+                            <input type="file" class="form-control form-control-sm" id="matImageFile" accept="image/*" onchange="previewImg(this,'matImgPreview')">
+                            <img id="matImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <input type="hidden" id="matImagePath">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" id="matSubmitBtn">
+                                <i class="bi bi-plus-lg"></i> Ajouter
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="resetMatForm()" style="display:none" id="matCancelBtn">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong><i class="bi bi-box-seam me-1"></i> Matériaux</strong>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary" id="matCount">0</span>
+                        <button class="btn btn-outline-danger btn-sm" onclick="massDeleteSelected('materiaux')" id="massDeleteMateriauxBtn" style="display:none">
+                            <i class="bi bi-trash"></i> Supprimer sélection
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom search-box d-flex gap-2 align-items-center">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="form-control" placeholder="Rechercher..." onkeyup="filterList('materiaux',this.value)">
+                        <div class="form-check ms-2" style="white-space:nowrap">
+                            <input type="checkbox" class="form-check-input" id="selectAllMateriaux" onchange="toggleSelectAll('materiaux',this.checked)">
+                            <label class="form-check-label small" for="selectAllMateriaux">Tout</label>
+                        </div>
+                    </div>
+                    <div class="list-group list-group-flush" id="materiauxList" style="max-height:500px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ CLASSES ================ -->
+<div class="section-panel" id="section-classes" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-4 settings-form-col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-plus-circle text-primary"></i><strong id="classeFormTitle">Ajouter une classe</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return saveClasse(event)" id="classeForm">
+                        <input type="hidden" id="editClasseId">
+                        <div class="mb-3">
+                            <label class="form-label">Nom</label>
+                            <input type="text" class="form-control" id="newClassName" placeholder="Ex: BTS CPRP 1" required>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" id="classeSubmitBtn">
+                                <i class="bi bi-plus-lg"></i> Ajouter
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="resetClasseForm()" style="display:none" id="classeCancelBtn">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong><i class="bi bi-mortarboard me-1"></i> Classes</strong>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary" id="classeCount">0</span>
+                        <button class="btn btn-outline-danger btn-sm" onclick="massDeleteSelected('classes')" id="massDeleteClassesBtn" style="display:none">
+                            <i class="bi bi-trash"></i> Supprimer sélection
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom search-box d-flex gap-2 align-items-center">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="form-control" placeholder="Rechercher..." onkeyup="filterList('classes',this.value)">
+                        <div class="form-check ms-2" style="white-space:nowrap">
+                            <input type="checkbox" class="form-check-input" id="selectAllClasses" onchange="toggleSelectAll('classes',this.checked)">
+                            <label class="form-check-label small" for="selectAllClasses">Tout</label>
+                        </div>
+                    </div>
+                    <div class="list-group list-group-flush" id="classesList" style="max-height:500px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ RÉFÉRENTS ================ -->
+<div class="section-panel" id="section-referents" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-4 settings-form-col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-plus-circle text-primary"></i><strong id="refFormTitle">Ajouter un référent</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return saveReferent(event)" id="refForm">
+                        <input type="hidden" id="editRefId">
+                        <div class="mb-3">
+                            <label class="form-label">Nom</label>
+                            <input type="text" class="form-control" id="newRefName" placeholder="Ex: M. Dupont" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Catégorie</label>
+                            <select class="form-select" id="newRefCategorie">
+                                <option value="Professeur" selected>👨‍🏫 Professeur</option>
+                                <option value="Agent technique">🔧 Agent technique</option>
+                                <option value="Demande extérieure">🏢 Demande extérieure</option>
+                                <option value="Administration">📋 Administration</option>
+                                <option value="Autre">📌 Autre</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
+                            <input type="file" class="form-control form-control-sm" id="refImageFile" accept="image/*" onchange="previewImg(this,'refImgPreview')">
+                            <img id="refImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <input type="hidden" id="refImagePath">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" id="refSubmitBtn">
+                                <i class="bi bi-plus-lg"></i> Ajouter
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="resetRefForm()" style="display:none" id="refCancelBtn">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong><i class="bi bi-person-badge me-1"></i> Référents</strong>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary" id="refCount">0</span>
+                        <button class="btn btn-outline-danger btn-sm" onclick="massDeleteSelected('referents')" id="massDeleteReferentsBtn" style="display:none">
+                            <i class="bi bi-trash"></i> Supprimer sélection
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom search-box d-flex gap-2 align-items-center">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="form-control" placeholder="Rechercher..." onkeyup="filterList('referents',this.value)">
+                        <div class="form-check ms-2" style="white-space:nowrap">
+                            <input type="checkbox" class="form-check-input" id="selectAllReferents" onchange="toggleSelectAll('referents',this.checked)">
+                            <label class="form-check-label small" for="selectAllReferents">Tout</label>
+                        </div>
+                    </div>
+                    <div class="list-group list-group-flush" id="referentsList" style="max-height:500px;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ PRÉPARATEURS ================ -->
+<div class="section-panel" id="section-preparateurs" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-4 settings-form-col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-plus-circle text-primary"></i><strong id="prepFormTitle">Ajouter un préparateur</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return savePreparateur(event)" id="prepForm">
+                        <input type="hidden" id="editPrepId">
+                        <div class="mb-3">
+                            <label class="form-label">Nom</label>
+                            <input type="text" class="form-control" id="newPrepName" placeholder="Ex: Jean Martin" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
+                            <input type="file" class="form-control form-control-sm" id="prepImageFile" accept="image/*" onchange="previewImg(this,'prepImgPreview')">
+                            <img id="prepImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <input type="hidden" id="prepImagePath">
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" id="prepSubmitBtn">
+                                <i class="bi bi-plus-lg"></i> Ajouter
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="resetPrepForm()" style="display:none" id="prepCancelBtn">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong><i class="bi bi-people me-1"></i> Préparateurs</strong>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary" id="prepCount">0</span>
+                        <button class="btn btn-outline-danger btn-sm" onclick="massDeleteSelected('preparateurs')" id="massDeletePreparateursBtn" style="display:none">
+                            <i class="bi bi-trash"></i> Supprimer sélection
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom search-box d-flex gap-2 align-items-center">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="form-control" placeholder="Rechercher..." onkeyup="filterList('preparateurs',this.value)">
+                        <div class="form-check ms-2" style="white-space:nowrap">
+                            <input type="checkbox" class="form-check-input" id="selectAllPreparateurs" onchange="toggleSelectAll('preparateurs',this.checked)">
+                            <label class="form-check-label small" for="selectAllPreparateurs">Tout</label>
+                        </div>
+                    </div>
+                    <div class="list-group list-group-flush" id="preparateursList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ CHAMPS PERSONNALISÉS ================ -->
+<div class="section-panel" id="section-custom_fields" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-plus-circle text-primary"></i>
+                    <strong>Ajouter un champ personnalisé</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return addCustomField(event)">
+                        <div class="mb-3">
+                            <label class="form-label">Type d'entité</label>
+                            <select class="form-select" id="cfEntityType" required>
+                                <option value="">Sélectionner...</option>
+                                <option value="machines">Machines</option>
+                                <option value="materiaux">Matériaux</option>
+                                <option value="types_activite">Types d'activité</option>
+                                <option value="classes">Classes</option>
+                                <option value="referents">Référents</option>
+                                <option value="preparateurs">Préparateurs</option>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Nom technique</label>
+                                <input type="text" class="form-control" id="cfFieldName" placeholder="ex: serial_number" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Libellé affiché</label>
+                                <input type="text" class="form-control" id="cfFieldLabel" placeholder="ex: N° de série" required>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Type de champ</label>
+                                <select class="form-select" id="cfFieldType">
+                                    <option value="text">Texte</option>
+                                    <option value="number">Nombre</option>
+                                    <option value="textarea">Zone de texte</option>
+                                    <option value="select">Liste déroulante</option>
+                                    <option value="date">Date</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Obligatoire</label>
+                                <select class="form-select" id="cfObligatoire">
+                                    <option value="0">Non</option>
+                                    <option value="1">Oui</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Options (pour liste déroulante, séparées par ;)</label>
+                            <input type="text" class="form-control" id="cfOptions" placeholder="Ex: Option A;Option B;Option C">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i> Ajouter le champ</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong><i class="bi bi-sliders me-1"></i> Champs personnalisés</strong>
+                    <span class="badge bg-secondary" id="cfCount">0</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush" id="customFieldsList"></div>
+                </div>
+            </div>
+            <div class="alert alert-info mt-3 small">
+                <i class="bi bi-info-circle me-1"></i>
+                Les champs personnalisés s'ajoutent aux formulaires d'ajout/modification des entités.
+                Les champs de base (nom, type, etc.) restent toujours présents comme référence minimale.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ PERSONNALISATION DES ICÔNES ================ -->
+<div class="section-panel" id="section-personnalisation" style="display:none;">
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header">
+                    <strong><i class="bi bi-aspect-ratio me-1"></i> Taille des icônes par section</strong>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-4">Ajustez la taille des icônes pour chaque section indépendamment. Les modifications s'appliquent en temps réel.</p>
+
+                    <div class="row g-4">
+                        <!-- Types d'activité -->
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card border shadow-none h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="fw-bold mb-3"><i class="bi bi-grid-3x3-gap me-1"></i> Types d'activité</h6>
+                                    <div class="d-flex align-items-center gap-3 justify-content-center mb-3">
+                                        <input type="range" class="form-range flex-fill" id="iconSizeTypes_activite" min="16" max="96" step="1"
+                                               oninput="updateIconSizeSection('types_activite', this.value)" style="accent-color:var(--ft-primary);">
+                                        <div class="input-group" style="width:140px;">
+                                            <input type="number" class="form-control form-control-sm text-center" id="iconSizeTypes_activiteVal" min="16" max="96"
+                                                   oninput="updateIconSizeSection('types_activite', this.value)">
+                                            <span class="input-group-text" style="font-size:0.75rem;">px</span>
+                                        </div>
+                                    </div>
+                                    <div class="border rounded p-3 bg-light" style="min-height:80px;">
+                                        <span class="text-muted small d-block mb-2">Aperçu :</span>
+                                        <span id="previewTypes_activiteFallback" class="d-inline-block rounded" style="background:#f5f3f0;padding:3px;font-size:2rem;">🔧</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Matériaux -->
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card border shadow-none h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="fw-bold mb-3"><i class="bi bi-box-seam me-1"></i> Matériaux</h6>
+                                    <div class="d-flex align-items-center gap-3 justify-content-center mb-3">
+                                        <input type="range" class="form-range flex-fill" id="iconSizeMateriaux" min="16" max="96" step="1"
+                                               oninput="updateIconSizeSection('materiaux', this.value)" style="accent-color:var(--ft-primary);">
+                                        <div class="input-group" style="width:140px;">
+                                            <input type="number" class="form-control form-control-sm text-center" id="iconSizeMateriauxVal" min="16" max="96"
+                                                   oninput="updateIconSizeSection('materiaux', this.value)">
+                                            <span class="input-group-text" style="font-size:0.75rem;">px</span>
+                                        </div>
+                                    </div>
+                                    <div class="border rounded p-3 bg-light" style="min-height:80px;">
+                                        <span class="text-muted small d-block mb-2">Aperçu :</span>
+                                        <img src="/static/img/pla.png" id="previewMateriaux" class="rounded"
+                                             style="object-fit:contain;background:#f5f3f0;padding:3px;"
+                                             onerror="this.style.display='none'">
+                                        <span id="previewMateriauxFallback" class="d-inline-block rounded" style="background:#f5f3f0;padding:3px;font-size:2rem;">📦</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Machines -->
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card border shadow-none h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="fw-bold mb-3"><i class="bi bi-cpu me-1"></i> Machines</h6>
+                                    <div class="d-flex align-items-center gap-3 justify-content-center mb-3">
+                                        <input type="range" class="form-range flex-fill" id="iconSizeMachines" min="16" max="96" step="1"
+                                               oninput="updateIconSizeSection('machines', this.value)" style="accent-color:var(--ft-primary);">
+                                        <div class="input-group" style="width:140px;">
+                                            <input type="number" class="form-control form-control-sm text-center" id="iconSizeMachinesVal" min="16" max="96"
+                                                   oninput="updateIconSizeSection('machines', this.value)">
+                                            <span class="input-group-text" style="font-size:0.75rem;">px</span>
+                                        </div>
+                                    </div>
+                                    <div class="border rounded p-3 bg-light" style="min-height:80px;">
+                                        <span class="text-muted small d-block mb-2">Aperçu :</span>
+                                        <div id="previewMachinesBox" class="d-inline-block rounded" style="background:#e2e8f0;overflow:hidden;">
+                                            <i class="bi bi-cpu" id="previewMachinesIcon"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Préparateurs -->
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card border shadow-none h-100">
+                                <div class="card-body text-center">
+                                    <h6 class="fw-bold mb-3"><i class="bi bi-people me-1"></i> Préparateurs</h6>
+                                    <div class="d-flex align-items-center gap-3 justify-content-center mb-3">
+                                        <input type="range" class="form-range flex-fill" id="iconSizePreparateurs" min="16" max="96" step="1"
+                                               oninput="updateIconSizeSection('preparateurs', this.value)" style="accent-color:var(--ft-primary);">
+                                        <div class="input-group" style="width:140px;">
+                                            <input type="number" class="form-control form-control-sm text-center" id="iconSizePreparateursVal" min="16" max="96"
+                                                   oninput="updateIconSizeSection('preparateurs', this.value)">
+                                            <span class="input-group-text" style="font-size:0.75rem;">px</span>
+                                        </div>
+                                    </div>
+                                    <div class="border rounded p-3 bg-light" style="min-height:80px;">
+                                        <span class="text-muted small d-block mb-2">Aperçu :</span>
+                                        <div id="previewPreparateursBox" class="d-inline-block rounded-circle" style="background:#e2e8f0;overflow:hidden;">
+                                            <i class="bi bi-person-circle" id="previewPreparateursIcon"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="resetIconSizes()">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i> Réinitialiser (32px par défaut)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ INFORMATIONS FABLAB ================ -->
+<div class="section-panel" id="section-fablab_info" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-building text-primary"></i>
+                    <strong>Informations du Fablab</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return saveFablabInfo(event)">
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-shop me-1"></i> Nom du Fablab</label>
+                            <input type="text" class="form-control" id="fablabNom" placeholder="Ex: Mon Fablab">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-geo-alt me-1"></i> Adresse</label>
+                            <input type="text" class="form-control" id="fablabAdresse" placeholder="Ex: 1 rue de l'Innovation, 75001 Paris">
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label"><i class="bi bi-telephone me-1"></i> Téléphone</label>
+                                <input type="tel" class="form-control" id="fablabTel" placeholder="Ex: 01 23 45 67 89">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label"><i class="bi bi-envelope me-1"></i> Email</label>
+                                <input type="email" class="form-control" id="fablabEmail" placeholder="Ex: contact@monfablab.fr">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-globe me-1"></i> Site web</label>
+                            <input type="url" class="form-control" id="fablabWeb" placeholder="Ex: https://monfablab.fr">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-card-text me-1"></i> Description</label>
+                            <textarea class="form-control" id="fablabDesc" rows="3" placeholder="Décrivez votre Fablab..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-calendar-range me-1"></i> Année scolaire</label>
+                            <input type="text" class="form-control" id="fablabAnnee" placeholder="Ex: 2025-2026">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-image me-1"></i> Logo du Fablab</label>
+                            <input type="file" class="form-control" id="fablabLogo" accept="image/*" onchange="previewFablabLogo(this)">
+                            <div class="mt-2 text-center">
+                                <img id="fablabLogoPreview" src="" alt="Logo" class="rounded" style="max-height:80px;display:none;border:1px solid #dee2e6;padding:4px;">
+                                <button type="button" class="btn btn-outline-danger btn-sm ms-2" id="fablabLogoRemoveBtn" style="display:none;" onclick="removeFablabLogo()">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-check-lg me-1"></i> Enregistrer les informations
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-eye text-primary"></i>
+                    <strong>Aperçu</strong>
+                </div>
+                <div class="card-body" id="fablabPreview">
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-building" style="font-size:3rem;opacity:0.3;"></i>
+                        <p>Remplissez le formulaire pour voir l'aperçu</p>
+                    </div>
+                </div>
+            </div>
+            <div class="alert alert-info mt-3 small">
+                <i class="bi bi-info-circle me-1"></i>
+                Ces informations sont stockées localement sur ce navigateur. Elles apparaissent dans les exports HTML et PDF des statistiques.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ DONNÉES DE TEST ================ -->
+<div class="section-panel" id="section-donnees_test" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-database-add text-primary"></i>
+                    <strong>Générateur de données de démonstration</strong>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Génère des données de test complètes pour faciliter la découverte de l'application.</strong>
+                        <br>
+                        <small>Cette action ajoute du contenu fictif sans supprimer les données existantes.</small>
+                    </div>
+                    
+                    <h6 class="fw-bold mb-3"><i class="bi bi-list-check me-1"></i> Contenu généré :</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-building text-success"></i>
+                                <span><strong>5 Fournisseurs</strong> avec contacts Google Business</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-box-seam text-primary"></i>
+                                <span><strong>15 Articles de stock</strong> avec prix et seuils</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-list-task text-warning"></i>
+                                <span><strong>10 Missions</strong> (à faire, en cours, terminé)</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-people text-info"></i>
+                                <span><strong>Classes & Référents</strong> fictifs</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-grid-3x3-gap text-secondary"></i>
+                                <span><strong>Types d'activité</strong> avec icônes</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-graph-up text-danger"></i>
+                                <span><strong>Consommations</strong> fictives (~150)</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary btn-lg w-100" onclick="generateDemoData()">
+                        <i class="bi bi-play-fill me-2"></i>
+                        Générer les données de démonstration
+                    </button>
+                    
+                    <div id="demoGenerationResult" class="mt-3" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-question-circle text-secondary"></i>
+                    <strong>Informations</strong>
+                </div>
+                <div class="card-body">
+                    <h6 class="fw-bold mb-2">🎯 Utilisation recommandée :</h6>
+                    <ul class="small mb-3">
+                        <li>Première installation</li>
+                        <li>Formation utilisateurs</li>
+                        <li>Tests de fonctionnalités</li>
+                        <li>Démonstrations clients</li>
+                    </ul>
+                    
+                    <h6 class="fw-bold mb-2">⚠️ Points d'attention :</h6>
+                    <ul class="small mb-3">
+                        <li>N'écrase pas les données existantes</li>
+                        <li>Peut créer des doublons si relancé</li>
+                        <li>Données entièrement fictives</li>
+                        <li>Utilisez <em>Réinitialiser la base</em> pour repartir à zéro</li>
+                    </ul>
+                    
+                    <div class="alert alert-warning small">
+                        <i class="bi bi-shield-exclamation me-1"></i>
+                        Sauvegardez vos données importantes avant utilisation en production.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Modal de remplacement avant suppression ===== -->
+<div class="modal fade" id="replaceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Élément utilisé</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="replaceMessage" class="mb-3"></p>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Remplacer par :</label>
+                    <select id="replacementSelect" class="form-select"></select>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="replaceNullCheck">
+                    <label class="form-check-label text-muted small" for="replaceNullCheck">
+                        Ou laisser les saisies <strong>sans référence</strong> (mettre à vide)
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="doReplaceAndDelete()">
+                    <i class="bi bi-arrow-repeat me-1"></i> Remplacer et supprimer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const REF_CATEGORIES = {
+    'Professeur':'👨‍🏫','Agent technique':'🔧','Demande extérieure':'🏢',
+    'Administration':'📋','Autre':'📌'
+};
+const STATUT_LABELS = {disponible:'✅ Disponible',en_reparation:'🔧 En réparation',hors_service:'❌ Hors service'};
+let selectedIds = { machines:new Set(), materiaux:new Set(), classes:new Set(), referents:new Set(), types_activite:new Set(), preparateurs:new Set() };
+let pendingDelete = null;
+let customFields = [];
+
+// ========== Tab Switching ==========
+function showSection(name, btn) {
+    document.querySelectorAll('.section-panel').forEach(s => s.style.display='none');
+    document.getElementById('section-'+name).style.display='';
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (name === 'custom_fields') loadCustomFields();
+}
+
+function onReferenceDataLoaded() {
+    populateTypeSelects();
+    renderAll();
+    initPersonnalisation();
+    initFablabInfo();
+    // Handle hash navigation (e.g. from navbar icon)
+    if (window.location.hash === '#personnalisation') {
+        const btn = document.querySelector('[onclick*="personnalisation"]');
+        if (btn) showSection('personnalisation', btn);
+    }
+    if (window.location.hash === '#fablab') {
+        const btn = document.querySelector('[onclick*="fablab_info"]');
+        if (btn) showSection('fablab_info', btn);
+    }
+}
+
+function populateTypeSelects() {
+    ['newMachineType'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Sélectionner...</option>';
+        REF_DATA.types_activite.forEach(t => {
+            sel.innerHTML += `<option value="${t.id}">${t.icone} ${t.nom}</option>`;
+        });
+    });
+    buildTypeMachineCheckboxes();
+    buildMatMachineCheckboxes();
+}
+
+function buildMatMachineCheckboxes() {
+    const container = document.getElementById('matMachineCheckboxes');
+    if (!container) return;
+    if (!REF_DATA.machines.length) {
+        container.innerHTML = '<small class="text-muted">Aucune machine disponible</small>';
+        return;
+    }
+    container.innerHTML = REF_DATA.machines.map(m =>
+        `<div class="form-check"><input class="form-check-input mat-machine-cb" type="checkbox" value="${m.id}" id="mmcb_${m.id}">
+         <label class="form-check-label small" for="mmcb_${m.id}">${m.nom} <span class="text-muted">(${getTypeName(m.type_activite_id)})</span></label></div>`
+    ).join('');
+}
+
+function buildTypeMachineCheckboxes() {
+    const container = document.getElementById('typeMachineCheckboxes');
+    if (!REF_DATA.machines.length) {
+        container.innerHTML = '<small class="text-muted">Aucune machine disponible</small>';
+        return;
+    }
+    container.innerHTML = REF_DATA.machines.map(m =>
+        `<div class="form-check"><input class="form-check-input type-machine-cb" type="checkbox" value="${m.id}" id="tmcb_${m.id}">
+         <label class="form-check-label small" for="tmcb_${m.id}">${m.nom} <span class="text-muted">(${getTypeName(m.type_activite_id)})</span></label></div>`
+    ).join('');
+}
+
+function getTypeName(id) {
+    const t = REF_DATA.types_activite.find(x=>x.id===id);
+    return t ? `${t.icone} ${t.nom}` : '—';
+}
+function getTypeColor(id) {
+    const t = REF_DATA.types_activite.find(x=>x.id===id);
+    return t ? (t.couleur||'#6b7280') : '#6b7280';
+}
+
+function renderAll() {
+    renderTypesActivite();
+    renderMachines();
+    renderMateriaux();
+    renderClasses();
+    renderReferents();
+    renderPreparateurs();
+}
+
+// ========== Image Upload Helper ==========
+function previewImg(input, previewId) {
+    const preview = document.getElementById(previewId);
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => { preview.src = e.target.result; preview.style.display = ''; };
+        reader.readAsDataURL(input.files[0]);
+    } else { preview.style.display = 'none'; }
+}
+
+async function uploadImage(fileInput, entity, entityId) {
+    if (!fileInput.files || !fileInput.files[0]) return '';
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('entity', entity);
+    formData.append('entity_id', entityId || '0');
+    const res = await fetch('/api/upload-image', {method:'POST', body:formData});
+    const data = await res.json();
+    return data.success ? data.path : '';
+}
+
+// ========== TYPES D'ACTIVITÉ ==========
+function renderTypesActivite() {
+    const list = document.getElementById('typesActiviteList');
+    document.getElementById('typeCount').textContent = REF_DATA.types_activite.length;
+    selectedIds.types_activite.clear(); updateMassDeleteBtn('types_activite');
+    if (!REF_DATA.types_activite.length) {
+        list.innerHTML='<div class="empty-state"><i class="bi bi-grid-3x3-gap"></i><p>Aucun type</p></div>'; return;
+    }
+    list.innerHTML = REF_DATA.types_activite.map(t => {
+        const imgOrEmoji = t.image_path
+            ? `<img src="${t.image_path}" class="rounded me-2 entity-img-type">`
+            : `<span class="fs-4 me-1">${t.icone||'🔧'}</span>`;
+        const machCount = REF_DATA.machines.filter(m => m.type_activite_id === t.id).length;
+        return `
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${t.nom.toLowerCase()}">
+            <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" data-entity="types_activite" data-id="${t.id}" onchange="onCheckboxChange('types_activite',${t.id},this.checked)">
+                ${imgOrEmoji}
+                <div>
+                    <strong>${t.nom}</strong>
+                    <br><small class="text-muted">Unité: ${t.unite_defaut||'—'} • <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${t.couleur};vertical-align:middle;"></span> ${t.couleur} • ${machCount} machine(s)</small>
+                </div>
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-primary btn-sm" onclick="editTypeActivite(${t.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm" onclick="safeDelete('types_activite',${t.id},'${esc(t.nom)}')"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function saveTypeActivite(e) {
+    e.preventDefault();
+    const id = document.getElementById('editTypeId').value;
+    let imgPath = document.getElementById('typeImagePath').value;
+    const fileInput = document.getElementById('typeImageFile');
+    if (fileInput.files.length) imgPath = await uploadImage(fileInput, 'types_activite', id || '0');
+    const body = {
+        nom: document.getElementById('newTypeName').value.trim(),
+        icone: document.getElementById('newTypeIcon').value.trim() || '🔧',
+        couleur: document.getElementById('newTypeColor').value,
+        unite_defaut: document.getElementById('newTypeUnite').value,
+        image_path: imgPath,
+    };
+    if (!body.nom) return false;
+    let res;
+    if (id) {
+        res = await fetch(`/api/types_activite/${id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
+    } else {
+        res = await postJSON('/api/types_activite', body);
+    }
+    if (res.success) {
+        const newTypeId = id || res.id;
+        const checkedMachines = [...document.querySelectorAll('.type-machine-cb:checked')].map(cb => parseInt(cb.value));
+        for (const mid of checkedMachines) {
+            const m = REF_DATA.machines.find(x => x.id === mid);
+            if (m && m.type_activite_id !== parseInt(newTypeId)) {
+                await fetch(`/api/machines/${mid}`, {method:'PUT',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({...m, type_activite_id: parseInt(newTypeId)})}).then(r=>r.json());
+            }
+        }
+        showToast(id ? `Type "${body.nom}" modifié` : `Type "${body.nom}" ajouté`);
+        resetTypeForm(); await reloadRef();
+    } else showToast('Erreur: '+(res.error||''),'error');
+    return false;
+}
+
+function editTypeActivite(id) {
+    const t = REF_DATA.types_activite.find(x => x.id === id);
+    if (!t) return;
+    document.getElementById('editTypeId').value = t.id;
+    document.getElementById('newTypeName').value = t.nom;
+    document.getElementById('newTypeIcon').value = t.icone || '🔧';
+    document.getElementById('newTypeColor').value = t.couleur || '#6b7280';
+    document.getElementById('newTypeUnite').value = t.unite_defaut || '';
+    document.getElementById('typeImagePath').value = t.image_path || '';
+    const preview = document.getElementById('typeImgPreview');
+    if (t.image_path) { preview.src = t.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    document.querySelectorAll('.type-machine-cb').forEach(cb => {
+        cb.checked = REF_DATA.machines.some(m => m.id === parseInt(cb.value) && m.type_activite_id === id);
+    });
+    document.getElementById('typeFormTitle').textContent = 'Modifier le type d\'activité';
+    document.getElementById('typeSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
+    document.getElementById('typeCancelBtn').style.display = '';
+    document.getElementById('newTypeName').focus();
+}
+
+function resetTypeForm() {
+    document.getElementById('editTypeId').value = '';
+    document.getElementById('typeForm').reset();
+    document.getElementById('newTypeIcon').value = '🔧';
+    document.getElementById('newTypeColor').value = '#6b7280';
+    document.getElementById('typeImgPreview').style.display = 'none';
+    document.getElementById('typeImagePath').value = '';
+    document.querySelectorAll('.type-machine-cb').forEach(cb => cb.checked = false);
+    document.getElementById('typeFormTitle').textContent = 'Ajouter un type d\'activité';
+    document.getElementById('typeSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';
+    document.getElementById('typeCancelBtn').style.display = 'none';
+}
+
+// ========== MACHINES ==========
+function renderMachines() {
+    const list = document.getElementById('machinesList');
+    document.getElementById('machineCount').textContent = REF_DATA.machines.length;
+    selectedIds.machines.clear(); updateMassDeleteBtn('machines');
+    if (!REF_DATA.machines.length) {
+        list.innerHTML='<div class="empty-state"><i class="bi bi-cpu"></i><p>Aucune machine</p></div>'; return;
+    }
+    list.innerHTML = REF_DATA.machines.map(m => {
+        const s = m.statut || 'disponible';
+        const statutHtml = STATUT_LABELS[s] || '✅ Disponible';
+        const imgHtml = m.image_path ? `<img src="${m.image_path}" class="rounded me-2 entity-img-machine">` : '';
+        const princLabels = {'ajout':'Ajout','enlevement':'Enlèvement','deformation':'Déformation'};
+        const princBadges = (m.principes_conception||'').split(',').filter(Boolean).map(p => `<span class="badge bg-info bg-opacity-10 text-info" style="font-size:0.65em">${princLabels[p]||p}</span>`).join(' ');
+        return `
+        <div class="list-group-item py-3" data-search="${m.nom.toLowerCase()} ${(m.marque||'').toLowerCase()}">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="d-flex align-items-start gap-2">
+                    <input type="checkbox" class="form-check-input mt-1" data-entity="machines" data-id="${m.id}" onchange="onCheckboxChange('machines',${m.id},this.checked)">
+                    ${imgHtml}
+                    <div>
+                        <strong>${m.nom}</strong> ${m.quantite>1?`<span class="badge bg-primary bg-opacity-10 text-primary">×${m.quantite}</span>`:''}
+                        <span class="badge bg-${s==='disponible'?'success':s==='en_reparation'?'warning':'danger'} bg-opacity-10 text-${s==='disponible'?'success':s==='en_reparation'?'warning':'danger'} ms-1" style="font-size:0.7em">${statutHtml}</span>
+                        <br><small class="text-muted">${getTypeName(m.type_activite_id)}</small>
+                        ${m.marque?`<br><small class="text-muted"><i class="bi bi-tag me-1"></i>${m.marque}</small>`:''}
+                        ${m.zone_travail?`<br><small class="text-muted"><i class="bi bi-arrows-fullscreen me-1"></i>${m.zone_travail}</small>`:''}
+                        ${m.puissance?`<br><small class="text-muted"><i class="bi bi-lightning me-1"></i>${m.puissance}</small>`:''}
+                        ${m.description?`<br><small class="text-muted fst-italic">${m.description}</small>`:''}
+                        ${princBadges?`<br>${princBadges}`:''}
+                    </div>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-outline-primary btn-sm" onclick="editMachine(${m.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="safeDelete('machines',${m.id},'${esc(m.nom)}')"><i class="bi bi-trash"></i></button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function saveMachine(e) {
+    e.preventDefault();
+    const id = document.getElementById('editMachineId').value;
+    let imgPath = document.getElementById('machineImagePath').value;
+    const fileInput = document.getElementById('machineImageFile');
+    if (fileInput.files.length) imgPath = await uploadImage(fileInput, 'machines', id || '0');
+    const body = {
+        nom: document.getElementById('newMachineName').value.trim(),
+        type_activite_id: parseInt(document.getElementById('newMachineType').value),
+        quantite: parseInt(document.getElementById('newMachineQte').value) || 1,
+        marque: document.getElementById('newMachineMarque').value.trim(),
+        zone_travail: document.getElementById('newMachineZone').value.trim(),
+        puissance: document.getElementById('newMachinePuiss').value.trim(),
+        description: document.getElementById('newMachineDesc').value.trim(),
+        image_path: imgPath,
+        principes_conception: [...document.querySelectorAll('.principes-cb:checked')].map(cb=>cb.value).join(','),
+    };
+    if (!body.nom || !body.type_activite_id) return false;
+    let res;
+    if (id) {
+        const existing = REF_DATA.machines.find(m => m.id === parseInt(id));
+        body.statut = existing ? existing.statut || 'disponible' : 'disponible';
+        res = await fetch(`/api/machines/${id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
+    } else {
+        body.statut = 'disponible';
+        res = await postJSON('/api/machines', body);
+    }
+    if (res.success) {
+        showToast(id ? `Machine "${body.nom}" modifiée` : `Machine "${body.nom}" ajoutée`);
+        resetMachineForm(); await reloadRef();
+    } else showToast('Erreur: '+(res.error||''),'error');
+    return false;
+}
+
+function editMachine(id) {
+    const m = REF_DATA.machines.find(x=>x.id===id);
+    if (!m) return;
+    document.getElementById('editMachineId').value = m.id;
+    document.getElementById('newMachineName').value = m.nom;
+    document.getElementById('newMachineType').value = m.type_activite_id;
+    document.getElementById('newMachineQte').value = m.quantite || 1;
+    document.getElementById('newMachineMarque').value = m.marque || '';
+    document.getElementById('newMachineZone').value = m.zone_travail || '';
+    document.getElementById('newMachinePuiss').value = m.puissance || '';
+    document.getElementById('newMachineDesc').value = m.description || '';
+    document.getElementById('machineImagePath').value = m.image_path || '';
+    const preview = document.getElementById('machineImgPreview');
+    if (m.image_path) { preview.src = m.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    // Charger les principes de conception
+    document.querySelectorAll('.principes-cb').forEach(cb => cb.checked = false);
+    (m.principes_conception||'').split(',').filter(Boolean).forEach(p => {
+        const cb = document.querySelector(`.principes-cb[value="${p}"]`);
+        if (cb) cb.checked = true;
+    });
+    document.getElementById('machineSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
+    document.getElementById('machineCancelBtn').style.display = '';
+    document.getElementById('newMachineName').focus();
+}
+
+function resetMachineForm() {
+    document.getElementById('editMachineId').value = '';
+    document.getElementById('machineForm').reset();
+    document.getElementById('newMachineQte').value = 1;
+    document.getElementById('machineImagePath').value = '';
+    document.getElementById('machineImgPreview').style.display = 'none';
+    document.querySelectorAll('.principes-cb').forEach(cb => cb.checked = false);
+    document.getElementById('machineSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';
+    document.getElementById('machineCancelBtn').style.display = 'none';
+}
+
+// ========== MATÉRIAUX ==========
+function getLinkedMachineNames(matId) {
+    const links = (REF_DATA.materiau_machine||[]).filter(l => l.materiau_id === matId);
+    if (!links.length) return '<em class="text-muted">Générique (sans machine)</em>';
+    return links.map(l => {
+        const m = REF_DATA.machines.find(x=>x.id===l.machine_id);
+        return m ? m.nom : '?';
+    }).join(', ');
+}
+
+function renderMateriaux() {
+    const list = document.getElementById('materiauxList');
+    document.getElementById('matCount').textContent = REF_DATA.materiaux.length;
+    selectedIds.materiaux.clear(); updateMassDeleteBtn('materiaux');
+    if (!REF_DATA.materiaux.length) {
+        list.innerHTML='<div class="empty-state"><i class="bi bi-box-seam"></i><p>Aucun matériau</p></div>'; return;
+    }
+    list.innerHTML = REF_DATA.materiaux.map(m => {
+        const imgHtml = m.image_path ? `<img src="${m.image_path}" class="rounded me-2 entity-img-mat">` : getMaterialImg(m.nom);
+        return `
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${m.nom.toLowerCase()}">
+            <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" data-entity="materiaux" data-id="${m.id}" onchange="onCheckboxChange('materiaux',${m.id},this.checked)">
+                ${imgHtml}
+                <div><strong>${m.nom}</strong>${m.unite?' • '+m.unite:''}<br><small class="text-muted"><i class="bi bi-cpu me-1"></i>${getLinkedMachineNames(m.id)}</small></div>
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-primary btn-sm" onclick="editMateriau(${m.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm" onclick="safeDelete('materiaux',${m.id},'${esc(m.nom)}')"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function saveMateriau(e) {
+    e.preventDefault();
+    const id = document.getElementById('editMatId').value;
+    let imgPath = document.getElementById('matImagePath').value;
+    const fileInput = document.getElementById('matImageFile');
+    if (fileInput.files.length) imgPath = await uploadImage(fileInput, 'materiaux', id || '0');
+    const machine_ids = [...document.querySelectorAll('.mat-machine-cb:checked')].map(cb=>parseInt(cb.value));
+    const body = {nom: document.getElementById('newMatName').value.trim(), unite: document.getElementById('newMatUnite').value, image_path: imgPath, machine_ids: machine_ids};
+    if (!body.nom) return false;
+    let res;
+    if (id) { res = await fetch(`/api/materiaux/${id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()); }
+    else { res = await postJSON('/api/materiaux', body); }
+    if (res.success) { showToast(id ? `Matériau "${body.nom}" modifié` : `Matériau "${body.nom}" ajouté`); resetMatForm(); await reloadRef(); }
+    else showToast('Erreur: '+(res.error||''),'error');
+    return false;
+}
+
+function editMateriau(id) {
+    const m = REF_DATA.materiaux.find(x=>x.id===id);
+    if (!m) return;
+    document.getElementById('editMatId').value = m.id;
+    document.getElementById('newMatName').value = m.nom;
+    document.getElementById('newMatUnite').value = m.unite || '';
+    // Cocher les machines liées
+    document.querySelectorAll('.mat-machine-cb').forEach(cb => cb.checked = false);
+    const links = (REF_DATA.materiau_machine||[]).filter(l => l.materiau_id === m.id);
+    links.forEach(l => {
+        const cb = document.querySelector(`.mat-machine-cb[value="${l.machine_id}"]`);
+        if (cb) cb.checked = true;
+    });
+    document.getElementById('matImagePath').value = m.image_path || '';
+    const preview = document.getElementById('matImgPreview');
+    if (m.image_path) { preview.src = m.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    document.getElementById('matFormTitle').textContent = 'Modifier le matériau';
+    document.getElementById('matSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
+    document.getElementById('matCancelBtn').style.display = '';
+    document.getElementById('newMatName').focus();
+}
+
+function resetMatForm() {
+    document.getElementById('editMatId').value = ''; document.getElementById('matForm').reset();
+    document.getElementById('matImagePath').value = ''; document.getElementById('matImgPreview').style.display = 'none';
+    document.querySelectorAll('.mat-machine-cb').forEach(cb => cb.checked = false);
+    document.getElementById('matFormTitle').textContent = 'Ajouter un matériau';
+    document.getElementById('matSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';
+    document.getElementById('matCancelBtn').style.display = 'none';
+}
+
+// ========== CLASSES ==========
+function renderClasses() {
+    const list = document.getElementById('classesList');
+    document.getElementById('classeCount').textContent = REF_DATA.classes.length;
+    selectedIds.classes.clear(); updateMassDeleteBtn('classes');
+    if (!REF_DATA.classes.length) { list.innerHTML='<div class="empty-state"><i class="bi bi-mortarboard"></i><p>Aucune classe</p></div>'; return; }
+    list.innerHTML = REF_DATA.classes.map(c => `
+        <div class="list-group-item d-flex justify-content-between align-items-center py-2" data-search="${c.nom.toLowerCase()}">
+            <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" data-entity="classes" data-id="${c.id}" onchange="onCheckboxChange('classes',${c.id},this.checked)">
+                <span><i class="bi bi-mortarboard me-1 text-muted"></i> ${c.nom}</span>
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-primary btn-sm" onclick="editClasse(${c.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm" onclick="safeDelete('classes',${c.id},'${esc(c.nom)}')"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>`).join('');
+}
+
+async function saveClasse(e) {
+    e.preventDefault();
+    const id = document.getElementById('editClasseId').value;
+    const body = { nom: document.getElementById('newClassName').value.trim() };
+    if (!body.nom) return false;
+    let res;
+    if (id) { res = await fetch(`/api/classes/${id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()); }
+    else { res = await postJSON('/api/classes', body); }
+    if (res.success) { showToast(id ? `Classe "${body.nom}" modifiée` : `Classe "${body.nom}" ajoutée`); resetClasseForm(); await reloadRef(); }
+    else showToast('Erreur: '+(res.error||''),'error');
+    return false;
+}
+
+function editClasse(id) {
+    const c = REF_DATA.classes.find(x=>x.id===id);
+    if (!c) return;
+    document.getElementById('editClasseId').value = c.id;
+    document.getElementById('newClassName').value = c.nom;
+    document.getElementById('classeFormTitle').textContent = 'Modifier la classe';
+    document.getElementById('classeSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
+    document.getElementById('classeCancelBtn').style.display = '';
+    document.getElementById('newClassName').focus();
+}
+
+function resetClasseForm() {
+    document.getElementById('editClasseId').value = ''; document.getElementById('classeForm').reset();
+    document.getElementById('classeFormTitle').textContent = 'Ajouter une classe';
+    document.getElementById('classeSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';
+    document.getElementById('classeCancelBtn').style.display = 'none';
+}
+
+// ========== RÉFÉRENTS ==========
+function renderReferents() {
+    const list = document.getElementById('referentsList');
+    document.getElementById('refCount').textContent = REF_DATA.referents.length;
+    selectedIds.referents.clear(); updateMassDeleteBtn('referents');
+    if (!REF_DATA.referents.length) { list.innerHTML='<div class="empty-state"><i class="bi bi-person-badge"></i><p>Aucun référent</p></div>'; return; }
+    list.innerHTML = REF_DATA.referents.map(r => {
+        const imgHtml = r.image_path ? `<img src="${r.image_path}" class="rounded-circle me-1 entity-img-prep">` : '';
+        return `
+        <div class="list-group-item d-flex justify-content-between align-items-center py-2" data-search="${r.nom.toLowerCase()} ${(r.categorie||'').toLowerCase()}">
+            <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="form-check-input" data-entity="referents" data-id="${r.id}" onchange="onCheckboxChange('referents',${r.id},this.checked)">
+                ${imgHtml}<span>${REF_CATEGORIES[r.categorie]||'📌'}</span>
+                <div><strong>${r.nom}</strong><br><small class="text-muted">${r.categorie||'—'}</small></div>
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-primary btn-sm" onclick="editReferent(${r.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm" onclick="safeDelete('referents',${r.id},'${esc(r.nom)}')"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function saveReferent(e) {
+    e.preventDefault();
+    const id = document.getElementById('editRefId').value;
+    let imgPath = document.getElementById('refImagePath').value;
+    const fileInput = document.getElementById('refImageFile');
+    if (fileInput.files.length) imgPath = await uploadImage(fileInput, 'referents', id || '0');
+    const body = {nom: document.getElementById('newRefName').value.trim(), categorie: document.getElementById('newRefCategorie').value, image_path: imgPath};
+    if (!body.nom) return false;
+    let res;
+    if (id) { res = await fetch(`/api/referents/${id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()); }
+    else { res = await postJSON('/api/referents', body); }
+    if (res.success) { showToast(id ? `Référent "${body.nom}" modifié` : `Référent "${body.nom}" ajouté`); resetRefForm(); await reloadRef(); }
+    else showToast('Erreur: '+(res.error||''),'error');
+    return false;
+}
+
+function editReferent(id) {
+    const r = REF_DATA.referents.find(x=>x.id===id);
+    if (!r) return;
+    document.getElementById('editRefId').value = r.id;
+    document.getElementById('newRefName').value = r.nom;
+    document.getElementById('newRefCategorie').value = r.categorie || 'Professeur';
+    document.getElementById('refImagePath').value = r.image_path || '';
+    const preview = document.getElementById('refImgPreview');
+    if (r.image_path) { preview.src = r.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    document.getElementById('refFormTitle').textContent = 'Modifier le référent';
+    document.getElementById('refSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
+    document.getElementById('refCancelBtn').style.display = '';
+    document.getElementById('newRefName').focus();
+}
+
+function resetRefForm() {
+    document.getElementById('editRefId').value = ''; document.getElementById('refForm').reset();
+    document.getElementById('refImagePath').value = ''; document.getElementById('refImgPreview').style.display = 'none';
+    document.getElementById('refFormTitle').textContent = 'Ajouter un référent';
+    document.getElementById('refSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';
+    document.getElementById('refCancelBtn').style.display = 'none';
+}
+
+// ========== PRÉPARATEURS ==========
+function renderPreparateurs() {
+    const list = document.getElementById('preparateursList');
+    document.getElementById('prepCount').textContent = REF_DATA.preparateurs.length;
+    selectedIds.preparateurs.clear(); updateMassDeleteBtn('preparateurs');
+    if (!REF_DATA.preparateurs.length) { list.innerHTML='<div class="empty-state"><i class="bi bi-people"></i><p>Aucun préparateur</p></div>'; return; }
+    list.innerHTML = REF_DATA.preparateurs.map(p => {
+        const prepVisual = p.image_path
+            ? `<img src="${p.image_path}" class="rounded-circle me-2 entity-img-prep">`
+            : '<i class="bi bi-person-circle me-2 text-primary"></i>';
+        return `
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${p.nom.toLowerCase()}">
+            <div class="d-flex align-items-center">
+                <input type="checkbox" class="form-check-input me-2" data-entity="preparateurs" data-id="${p.id}" onchange="onCheckboxChange('preparateurs',${p.id},this.checked)">
+                ${prepVisual}<strong>${p.nom}</strong>
+            </div>
+            <div class="d-flex gap-1">
+                <button class="btn btn-outline-primary btn-sm" onclick="editPreparateur(${p.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm" onclick="safeDelete('preparateurs',${p.id},'${esc(p.nom)}')"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function savePreparateur(e) {
+    e.preventDefault();
+    const id = document.getElementById('editPrepId').value;
+    let imgPath = document.getElementById('prepImagePath').value;
+    const fileInput = document.getElementById('prepImageFile');
+    if (fileInput.files.length) imgPath = await uploadImage(fileInput, 'preparateurs', id || '0');
+    const body = { nom: document.getElementById('newPrepName').value.trim(), image_path: imgPath };
+    if (!body.nom) return false;
+    let res;
+    if (id) { res = await fetch(`/api/preparateurs/${id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()); }
+    else { res = await postJSON('/api/preparateurs', body); }
+    if (res.success) { showToast(id ? `Préparateur "${body.nom}" modifié` : `Préparateur "${body.nom}" ajouté`); resetPrepForm(); await reloadRef(); }
+    else showToast('Erreur: '+(res.error||''),'error');
+    return false;
+}
+
+function editPreparateur(id) {
+    const p = REF_DATA.preparateurs.find(x=>x.id===id);
+    if (!p) return;
+    document.getElementById('editPrepId').value = p.id;
+    document.getElementById('newPrepName').value = p.nom;
+    document.getElementById('prepImagePath').value = p.image_path || '';
+    const preview = document.getElementById('prepImgPreview');
+    if (p.image_path) { preview.src = p.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    document.getElementById('prepFormTitle').textContent = 'Modifier le préparateur';
+    document.getElementById('prepSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
+    document.getElementById('prepCancelBtn').style.display = '';
+    document.getElementById('newPrepName').focus();
+}
+
+function resetPrepForm() {
+    document.getElementById('editPrepId').value = ''; document.getElementById('prepForm').reset();
+    document.getElementById('prepImagePath').value = ''; document.getElementById('prepImgPreview').style.display = 'none';
+    document.getElementById('prepFormTitle').textContent = 'Ajouter un préparateur';
+    document.getElementById('prepSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';
+    document.getElementById('prepCancelBtn').style.display = 'none';
+}
+
+// ========== CHAMPS PERSONNALISÉS ==========
+async function loadCustomFields() {
+    try {
+        const res = await fetch('/api/custom-fields');
+        customFields = await res.json();
+        renderCustomFields();
+    } catch (e) { console.error(e); }
+}
+
+function renderCustomFields() {
+    const list = document.getElementById('customFieldsList');
+    document.getElementById('cfCount').textContent = customFields.length;
+    const entityLabels = {machines:'Machines',materiaux:'Matériaux',types_activite:"Types d'activité",classes:'Classes',referents:'Référents',preparateurs:'Préparateurs'};
+    const typeLabels = {text:'Texte',number:'Nombre',textarea:'Zone texte',select:'Liste',date:'Date'};
+    if (!customFields.length) { list.innerHTML = '<div class="empty-state"><i class="bi bi-sliders"></i><p>Aucun champ personnalisé</p></div>'; return; }
+    list.innerHTML = customFields.map(cf => `
+        <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+            <div>
+                <strong>${cf.field_label}</strong> <code class="text-muted small">${cf.field_name}</code>
+                <br><small class="text-muted">
+                    <span class="badge bg-primary bg-opacity-10 text-primary">${entityLabels[cf.entity_type]||cf.entity_type}</span>
+                    ${typeLabels[cf.field_type]||cf.field_type}
+                    ${cf.obligatoire ? '• <span class="text-danger">Obligatoire</span>' : ''}
+                    ${cf.options ? '• Options: '+cf.options : ''}
+                </small>
+            </div>
+            <button class="btn btn-outline-danger btn-sm" onclick="deleteCustomField(${cf.id},'${esc(cf.field_label)}')"><i class="bi bi-trash"></i></button>
+        </div>`).join('');
+}
+
+async function addCustomField(e) {
+    e.preventDefault();
+    const body = {
+        entity_type: document.getElementById('cfEntityType').value,
+        field_name: document.getElementById('cfFieldName').value.trim().replace(/\s+/g,'_').toLowerCase(),
+        field_label: document.getElementById('cfFieldLabel').value.trim(),
+        field_type: document.getElementById('cfFieldType').value,
+        obligatoire: parseInt(document.getElementById('cfObligatoire').value),
+        options: document.getElementById('cfOptions').value.trim(),
+    };
+    if (!body.entity_type || !body.field_name || !body.field_label) return false;
+    const res = await postJSON('/api/custom-fields', body);
+    if (res.success) { showToast(`Champ "${body.field_label}" ajouté`); document.getElementById('cfFieldName').value=''; document.getElementById('cfFieldLabel').value=''; document.getElementById('cfOptions').value=''; await loadCustomFields(); }
+    else showToast('Erreur: '+(res.error||''),'error');
+    return false;
+}
+
+function deleteCustomField(id, name) {
+    showConfirm('Supprimer', `Supprimer le champ "${name}" ?`, async () => {
+        const res = await fetch(`/api/custom-fields/${id}`, {method:'DELETE'}).then(r=>r.json());
+        if (res.success) { showToast(`Champ "${name}" supprimé`); await loadCustomFields(); }
+        else showToast('Erreur: '+(res.error||''),'error');
+    });
+}
+
+// ========== SUPPRESSION SÉCURISÉE ==========
+async function safeDelete(entity, id, name) {
+    try {
+        const res = await fetch(`/api/${entity}/${id}/usage-count`);
+        const data = await res.json();
+        if (data.count > 0) {
+            pendingDelete = {entity, id, name};
+            document.getElementById('replaceMessage').innerHTML =
+                `<strong>"${name}"</strong> est utilisé dans <strong>${data.count}</strong> saisie(s).<br>Vous devez choisir un remplaçant ou laisser les saisies sans référence.`;
+            const sel = document.getElementById('replacementSelect');
+            const items = REF_DATA[entity] || [];
+            sel.innerHTML = items.filter(x => x.id !== id).map(x => `<option value="${x.id}">${x.nom}</option>`).join('');
+            document.getElementById('replaceNullCheck').checked = false;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('replaceModal')).show();
+        } else {
+            showConfirm('Supprimer', `Supprimer "${name}" ?`, async () => {
+                const res2 = await fetch(`/api/${entity}/${id}`, {method:'DELETE'}).then(r=>r.json());
+                if (res2.success) { showToast(`"${name}" supprimé`); await reloadRef(); }
+                else showToast('Erreur: '+(res2.error||''),'error');
+            });
+        }
+    } catch (e) {
+        showConfirm('Supprimer', `Supprimer "${name}" ?`, async () => {
+            const res = await fetch(`/api/${entity}/${id}`, {method:'DELETE'}).then(r=>r.json());
+            if (res.success) { showToast(`"${name}" supprimé`); await reloadRef(); }
+            else showToast('Erreur: '+(res.error||''),'error');
+        });
+    }
+}
+
+async function doReplaceAndDelete() {
+    if (!pendingDelete) return;
+    const {entity, id, name} = pendingDelete;
+    const nullCheck = document.getElementById('replaceNullCheck').checked;
+    const replId = nullCheck ? null : parseInt(document.getElementById('replacementSelect').value);
+    try {
+        const res = await fetch(`/api/${entity}/${id}/replace-and-delete`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({replacement_id: replId})});
+        const data = await res.json();
+        if (data.success) {
+            showToast(`"${name}" remplacé et supprimé`);
+            bootstrap.Modal.getInstance(document.getElementById('replaceModal')).hide();
+            pendingDelete = null; await reloadRef();
+        } else showToast('Erreur: '+(data.error||''),'error');
+    } catch (e) { showToast('Erreur réseau', 'error'); }
+}
+
+// ========== COMMUN ==========
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
+
+async function postJSON(url, body) {
+    const res = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return res.json();
+}
+
+// ========== SÉLECTION MASSE ==========
+function onCheckboxChange(entity, id, checked) {
+    if (checked) selectedIds[entity].add(id);
+    else selectedIds[entity].delete(id);
+    updateMassDeleteBtn(entity);
+}
+
+function toggleSelectAll(entity, checked) {
+    const listMap = {machines:'machinesList',materiaux:'materiauxList',classes:'classesList',referents:'referentsList',types_activite:'typesActiviteList',preparateurs:'preparateursList'};
+    document.querySelectorAll(`#${listMap[entity]} input[type="checkbox"]`).forEach(cb => {
+        cb.checked = checked;
+        const id = parseInt(cb.dataset.id);
+        if (checked) selectedIds[entity].add(id);
+        else selectedIds[entity].delete(id);
+    });
+    updateMassDeleteBtn(entity);
+}
+
+function updateMassDeleteBtn(entity) {
+    const nameMap = {machines:'Machines',materiaux:'Materiaux',classes:'Classes',referents:'Referents',types_activite:'Types_activite',preparateurs:'Preparateurs'};
+    const btn = document.getElementById(`massDelete${nameMap[entity]}Btn`);
+    if (btn) {
+        const n = selectedIds[entity].size;
+        btn.style.display = n > 0 ? '' : 'none';
+        btn.innerHTML = `<i class="bi bi-trash"></i> Supprimer (${n})`;
+    }
+}
+
+function massDeleteSelected(entity) {
+    const ids = [...selectedIds[entity]];
+    if (!ids.length) return;
+    // Check usage for each item
+    (async () => {
+        let totalUsed = 0;
+        const usedNames = [];
+        for (const id of ids) {
+            try {
+                const res = await fetch(`/api/${entity}/${id}/usage-count`);
+                const data = await res.json();
+                if (data.count > 0) {
+                    totalUsed++;
+                    const item = (REF_DATA[entity] || []).find(x => x.id === id);
+                    usedNames.push(`${item ? item.nom : '#'+id} (${data.count})`);
+                }
+            } catch(e) {}
+        }
+        const msg = totalUsed > 0
+            ? `Supprimer ${ids.length} élément(s) ?\n\n⚠️ ${totalUsed} élément(s) utilisé(s) dans des saisies :\n${usedNames.join(', ')}\n\nLes saisies associées perdront leur référence.`
+            : `Supprimer ${ids.length} élément(s) ?`;
+        showConfirm('Suppression de masse', msg, async ()=>{
+            const res = await postJSON(`/api/${entity}/mass-delete`, {ids});
+            if (res.success) { showToast(`${ids.length} élément(s) supprimé(s)`); selectedIds[entity].clear(); await reloadRef(); }
+            else showToast('Erreur: '+(res.error||''),'error');
+        });
+    })();
+}
+
+// ========== FILTRAGE ==========
+function filterList(section, query) {
+    const q = query.toLowerCase().trim();
+    const listMap = {machines:'machinesList',materiaux:'materiauxList',classes:'classesList',referents:'referentsList',types_activite:'typesActiviteList',preparateurs:'preparateursList'};
+    const lid = listMap[section];
+    if (!lid) return;
+    document.querySelectorAll(`#${lid} .list-group-item`).forEach(item => {
+        const text = item.getAttribute('data-search') || item.textContent.toLowerCase();
+        item.style.display = text.includes(q) ? '' : 'none';
+    });
+}
+
+async function reloadRef() {
+    const res = await fetch('/api/reference');
+    REF_DATA = await res.json();
+    populateUserSelect();
+    populateTypeSelects();
+    renderAll();
+}
+
+// ========== PERSONNALISATION ICÔNES ==========
+function initPersonnalisation() {
+    const sections = ['types_activite', 'materiaux', 'machines', 'preparateurs'];
+    sections.forEach(s => {
+        const val = ICON_SIZES[s] || (s === 'types_activite' ? 28 : 32);
+        const slider = document.getElementById('iconSize' + capitalizeSection(s));
+        const input = document.getElementById('iconSize' + capitalizeSection(s) + 'Val');
+        if (slider) slider.value = val;
+        if (input) input.value = val;
+    });
+    updateAllPreviews();
+}
+
+function capitalizeSection(s) {
+    // types_activite -> Types_activite, materiaux -> Materiaux, etc.
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function updateIconSizeSection(section, val) {
+    val = Math.max(16, Math.min(96, parseInt(val) || 32));
+    const slider = document.getElementById('iconSize' + capitalizeSection(section));
+    const input = document.getElementById('iconSize' + capitalizeSection(section) + 'Val');
+    if (slider) slider.value = val;
+    if (input) input.value = val;
+    setIconSizeSection(section, val);
+    updatePreview(section, val);
+}
+
+function updatePreview(section, val) {
+    if (section === 'types_activite') {
+        const fb = document.getElementById('previewTypes_activiteFallback');
+        if (fb) fb.style.fontSize = val + 'px';
+    } else if (section === 'materiaux') {
+        const img = document.getElementById('previewMateriaux');
+        const fb = document.getElementById('previewMateriauxFallback');
+        if (img && img.style.display !== 'none') {
+            img.style.width = val + 'px';
+            img.style.height = val + 'px';
+        }
+        if (fb) fb.style.fontSize = val + 'px';
+    } else if (section === 'machines') {
+        const box = document.getElementById('previewMachinesBox');
+        const icon = document.getElementById('previewMachinesIcon');
+        if (box) { box.style.width = val + 'px'; box.style.height = val + 'px'; }
+        if (icon) icon.style.fontSize = Math.max(14, val * 0.6) + 'px';
+    } else if (section === 'preparateurs') {
+        const box = document.getElementById('previewPreparateursBox');
+        const icon = document.getElementById('previewPreparateursIcon');
+        if (box) { box.style.width = val + 'px'; box.style.height = val + 'px'; }
+        if (icon) icon.style.fontSize = Math.max(14, val * 0.6) + 'px';
+    }
+}
+
+function updateAllPreviews() {
+    ['types_activite', 'materiaux', 'machines', 'preparateurs'].forEach(s => updatePreview(s, ICON_SIZES[s] || (s === 'types_activite' ? 28 : 32)));
+}
+
+function resetIconSizes() {
+    ICON_SIZES = {materiaux: 32, machines: 32, preparateurs: 32, types_activite: 28};
+    saveIconSizes();
+    initPersonnalisation();
+    showToast('Tailles réinitialisées');
+}
+
+// ========== FABLAB INFO ==========
+function getFablabInfo() {
+    return JSON.parse(localStorage.getItem('fabtrack_fablab_info') || '{}');
+}
+
+function initFablabInfo() {
+    const info = getFablabInfo();
+    if (info.nom) document.getElementById('fablabNom').value = info.nom;
+    if (info.adresse) document.getElementById('fablabAdresse').value = info.adresse;
+    if (info.tel) document.getElementById('fablabTel').value = info.tel;
+    if (info.email) document.getElementById('fablabEmail').value = info.email;
+    if (info.web) document.getElementById('fablabWeb').value = info.web;
+    if (info.description) document.getElementById('fablabDesc').value = info.description;
+    if (info.annee) document.getElementById('fablabAnnee').value = info.annee;
+    if (info.logo) {
+        const preview = document.getElementById('fablabLogoPreview');
+        preview.src = info.logo; preview.style.display = '';
+        document.getElementById('fablabLogoRemoveBtn').style.display = '';
+    }
+    updateFablabPreview(info);
+}
+
+function previewFablabLogo(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const preview = document.getElementById('fablabLogoPreview');
+        preview.src = e.target.result; preview.style.display = '';
+        document.getElementById('fablabLogoRemoveBtn').style.display = '';
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeFablabLogo() {
+    document.getElementById('fablabLogo').value = '';
+    document.getElementById('fablabLogoPreview').src = '';
+    document.getElementById('fablabLogoPreview').style.display = 'none';
+    document.getElementById('fablabLogoRemoveBtn').style.display = 'none';
+    // Also remove from saved info
+    const info = getFablabInfo();
+    delete info.logo;
+    localStorage.setItem('fabtrack_fablab_info', JSON.stringify(info));
+    updateFablabPreview(info);
+}
+
+function saveFablabInfo(e) {
+    if(e) e.preventDefault();
+    const info = {
+        nom: document.getElementById('fablabNom').value.trim(),
+        adresse: document.getElementById('fablabAdresse').value.trim(),
+        tel: document.getElementById('fablabTel').value.trim(),
+        email: document.getElementById('fablabEmail').value.trim(),
+        web: document.getElementById('fablabWeb').value.trim(),
+        description: document.getElementById('fablabDesc').value.trim(),
+        annee: document.getElementById('fablabAnnee').value.trim(),
+    };
+    // Keep existing logo or use new one from preview
+    const logoPreview = document.getElementById('fablabLogoPreview');
+    if (logoPreview.style.display !== 'none' && logoPreview.src && logoPreview.src.startsWith('data:')) {
+        info.logo = logoPreview.src;
+    } else {
+        const existing = getFablabInfo();
+        if (existing.logo) info.logo = existing.logo;
+    }
+    localStorage.setItem('fabtrack_fablab_info', JSON.stringify(info));
+    updateFablabPreview(info);
+    showToast('Informations du Fablab enregistrées');
+    return false;
+}
+
+function updateFablabPreview(info) {
+    const container = document.getElementById('fablabPreview');
+    if (!info || !info.nom) {
+        container.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-building" style="font-size:3rem;opacity:0.3;"></i><p>Remplissez le formulaire pour voir l\'aperçu</p></div>';
+        return;
+    }
+    const logoHtml = info.logo
+        ? `<img src="${info.logo}" alt="Logo" style="max-height:60px;border-radius:8px;margin-bottom:0.5rem;">`
+        : `<i class="bi bi-building" style="font-size:2.5rem;color:var(--ft-primary);"></i>`;
+    container.innerHTML = `
+        <div class="text-center mb-3">
+            ${logoHtml}
+            <h4 class="fw-bold mt-2 mb-0">${info.nom}</h4>
+            ${info.annee ? `<span class="badge bg-primary bg-opacity-10 text-primary mt-1">${info.annee}</span>` : ''}
+        </div>
+        ${info.description ? `<p class="text-muted small text-center">${info.description}</p>` : ''}
+        <hr>
+        <div class="row g-2 small">
+            ${info.adresse ? `<div class="col-12"><i class="bi bi-geo-alt me-1 text-danger"></i> ${info.adresse}</div>` : ''}
+            ${info.tel ? `<div class="col-md-6"><i class="bi bi-telephone me-1 text-success"></i> ${info.tel}</div>` : ''}
+            ${info.email ? `<div class="col-md-6"><i class="bi bi-envelope me-1 text-primary"></i> <a href="mailto:${info.email}">${info.email}</a></div>` : ''}
+            ${info.web ? `<div class="col-12"><i class="bi bi-globe me-1 text-info"></i> <a href="${info.web}" target="_blank">${info.web}</a></div>` : ''}
+        </div>
+    `;
+}
+
+// ================================
+// DONNÉES DE DÉMONSTRATION
+// ================================
+
+async function generateDemoData() {
+    const btn = document.querySelector('button[onclick="generateDemoData()"]');
+    const resultDiv = document.getElementById('demoGenerationResult');
+    
+    // Désactiver le bouton et afficher un spinner
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Génération en cours...';
+    
+    resultDiv.style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/demo/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Affichage du succès
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>
+                    <strong>${result.message}</strong>
+                    <ul class="mt-2 mb-0 small">
+                        <li>${result.details.fournisseurs}</li>
+                        <li>${result.details.articles_stock}</li>
+                        <li>${result.details.missions}</li>
+                        <li>${result.details.references}</li>
+                        <li>${result.details.categories}</li>
+                    </ul>
+                </div>
+            `;
+            
+            // Recharger les données de référence pour mettre à jour l'interface
+            await reloadRef();
+            
+            showToast('✅ Données de démonstration générées avec succès!', 'success');
+        } else {
+            // Affichage de l'erreur
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Erreur lors de la génération :</strong><br>
+                    ${result.error}
+                </div>
+            `;
+            showToast('❌ Erreur lors de la génération des données', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur génération données démo:', error);
+        resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <strong>Erreur de connexion :</strong><br>
+                Impossible de contacter le serveur.
+            </div>
+        `;
+        showToast('❌ Erreur de connexion', 'error');
+    } finally {
+        // Réactiver le bouton
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-fill me-2"></i>Générer les données de démonstration';
+        resultDiv.style.display = 'block';
+    }
+}
+
+</script>
+{% endblock %}

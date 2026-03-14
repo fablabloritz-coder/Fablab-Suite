@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}Calculateur de surface{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="page-title"><i class="bi bi-rulers"></i> Calculateur de surface</h1>
+    <p class="page-subtitle">Calculez rapidement une surface en m² pour vos saisies de découpe laser ou CNC</p>
+</div>
+
+<div class="row g-4">
+    <!-- Calculateur principal -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header d-flex align-items-center gap-2 px-4 py-3">
+                <i class="bi bi-calculator text-primary"></i>
+                <strong>Calcul de surface rectangulaire</strong>
+            </div>
+            <div class="card-body px-4 py-4">
+                <!-- Forme -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold"><i class="bi bi-bounding-box me-1"></i> Forme</label>
+                    <div class="filter-tabs">
+                        <button class="filter-tab active" onclick="setShape('rectangle', this)">
+                            <i class="bi bi-square"></i> Rectangle
+                        </button>
+                        <button class="filter-tab" onclick="setShape('circle', this)">
+                            <i class="bi bi-circle"></i> Cercle
+                        </button>
+                        <button class="filter-tab" onclick="setShape('triangle', this)">
+                            <i class="bi bi-triangle"></i> Triangle
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Unité -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold"><i class="bi bi-rulers me-1"></i> Unité d'entrée</label>
+                    <div class="filter-tabs">
+                        <button class="filter-tab active" onclick="setUnit('mm', this)">mm</button>
+                        <button class="filter-tab" onclick="setUnit('cm', this)">cm</button>
+                        <button class="filter-tab" onclick="setUnit('m', this)">m</button>
+                    </div>
+                </div>
+
+                <!-- Dimensions (rectangle) -->
+                <div id="rectFields">
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Longueur</label>
+                            <div class="input-group">
+                                <input type="number" id="calcLongueur" class="form-control form-control-lg"
+                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                <span class="input-group-text unit-label">mm</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Largeur</label>
+                            <div class="input-group">
+                                <input type="number" id="calcLargeur" class="form-control form-control-lg"
+                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                <span class="input-group-text unit-label">mm</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dimensions (cercle) -->
+                <div id="circleFields" style="display:none;">
+                    <div class="mb-3">
+                        <label class="form-label">Diamètre (ou rayon ×2)</label>
+                        <div class="input-group">
+                            <input type="number" id="calcDiametre" class="form-control form-control-lg"
+                                   step="0.1" min="0" placeholder="0" oninput="calculate()">
+                            <span class="input-group-text unit-label">mm</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dimensions (triangle) -->
+                <div id="triangleFields" style="display:none;">
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Base</label>
+                            <div class="input-group">
+                                <input type="number" id="calcBase" class="form-control form-control-lg"
+                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                <span class="input-group-text unit-label">mm</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Hauteur</label>
+                            <div class="input-group">
+                                <input type="number" id="calcHauteur" class="form-control form-control-lg"
+                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                <span class="input-group-text unit-label">mm</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Résultat -->
+                <div class="card bg-primary bg-opacity-10 border-primary border-opacity-25 mt-3">
+                    <div class="card-body text-center py-4">
+                        <div class="text-muted small mb-1">Surface calculée</div>
+                        <div class="display-4 fw-bold text-primary" id="calcResult">0,0000</div>
+                        <div class="text-muted">m²</div>
+                        <div class="mt-2 small text-muted" id="calcResultAlt"></div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="d-flex gap-2 mt-3">
+                    <button class="btn btn-primary flex-fill" onclick="copierResultat()">
+                        <i class="bi bi-clipboard"></i> Copier
+                    </button>
+                    <button class="btn btn-success flex-fill" onclick="utiliserDansSaisie()">
+                        <i class="bi bi-box-arrow-in-right"></i> Utiliser dans la saisie
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="resetCalc()">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aide & historique -->
+    <div class="col-lg-6">
+        <!-- Formats standards -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header d-flex align-items-center gap-2 px-4 py-3">
+                <i class="bi bi-grid-3x3 text-info"></i>
+                <strong>Formats standards (clic = remplissage auto)</strong>
+            </div>
+            <div class="card-body px-4">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr><th>Format</th><th>Dimensions</th><th>Surface</th><th></th></tr></thead>
+                        <tbody>
+                            <tr onclick="fillPreset(1189,841)" style="cursor:pointer" class="preset-row">
+                                <td><strong>A0</strong></td><td>1189 × 841 mm</td><td>0,9999 m²</td>
+                                <td><i class="bi bi-arrow-left-circle text-primary"></i></td>
+                            </tr>
+                            <tr onclick="fillPreset(841,594)" style="cursor:pointer" class="preset-row">
+                                <td><strong>A1</strong></td><td>841 × 594 mm</td><td>0,4996 m²</td>
+                                <td><i class="bi bi-arrow-left-circle text-primary"></i></td>
+                            </tr>
+                            <tr onclick="fillPreset(594,420)" style="cursor:pointer" class="preset-row">
+                                <td><strong>A2</strong></td><td>594 × 420 mm</td><td>0,2495 m²</td>
+                                <td><i class="bi bi-arrow-left-circle text-primary"></i></td>
+                            </tr>
+                            <tr onclick="fillPreset(420,297)" style="cursor:pointer" class="preset-row">
+                                <td><strong>A3</strong></td><td>420 × 297 mm</td><td>0,1247 m²</td>
+                                <td><i class="bi bi-arrow-left-circle text-primary"></i></td>
+                            </tr>
+                            <tr onclick="fillPreset(297,210)" style="cursor:pointer" class="preset-row">
+                                <td><strong>A4</strong></td><td>297 × 210 mm</td><td>0,0624 m²</td>
+                                <td><i class="bi bi-arrow-left-circle text-primary"></i></td>
+                            </tr>
+                            <tr onclick="fillPreset(210,148)" style="cursor:pointer" class="preset-row">
+                                <td><strong>A5</strong></td><td>210 × 148 mm</td><td>0,0311 m²</td>
+                                <td><i class="bi bi-arrow-left-circle text-primary"></i></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zones de travail machines -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header d-flex align-items-center gap-2 px-4 py-3">
+                <i class="bi bi-cpu text-warning"></i>
+                <strong>Zones de travail des machines</strong>
+            </div>
+            <div class="card-body px-4">
+                <div id="machineZones" class="list-group list-group-flush">
+                    <div class="text-muted small">Chargement...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historique des calculs -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center px-4 py-3">
+                <span><i class="bi bi-clock-history text-secondary"></i> <strong>Historique des calculs</strong></span>
+                <button class="btn btn-outline-secondary btn-sm" onclick="clearHistory()">
+                    <i class="bi bi-trash"></i> Vider
+                </button>
+            </div>
+            <div class="card-body px-4">
+                <div id="calcHistory" class="list-group list-group-flush">
+                    <div class="text-muted small text-center py-2">Aucun calcul encore</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentShape = 'rectangle';
+let currentUnit = 'mm';
+let calcHistory = JSON.parse(localStorage.getItem('fabtrack_calc_history') || '[]');
+const UNIT_FACTORS = { mm: 1e6, cm: 1e4, m: 1 };
+
+function onReferenceDataLoaded() {
+    renderMachineZones();
+    renderHistory();
+}
+
+function setShape(shape, btn) {
+    currentShape = shape;
+    document.querySelectorAll('.filter-tabs')[0].querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('rectFields').style.display = shape === 'rectangle' ? '' : 'none';
+    document.getElementById('circleFields').style.display = shape === 'circle' ? '' : 'none';
+    document.getElementById('triangleFields').style.display = shape === 'triangle' ? '' : 'none';
+    calculate();
+}
+
+function setUnit(unit, btn) {
+    currentUnit = unit;
+    document.querySelectorAll('.filter-tabs')[1].querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.unit-label').forEach(el => el.textContent = unit);
+    calculate();
+}
+
+function calculate() {
+    let surface = 0;
+    const factor = UNIT_FACTORS[currentUnit];
+
+    if (currentShape === 'rectangle') {
+        const l = parseFloat(document.getElementById('calcLongueur').value) || 0;
+        const w = parseFloat(document.getElementById('calcLargeur').value) || 0;
+        surface = (l * w) / factor;
+    } else if (currentShape === 'circle') {
+        const d = parseFloat(document.getElementById('calcDiametre').value) || 0;
+        surface = (Math.PI * (d/2) * (d/2)) / factor;
+    } else if (currentShape === 'triangle') {
+        const b = parseFloat(document.getElementById('calcBase').value) || 0;
+        const h = parseFloat(document.getElementById('calcHauteur').value) || 0;
+        surface = (b * h / 2) / factor;
+    }
+
+    document.getElementById('calcResult').textContent = surface.toFixed(4).replace('.', ',');
+
+    // Alternative display
+    const alt = document.getElementById('calcResultAlt');
+    if (surface > 0) {
+        const cm2 = surface * 10000;
+        alt.textContent = `= ${cm2.toFixed(2).replace('.', ',')} cm² = ${(surface * 1000000).toFixed(0)} mm²`;
+    } else {
+        alt.textContent = '';
+    }
+}
+
+function fillPreset(l, w) {
+    currentShape = 'rectangle';
+    document.querySelectorAll('.filter-tabs')[0].querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.filter-tabs')[0].querySelector('.filter-tab').classList.add('active');
+    document.getElementById('rectFields').style.display = '';
+    document.getElementById('circleFields').style.display = 'none';
+    document.getElementById('triangleFields').style.display = 'none';
+
+    setUnit('mm', document.querySelectorAll('.filter-tabs')[1].querySelector('.filter-tab'));
+    document.getElementById('calcLongueur').value = l;
+    document.getElementById('calcLargeur').value = w;
+    calculate();
+    addToHistory(l, w, 'mm', 'rectangle');
+}
+
+function copierResultat() {
+    const val = document.getElementById('calcResult').textContent.replace(',', '.');
+    navigator.clipboard.writeText(val).then(() => showToast('Résultat copié !', 'info'));
+}
+
+function utiliserDansSaisie() {
+    const surface = parseFloat(document.getElementById('calcResult').textContent.replace(',', '.'));
+    if (surface <= 0) { showToast('Calculez d\'abord une surface', 'error'); return; }
+
+    // Store in sessionStorage and redirect
+    let longueur_mm = 0, largeur_mm = 0;
+    if (currentShape === 'rectangle') {
+        const f = currentUnit === 'mm' ? 1 : currentUnit === 'cm' ? 10 : 1000;
+        longueur_mm = (parseFloat(document.getElementById('calcLongueur').value) || 0) * f;
+        largeur_mm = (parseFloat(document.getElementById('calcLargeur').value) || 0) * f;
+    }
+    sessionStorage.setItem('fabtrack_calc_surface', JSON.stringify({
+        longueur_mm: longueur_mm, largeur_mm: largeur_mm, surface: surface
+    }));
+    window.location.href = '/';
+}
+
+function resetCalc() {
+    ['calcLongueur','calcLargeur','calcDiametre','calcBase','calcHauteur'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    calculate();
+}
+
+function addToHistory(dim1, dim2, unit, shape) {
+    const surface = parseFloat(document.getElementById('calcResult').textContent.replace(',', '.'));
+    if (surface <= 0) return;
+    const entry = {
+        shape, dim1, dim2, unit, surface,
+        time: new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})
+    };
+    calcHistory.unshift(entry);
+    if (calcHistory.length > 20) calcHistory = calcHistory.slice(0, 20);
+    localStorage.setItem('fabtrack_calc_history', JSON.stringify(calcHistory));
+    renderHistory();
+}
+
+function renderHistory() {
+    const container = document.getElementById('calcHistory');
+    if (calcHistory.length === 0) {
+        container.innerHTML = '<div class="text-muted small text-center py-2">Aucun calcul encore</div>';
+        return;
+    }
+    container.innerHTML = calcHistory.map((h, i) => {
+        const shapeIcon = h.shape === 'circle' ? '⭕' : h.shape === 'triangle' ? '🔺' : '⬜';
+        const dims = h.shape === 'circle' ? `Ø${h.dim1}${h.unit}` : `${h.dim1}×${h.dim2} ${h.unit}`;
+        return `<div class="list-group-item d-flex justify-content-between align-items-center py-2 px-0">
+            <span>${shapeIcon} ${dims}</span>
+            <span class="fw-bold text-primary">${h.surface.toFixed(4)} m²</span>
+            <small class="text-muted">${h.time}</small>
+        </div>`;
+    }).join('');
+}
+
+function clearHistory() {
+    calcHistory = [];
+    localStorage.removeItem('fabtrack_calc_history');
+    renderHistory();
+}
+
+function renderMachineZones() {
+    const container = document.getElementById('machineZones');
+    const machines = (REF_DATA.machines || []).filter(m => m.zone_travail);
+    if (machines.length === 0) {
+        container.innerHTML = '<div class="text-muted small">Aucune zone de travail renseignée</div>';
+        return;
+    }
+    const typeMap = {};
+    (REF_DATA.types_activite || []).forEach(t => typeMap[t.id] = t);
+
+    container.innerHTML = machines.map(m => {
+        const type = typeMap[m.type_activite_id] || {};
+        return `<div class="list-group-item d-flex justify-content-between align-items-center py-2 px-0"
+                     onclick="fillFromMachine('${m.zone_travail}')" style="cursor:pointer">
+            <div>
+                <strong>${m.nom}</strong>
+                <br><small class="text-muted">${type.icone || ''} ${type.nom || ''}</small>
+            </div>
+            <span class="badge bg-primary bg-opacity-10 text-primary">${m.zone_travail}</span>
+        </div>`;
+    }).join('');
+}
+
+function fillFromMachine(zone) {
+    // Parse zone string like "780×460 mm" or "300x300 mm"
+    const match = zone.match(/(\d+)\s*[×xX]\s*(\d+)/);
+    if (match) {
+        fillPreset(parseInt(match[1]), parseInt(match[2]));
+    }
+}
+
+// Auto-add to history on input change (debounced)
+let calcTimer = null;
+document.querySelectorAll('#calcLongueur, #calcLargeur, #calcDiametre, #calcBase, #calcHauteur').forEach(input => {
+    input.addEventListener('change', () => {
+        clearTimeout(calcTimer);
+        calcTimer = setTimeout(() => {
+            const surface = parseFloat(document.getElementById('calcResult').textContent.replace(',', '.'));
+            if (surface > 0) {
+                let d1=0, d2=0;
+                if (currentShape === 'rectangle') {
+                    d1 = parseFloat(document.getElementById('calcLongueur').value)||0;
+                    d2 = parseFloat(document.getElementById('calcLargeur').value)||0;
+                } else if (currentShape === 'circle') {
+                    d1 = parseFloat(document.getElementById('calcDiametre').value)||0;
+                } else {
+                    d1 = parseFloat(document.getElementById('calcBase').value)||0;
+                    d2 = parseFloat(document.getElementById('calcHauteur').value)||0;
+                }
+                addToHistory(d1, d2, currentUnit, currentShape);
+            }
+        }, 500);
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+{% block title %}Statistiques - {{ theme.nom_application }}{% endblock %}
+
+{% block content %}
+<style>
+    .chart-thumb {
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+        position: relative;
+        overflow: hidden;
+    }
+    .chart-thumb:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
+    }
+    .chart-thumb .zoom-hint {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        opacity: 0;
+        transition: opacity 0.15s;
+        font-size: 1.1rem;
+    }
+    .chart-thumb:hover .zoom-hint {
+        opacity: 0.7;
+    }
+    .chart-thumb canvas {
+        pointer-events: none;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-graph-up text-primary"></i> Statistiques
+    </h1>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.export_statistiques') }}" class="btn btn-success">
+            <i class="bi bi-download"></i> Exporter CSV
+        </a>
+        <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-dark">
+            <i class="bi bi-arrow-left"></i> Administration
+        </a>
+    </div>
+</div>
+
+<!-- Indicateurs clés -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+        <div class="stat-card bg-primary bg-opacity-10">
+            <div class="number text-primary">{{ total_prets }}</div>
+            <div class="label">Total prêts</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="stat-card bg-warning bg-opacity-10">
+            <div class="number text-warning">{{ prets_actifs }}</div>
+            <div class="label">En cours</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="stat-card bg-success bg-opacity-10">
+            <div class="number text-success">{{ prets_retournes }}</div>
+            <div class="label">Retournés</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="stat-card bg-info bg-opacity-10">
+            <div class="number text-info">{{ total_personnes }}</div>
+            <div class="label">Personnes</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="stat-card bg-secondary bg-opacity-10">
+            <div class="number text-secondary">{{ total_materiel }}</div>
+            <div class="label">Matériels</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="stat-card" style="background-color: rgba(13,144,79,0.1);">
+            <div class="number" style="color:#0d904f;">{{ taux_ponctualite }}%</div>
+            <div class="label">Ponctualité</div>
+        </div>
+    </div>
+</div>
+
+<!-- Durée moyenne -->
+<div class="alert alert-light border mb-4">
+    <i class="bi bi-clock text-primary me-2"></i>
+    <strong>Durée moyenne d'un prêt :</strong>
+    {% if duree_moy_heures < 24 %}
+        {{ duree_moy_heures }} heure(s)
+    {% else %}
+        {{ (duree_moy_heures / 24)|round(1) }} jour(s)
+    {% endif %}
+    &nbsp;—&nbsp;
+    <strong>Taux de ponctualité :</strong> {{ taux_ponctualite }}% des retours dans les délais
+</div>
+
+<!-- ═══ Graphiques en vignettes ═══ -->
+<h5 class="mb-3"><i class="bi bi-bar-chart-line text-primary"></i> Graphiques <small class="text-muted fw-normal">(cliquez pour agrandir)</small></h5>
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm chart-thumb" data-chart="mois">
+            <div class="card-body p-2 pb-1">
+                <div class="small fw-bold text-center mb-1"><i class="bi bi-bar-chart"></i> Prêts / mois</div>
+                <div style="position:relative; height:140px;"><canvas id="chartMoisThumb"></canvas></div>
+                <span class="zoom-hint"><i class="bi bi-arrows-fullscreen"></i></span>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm chart-thumb" data-chart="categorie">
+            <div class="card-body p-2 pb-1">
+                <div class="small fw-bold text-center mb-1"><i class="bi bi-pie-chart"></i> Par catégorie</div>
+                <div style="position:relative; height:140px;"><canvas id="chartCategorieThumb"></canvas></div>
+                <span class="zoom-hint"><i class="bi bi-arrows-fullscreen"></i></span>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm chart-thumb" data-chart="jours">
+            <div class="card-body p-2 pb-1">
+                <div class="small fw-bold text-center mb-1"><i class="bi bi-calendar-week"></i> Prêts / jour</div>
+                <div style="position:relative; height:140px;"><canvas id="chartJoursThumb"></canvas></div>
+                <span class="zoom-hint"><i class="bi bi-arrows-fullscreen"></i></span>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm chart-thumb" data-chart="etat">
+            <div class="card-body p-2 pb-1">
+                <div class="small fw-bold text-center mb-1"><i class="bi bi-pc-display"></i> Parc matériel</div>
+                <div style="position:relative; height:140px;"><canvas id="chartEtatThumb"></canvas></div>
+                <span class="zoom-hint"><i class="bi bi-arrows-fullscreen"></i></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal zoom graphique -->
+<div class="modal fade" id="chartZoomModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="chartZoomTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div style="position:relative; height:400px;"><canvas id="chartZoomCanvas"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Top 10 ═══ -->
+<div class="row g-4">
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-trophy text-warning"></i> Top 10 matériels empruntés</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if top_materiels %}
+                <div class="table-responsive">
+                    <table class="table table-touch table-hover mb-0">
+                        <thead>
+                            <tr><th>#</th><th>Matériel</th><th>Nb prêts</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for m in top_materiels %}
+                            <tr>
+                                <td><span class="badge bg-primary">{{ loop.index }}</span></td>
+                                <td>{{ m.description }}</td>
+                                <td><strong>{{ m.nb }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state py-4">
+                    <i class="bi bi-inbox"></i>
+                    <p>Aucune donnée disponible</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-people text-info"></i> Top 10 emprunteurs</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if top_emprunteurs %}
+                <div class="table-responsive">
+                    <table class="table table-touch table-hover mb-0">
+                        <thead>
+                            <tr><th>#</th><th>Personne</th><th>Catégorie</th><th>Nb prêts</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for e in top_emprunteurs %}
+                            <tr>
+                                <td><span class="badge bg-info">{{ loop.index }}</span></td>
+                                <td><strong>{{ e.nom }} {{ e.prenom }}</strong></td>
+                                <td><span class="cat-badge" style="{{ e.categorie | style_categorie }}">{{ e.categorie | label_categorie }}</span></td>
+                                <td><strong>{{ e.nb }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state py-4">
+                    <i class="bi bi-inbox"></i>
+                    <p>Aucune donnée disponible</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const couleurPrimaire = '{{ theme.couleur_primaire }}';
+    const catColors = ['#1a73e8', '#0d904f', '#ea8600', '#d93025', '#9c27b0', '#00bcd4', '#795548', '#607d8b'];
+    const moisLabels = {
+        '01': 'Jan', '02': 'Fév', '03': 'Mar', '04': 'Avr',
+        '05': 'Mai', '06': 'Juin', '07': 'Juil', '08': 'Août',
+        '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Déc'
+    };
+    const etatLabels = {
+        'disponible': 'Disponible', 'prete': 'Prêté',
+        'en_reparation': 'En réparation', 'hors_service': 'Hors service'
+    };
+    const etatColors = {
+        'disponible': '#0d904f', 'prete': '#ea8600',
+        'en_reparation': '#1a73e8', 'hors_service': '#d93025'
+    };
+
+    // ── Données ──
+    const dataMois = {{ prets_par_mois | tojson }};
+    const dataCat = {{ prets_par_categorie | tojson }};
+    const dataJours = {{ prets_par_jour | tojson }};
+    const joursSemaine = {{ jours_semaine | tojson }};
+    const dataEtat = {{ etats_materiel | tojson }};
+    const joursData = new Array(7).fill(0);
+    dataJours.forEach(d => { joursData[d.jour] = d.nb; });
+
+    // ── Configs partagées ──
+    const thumbOpts = { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { display: false }, y: { display: false } },
+        animation: { duration: 400 }
+    };
+    const thumbDoughnutOpts = { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        animation: { duration: 400 }
+    };
+
+    function getChartConfig(key, forZoom) {
+        const titles = {
+            mois: 'Prêts par mois (12 derniers mois)',
+            categorie: 'Répartition par catégorie',
+            jours: 'Prêts par jour de la semaine',
+            etat: 'État du parc matériel'
+        };
+        if (key === 'mois') {
+            return {
+                title: titles.mois,
+                config: {
+                    type: 'bar',
+                    data: {
+                        labels: dataMois.map(d => { const p = d.mois.split('-'); return moisLabels[p[1]] + ' ' + p[0].slice(2); }),
+                        datasets: [{ label: 'Prêts', data: dataMois.map(d => d.nb),
+                            backgroundColor: couleurPrimaire + '99', borderColor: couleurPrimaire, borderWidth: 2, borderRadius: 6 }]
+                    },
+                    options: forZoom
+                        ? { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+                        : thumbOpts
+                }
+            };
+        }
+        if (key === 'categorie') {
+            return {
+                title: titles.categorie,
+                config: {
+                    type: 'doughnut',
+                    data: {
+                        labels: dataCat.map(d => d.categorie.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())),
+                        datasets: [{ data: dataCat.map(d => d.nb), backgroundColor: catColors.slice(0, dataCat.length), borderWidth: 2 }]
+                    },
+                    options: forZoom
+                        ? { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, padding: 10 } } } }
+                        : thumbDoughnutOpts
+                }
+            };
+        }
+        if (key === 'jours') {
+            return {
+                title: titles.jours,
+                config: {
+                    type: 'bar',
+                    data: {
+                        labels: joursSemaine,
+                        datasets: [{ label: 'Prêts', data: joursData,
+                            backgroundColor: '#0d904f99', borderColor: '#0d904f', borderWidth: 2, borderRadius: 6 }]
+                    },
+                    options: forZoom
+                        ? { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+                        : thumbOpts
+                }
+            };
+        }
+        if (key === 'etat') {
+            return {
+                title: titles.etat,
+                config: {
+                    type: 'doughnut',
+                    data: {
+                        labels: dataEtat.map(d => etatLabels[d.etat] || d.etat),
+                        datasets: [{ data: dataEtat.map(d => d.nb),
+                            backgroundColor: dataEtat.map(d => etatColors[d.etat] || '#607d8b'), borderWidth: 2 }]
+                    },
+                    options: forZoom
+                        ? { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, padding: 10 } } } }
+                        : thumbDoughnutOpts
+                }
+            };
+        }
+    }
+
+    // ── Vignettes ──
+    ['mois', 'categorie', 'jours', 'etat'].forEach(key => {
+        const canvasId = 'chart' + key.charAt(0).toUpperCase() + key.slice(1) + 'Thumb';
+        const cfg = getChartConfig(key, false);
+        new Chart(document.getElementById(canvasId), cfg.config);
+    });
+
+    // ── Modal zoom ──
+    let zoomChart = null;
+    document.querySelectorAll('.chart-thumb').forEach(thumb => {
+        thumb.addEventListener('click', function() {
+            const key = this.dataset.chart;
+            const cfg = getChartConfig(key, true);
+            document.getElementById('chartZoomTitle').textContent = cfg.title;
+            const canvas = document.getElementById('chartZoomCanvas');
+            if (zoomChart) { zoomChart.destroy(); zoomChart = null; }
+            const modal = new bootstrap.Modal(document.getElementById('chartZoomModal'));
+            modal.show();
+            // Petit délai pour laisser le modal s'afficher avant de créer le chart
+            setTimeout(() => {
+                zoomChart = new Chart(canvas, cfg.config);
+            }, 200);
+        });
+    });
+    document.getElementById('chartZoomModal').addEventListener('hidden.bs.modal', function() {
+        if (zoomChart) { zoomChart.destroy(); zoomChart = null; }
+    });
+});
+</script>
+{% endblock %}

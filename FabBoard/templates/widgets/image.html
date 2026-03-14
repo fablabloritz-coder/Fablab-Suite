@@ -1,0 +1,15 @@
+<div class="widget widget-image {{ 'with-title' if config.get('titre_image') }} fit-{{ config.get('object_fit', 'contain') }}" 
+     id="widget-image-{{ widget_id }}" data-widget-code="image">
+    {% if config.get('titre_image') %}
+    <h3><i class="bi bi-image"></i> {{ config.titre_image }}</h3>
+    {% endif %}
+    {% if config.get('image_url') %}
+    <img src="{{ config.image_url }}" alt="{{ config.get('titre_image', 'Image') }}">
+    {% else %}
+    <div class="widget-empty">
+        <i class="bi bi-image" style="font-size: 2.5rem; color: #818cf8;"></i>
+        <p>Aucune image configurée</p>
+        <small>Uploadez une image dans la configuration du widget</small>
+    </div>
+    {% endif %}
+</div>

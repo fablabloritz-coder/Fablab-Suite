@@ -1,0 +1,53 @@
+<div class="widget widget-video" id="widget-video-{{ widget_id }}" data-widget-code="video">
+    {% set video_type = config.get('video_type', 'local') %}
+    {% set video_src = config.get('video_src', '') %}
+    {% set autoplay = config.get('autoplay', true) %}
+    {% set loop = config.get('boucle', true) %}
+    {% set muted = config.get('muet', true) %}
+
+    {% if video_type == 'local' and video_src %}
+    <video
+        {% if autoplay %}autoplay{% endif %}
+        {% if loop %}loop{% endif %}
+        {% if muted %}muted{% endif %}
+        playsinline
+    >
+        <source src="{{ video_src }}" type="video/{{ video_src.rsplit('.', 1)[-1] if '.' in video_src else 'mp4' }}">
+    </video>
+
+    {% elif video_type == 'youtube' and video_src %}
+    {% set yt_id = video_src %}
+    <iframe
+        src="https://www.youtube-nocookie.com/embed/{{ yt_id }}?autoplay={{ '1' if autoplay else '0' }}&mute={{ '1' if muted else '0' }}&loop={{ '1' if loop else '0' }}&playlist={{ yt_id }}&controls=0&modestbranding=1&rel=0"
+        frameborder="0"
+        allow="autoplay; encrypted-media"
+        allowfullscreen
+    ></iframe>
+
+    {% elif video_type == 'dailymotion' and video_src %}
+    {% set dm_id = video_src %}
+    <iframe
+        src="https://www.dailymotion.com/embed/video/{{ dm_id }}?autoplay={{ '1' if autoplay else '0' }}&mute={{ '1' if muted else '0' }}&controls=0&sharing-enable=false"
+        frameborder="0"
+        allow="autoplay; encrypted-media"
+        allowfullscreen
+    ></iframe>
+
+    {% elif video_type == 'url' and video_src %}
+    <video
+        {% if autoplay %}autoplay{% endif %}
+        {% if loop %}loop{% endif %}
+        {% if muted %}muted{% endif %}
+        playsinline
+    >
+        <source src="{{ video_src }}">
+    </video>
+
+    {% else %}
+    <div class="widget-empty">
+        <i class="bi bi-camera-video" style="font-size: 2.5rem; color: #818cf8;"></i>
+        <p>Aucune vidéo configurée</p>
+        <small>Configurez la source dans les options du widget</small>
+    </div>
+    {% endif %}
+</div>

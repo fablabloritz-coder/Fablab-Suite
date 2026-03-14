@@ -1,0 +1,9 @@
+services:
+  pretgo:
+    command: python app.py
+    environment:
+      FLASK_ENV: development
+    volumes:
+      - ./:/app
+      - ${PRETGO_DATA_PATH:-./docker-data/data}:/app/data
+      - ${PRETGO_UPLOADS_PATH:-./docker-data/uploads/materiel}:/app/static/uploads/materiel

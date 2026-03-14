@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Ajouter une personne - Gestion de Prêts{% endblock %}
+
+{% block content %}
+<h1 class="page-title">
+    <i class="bi bi-person-plus-fill text-primary"></i> Ajouter une personne
+</h1>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('personnes.ajouter_personne') }}">
+
+            <div class="row g-4">
+                <div class="col-12 col-md-6">
+                    <label for="nom" class="form-label fw-bold">Nom <span class="text-danger">*</span></label>
+                    <input type="text"
+                           id="nom"
+                           name="nom"
+                           class="form-control form-control-lg"
+                           placeholder="Ex : DUPONT"
+                           required
+                           style="text-transform: uppercase">
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="prenom" class="form-label fw-bold">Prénom <span class="text-danger">*</span></label>
+                    <input type="text"
+                           id="prenom"
+                           name="prenom"
+                           class="form-control form-control-lg"
+                           placeholder="Ex : Marie"
+                           required>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="categorie" class="form-label fw-bold">Catégorie <span class="text-danger">*</span></label>
+                    <select id="categorie" name="categorie" class="form-select form-select-lg" required>
+                        <option value="">-- Choisir --</option>
+                        {% for cat in cats_personnes %}
+                        <option value="{{ cat.cle }}">{{ cat.libelle }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="classe" class="form-label fw-bold">Classe</label>
+                    <input type="text"
+                           id="classe"
+                           name="classe"
+                           class="form-control form-control-lg"
+                           placeholder="Ex : 3A, Terminale B...">
+                    <small class="text-muted">Optionnel, surtout utile pour les élèves</small>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="email" class="form-label fw-bold">Email</label>
+                    <input type="email"
+                           id="email"
+                           name="email"
+                           class="form-control form-control-lg"
+                           placeholder="Ex : marie.dupont@ecole.fr">
+                    <small class="text-muted">Optionnel, permet de distinguer les homonymes</small>
+                </div>
+            </div>
+
+            <!-- Champs personnalisés -->
+            {% if champs_custom %}
+            <hr class="my-4">
+            <h6 class="fw-bold mb-3"><i class="bi bi-input-cursor-text text-primary"></i> Champs supplémentaires</h6>
+            <div class="row g-3">
+                {% for champ in champs_custom %}
+                <div class="col-12 col-md-6">
+                    <label for="custom_{{ champ.nom_champ }}" class="form-label fw-bold">
+                        {{ champ.label }}
+                        {% if champ.obligatoire %}<span class="text-danger">*</span>{% endif %}
+                    </label>
+                    {% if champ.type_champ == 'texte' %}
+                    <input type="text" id="custom_{{ champ.nom_champ }}" name="custom_{{ champ.nom_champ }}"
+                           class="form-control" {{ 'required' if champ.obligatoire }}>
+                    {% elif champ.type_champ == 'texte_long' %}
+                    <textarea id="custom_{{ champ.nom_champ }}" name="custom_{{ champ.nom_champ }}"
+                              class="form-control" rows="3" {{ 'required' if champ.obligatoire }}></textarea>
+                    {% elif champ.type_champ == 'nombre' %}
+                    <input type="number" id="custom_{{ champ.nom_champ }}" name="custom_{{ champ.nom_champ }}"
+                           class="form-control" step="any" {{ 'required' if champ.obligatoire }}>
+                    {% elif champ.type_champ == 'date' %}
+                    <input type="date" id="custom_{{ champ.nom_champ }}" name="custom_{{ champ.nom_champ }}"
+                           class="form-control" {{ 'required' if champ.obligatoire }}>
+                    {% elif champ.type_champ == 'choix' %}
+                    <select id="custom_{{ champ.nom_champ }}" name="custom_{{ champ.nom_champ }}"
+                            class="form-select" {{ 'required' if champ.obligatoire }}>
+                        <option value="">-- Choisir --</option>
+                        {% for opt in champ.options.split(',') %}
+                        <option value="{{ opt.strip() }}">{{ opt.strip() }}</option>
+                        {% endfor %}
+                    </select>
+                    {% elif champ.type_champ == 'case_a_cocher' %}
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="custom_{{ champ.nom_champ }}"
+                               name="custom_{{ champ.nom_champ }}" value="Oui">
+                        <label class="form-check-label" for="custom_{{ champ.nom_champ }}">{{ champ.label }}</label>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <hr class="my-4">
+
+            <div class="d-flex gap-3">
+                <button type="submit" class="btn btn-primary btn-lg flex-grow-1">
+                    <i class="bi bi-check-lg"></i> Ajouter la personne
+                </button>
+                <a href="{{ url_for('personnes.personnes') }}" class="btn btn-outline-secondary btn-lg">
+                    <i class="bi bi-x-lg"></i> Annuler
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

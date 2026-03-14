@@ -1,0 +1,95 @@
+<div class="widget widget-fabtrack-conso" id="widget-fabtrack-conso-{{ widget_id }}" data-widget-code="fabtrack_conso" data-max-items="{{ config.get('max_items', 6) }}">
+    <h3><i class="bi bi-receipt"></i> Dernieres consommations</h3>
+    <div class="conso-list js-conso-list">
+        <div style="color: #475569;">Chargement...</div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-fabtrack-conso-{{ widget_id }}');
+    if (!root) return;
+
+    const list = root.querySelector('.js-conso-list');
+    const maxItems = Number(root.dataset.maxItems || 6) || 6;
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function n(value) {
+        if (value === null || value === undefined || value === '') return '';
+        return Number(value).toLocaleString('fr-FR');
+    }
+
+    function line(item) {
+        const typeNom = item.type_activite_nom || item.nom_type_activite || 'Activite';
+        const machine = item.machine_nom || item.nom_machine || 'Machine n/a';
+        const mat = item.materiau_nom || item.nom_materiau || '';
+        const qty = item.poids_grammes || item.surface_m2 || item.nb_feuilles || '';
+        const qtyTxt = qty !== '' ? `${n(qty)} ${mat ? mat : ''}`.trim() : mat;
+
+        return `
+            <div class="activite-item">
+                <div class="activite-titre">${esc(typeNom)}</div>
+                <div class="activite-meta">
+                    <span class="badge" style="background:#1e293b; color:#94a3b8;">${esc(machine)}</span>
+                    <span>${esc(item.preparateur_nom || item.nom_preparateur || '')}</span>
+                    ${qtyTxt ? `<span style="color:#60a5fa;">${esc(qtyTxt)}</span>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    function render(items, fabtrackError) {
+        if (fabtrackError && !items.length) {
+            list.innerHTML = `<div style="text-align:center; padding:1.5rem; color:#64748b;">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">💰</div>
+                <div>Fabtrack non connecté</div>
+                <small style="color:#475569;">Configurez l'URL dans Paramètres → Sources</small>
+            </div>`;
+            return;
+        }
+
+        if (!items.length) {
+            list.innerHTML = '<div style="color: #475569;">Aucune consommation recente.</div>';
+            return;
+        }
+
+        list.innerHTML = items.slice(0, maxItems).map(line).join('');
+    }
+
+    const config = {{ config | tojson | safe }};
+    const sourceId = config.source_id || null;
+
+    async function refresh() {
+        const store = window.FabBoardStore;
+        let items = [];
+        let errorMsg = '';
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            items = store.getSource(sourceId).consommations || [];
+        } else if (store && store.data) {
+            items = store.data.activites || [];
+            errorMsg = store.data.fabtrack_error || '';
+        } else {
+            return;
+        }
+
+        render(items, errorMsg);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

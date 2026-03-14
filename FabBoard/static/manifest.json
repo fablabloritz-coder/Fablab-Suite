@@ -1,0 +1,22 @@
+{
+  "name": "FabBoard",
+  "short_name": "FabBoard",
+  "description": "Tableau de bord TV pour Fablab — Activités, calendrier, imprimantes 3D",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#ff6b35",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/img/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/static/img/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

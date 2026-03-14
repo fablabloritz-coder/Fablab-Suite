@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Impression d'étiquettes</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --label-w: {{ largeur }}mm;
+            --label-h: {{ hauteur }}mm;
+            --cols: {{ colonnes }};
+            --rows: {{ lignes }};
+            --font: '{{ police }}', monospace;
+            --txt-size: {{ taille_texte }}pt;
+            --sub-size: {{ taille_sous_texte }}pt;
+            --barcode-h: {{ taille_barcode }};
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: var(--font); background: #f0f0f0; }
+
+        /* ── Barre d'outils ── */
+        .toolbar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+            background: #212529; color: #fff;
+            padding: 10px 24px;
+            display: flex; align-items: center; gap: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.3);
+        }
+        .toolbar h1 { font-size: 1rem; font-weight: 600; margin: 0; flex-grow: 1; }
+        .toolbar a, .toolbar button {
+            padding: 7px 16px; border: none; border-radius: 6px;
+            font-size: 0.9rem; cursor: pointer; font-weight: 600;
+            text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-back { background: #6c757d; color: #fff; }
+        .btn-back:hover { background: #5c636a; }
+        .btn-print { background: #0d6efd; color: #fff; }
+        .btn-print:hover { background: #0b5ed7; }
+        .btn-print.printing { background: #198754; pointer-events: none; }
+        .toolbar .info { font-size: 0.8rem; opacity: 0.7; }
+
+        /* ── Toast / Feedback ── */
+        .print-toast {
+            position: fixed; top: 70px; right: 20px; z-index: 2000;
+            background: #198754; color: #fff;
+            padding: 14px 24px; border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,.3);
+            font-weight: 600; font-size: 0.95rem;
+            display: none; animation: slideIn 0.3s ease;
+        }
+        .print-toast.error { background: #dc3545; }
+        @keyframes slideIn { from { transform: translateX(100px); opacity:0; } to { transform: translateX(0); opacity:1; } }
+
+        /* ── Pages ── */
+        .pages-container {
+            margin-top: 62px; padding: 20px;
+            display: flex; flex-direction: column; align-items: center; gap: 20px;
+        }
+        .page {
+            width: 210mm; min-height: 297mm;
+            background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.15);
+            padding: 8mm;
+            display: grid;
+            grid-template-columns: repeat(var(--cols), var(--label-w));
+            grid-template-rows: repeat(var(--rows), var(--label-h));
+            gap: 2mm; justify-content: center; align-content: start;
+        }
+
+        /* ── Étiquette ── */
+        .label {
+            width: var(--label-w); height: var(--label-h);
+            border: 1px dashed #ccc;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            overflow: hidden; padding: 1mm;
+        }
+        .label svg {
+            width: 90%; height: auto;
+            max-height: calc(var(--barcode-h) * 1%);
+        }
+        .label .label-text {
+            font-size: var(--txt-size); font-weight: bold;
+            font-family: var(--font); text-align: center;
+            margin-top: 0.5mm; line-height: 1.1;
+            max-width: 100%; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+        .label .label-sub {
+            font-size: var(--sub-size); color: #555;
+            font-family: var(--font); text-align: center;
+            line-height: 1.1; max-width: 100%;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .label .label-libre {
+            font-size: calc(var(--sub-size) - 1pt); color: #888;
+            font-family: var(--font); text-align: center;
+            font-style: italic; line-height: 1;
+            max-width: 100%; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        /* ── Impression ── */
+        @media print {
+            .toolbar, .print-toast { display: none !important; }
+            .pages-container { margin-top: 0; padding: 0; gap: 0; }
+            .page {
+                box-shadow: none; page-break-after: always;
+                margin: 0; padding: 5mm;
+            }
+            .page:last-child { page-break-after: auto; }
+            .label { border: none; }
+            @page { size: A4; margin: 3mm; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Barre d'outils -->
+<div class="toolbar">
+    <a class="btn-back" href="{{ url_for('inventaire.etiquettes') }}"><i class="bi bi-arrow-left"></i> Retour</a>
+    <h1><i class="bi bi-tag"></i> Étiquettes</h1>
+    <span class="info">{{ items|length }} étiquette(s) — {{ colonnes }}x{{ lignes }} par page</span>
+    <button class="btn-print" id="btnPrint" onclick="lancerImpression()">
+        <i class="bi bi-printer" id="printIcon"></i>
+        <span id="printLabel">Imprimer</span>
+    </button>
+</div>
+
+<!-- Toast feedback -->
+<div class="print-toast" id="printToast"></div>
+
+<!-- Pages -->
+<div class="pages-container">
+    {% set labels_per_page = colonnes * lignes %}
+    {% set nb_pages = ((items|length - 1) // labels_per_page) + 1 if items else 1 %}
+
+    {% for page_num in range(nb_pages) %}
+    <div class="page">
+        {% set start = page_num * labels_per_page %}
+        {% set end = [start + labels_per_page, items|length] | min %}
+        {% for i in range(start, end) %}
+            {% set item = items[i] %}
+            <div class="label">
+                <svg class="barcode-{{ item.id }}"></svg>
+                <div class="label-text">{{ item.numero_inventaire }}</div>
+                {% if item.marque or item.modele %}
+                <div class="label-sub">
+                    {{ item.type_materiel }}
+                    {% if item.marque %} {{ item.marque }}{% endif %}
+                    {% if item.modele %} {{ item.modele }}{% endif %}
+                </div>
+                {% endif %}
+                {% if texte_libre %}
+                <div class="label-libre">{{ texte_libre }}</div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+// Codes-barres
+document.addEventListener('DOMContentLoaded', function() {
+    const items = {{ items | tojson }};
+    const barcodeH = {{ taille_barcode }};
+    items.forEach(function(item) {
+        const svg = document.querySelector('.barcode-' + item.id);
+        if (svg && item.numero_inventaire) {
+            try {
+                JsBarcode(svg, item.numero_inventaire, {
+                    format: "CODE128",
+                    width: 1.5,
+                    height: Math.round(barcodeH * 0.6),
+                    displayValue: false,
+                    margin: 0
+                });
+            } catch(e) {
+                console.warn('Erreur barcode pour', item.numero_inventaire, e);
+                svg.remove();
+            }
+        }
+    });
+});
+
+// Impression avec feedback visuel
+function lancerImpression() {
+    const btn = document.getElementById('btnPrint');
+    const icon = document.getElementById('printIcon');
+    const label = document.getElementById('printLabel');
+
+    // État "en cours"
+    btn.classList.add('printing');
+    icon.className = 'bi bi-hourglass-split';
+    label.textContent = 'Préparation...';
+
+    setTimeout(function() {
+        window.print();
+
+        // Après impression (quand la boîte de dialogue se ferme)
+        setTimeout(function() {
+            btn.classList.remove('printing');
+            icon.className = 'bi bi-check-circle-fill';
+            label.textContent = 'Envoyé !';
+            showToast('Impression lancée — {{ items|length }} étiquette(s)', false);
+
+            // Revenir au bouton normal après 3s
+            setTimeout(function() {
+                icon.className = 'bi bi-printer';
+                label.textContent = 'Imprimer';
+            }, 3000);
+        }, 500);
+    }, 300);
+}
+
+function showToast(msg, isError) {
+    const toast = document.getElementById('printToast');
+    toast.textContent = msg;
+    toast.className = 'print-toast' + (isError ? ' error' : '');
+    toast.style.display = 'block';
+    setTimeout(function() { toast.style.display = 'none'; }, 4000);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}Gestion du Stock{% endblock %}
+
+{% block content %}
+<!-- Page Title -->
+<div class="mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+        <h1 class="page-title"><i class="bi bi-box-seam"></i> Gestion du Stock</h1>
+        <p class="page-subtitle">Suivi des niveaux de stock par catégorie</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" onclick="toggleFilters()">
+            <i class="bi bi-funnel"></i> Filtres
+        </button>
+    </div>
+</div>
+
+<!-- Alertes résumé -->
+<div id="stockAlertes" class="alert alert-warning d-none mb-3">
+    <i class="bi bi-exclamation-triangle"></i> <span id="alertesText"></span>
+</div>
+
+<!-- Filtres -->
+<div class="card border-0 shadow-sm mb-4 d-none" id="filtersCard">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Catégorie</label>
+                <select id="filterCategorie" class="form-select" onchange="applyFilters()">
+                    <option value="">Toutes</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Statut</label>
+                <select id="filterStatut" class="form-select" onchange="applyFilters()">
+                    <option value="">Tous</option>
+                    <option value="alerte">En alerte</option>
+                    <option value="critique">Critique</option>
+                    <option value="ok">OK</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Fournisseur</label>
+                <select id="filterFournisseur" class="form-select" onchange="applyFilters()">
+                    <option value="">Tous</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Recherche</label>
+                <input type="text" id="filterRecherche" class="form-control" placeholder="Nom matériau..."
+                       oninput="applyFilters()">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Contenu stock par catégorie -->
+<div id="stockContent">
+    <div class="text-center text-muted py-5">
+        <div class="spinner-border spinner-border-sm"></div> Chargement...
+    </div>
+</div>
+
+<!-- Modal mouvement rapide -->
+<div class="modal fade" id="mouvementModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-left-right"></i> Mouvement stock</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="mvt-materiau-id">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Matériau</label>
+                    <input type="text" id="mvt-materiau-nom" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Type</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="mvtType" id="mvtEntree" value="entree" checked>
+                        <label class="btn btn-outline-success" for="mvtEntree"><i class="bi bi-plus-circle"></i> Entrée</label>
+                        <input type="radio" class="btn-check" name="mvtType" id="mvtSortie" value="sortie">
+                        <label class="btn btn-outline-danger" for="mvtSortie"><i class="bi bi-dash-circle"></i> Sortie</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Quantité</label>
+                    <input type="number" id="mvt-quantite" class="form-control" min="0" step="any" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Notes</label>
+                    <input type="text" id="mvt-notes" class="form-control" placeholder="Raison du mouvement...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="submitMouvement()">Valider</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let stockData = null;
+
+function toggleFilters() {
+    document.getElementById('filtersCard').classList.toggle('d-none');
+}
+
+async function loadStock() {
+    try {
+        const res = await fetch('/api/stock/dashboard');
+        stockData = await res.json();
+        if (!stockData.success) throw new Error(stockData.error);
+
+        // Alertes
+        const alerteEl = document.getElementById('stockAlertes');
+        if (stockData.alertes > 0) {
+            alerteEl.classList.remove('d-none');
+            document.getElementById('alertesText').textContent =
+                stockData.alertes + ' matériau' + (stockData.alertes > 1 ? 'x' : '') + ' en alerte de stock';
+        } else {
+            alerteEl.classList.add('d-none');
+        }
+
+        // Remplir filtres catégorie
+        const catSel = document.getElementById('filterCategorie');
+        const existing = new Set([...catSel.options].map(o => o.value));
+        stockData.categories.forEach(cat => {
+            if (!existing.has(cat.nom)) {
+                const opt = document.createElement('option');
+                opt.value = cat.nom;
+                opt.textContent = cat.nom;
+                catSel.appendChild(opt);
+            }
+        });
+
+        applyFilters();
+    } catch(e) {
+        document.getElementById('stockContent').innerHTML =
+            '<div class="text-center text-muted py-5"><i class="bi bi-exclamation-circle"></i> Erreur de chargement</div>';
+    }
+}
+
+function applyFilters() {
+    if (!stockData) return;
+    const catFilter = document.getElementById('filterCategorie').value;
+    const statutFilter = document.getElementById('filterStatut').value;
+    const fournFilter = document.getElementById('filterFournisseur').value;
+    const rechFilter = document.getElementById('filterRecherche').value.toLowerCase();
+
+    let categories = stockData.categories;
+    if (catFilter) categories = categories.filter(c => c.nom === catFilter);
+
+    let html = '';
+    let totalVisible = 0;
+
+    categories.forEach(cat => {
+        let mats = cat.materiaux;
+
+        if (statutFilter) mats = mats.filter(m => m.stock_status === statutFilter);
+        if (fournFilter) mats = mats.filter(m => (m.fournisseur_nom || '') === fournFilter);
+        if (rechFilter) mats = mats.filter(m => m.nom.toLowerCase().includes(rechFilter));
+
+        if (!mats.length) return;
+        totalVisible += mats.length;
+
+        // Alertes en premier
+        mats.sort((a, b) => {
+            const order = { critique: 0, alerte: 1, ok: 2 };
+            return (order[a.stock_status] || 2) - (order[b.stock_status] || 2);
+        });
+
+        html += '<div class="card border-0 shadow-sm mb-4">';
+        html += '<div class="card-header d-flex align-items-center gap-2" style="border-left: 4px solid ' + escHtml(cat.couleur) + ';">';
+        html += '<i class="bi ' + escHtml(cat.icone) + '"></i>';
+        html += '<strong>' + escHtml(cat.nom) + '</strong>';
+        html += '<span class="badge bg-secondary">' + mats.length + '</span>';
+        html += '</div>';
+        html += '<div class="card-body"><div class="row g-3">';
+
+        mats.forEach(m => {
+            const statusClass = m.stock_status === 'critique' ? 'border-danger' :
+                                m.stock_status === 'alerte' ? 'border-warning' : '';
+            const statusBadge = m.stock_status === 'critique' ? '<span class="badge bg-danger">Critique</span>' :
+                                m.stock_status === 'alerte' ? '<span class="badge bg-warning text-dark">Alerte</span>' : '';
+
+            // Jauge stock
+            let jaugeHtml = '';
+            if (m.quantite_minimum && m.quantite_actuelle !== null) {
+                const maxRef = m.quantite_maximum || (m.quantite_minimum * 3);
+                const pct = Math.min(100, Math.round((m.quantite_actuelle / maxRef) * 100));
+                const barColor = m.stock_status === 'critique' ? '#dc3545' :
+                                 m.stock_status === 'alerte' ? '#ffc107' : '#198754';
+                jaugeHtml = '<div class="progress mt-2" style="height:6px;">' +
+                    '<div class="progress-bar" style="width:' + pct + '%;background:' + barColor + ';"></div></div>';
+            }
+
+            html += '<div class="col-md-4 col-lg-3">';
+            html += '<div class="card h-100 ' + statusClass + '" style="border-width:2px;">';
+            html += '<div class="card-body p-3">';
+            html += '<div class="d-flex justify-content-between align-items-start">';
+            html += '<h6 class="card-title mb-1">' + escHtml(m.nom) + '</h6>';
+            html += statusBadge;
+            html += '</div>';
+            html += '<div class="text-muted small">' + escHtml(m.stock_display) + '</div>';
+            if (m.emplacement) html += '<div class="text-muted small"><i class="bi bi-geo-alt"></i> ' + escHtml(m.emplacement) + '</div>';
+            html += jaugeHtml;
+            html += '<div class="mt-2">';
+            html += '<button class="btn btn-sm btn-outline-primary" onclick="openMouvement(' + m.id + ',\'' + escHtml(m.nom).replace(/'/g, "\\'") + '\')">';
+            html += '<i class="bi bi-arrow-left-right"></i> Mouvement</button>';
+            html += '</div>';
+            html += '</div></div></div>';
+        });
+
+        html += '</div></div></div>';
+    });
+
+    if (!totalVisible) {
+        html = '<div class="text-center text-muted py-5">' +
+            '<i class="bi bi-inbox" style="font-size:3rem;"></i><br>' +
+            '<p class="mt-2">Aucun matériau avec suivi de stock</p>' +
+            '<small>Activez le suivi stock dans Paramètres → Matériaux</small></div>';
+    }
+
+    document.getElementById('stockContent').innerHTML = html;
+}
+
+function openMouvement(matId, matNom) {
+    document.getElementById('mvt-materiau-id').value = matId;
+    document.getElementById('mvt-materiau-nom').value = matNom;
+    document.getElementById('mvt-quantite').value = '';
+    document.getElementById('mvt-notes').value = '';
+    document.getElementById('mvtEntree').checked = true;
+    new bootstrap.Modal(document.getElementById('mouvementModal')).show();
+}
+
+async function submitMouvement() {
+    const matId = document.getElementById('mvt-materiau-id').value;
+    const type = document.querySelector('input[name="mvtType"]:checked').value;
+    const quantite = parseFloat(document.getElementById('mvt-quantite').value);
+    const notes = document.getElementById('mvt-notes').value;
+
+    if (!quantite || quantite <= 0) {
+        alert('Quantité invalide');
+        return;
+    }
+
+    const user = typeof CURRENT_USER !== 'undefined' ? CURRENT_USER : '';
+
+    try {
+        const res = await fetch('/api/stock/mouvement-rapide', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ materiau_id: parseInt(matId), type, quantite, notes, utilisateur: user })
+        });
+        const data = await res.json();
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('mouvementModal')).hide();
+            loadStock();
+            if (typeof showToast === 'function') showToast('Mouvement enregistré', 'success');
+        } else {
+            alert(data.error || 'Erreur');
+        }
+    } catch(e) {
+        alert('Erreur réseau');
+    }
+}
+
+// Charger les fournisseurs pour le filtre
+async function loadFournisseurs() {
+    try {
+        const res = await fetch('/api/fournisseurs');
+        const data = await res.json();
+        if (data.success) {
+            const sel = document.getElementById('filterFournisseur');
+            data.data.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f.nom;
+                opt.textContent = f.nom;
+                sel.appendChild(opt);
+            });
+        }
+    } catch(e) {}
+}
+
+loadStock();
+loadFournisseurs();
+</script>
+{% endblock %}

@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Détail du prêt - PretGo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-file-text-fill text-primary"></i> Détail du prêt #{{ pret.id }}
+    </h1>
+    <a href="javascript:history.back()" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Retour
+    </a>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <!-- Statut -->
+                <div class="mb-4 text-center">
+                    {% if pret.retour_confirme %}
+                        <span class="badge bg-success fs-5 px-4 py-2">
+                            <i class="bi bi-check-circle"></i> RETOURNÉ
+                        </span>
+                    {% else %}
+                        {% set depasse, _ = calcul_depassement_heures(pret.date_emprunt, pret.duree_pret_heures, pret.duree_pret_jours, date_retour_prevue=pret.date_retour_prevue) %}
+                        {% if depasse %}
+                            <span class="badge bg-danger fs-5 px-4 py-2">
+                                <i class="bi bi-exclamation-triangle"></i> EN RETARD
+                            </span>
+                        {% else %}
+                            <span class="badge bg-warning fs-5 px-4 py-2">
+                                <i class="bi bi-clock"></i> EN COURS
+                            </span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+                <hr>
+
+                <!-- Informations de l'emprunteur -->
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Emprunteur</div>
+                    <div class="col-8 fs-5"><strong>{{ pret.nom }} {{ pret.prenom }}</strong></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Catégorie</div>
+                    <div class="col-8">
+                        <span class="cat-badge" style="{{ pret.categorie | style_categorie }}">{{ pret.categorie | label_categorie }}</span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Classe</div>
+                    <div class="col-8">{{ pret.classe_snapshot or pret.classe or '—' }}</div>
+                </div>
+
+                <hr>
+
+                <!-- Détails du prêt - Multi-matériel -->
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Objet(s) emprunté(s)</div>
+                    <div class="col-8">
+                        {% if pret_items %}
+                            {% for item in pret_items %}
+                            <div class="d-flex align-items-center gap-2 {% if not loop.first %}mt-2{% endif %}">
+                                {% if item.image %}
+                                <img src="{{ url_for('static', filename='uploads/materiel/' + item.image) }}"
+                                     alt="Photo" class="rounded shadow-sm"
+                                     style="width:50px; height:50px; object-fit:cover;">
+                                {% else %}
+                                <i class="bi bi-box text-primary fs-4" style="min-width:30px;text-align:center;"></i>
+                                {% endif %}
+                                <div>
+                                    <div class="fw-bold">{{ item.description }}</div>
+                                    {% if item.marque or item.modele %}
+                                    <small class="text-muted">
+                                        {{ item.marque or '' }} {{ item.modele or '' }}
+                                        {% if item.numero_inventaire %} — n°{{ item.numero_inventaire }}{% endif %}
+                                    </small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% elif materiel_legacy %}
+                            <div class="d-flex align-items-center gap-3">
+                                {% if materiel_legacy.image %}
+                                <img src="{{ url_for('static', filename='uploads/materiel/' + materiel_legacy.image) }}"
+                                     alt="Photo" class="rounded shadow-sm"
+                                     style="width:80px; height:80px; object-fit:cover;">
+                                {% endif %}
+                                <div>
+                                    <div class="fs-5">{{ pret.descriptif_objets }}</div>
+                                    {% if materiel_legacy.marque or materiel_legacy.modele %}
+                                    <small class="text-muted">
+                                        {{ materiel_legacy.marque or '' }} {{ materiel_legacy.modele or '' }}
+                                        {% if materiel_legacy.numero_inventaire %} — n°{{ materiel_legacy.numero_inventaire }}{% endif %}
+                                    </small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="fs-5">{{ pret.descriptif_objets }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if pret.lieu_nom %}
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Lieu</div>
+                    <div class="col-8">
+                        <i class="bi bi-geo-alt text-primary"></i> {{ pret.lieu_nom }}
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Date d'emprunt</div>
+                    <div class="col-8">
+                        <i class="bi bi-calendar text-primary"></i>
+                        {{ pret.date_emprunt | format_date }}
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Durée prévue</div>
+                    <div class="col-8">
+                        <i class="bi bi-hourglass text-warning"></i>
+                        {{ pret | format_duree }}
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Retour théorique</div>
+                    <div class="col-8">
+                        {% set retour_theo = pret | retour_theorique %}
+                        {% if pret.type_duree == 'aucune' or (pret.type_duree is not defined and not pret.duree_pret_heures and not pret.duree_pret_jours) %}
+                            <span class="text-muted">Aucune durée</span>
+                        {% elif retour_theo %}
+                            <i class="bi bi-calendar-event text-primary"></i>
+                            {{ retour_theo }}
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if pret.date_retour %}
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Date de retour</div>
+                    <div class="col-8">
+                        <i class="bi bi-calendar-check text-success"></i>
+                        {{ pret.date_retour | format_date }}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if pret.notes %}
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Notes</div>
+                    <div class="col-8">{{ pret.notes }}</div>
+                </div>
+                {% endif %}
+
+                {% if pret.date_modification %}
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Dernière modification</div>
+                    <div class="col-8">
+                        <span class="badge bg-warning text-dark">
+                            <i class="bi bi-pencil-square"></i> Modifié le {{ pret.date_modification | format_date }}
+                        </span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Signature -->
+                {% if pret.signature_retour and pret.signature_retour.startswith('data:image') %}
+                <hr>
+                <div class="row mb-3">
+                    <div class="col-4 text-muted">Signature de retour</div>
+                    <div class="col-8">
+                        <img src="{{ pret.signature_retour }}"
+                             alt="Signature"
+                             class="border rounded"
+                             style="max-width: 400px; max-height: 150px; background: white;">
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> Actions</h5>
+            </div>
+            <div class="card-body d-grid gap-2">
+                {% if not pret.retour_confirme %}
+                <a href="{{ url_for('prets.retour') }}?q={{ pret.nom|urlencode }}" class="btn btn-success btn-lg">
+                    <i class="bi bi-check-lg"></i> Enregistrer le retour
+                </a>
+                <a href="{{ url_for('prets.modifier_pret', pret_id=pret.id) }}" class="btn btn-warning btn-lg">
+                    <i class="bi bi-pencil-square"></i> Modifier ce prêt
+                </a>
+                {% endif %}
+
+                <a href="{{ url_for('prets.fiche_pret', pret_id=pret.id) }}" class="btn btn-outline-primary btn-lg" target="_blank">
+                    <i class="bi bi-printer"></i> Fiche de prêt
+                </a>
+
+                <form method="POST"
+                      action="{{ url_for('prets.supprimer_pret', pret_id=pret.id) }}"
+                      onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer ce prêt ?')">
+                    <button type="submit" class="btn btn-outline-danger btn-lg w-100">
+                        <i class="bi bi-trash"></i> Supprimer ce prêt
+                    </button>
+                </form>
+
+                <a href="{{ url_for('core.index') }}" class="btn btn-outline-secondary btn-lg">
+                    <i class="bi bi-house"></i> Retour à l'accueil
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

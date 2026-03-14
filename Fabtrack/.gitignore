@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Database & données locales
+data/
+*.db
+
+# Backups (ancien emplacement, rétrocompat)
+backups/
+backup_config.json
+
+# Docker local
+docker-data/
+
+# Environnement
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Google Sheets source (not needed)
+Suivi Conso Fablab 2025-2026/
+*.xlsx
+
+# Duplicate images folder
+images/

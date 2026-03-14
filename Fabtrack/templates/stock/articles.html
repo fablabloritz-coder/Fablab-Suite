@@ -1,0 +1,588 @@
+{% extends "base.html" %}
+{% block title %}Stock — Articles{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-boxes text-success"></i> Articles en stock</h2>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('stock.stock_index') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-house"></i> Dashboard
+        </a>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addArticleModal">
+            <i class="bi bi-plus-lg"></i> Ajouter
+        </button>
+    </div>
+</div>
+
+<!-- Filtres -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-0">Catégorie</label>
+                <select name="categorie" class="form-select form-select-sm">
+                    <option value="">Toutes</option>
+                    {% for c in categories %}
+                    <option value="{{ c.id }}" {% if filtre_cat == c.id %}selected{% endif %}>{{ c.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Statut</label>
+                <select name="statut" class="form-select form-select-sm">
+                    <option value="">Tous</option>
+                    <option value="ok" {% if filtre_statut == 'ok' %}selected{% endif %}>OK</option>
+                    <option value="faible" {% if filtre_statut == 'faible' %}selected{% endif %}>Faible</option>
+                    <option value="vide" {% if filtre_statut == 'vide' %}selected{% endif %}>Vide</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-0">Fournisseur</label>
+                <select name="fournisseur" class="form-select form-select-sm">
+                    <option value="">Tous</option>
+                    {% for f in fournisseurs %}
+                    <option value="{{ f.id }}" {% if filtre_fourn == f.id %}selected{% endif %}>{{ f.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-0">Recherche</label>
+                <input type="text" name="q" class="form-control form-control-sm" value="{{ filtre_q or '' }}" placeholder="Nom, matériau, emplacement...">
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-sm btn-outline-success w-100"><i class="bi bi-search"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tableau articles -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Article</th>
+                        <th>Catégorie</th>
+                        <th class="text-end">Stock</th>
+                        <th class="text-end">Min / Max</th>
+                        <th class="text-end">Prix unit.</th>
+                        <th>Emplacement</th>
+                        <th>Statut</th>
+                        <th class="text-center" style="width:100px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in articles %}
+                    <tr>
+                        <td>
+                            <strong>{{ a.nom }}</strong>
+                            {% if a.materiau_nom %}<br><small class="text-muted">Matériau: {{ a.materiau_nom }}</small>{% endif %}
+                        </td>
+                        <td>
+                            {% if a.cat_nom %}
+                            <span class="badge" style="background-color: {{ a.cat_couleur }};">{{ a.cat_nom }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-end fw-bold">
+                            {{ a.quantite_actuelle|fmt_qte }} {{ a.unite }}
+                            {% set unite_lower = (a.unite or '')|lower %}
+                            {% if a.longueur_cm and a.largeur_cm and a.longueur_cm > 0 and a.largeur_cm > 0 and unite_lower in ['m²', 'm2', 'mètre carré', 'metre carre'] %}
+                                {% set surface_unitaire_m2 = (a.longueur_cm * a.largeur_cm) / 10000 %}
+                                {% if surface_unitaire_m2 > 0 %}
+                                    <br><small class="text-muted">~ {{ (a.quantite_actuelle / surface_unitaire_m2)|fmt_qte }} planches ({{ a.longueur_cm|fmt_qte }} x {{ a.largeur_cm|fmt_qte }} cm)</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-muted small">
+                            {{ a.quantite_minimum|fmt_qte if a.quantite_minimum is not none else '—' }}
+                            /
+                            {{ a.quantite_maximum|fmt_qte if a.quantite_maximum is not none else '—' }}
+                            {% set unite_lower = (a.unite or '')|lower %}
+                            {% if a.longueur_cm and a.largeur_cm and a.longueur_cm > 0 and a.largeur_cm > 0 and unite_lower in ['m²', 'm2', 'mètre carré', 'metre carre'] %}
+                                {% set surface_unitaire_m2 = (a.longueur_cm * a.largeur_cm) / 10000 %}
+                                {% if surface_unitaire_m2 > 0 and (a.quantite_minimum is not none or a.quantite_maximum is not none) %}
+                                    <br><small>~ {{ (a.quantite_minimum / surface_unitaire_m2)|fmt_qte if a.quantite_minimum is not none else '—' }} / {{ (a.quantite_maximum / surface_unitaire_m2)|fmt_qte if a.quantite_maximum is not none else '—' }} planches</small>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if a.prix_unitaire %}{{ "%.2f"|format(a.prix_unitaire) }} €/{{ a.unite }}{% else %}—{% endif %}
+                        </td>
+                        <td class="text-muted">{{ a.emplacement or '—' }}</td>
+                        <td>
+                            {% if a.quantite_minimum is not none and a.quantite_actuelle < a.quantite_minimum %}
+                                {% if a.quantite_actuelle <= 0 %}
+                                    <span class="badge bg-danger">Vide</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Faible</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-success">OK</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-primary" onclick="editArticle({{ a.id }})" title="Modifier">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="quickMouvement({{ a.id }}, '{{ a.nom }}')" title="Mouvement">
+                                <i class="bi bi-arrow-left-right"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not articles %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">Aucun article trouvé</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ajouter Article -->
+<div class="modal fade" id="addArticleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form action="{{ url_for('stock.api_stock_add_article') }}" method="post">
+                <input type="hidden" name="threshold_unit_mode" id="addThresholdUnitMode" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg"></i> Nouvel article</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Nom *</label>
+                            <input type="text" name="nom" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Matériau</label>
+                            <select name="materiau_id" class="form-select">
+                                <option value="">— Aucun —</option>
+                                {% for m in materiaux %}
+                                <option value="{{ m.id }}">{{ m.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Catégorie</label>
+                            <select name="categorie_id" class="form-select">
+                                <option value="">— Aucune —</option>
+                                {% for c in categories %}
+                                <option value="{{ c.id }}">{{ c.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Fournisseur</label>
+                            <select name="fournisseur_id" class="form-select">
+                                <option value="">— Aucun —</option>
+                                {% for f in fournisseurs %}
+                                <option value="{{ f.id }}">{{ f.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Unité</label>
+                            <select name="unite" id="addUnite" class="form-select">
+                                {% for u in unites %}
+                                <option value="{{ u.nom }}">{{ u.nom }} ({{ u.symbole }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-12 d-none" id="addSurfaceFields">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Longueur d'une planche (cm)</label>
+                                    <input type="number" name="longueur_cm" id="addLongueurCm" class="form-control" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Largeur d'une planche (cm)</label>
+                                    <input type="number" name="largeur_cm" id="addLargeurCm" class="form-control" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <small class="text-muted" id="addSurfacePreview"></small>
+                                </div>
+                            </div>
+                            <div class="form-text">La quantité sera automatiquement convertie en m² au moment de l'enregistrement.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" id="addLabelQuantiteInitiale">Quantité initiale</label>
+                            <input type="number" name="quantite_actuelle" id="addQuantiteActuelle" class="form-control" value="0" step="any" min="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" id="addLabelQuantiteMinimum">Seuil minimum</label>
+                            <input type="number" name="quantite_minimum" id="addQuantiteMinimum" class="form-control" step="any" min="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" id="addLabelQuantiteMaximum">Maximum</label>
+                            <input type="number" name="quantite_maximum" id="addQuantiteMaximum" class="form-control" step="any" min="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Prix unitaire (€)</label>
+                            <input type="number" name="prix_unitaire" class="form-control" step="0.01" min="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Emplacement</label>
+                            <input type="text" name="emplacement" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Description</label>
+                            <input type="text" name="description" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Éditer Article -->
+<div class="modal fade" id="editArticleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="editArticleForm">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Modifier article</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editArticleId">
+                    <input type="hidden" id="editThresholdUnitMode" value="">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Nom *</label>
+                            <input type="text" id="editNom" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Matériau</label>
+                            <select id="editMateriauId" class="form-select">
+                                <option value="">— Aucun —</option>
+                                {% for m in materiaux %}
+                                <option value="{{ m.id }}">{{ m.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Catégorie</label>
+                            <select id="editCategorieId" class="form-select">
+                                <option value="">— Aucune —</option>
+                                {% for c in categories %}
+                                <option value="{{ c.id }}">{{ c.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Fournisseur</label>
+                            <select id="editFournisseurId" class="form-select">
+                                <option value="">— Aucun —</option>
+                                {% for f in fournisseurs %}
+                                <option value="{{ f.id }}">{{ f.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Unité</label>
+                            <select id="editUnite" class="form-select">
+                                {% for u in unites %}
+                                <option value="{{ u.nom }}">{{ u.nom }} ({{ u.symbole }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-12 d-none" id="editSurfaceFields">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Longueur d'une planche (cm)</label>
+                                    <input type="number" id="editLongueurCm" class="form-control" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Largeur d'une planche (cm)</label>
+                                    <input type="number" id="editLargeurCm" class="form-control" step="0.01" min="0">
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <small class="text-muted" id="editSurfacePreview"></small>
+                                </div>
+                            </div>
+                            <div class="form-text">Les seuils sont pilotés en nb planches et convertis en m² à l'enregistrement.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Stock actuel</label>
+                            <input type="number" id="editQuantiteActuelle" class="form-control" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" id="editLabelQuantiteMinimum">Seuil minimum</label>
+                            <input type="number" id="editQuantiteMinimum" class="form-control" step="any" min="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" id="editLabelQuantiteMaximum">Maximum</label>
+                            <input type="number" id="editQuantiteMaximum" class="form-control" step="any" min="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Prix unitaire (€)</label>
+                            <input type="number" id="editPrixUnitaire" class="form-control" step="0.01" min="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Emplacement</label>
+                            <input type="text" id="editEmplacement" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Description</label>
+                            <input type="text" id="editDescription" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Pour changer la quantité en stock, utilisez le mouvement rapide.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Mouvement Rapide -->
+<div class="modal fade" id="quickMouvModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="quickMouvForm">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-arrow-left-right"></i> Mouvement rapide</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong id="quickMouvArticle"></strong></p>
+                    <input type="hidden" id="quickMouvArticleId" name="article_id">
+                    <div class="mb-3">
+                        <label class="form-label">Type</label>
+                        <select name="type" id="quickMouvType" class="form-select" required>
+                            <option value="entree">Entrée</option>
+                            <option value="sortie">Sortie</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Quantité</label>
+                        <input type="number" name="quantite" id="quickMouvQte" class="form-control" step="any" min="0.01" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <input type="text" name="notes" class="form-control" id="quickMouvNotes">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Valider</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function unitNeedsSurfaceConversion(unitValue) {
+    const v = (unitValue || '').toLowerCase();
+    return v === 'planche' || v === 'panneau';
+}
+
+function isSurfaceStockUnit(unitValue) {
+    const v = (unitValue || '').toLowerCase();
+    return v === 'm²' || v === 'm2' || v === 'mètre carré' || v === 'metre carre';
+}
+
+function shouldUseBoardThresholdMode(unitValue, longueur, largeur) {
+    const dimsOk = longueur > 0 && largeur > 0;
+    return dimsOk && (unitNeedsSurfaceConversion(unitValue) || isSurfaceStockUnit(unitValue));
+}
+
+function formatM2(value) {
+    return Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 4 });
+}
+
+function updateAddSurfaceUI() {
+    const unite = document.getElementById('addUnite');
+    const needsSurface = unitNeedsSurfaceConversion(unite ? unite.value : '');
+    const thresholdModeInput = document.getElementById('addThresholdUnitMode');
+    const fields = document.getElementById('addSurfaceFields');
+    const lInput = document.getElementById('addLongueurCm');
+    const wInput = document.getElementById('addLargeurCm');
+    const qInput = document.getElementById('addQuantiteActuelle');
+    const preview = document.getElementById('addSurfacePreview');
+
+    document.getElementById('addLabelQuantiteInitiale').textContent = needsSurface ? 'Nombre de planches' : 'Quantité initiale';
+    document.getElementById('addLabelQuantiteMinimum').textContent = needsSurface ? 'Seuil minimum (nb planches)' : 'Seuil minimum';
+    document.getElementById('addLabelQuantiteMaximum').textContent = needsSurface ? 'Maximum (nb planches)' : 'Maximum';
+    thresholdModeInput.value = needsSurface ? 'planches' : '';
+
+    fields.classList.toggle('d-none', !needsSurface);
+    lInput.required = needsSurface;
+    wInput.required = needsSurface;
+
+    if (!needsSurface) {
+        preview.textContent = '';
+        return;
+    }
+
+    const longueur = Number(lInput.value);
+    const largeur = Number(wInput.value);
+    const nb = Number(qInput.value);
+    if (longueur > 0 && largeur > 0 && nb > 0) {
+        const surfaceTotale = nb * ((longueur * largeur) / 10000);
+        preview.textContent = 'Conversion estimée: ' + formatM2(surfaceTotale) + ' m²';
+    } else {
+        preview.textContent = 'Renseignez longueur, largeur et quantité pour prévisualiser.';
+    }
+}
+
+function updateEditSurfaceUI() {
+    const unite = document.getElementById('editUnite');
+    const thresholdModeInput = document.getElementById('editThresholdUnitMode');
+    const fields = document.getElementById('editSurfaceFields');
+    const lInput = document.getElementById('editLongueurCm');
+    const wInput = document.getElementById('editLargeurCm');
+    const minInput = document.getElementById('editQuantiteMinimum');
+    const maxInput = document.getElementById('editQuantiteMaximum');
+    const preview = document.getElementById('editSurfacePreview');
+    const longueur = Number(lInput.value);
+    const largeur = Number(wInput.value);
+    const needsSurface = shouldUseBoardThresholdMode(unite ? unite.value : '', longueur, largeur);
+
+    document.getElementById('editLabelQuantiteMinimum').textContent = needsSurface ? 'Seuil minimum (nb planches)' : 'Seuil minimum';
+    document.getElementById('editLabelQuantiteMaximum').textContent = needsSurface ? 'Maximum (nb planches)' : 'Maximum';
+    thresholdModeInput.value = needsSurface ? 'planches' : '';
+
+    fields.classList.toggle('d-none', !needsSurface);
+    lInput.required = needsSurface;
+    wInput.required = needsSurface;
+
+    if (!needsSurface) {
+        preview.textContent = '';
+        return;
+    }
+
+    if (longueur > 0 && largeur > 0) {
+        const surfaceUnitaire = (longueur * largeur) / 10000;
+        const min = Number(minInput.value || 0);
+        const max = Number(maxInput.value || 0);
+        const minM2 = min > 0 ? formatM2(min * surfaceUnitaire) + ' m²' : '—';
+        const maxM2 = max > 0 ? formatM2(max * surfaceUnitaire) + ' m²' : '—';
+        preview.textContent = 'Seuils convertis: min ' + minM2 + ' / max ' + maxM2;
+    } else {
+        preview.textContent = 'Renseignez longueur et largeur pour prévisualiser la conversion des seuils.';
+    }
+}
+
+function quickMouvement(articleId, articleNom) {
+    document.getElementById('quickMouvArticleId').value = articleId;
+    document.getElementById('quickMouvArticle').textContent = articleNom;
+    document.getElementById('quickMouvQte').value = '';
+    document.getElementById('quickMouvNotes').value = '';
+    new bootstrap.Modal(document.getElementById('quickMouvModal')).show();
+}
+
+document.getElementById('quickMouvForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const data = {
+        article_id: document.getElementById('quickMouvArticleId').value,
+        type: document.getElementById('quickMouvType').value,
+        quantite: document.getElementById('quickMouvQte').value,
+        notes: document.getElementById('quickMouvNotes').value,
+    };
+    fetch('{{ url_for("stock.api_stock_add_mouvement") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert(d.error || 'Erreur');
+        }
+    })
+    .catch(() => alert('Erreur réseau'));
+});
+
+function editArticle(id) {
+    fetch('/stock/api/articles/' + id)
+        .then(r => r.json())
+        .then(a => {
+            if (a.error) {
+                alert(a.error || 'Article introuvable');
+                return;
+            }
+
+            const toValue = (value) => (value === null || value === undefined ? '' : String(value));
+            document.getElementById('editArticleId').value = id;
+            document.getElementById('editNom').value = a.nom || '';
+            document.getElementById('editMateriauId').value = toValue(a.materiau_id);
+            document.getElementById('editCategorieId').value = toValue(a.categorie_id);
+            document.getElementById('editFournisseurId').value = toValue(a.fournisseur_id);
+            document.getElementById('editUnite').value = a.unite || '';
+            document.getElementById('editQuantiteActuelle').value = a.quantite_actuelle ?? 0;
+            document.getElementById('editQuantiteMinimum').value = toValue(a.quantite_minimum);
+            document.getElementById('editQuantiteMaximum').value = toValue(a.quantite_maximum);
+            document.getElementById('editPrixUnitaire').value = toValue(a.prix_unitaire);
+            document.getElementById('editEmplacement').value = a.emplacement || '';
+            document.getElementById('editDescription').value = a.description || '';
+            document.getElementById('editLongueurCm').value = toValue(a.longueur_cm);
+            document.getElementById('editLargeurCm').value = toValue(a.largeur_cm);
+            updateEditSurfaceUI();
+
+            new bootstrap.Modal(document.getElementById('editArticleModal')).show();
+        });
+}
+
+document.getElementById('editArticleForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const articleId = document.getElementById('editArticleId').value;
+    const data = {
+        nom: document.getElementById('editNom').value.trim(),
+        materiau_id: document.getElementById('editMateriauId').value || null,
+        categorie_id: document.getElementById('editCategorieId').value || null,
+        fournisseur_id: document.getElementById('editFournisseurId').value || null,
+        unite: document.getElementById('editUnite').value,
+        threshold_unit_mode: document.getElementById('editThresholdUnitMode').value || null,
+        longueur_cm: document.getElementById('editLongueurCm').value || null,
+        largeur_cm: document.getElementById('editLargeurCm').value || null,
+        quantite_minimum: document.getElementById('editQuantiteMinimum').value || null,
+        quantite_maximum: document.getElementById('editQuantiteMaximum').value || null,
+        prix_unitaire: document.getElementById('editPrixUnitaire').value || null,
+        emplacement: document.getElementById('editEmplacement').value.trim(),
+        description: document.getElementById('editDescription').value.trim(),
+    };
+
+    fetch('/stock/api/articles/' + articleId, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            alert(d.error || 'Erreur de mise à jour');
+        }
+    })
+    .catch(() => alert('Erreur réseau'));
+});
+
+document.getElementById('addUnite').addEventListener('change', updateAddSurfaceUI);
+document.getElementById('addQuantiteActuelle').addEventListener('input', updateAddSurfaceUI);
+document.getElementById('addLongueurCm').addEventListener('input', updateAddSurfaceUI);
+document.getElementById('addLargeurCm').addEventListener('input', updateAddSurfaceUI);
+document.getElementById('editUnite').addEventListener('change', updateEditSurfaceUI);
+document.getElementById('editQuantiteMinimum').addEventListener('input', updateEditSurfaceUI);
+document.getElementById('editQuantiteMaximum').addEventListener('input', updateEditSurfaceUI);
+document.getElementById('editLongueurCm').addEventListener('input', updateEditSurfaceUI);
+document.getElementById('editLargeurCm').addEventListener('input', updateEditSurfaceUI);
+updateAddSurfaceUI();
+</script>
+{% endblock %}

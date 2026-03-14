@@ -1,0 +1,179 @@
+<div class="widget widget-fabtrack-stats" id="widget-fabtrack-stats-{{ widget_id }}" data-widget-code="fabtrack_stats">
+    <h3><i class="bi bi-graph-up"></i> Répartition activités</h3>
+    <div class="fabtrack-repartition js-stats-grid">
+        <div style="color: #475569; padding: 1rem;">Chargement...</div>
+    </div>
+</div>
+
+<style>
+.fabtrack-repartition {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.7rem 1.1rem;
+}
+.fabtrack-repartition .type-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.5rem 0.7rem;
+    background: #0f172a;
+    border-radius: 6px;
+    border-left: 3px solid #818cf8;
+}
+.fabtrack-repartition .type-icon {
+    font-size: 1.3rem;
+    min-width: 1.8rem;
+    text-align: center;
+}
+.fabtrack-repartition .type-info {
+    flex: 1;
+    min-width: 0;
+}
+.fabtrack-repartition .type-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+}
+.fabtrack-repartition .type-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: #1e293b;
+    margin-top: 3px;
+    overflow: hidden;
+}
+.fabtrack-repartition .type-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s ease;
+}
+.fabtrack-repartition .type-count {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #818cf8;
+    min-width: 2.5rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.fabtrack-repartition .total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.7rem;
+    border-top: 1px solid #1e293b;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+.fabtrack-repartition .total-value {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #e2e8f0;
+}
+</style>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-fabtrack-stats-{{ widget_id }}');
+    if (!root) return;
+
+    const grid = root.querySelector('.js-stats-grid');
+
+    function esc(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function n(value) {
+        if (value === null || value === undefined) return '0';
+        return Number(value).toLocaleString('fr-FR');
+    }
+
+    function render(stats, fabtrackError) {
+        if (fabtrackError) {
+            grid.innerHTML = `
+                <div style="text-align:center; padding:1.5rem; color:#64748b;">
+                    <div style="font-size:2rem; margin-bottom:0.5rem;">📈</div>
+                    <div>Fabtrack non connecté</div>
+                    <small style="color:#475569;">Configurez l'URL dans Paramètres → Sources</small>
+                </div>
+            `;
+            return;
+        }
+
+        if (!stats.total_interventions) {
+            grid.innerHTML = `
+                <div style="text-align:center; padding:1.5rem; color:#64748b;">
+                    <div style="font-size:2rem; margin-bottom:0.5rem;">📈</div>
+                    <div style="color:#94a3b8;">Aucune activité enregistrée</div>
+                    <small style="color:#475569;">Les stats apparaîtront dès la première intervention</small>
+                </div>
+            `;
+            return;
+        }
+
+        const types = stats.by_type || [];
+        const total = stats.total_interventions || 1;
+        const maxCount = types.length ? Math.max(...types.map(t => t.count)) : 1;
+
+        let html = types.map(t => {
+            const pct = Math.round((t.count / maxCount) * 100);
+            const color = t.couleur || '#818cf8';
+            return `
+                <div class="type-row" style="border-left-color: ${esc(color)};">
+                    <div class="type-icon">${t.icone || '📊'}</div>
+                    <div class="type-info">
+                        <div class="type-name">${esc(t.nom)}</div>
+                        <div class="type-bar"><div class="type-bar-fill" style="width:${pct}%; background:${esc(color)};"></div></div>
+                    </div>
+                    <div class="type-count">${n(t.count)}</div>
+                </div>
+            `;
+        }).join('');
+
+        html += `
+            <div class="total-row">
+                <span>Total interventions</span>
+                <span class="total-value">${n(total)}</span>
+            </div>
+        `;
+
+        grid.innerHTML = html;
+    }
+
+    const config = {{ config | tojson | safe }};
+    const sourceId = config.source_id || null;
+
+    function refresh() {
+        const store = window.FabBoardStore;
+        let stats = {};
+        let errorMsg = '';
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            const sd = store.getSource(sourceId);
+            stats = sd.summary || sd;
+        } else if (store && store.data) {
+            stats = store.data.fabtrack_stats || {};
+            errorMsg = store.data.fabtrack_error || '';
+        } else {
+            return;
+        }
+
+        render(stats, errorMsg);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>
