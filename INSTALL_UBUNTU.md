@@ -39,7 +39,7 @@ nano fabsuite-ubuntu.env
 ```
 
 Paramètres importants:
-- `GIT_REPO_URL` : URL Git du monorepo (ex: `https://github.com/<owner>/Fablab-Suite.git`)
+- `GIT_REPO_URL` : URL Git du monorepo (ex: `https://github.com/OWNER_OR_ORG/Fablab-Suite.git`)
 - `GIT_BRANCH` : branche à déployer (`main` par défaut)
 - `INSTALL_DIR` : dossier cible sur le serveur (`$HOME/fablab-suite` conseillé)
 - Ports (`FABHOME_PORT`, `FABTRACK_PORT`, `PRETGO_PORT`, `FABBOARD_PORT`)

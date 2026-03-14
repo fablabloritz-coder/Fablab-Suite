@@ -517,7 +517,7 @@ create_env_from_example() {
     cp "${SCRIPT_DIR}/fabsuite-ubuntu.env.example" "$ENV_FILE"
   else
     cat > "$ENV_FILE" <<'EOF'
-GIT_REPO_URL=https://github.com/<owner>/Fablab-Suite.git
+GIT_REPO_URL=https://github.com/OWNER_OR_ORG/Fablab-Suite.git
 GIT_BRANCH=main
 INSTALL_DIR=$HOME/fablab-suite
 APPS="FabHome Fabtrack PretGo FabBoard"
@@ -545,6 +545,12 @@ normalize_env_file() {
   if LC_ALL=C grep -q $'\r' "$file"; then
     sed -i 's/\r$//' "$file"
     echo "Normalized CRLF -> LF: $file"
+  fi
+
+  # Backward compatibility: old placeholder '<owner>' breaks shell parsing on source.
+  if grep -q '<owner>' "$file"; then
+    sed -i 's#<owner>#OWNER_OR_ORG#g' "$file"
+    echo "Normalized unsafe placeholder '<owner>' -> 'OWNER_OR_ORG': $file"
   fi
 }
 
@@ -591,7 +597,7 @@ load_env() {
   source "$ENV_FILE"
   set +a
 
-  GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/<owner>/Fablab-Suite.git}"
+  GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/OWNER_OR_ORG/Fablab-Suite.git}"
   GIT_BRANCH="${GIT_BRANCH:-main}"
   INSTALL_DIR="${INSTALL_DIR:-$HOME/fablab-suite}"
   APPS="${APPS:-FabHome Fabtrack PretGo FabBoard}"
@@ -623,8 +629,8 @@ load_env() {
   set_env_var "FABTRACK_URL" "$FABTRACK_URL"
   set_env_var "PRETGO_URL" "$PRETGO_URL"
 
-  if [[ "$GIT_REPO_URL" == *"<owner>"* ]]; then
-    echo "WARNING: GIT_REPO_URL uses placeholder '<owner>'."
+  if [[ "$GIT_REPO_URL" == *"<owner>"* || "$GIT_REPO_URL" == *"OWNER_OR_ORG"* ]]; then
+    echo "WARNING: GIT_REPO_URL uses a placeholder owner value."
     echo "Edit $ENV_FILE and set your real GitHub repo URL before install/update."
   fi
 }
@@ -672,6 +678,13 @@ with_repo() {
 bootstrap_repo() {
   local url="$GIT_REPO_URL"
   local target="${INSTALL_DIR}"
+
+  if [[ "$url" == *"<owner>"* || "$url" == *"OWNER_OR_ORG"* ]]; then
+    echo "ERROR: GIT_REPO_URL is not configured (placeholder detected)."
+    echo "Edit $ENV_FILE and set e.g.:"
+    echo "  GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git"
+    exit 1
+  fi
 
   if [[ -d "$target/.git" ]]; then
     echo "[suite] exists -> git fetch/reset"
