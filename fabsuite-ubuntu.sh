@@ -685,25 +685,25 @@ container_bind_source_for_dest() {
     return 0
   fi
 
-  docker inspect "$container" 2>/dev/null | python3 - "$dest" <<'PY'
-import json
-import sys
+    docker inspect "$container" 2>/dev/null | python3 -c '
+  import json
+  import sys
 
-dest = sys.argv[1]
-try:
+  dest = sys.argv[1]
+  try:
     payload = json.load(sys.stdin)
     mounts = payload[0].get("Mounts", []) if payload else []
-except Exception:
+  except Exception:
     print("")
     raise SystemExit(0)
 
-for mount in mounts:
+  for mount in mounts:
     if mount.get("Type") == "bind" and (mount.get("Destination") or "") == dest:
-        print(mount.get("Source") or "")
-        break
-else:
+      print(mount.get("Source") or "")
+      break
+  else:
     print("")
-PY
+  ' "$dest"
 }
 
 path_has_data() {
