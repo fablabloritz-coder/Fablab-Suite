@@ -21,6 +21,7 @@ Usage:
   ./fabsuite-ubuntu.sh audit
   ./fabsuite-ubuntu.sh cleanup-safe
   ./fabsuite-ubuntu.sh repair-env [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh check-data-safety [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -35,6 +36,7 @@ Examples:
   ./fabsuite-ubuntu.sh audit
   ./fabsuite-ubuntu.sh cleanup-safe
   ./fabsuite-ubuntu.sh repair-env
+  ./fabsuite-ubuntu.sh check-data-safety
   ./fabsuite-ubuntu.sh install
   ./fabsuite-ubuntu.sh status
   ./fabsuite-ubuntu.sh logs Fabtrack
@@ -43,7 +45,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -655,6 +657,75 @@ detect_repo_url_from_existing_checkouts() {
   return 1
 }
 
+resolve_bind_source_path() {
+  local app="$1"
+  local raw_path="$2"
+  local app_dir="${INSTALL_DIR}/${app}"
+  local abs_path=""
+
+  if [[ "$raw_path" = /* ]]; then
+    abs_path="$raw_path"
+  else
+    abs_path="${app_dir}/${raw_path}"
+  fi
+
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -m "$abs_path"
+  else
+    echo "$abs_path"
+  fi
+}
+
+container_bind_source_for_dest() {
+  local container="$1"
+  local dest="$2"
+
+  if ! docker inspect "$container" >/dev/null 2>&1; then
+    echo ""
+    return 0
+  fi
+
+  docker inspect "$container" 2>/dev/null | python3 - "$dest" <<'PY'
+import json
+import sys
+
+dest = sys.argv[1]
+try:
+    payload = json.load(sys.stdin)
+    mounts = payload[0].get("Mounts", []) if payload else []
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+for mount in mounts:
+    if mount.get("Type") == "bind" and (mount.get("Destination") or "") == dest:
+        print(mount.get("Source") or "")
+        break
+else:
+    print("")
+PY
+}
+
+path_has_data() {
+  local p="$1"
+  if [[ -d "$p" ]]; then
+    [[ -n "$(find "$p" -mindepth 1 -print -quit 2>/dev/null)" ]]
+    return
+  fi
+  [[ -f "$p" ]]
+}
+
+path_state_label() {
+  local p="$1"
+  if path_has_data "$p"; then
+    echo "has-data"
+  elif [[ -e "$p" ]]; then
+    echo "exists-empty"
+  else
+    echo "missing"
+  fi
+}
+
 generate_secret_key() {
   local secret=""
   if command -v openssl >/dev/null 2>&1; then
@@ -775,6 +846,73 @@ run_repair_env() {
       echo "[repair-env] [INFO] ${app} absent localement (normal avant un premier install)."
     fi
   done
+}
+
+run_check_data_safety() {
+  require_docker_compose
+  require_cmd python3
+
+  echo "===== Data safety precheck ====="
+
+  local -a specs
+  specs=(
+    "FabHome|fabhome|core-data|/app/data|-|./data"
+    "Fabtrack|fabtrack|core-data|/app/data|FABTRACK_DATA_PATH|./docker-data/data"
+    "PretGo|pretgo|core-data|/app/data|PRETGO_DATA_PATH|./docker-data/data"
+    "FabBoard|fabboard|core-data|/app/data|FABBOARD_DATA_PATH|./docker-data/data"
+  )
+
+  local risk_count=0
+  local spec app container label dest var_name default_rel raw_path expected current current_norm cur_state next_state
+
+  for spec in "${specs[@]}"; do
+    IFS='|' read -r app container label dest var_name default_rel <<< "$spec"
+
+    if [[ "$var_name" == "-" ]]; then
+      raw_path="$default_rel"
+    else
+      raw_path="${!var_name:-$default_rel}"
+    fi
+
+    expected="$(resolve_bind_source_path "$app" "$raw_path")"
+    current="$(container_bind_source_for_dest "$container" "$dest")"
+
+    if [[ -n "$current" ]]; then
+      if command -v readlink >/dev/null 2>&1; then
+        current_norm="$(readlink -m "$current")"
+      else
+        current_norm="$current"
+      fi
+
+      if [[ "$current_norm" == "$expected" ]]; then
+        echo "[OK] ${app} ${label}: path stable (${expected})"
+      else
+        cur_state="$(path_state_label "$current_norm")"
+        next_state="$(path_state_label "$expected")"
+        echo "[RISK] ${app} ${label}: path actuel='${current_norm}' -> prochain='${expected}' (actuel:${cur_state}, prochain:${next_state})"
+        risk_count=$((risk_count + 1))
+      fi
+    else
+      if path_has_data "$expected"; then
+        echo "[OK] ${app} ${label}: conteneur absent, chemin attendu contient déjà des données (${expected})"
+      elif [[ -e "$expected" ]]; then
+        echo "[INFO] ${app} ${label}: conteneur absent, chemin attendu existe mais est vide (${expected})"
+      else
+        echo "[INFO] ${app} ${label}: conteneur absent, chemin attendu non trouvé (${expected})"
+      fi
+    fi
+  done
+
+  echo ""
+  if (( risk_count > 0 )); then
+    echo "[ALERT] RISK_COUNT=${risk_count}"
+    echo "[ALERT] Risque détecté: une ou plusieurs apps vont utiliser un chemin data différent du chemin actuel."
+    echo "[ALERT] Vérifie INSTALL_DIR et les variables *_DATA_PATH avant install/update."
+    return 2
+  fi
+
+  echo "[SAFE] AUCUN_ECRASEMENT_DETECTE"
+  return 0
 }
 
 repo_exists() {
@@ -1131,6 +1269,9 @@ case "$ACTION" in
     ;;
   repair-env)
     run_repair_env
+    ;;
+  check-data-safety)
+    run_check_data_safety
     ;;
   install)
     run_install

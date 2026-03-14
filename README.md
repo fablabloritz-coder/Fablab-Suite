@@ -90,6 +90,7 @@ Le GUI est conçu pour rester neutre:
 - pas de persistance d'identité SSH (hôte/utilisateur) dans la config locale
 - bouton dédié "Réparer env monorepo" pour corriger automatiquement les problèmes d'env courants
 - Install et Update lancent automatiquement une réparation d'env avant exécution
+- Install et Update lancent automatiquement un pré-check sécurité données (arrêt + alerte si risque détecté)
 
 ## Maintenance
 

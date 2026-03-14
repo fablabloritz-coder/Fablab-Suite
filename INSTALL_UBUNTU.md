@@ -103,13 +103,16 @@ Ordre conseillé dans la GUI:
 3. Audit serveur
 4. Prepare host
 5. Réparer env monorepo
-6. Install suite
-7. Status suite
+6. Pré-check sécurité données
+7. Install suite
+8. Status suite
 
 Conseil pratique:
 - Si nécessaire, renseignez l'option avancée "URL repo monorepo" dans la GUI
-	(ex: `https://github.com/fablabloritz-coder/Fablab-Suite.git`).
+  (ex: `https://github.com/fablabloritz-coder/Fablab-Suite.git`).
 - Install et Update lancent automatiquement une réparation d'env avant exécution.
+- Install et Update lancent automatiquement un pré-check sécurité données.
+- Si un risque d'écrasement/perte de liaison data est détecté, l'action est stoppée et une alerte est affichée.
 
 ## Notes sécurité
 

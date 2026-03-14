@@ -44,6 +44,7 @@ MSG_SET_ACTIONS = "set_actions"
 MSG_SET_STATUS = "set_status"
 MSG_SET_DIR_ROWS = "set_dir_rows"
 MSG_SET_SCAN_INFO = "set_scan_info"
+MSG_ALERT = "alert"
 
 
 class FabSuiteSshGui(tk.Tk):
@@ -261,7 +262,7 @@ class FabSuiteSshGui(tk.Tk):
 
         ttk.Label(
             actions,
-            text="Ordre conseillé: Connecter -> Envoyer fichiers -> Audit -> (Cleanup si besoin) -> Prepare host -> Réparer env -> Install -> Status",
+            text="Ordre conseillé: Connecter -> Envoyer fichiers -> Audit -> (Cleanup si besoin) -> Prepare host -> Réparer env -> Pré-check données -> Install -> Status",
             foreground="#444444",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
@@ -312,7 +313,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_install,
             2,
             2,
-            desc="Clone/relance toutes les apps FabSuite (Docker individuel par app).",
+            desc="Lance d'abord repair-env et le pré-check sécurité données, puis installe/rebuild la suite si tout est sûr.",
         )
         self._make_action_button(
             actions,
@@ -320,7 +321,15 @@ class FabSuiteSshGui(tk.Tk):
             self.action_update,
             3,
             0,
-            desc="Fait git pull et rebuild de chaque app de la suite.",
+            desc="Lance d'abord repair-env et le pré-check sécurité données, puis update/rebuild la suite si tout est sûr.",
+        )
+        self._make_action_button(
+            actions,
+            "Pré-check sécurité données",
+            self.action_data_safety,
+            4,
+            0,
+            desc="Vérifie si install/update risque d'utiliser un chemin data différent de celui actuellement en service.",
         )
 
         self._make_action_button(
@@ -623,6 +632,12 @@ class FabSuiteSshGui(tk.Tk):
                 self._set_dir_rows(payload if isinstance(payload, list) else [])
             elif msg_type == MSG_SET_SCAN_INFO:
                 self.scan_info_var.set(str(payload))
+            elif msg_type == MSG_ALERT:
+                title, msg = payload if isinstance(payload, tuple) and len(payload) == 2 else ("Alerte", str(payload))
+                try:
+                    messagebox.showwarning(str(title), str(msg))
+                except tk.TclError:
+                    pass
 
         try:
             self.after(120, self._poll_log_queue)
@@ -974,16 +989,16 @@ class FabSuiteSshGui(tk.Tk):
 
         return remote_dir
 
-    def _run_helper_action(self, action, app_name=None):
+    def _run_helper_action(self, action, app_name=None, allow_failure=False):
         self._ensure_remote_helper_ready()
         timeout_sec = 180
         if action in ("prepare-host", "install", "update"):
             timeout_sec = 900
-        elif action == "repair-env":
+        elif action in ("repair-env", "check-data-safety"):
             timeout_sec = 300
-        self._exec_remote_logged(
+        return self._exec_remote_logged(
             self._helper_command(action, app_name=app_name),
-            allow_failure=False,
+            allow_failure=allow_failure,
             timeout_sec=timeout_sec,
         )
 
@@ -1292,8 +1307,28 @@ exit 0
     def action_repair_env(self):
         self._run_async("Réparer env monorepo", lambda: self._run_helper_action("repair-env"))
 
+    def action_data_safety(self):
+        self._run_async("Pré-check sécurité données", lambda: self._run_helper_action("check-data-safety"))
+
+    def _enforce_data_safety_or_stop(self):
+        code = self._run_helper_action("check-data-safety", allow_failure=True)
+        if code == 0:
+            self._log("Pré-check sécurité données: aucun écrasement détecté.")
+            return
+        if code == 2:
+            self._queue_ui(
+                MSG_ALERT,
+                (
+                    "Alerte sécurité données",
+                    "Risque de changement de chemin data détecté.\n\nInstallation/Mise à jour stoppée.\nConsulte le journal pour les détails.",
+                ),
+            )
+            raise RuntimeError("Alerte sécurité données: risque détecté, opération interrompue.")
+        raise RuntimeError(f"Pré-check sécurité données en échec (code {code}).")
+
     def _install_worker(self):
         self._run_helper_action("repair-env")
+        self._enforce_data_safety_or_stop()
         self._run_helper_action("install")
 
     def action_install(self):
@@ -1301,6 +1336,7 @@ exit 0
 
     def _update_worker(self):
         self._run_helper_action("repair-env")
+        self._enforce_data_safety_or_stop()
         self._run_helper_action("update")
 
     def action_update(self):
