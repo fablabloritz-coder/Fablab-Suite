@@ -105,8 +105,3 @@ Le repo est préparé pour une publication propre:
 - valeurs serveur spécifiques retirées du code d'installation
 - variables sensibles externalisées (`.env`, `fabsuite-ubuntu.env`)
 - fichiers locaux/outils de debug exclus via `.gitignore`
-
-## Notes
-
-- FabStock est volontairement exclu de la suite active.
-- FrigoScan est un projet personnel séparé et non requis pour cette suite.
