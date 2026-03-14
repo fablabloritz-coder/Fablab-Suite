@@ -567,6 +567,27 @@ set_env_var() {
   fi
 }
 
+is_placeholder_repo_url() {
+  local url="$1"
+  [[ "$url" == *"<owner>"* || "$url" == *"OWNER_OR_ORG"* ]]
+}
+
+has_legacy_suite_layout() {
+  local base="$1"
+  [[ -f "$base/FabHome/docker-compose.yml" && -f "$base/Fabtrack/docker-compose.yml" && -f "$base/PretGo/docker-compose.yml" && -f "$base/FabBoard/docker-compose.yml" ]]
+}
+
+require_valid_repo_url() {
+  local url="$1"
+  if is_placeholder_repo_url "$url"; then
+    echo "ERROR: GIT_REPO_URL is not configured (placeholder detected)."
+    echo "Edit $ENV_FILE and set e.g.:"
+    echo "  GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git"
+    return 1
+  fi
+  return 0
+}
+
 generate_secret_key() {
   local secret=""
   if command -v openssl >/dev/null 2>&1; then
@@ -602,6 +623,13 @@ load_env() {
   INSTALL_DIR="${INSTALL_DIR:-$HOME/fablab-suite}"
   APPS="${APPS:-FabHome Fabtrack PretGo FabBoard}"
 
+  # Backward compatibility: if legacy path exists, keep using it.
+  if [[ ! -d "$INSTALL_DIR" && -d "$HOME/fabsuite" ]] && has_legacy_suite_layout "$HOME/fabsuite"; then
+    INSTALL_DIR="$HOME/fabsuite"
+    set_env_var "INSTALL_DIR" "$INSTALL_DIR"
+    echo "Detected legacy INSTALL_DIR and switched to: $INSTALL_DIR"
+  fi
+
   TZ="${TZ:-Europe/Paris}"
   FLASK_SECRET_KEY="${FLASK_SECRET_KEY:-}"
 
@@ -629,9 +657,14 @@ load_env() {
   set_env_var "FABTRACK_URL" "$FABTRACK_URL"
   set_env_var "PRETGO_URL" "$PRETGO_URL"
 
-  if [[ "$GIT_REPO_URL" == *"<owner>"* || "$GIT_REPO_URL" == *"OWNER_OR_ORG"* ]]; then
-    echo "WARNING: GIT_REPO_URL uses a placeholder owner value."
-    echo "Edit $ENV_FILE and set your real GitHub repo URL before install/update."
+  if is_placeholder_repo_url "$GIT_REPO_URL"; then
+    if has_legacy_suite_layout "$INSTALL_DIR"; then
+      echo "INFO: GIT_REPO_URL placeholder detected, but legacy local suite layout found in $INSTALL_DIR."
+      echo "INFO: install/start can continue with local files; set GIT_REPO_URL for clone/update from GitHub."
+    else
+      echo "WARNING: GIT_REPO_URL uses a placeholder owner value."
+      echo "Edit $ENV_FILE and set your real GitHub repo URL before install/update."
+    fi
   fi
 }
 
@@ -679,13 +712,6 @@ bootstrap_repo() {
   local url="$GIT_REPO_URL"
   local target="${INSTALL_DIR}"
 
-  if [[ "$url" == *"<owner>"* || "$url" == *"OWNER_OR_ORG"* ]]; then
-    echo "ERROR: GIT_REPO_URL is not configured (placeholder detected)."
-    echo "Edit $ENV_FILE and set e.g.:"
-    echo "  GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git"
-    exit 1
-  fi
-
   if [[ -d "$target/.git" ]]; then
     echo "[suite] exists -> git fetch/reset"
     git -C "$target" fetch origin "$GIT_BRANCH"
@@ -694,18 +720,19 @@ bootstrap_repo() {
   fi
 
   if [[ -d "$target" ]]; then
-    # Allow empty target dir created by install workflow.
-    if [[ -z "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
-      rmdir "$target"
-      echo "[suite] cloning from $url"
-      git clone --branch "$GIT_BRANCH" "$url" "$target"
+    # Allow pre-populated legacy folder (one repo per app) and start from local files.
+    if has_legacy_suite_layout "$target"; then
+      echo "[suite] existing legacy layout detected at $target -> using local files"
+      echo "[suite] INFO: update will use per-app git repos when available."
       return 0
     fi
 
-    # Allow pre-populated non-git folder (zip/manual copy) if expected app layout exists.
-    if [[ -f "$target/FabHome/docker-compose.yml" && -f "$target/Fabtrack/docker-compose.yml" && -f "$target/PretGo/docker-compose.yml" && -f "$target/FabBoard/docker-compose.yml" ]]; then
-      echo "[suite] existing non-git layout detected at $target -> using local files"
-      echo "[suite] WARNING: no .git metadata found; install/start works, but update cannot pull remote changes."
+    # Allow empty target dir created by install workflow.
+    if [[ -z "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+      require_valid_repo_url "$url" || exit 1
+      rmdir "$target"
+      echo "[suite] cloning from $url"
+      git clone --branch "$GIT_BRANCH" "$url" "$target"
       return 0
     fi
 
@@ -714,6 +741,7 @@ bootstrap_repo() {
     exit 1
   fi
 
+  require_valid_repo_url "$url" || exit 1
   echo "[suite] cloning from $url"
   git clone --branch "$GIT_BRANCH" "$url" "$target"
 }
@@ -772,7 +800,16 @@ stop_app() {
 
 update_app() {
   local app="$1"
+  local app_dir="${INSTALL_DIR}/${app}"
+
   # In monorepo mode, git update is handled once at suite root.
+  if [[ ! -d "${INSTALL_DIR}/.git" && -d "$app_dir/.git" ]]; then
+    echo "[$app] git pull --ff-only (legacy repo mode)"
+    if ! git -C "$app_dir" pull --ff-only origin "$GIT_BRANCH"; then
+      echo "WARNING: [$app] git pull failed in legacy mode (continuing with rebuild)"
+    fi
+  fi
+
   start_app "$app"
 }
 
