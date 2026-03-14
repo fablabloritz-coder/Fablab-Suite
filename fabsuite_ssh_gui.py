@@ -71,6 +71,7 @@ class FabSuiteSshGui(tk.Tk):
         self.password_var = tk.StringVar()
         self.key_path_var = tk.StringVar()
         self.remote_dir_var = tk.StringVar(value=DEFAULT_REMOTE_DIR)
+        self.repo_url_var = tk.StringVar()
         self.sudo_password_var = tk.StringVar()
         self.logs_app_var = tk.StringVar(value="Fabtrack")
         self.connection_status_var = tk.StringVar(value="Non connecté")
@@ -241,14 +242,26 @@ class FabSuiteSshGui(tk.Tk):
         ttk.Label(self.advanced_frame, text="Mot de passe sudo (optionnel)").grid(row=2, column=2, sticky="w", pady=(6, 0))
         ttk.Entry(self.advanced_frame, textvariable=self.sudo_password_var, width=24, show="*").grid(row=2, column=3, padx=4, pady=(6, 0), sticky="w")
 
-        ttk.Label(self.advanced_frame, text="Mode simple: laisse le port à 22 et utilise user@ip + mot de passe.", foreground="#666666").grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        ttk.Label(self.advanced_frame, text="URL repo monorepo (optionnel)").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        ttk.Entry(self.advanced_frame, textvariable=self.repo_url_var, width=72).grid(row=3, column=1, columnspan=3, padx=4, pady=(6, 0), sticky="w")
+        ttk.Label(
+            self.advanced_frame,
+            text="Exemple: https://github.com/OWNER_OR_ORG/Fablab-Suite.git",
+            foreground="#666666",
+        ).grid(row=4, column=0, columnspan=4, sticky="w", pady=(4, 0))
+
+        ttk.Label(
+            self.advanced_frame,
+            text="Mode simple: laisse le port à 22 et utilise user@ip + mot de passe.",
+            foreground="#666666",
+        ).grid(row=5, column=0, columnspan=4, sticky="w", pady=(6, 0))
 
         actions = ttk.LabelFrame(ctrl_frame, text="Assistant serveur - Déploiement FabSuite", padding=10)
         actions.pack(fill=tk.X, padx=10, pady=8)
 
         ttk.Label(
             actions,
-            text="Ordre conseillé: Connecter -> Audit -> (Cleanup si besoin) -> Prepare host -> Install -> Status",
+            text="Ordre conseillé: Connecter -> Envoyer fichiers -> Audit -> (Cleanup si besoin) -> Prepare host -> Réparer env -> Install -> Status",
             foreground="#444444",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
@@ -287,18 +300,26 @@ class FabSuiteSshGui(tk.Tk):
         )
         self._make_action_button(
             actions,
-            "5) Installer la suite",
-            self.action_install,
+            "5) Réparer env monorepo",
+            self.action_repair_env,
             2,
             1,
+            desc="Crée/répare fabsuite-ubuntu.env, corrige les placeholders et valide la configuration avant install/update.",
+        )
+        self._make_action_button(
+            actions,
+            "6) Installer la suite",
+            self.action_install,
+            2,
+            2,
             desc="Clone/relance toutes les apps FabSuite (Docker individuel par app).",
         )
         self._make_action_button(
             actions,
-            "6) Mettre à jour la suite",
+            "7) Mettre à jour la suite",
             self.action_update,
-            2,
-            2,
+            3,
+            0,
             desc="Fait git pull et rebuild de chaque app de la suite.",
         )
 
@@ -307,7 +328,7 @@ class FabSuiteSshGui(tk.Tk):
             "Vérifier l'état",
             self.action_status,
             3,
-            0,
+            1,
             desc="Affiche l'état (running/health) de chaque application FabSuite.",
         )
         self._make_action_button(
@@ -315,12 +336,12 @@ class FabSuiteSshGui(tk.Tk):
             "Logs (toutes les apps)",
             self.action_logs_all,
             3,
-            1,
+            2,
             desc="Affiche les derniers logs de toutes les apps.",
         )
 
         logs_frame = ttk.Frame(actions)
-        logs_frame.grid(row=3, column=2, sticky="w")
+        logs_frame.grid(row=4, column=2, sticky="w")
         ttk.Label(logs_frame, text="Logs app").pack(side=tk.LEFT)
         ttk.Entry(logs_frame, textvariable=self.logs_app_var, width=12).pack(side=tk.LEFT, padx=4)
         self._make_action_button(
@@ -488,6 +509,7 @@ class FabSuiteSshGui(tk.Tk):
         self.auth_var.set(data.get("auth", "password"))
         self.key_path_var.set("")
         self.remote_dir_var.set(data.get("remote_dir", DEFAULT_REMOTE_DIR))
+        self.repo_url_var.set(data.get("git_repo_url", ""))
         self.logs_app_var.set(data.get("logs_app", "Fabtrack"))
         self.dir_root_var.set(data.get("dir_root", "~"))
         self.dir_depth_var.set(str(data.get("dir_depth", "3")))
@@ -517,6 +539,7 @@ class FabSuiteSshGui(tk.Tk):
             "auth": self.auth_var.get().strip(),
             "key_path": key_path_value,
             "remote_dir": self.remote_dir_var.get().strip(),
+            "git_repo_url": self.repo_url_var.get().strip(),
             "logs_app": self.logs_app_var.get().strip(),
             "dir_root": self.dir_root_var.get().strip(),
             "dir_depth": self.dir_depth_var.get().strip(),
@@ -858,6 +881,7 @@ class FabSuiteSshGui(tk.Tk):
     def _helper_command(self, action, app_name=None):
         remote_dir = self._resolve_remote_dir()
         sudo_pass = self.sudo_password_var.get().strip()
+        repo_url = self.repo_url_var.get().strip()
 
         cmd_parts = [
             f"cd {shlex.quote(remote_dir)}",
@@ -871,6 +895,8 @@ class FabSuiteSshGui(tk.Tk):
         env_prefix = "NON_INTERACTIVE=1"
         if sudo_pass:
             env_prefix += f" SUDO_PASSWORD={shlex.quote(sudo_pass)}"
+        if repo_url:
+            env_prefix += f" GIT_REPO_URL={shlex.quote(repo_url)}"
         helper_call = f"{env_prefix} {helper_call}"
 
         cmd_parts.append(helper_call)
@@ -953,6 +979,8 @@ class FabSuiteSshGui(tk.Tk):
         timeout_sec = 180
         if action in ("prepare-host", "install", "update"):
             timeout_sec = 900
+        elif action == "repair-env":
+            timeout_sec = 300
         self._exec_remote_logged(
             self._helper_command(action, app_name=app_name),
             allow_failure=False,
@@ -1261,11 +1289,22 @@ exit 0
     def action_prepare_host(self):
         self._run_async("Prepare host", lambda: self._run_helper_action("prepare-host"))
 
+    def action_repair_env(self):
+        self._run_async("Réparer env monorepo", lambda: self._run_helper_action("repair-env"))
+
+    def _install_worker(self):
+        self._run_helper_action("repair-env")
+        self._run_helper_action("install")
+
     def action_install(self):
-        self._run_async("Install suite", lambda: self._run_helper_action("install"))
+        self._run_async("Install suite", self._install_worker)
+
+    def _update_worker(self):
+        self._run_helper_action("repair-env")
+        self._run_helper_action("update")
 
     def action_update(self):
-        self._run_async("Update suite", lambda: self._run_helper_action("update"))
+        self._run_async("Update suite", self._update_worker)
 
     def action_status(self):
         self._run_async("Status suite", lambda: self._run_helper_action("status"))

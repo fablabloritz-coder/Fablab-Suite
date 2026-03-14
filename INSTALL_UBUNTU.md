@@ -102,8 +102,14 @@ Ordre conseillé dans la GUI:
 2. Upload installer files
 3. Audit serveur
 4. Prepare host
-5. Install suite
-6. Status suite
+5. Réparer env monorepo
+6. Install suite
+7. Status suite
+
+Conseil pratique:
+- Si nécessaire, renseignez l'option avancée "URL repo monorepo" dans la GUI
+	(ex: `https://github.com/fablabloritz-coder/Fablab-Suite.git`).
+- Install et Update lancent automatiquement une réparation d'env avant exécution.
 
 ## Notes sécurité
 

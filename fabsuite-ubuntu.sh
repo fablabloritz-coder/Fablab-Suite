@@ -20,6 +20,7 @@ Usage:
   ./fabsuite-ubuntu.sh prepare-host
   ./fabsuite-ubuntu.sh audit
   ./fabsuite-ubuntu.sh cleanup-safe
+  ./fabsuite-ubuntu.sh repair-env [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -33,6 +34,7 @@ Examples:
   ./fabsuite-ubuntu.sh prepare-host
   ./fabsuite-ubuntu.sh audit
   ./fabsuite-ubuntu.sh cleanup-safe
+  ./fabsuite-ubuntu.sh repair-env
   ./fabsuite-ubuntu.sh install
   ./fabsuite-ubuntu.sh status
   ./fabsuite-ubuntu.sh logs Fabtrack
@@ -41,7 +43,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -588,6 +590,71 @@ require_valid_repo_url() {
   return 0
 }
 
+normalize_github_repo_url() {
+  local raw="$1"
+  if [[ "$raw" =~ ^https://github\.com/([^/]+)/([^/]+)(\.git)?$ ]]; then
+    local owner="${BASH_REMATCH[1]}"
+    local repo="${BASH_REMATCH[2]}"
+    repo="${repo%.git}"
+    echo "https://github.com/${owner}/${repo}.git"
+    return 0
+  fi
+  if [[ "$raw" =~ ^git@github\.com:([^/]+)/([^/]+)(\.git)?$ ]]; then
+    local owner="${BASH_REMATCH[1]}"
+    local repo="${BASH_REMATCH[2]}"
+    repo="${repo%.git}"
+    echo "https://github.com/${owner}/${repo}.git"
+    return 0
+  fi
+  echo "$raw"
+}
+
+github_owner_from_remote_url() {
+  local raw="$1"
+  if [[ "$raw" =~ ^https://github\.com/([^/]+)/[^/]+(\.git)?$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  if [[ "$raw" =~ ^git@github\.com:([^/]+)/[^/]+(\.git)?$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+detect_repo_url_from_existing_checkouts() {
+  local dir remote normalized owner app base
+
+  # 1) Try monorepo checkouts first.
+  for dir in "$INSTALL_DIR" "$HOME/fablab-suite" "$HOME/fabsuite"; do
+    if [[ -d "$dir/.git" ]]; then
+      remote="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
+      if [[ -n "$remote" ]]; then
+        normalized="$(normalize_github_repo_url "$remote")"
+        echo "$normalized"
+        return 0
+      fi
+    fi
+  done
+
+  # 2) Try legacy per-app repositories and infer monorepo owner.
+  for base in "$INSTALL_DIR" "$HOME/fabsuite" "$HOME/fablab-suite"; do
+    for app in FabHome Fabtrack PretGo FabBoard; do
+      dir="$base/$app"
+      if [[ -d "$dir/.git" ]]; then
+        remote="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
+        owner="$(github_owner_from_remote_url "$remote" 2>/dev/null || true)"
+        if [[ -n "$owner" ]]; then
+          echo "https://github.com/${owner}/Fablab-Suite.git"
+          return 0
+        fi
+      fi
+    done
+  done
+
+  return 1
+}
+
 generate_secret_key() {
   local secret=""
   if command -v openssl >/dev/null 2>&1; then
@@ -630,6 +697,16 @@ load_env() {
     echo "Detected legacy INSTALL_DIR and switched to: $INSTALL_DIR"
   fi
 
+  if is_placeholder_repo_url "$GIT_REPO_URL"; then
+    local _detected_url
+    _detected_url="$(detect_repo_url_from_existing_checkouts || true)"
+    if [[ -n "$_detected_url" ]]; then
+      GIT_REPO_URL="$_detected_url"
+      set_env_var "GIT_REPO_URL" "$GIT_REPO_URL"
+      echo "Auto-detected GIT_REPO_URL from existing checkout: $GIT_REPO_URL"
+    fi
+  fi
+
   TZ="${TZ:-Europe/Paris}"
   FLASK_SECRET_KEY="${FLASK_SECRET_KEY:-}"
 
@@ -666,6 +743,38 @@ load_env() {
       echo "Edit $ENV_FILE and set your real GitHub repo URL before install/update."
     fi
   fi
+}
+
+run_repair_env() {
+  create_env_from_example
+  load_env
+
+  echo "[repair-env] ENV file: $ENV_FILE"
+  echo "[repair-env] INSTALL_DIR: $INSTALL_DIR"
+  echo "[repair-env] APPS: $APPS"
+
+  if is_placeholder_repo_url "$GIT_REPO_URL"; then
+    if has_legacy_suite_layout "$INSTALL_DIR"; then
+      echo "[repair-env] OK: placeholder toléré (layout legacy détecté)."
+    else
+      echo "[repair-env] ERROR: GIT_REPO_URL est encore un placeholder et aucun layout local n'a été trouvé."
+      echo "[repair-env] Renseigne GIT_REPO_URL dans $ENV_FILE ou via la GUI (champ URL repo monorepo)."
+      exit 1
+    fi
+  else
+    echo "[repair-env] OK: GIT_REPO_URL=$GIT_REPO_URL"
+  fi
+
+  local app
+  local -a app_list
+  read -r -a app_list <<< "$APPS"
+  for app in "${app_list[@]}"; do
+    if [[ -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]; then
+      echo "[repair-env] [OK] ${app} trouvé dans ${INSTALL_DIR}/${app}"
+    else
+      echo "[repair-env] [INFO] ${app} absent localement (normal avant un premier install)."
+    fi
+  done
 }
 
 repo_exists() {
@@ -1003,8 +1112,8 @@ run_logs() {
   done
 }
 
-# prepare-host, audit and cleanup-safe do not require env loading.
-if [[ "$ACTION" != "prepare-host" && "$ACTION" != "audit" && "$ACTION" != "cleanup-safe" ]]; then
+# prepare-host, audit, cleanup-safe and repair-env do not require pre-loading env.
+if [[ "$ACTION" != "prepare-host" && "$ACTION" != "audit" && "$ACTION" != "cleanup-safe" && "$ACTION" != "repair-env" ]]; then
   # Initialize env file only for commands that actually run actions.
   create_env_from_example
   load_env
@@ -1019,6 +1128,9 @@ case "$ACTION" in
     ;;
   cleanup-safe)
     run_cleanup_safe
+    ;;
+  repair-env)
+    run_repair_env
     ;;
   install)
     run_install

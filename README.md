@@ -88,6 +88,8 @@ python fabsuite_ssh_gui.py
 Le GUI est conçu pour rester neutre:
 - pas de serveur prérempli en dur dans le code
 - pas de persistance d'identité SSH (hôte/utilisateur) dans la config locale
+- bouton dédié "Réparer env monorepo" pour corriger automatiquement les problèmes d'env courants
+- Install et Update lancent automatiquement une réparation d'env avant exécution
 
 ## Maintenance
 
