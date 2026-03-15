@@ -1033,10 +1033,19 @@ update_app() {
 
   # In monorepo mode, git update is handled once at suite root.
   if [[ ! -d "${INSTALL_DIR}/.git" && -d "$app_dir/.git" ]]; then
-    echo "[$app] git pull --ff-only (legacy repo mode)"
+    local remote before after
+    remote="$(git -C "$app_dir" remote get-url origin 2>/dev/null || echo "unknown")"
+    before="$(git -C "$app_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    echo "[$app] mode: legacy repo"
+    echo "[$app] source: $remote"
+    echo "[$app] commit before pull: $before"
+    echo "[$app] git pull --ff-only"
     if ! git -C "$app_dir" pull --ff-only origin "$GIT_BRANCH"; then
-      echo "WARNING: [$app] git pull failed in legacy mode (continuing with rebuild)"
+      echo "ERROR: [$app] git pull failed in legacy mode. Update aborted for this app."
+      return 1
     fi
+    after="$(git -C "$app_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    echo "[$app] commit after pull: $after"
   fi
 
   start_app "$app"
@@ -1198,6 +1207,17 @@ run_update() {
   mkdir -p "$INSTALL_DIR"
 
   bootstrap_repo || { echo "ERROR: suite update (git fetch/reset) failed"; exit 1; }
+
+  if [[ -d "${INSTALL_DIR}/.git" ]]; then
+    local suite_remote suite_head
+    suite_remote="$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "unknown")"
+    suite_head="$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    echo "[suite] mode: monorepo"
+    echo "[suite] source: $suite_remote"
+    echo "[suite] commit: $suite_head"
+  else
+    echo "[suite] mode: legacy per-app repositories"
+  fi
 
   local failed=""
   read -r -a app_list <<< "$APPS"
