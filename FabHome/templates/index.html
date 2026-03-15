@@ -135,7 +135,7 @@
             <div class="group-card size-icon-{{ group.icon_size or 'medium' }} size-text-{{ group.text_size or 'medium' }}"
                  data-group-id="{{ group.id }}"
                  draggable="false"
-                 style="grid-column: {{ group.grid_col + 1 }} / span {{ group.col_span }}; grid-row: {{ group.grid_row + 1 }} / span {{ group.row_span }};">
+                  style="grid-column: {{ group.grid_col + 1 }} / span {{ group.col_span }}; grid-row: {{ group.grid_row + 1 }} / span {{ group.row_span }};{% if group.background_color %} --fh-group-bg: {{ group.background_color }};{% endif %}">
 
                 <div class="edit-overlay group-overlay">
                     <button class="ov-btn drag-handle" title="Déplacer"><i class="bi bi-grip-vertical"></i></button>
@@ -201,7 +201,7 @@
             {% for gw in grid_widgets if gw.grid_row >= 0 %}
             <div class="grid-widget-card size-icon-{{ gw.icon_size }} size-text-{{ gw.text_size }}"
                  data-grid-widget-id="{{ gw.id }}" data-widget-type="{{ gw.type }}"
-                 style="grid-column: {{ gw.grid_col + 1 }} / span {{ gw.col_span }}; grid-row: {{ gw.grid_row + 1 }} / span {{ gw.row_span }};">
+                  style="grid-column: {{ gw.grid_col + 1 }} / span {{ gw.col_span }}; grid-row: {{ gw.grid_row + 1 }} / span {{ gw.row_span }};{% if gw.background_color %} --fh-widget-bg: {{ gw.background_color }};{% endif %}">
 
                 <div class="edit-overlay group-overlay">
                     <button class="ov-btn drag-handle" title="Déplacer"><i class="bi bi-grip-vertical"></i></button>
@@ -340,7 +340,7 @@
                 <div class="palette-label">Non placés</div>
                 <div id="unplacedList">
                     {% for group in groups if group.grid_row < 0 %}
-                    <div class="palette-block" draggable="true" data-group-id="{{ group.id }}">
+                    <div class="palette-block" draggable="true" data-group-id="{{ group.id }}" style="{% if group.background_color %} --fh-group-bg: {{ group.background_color }};{% endif %}">
                         {% if group.icon.startswith('http') or group.icon.startswith('/') %}
                         <img src="{{ group.icon }}" class="palette-block-icon" alt="">
                         {% elif group.icon|length <= 2 %}
@@ -469,6 +469,19 @@
                                 <option value="medium" selected>Moyen</option>
                                 <option value="large">Grand</option>
                             </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="use_custom_background" id="groupUseCustomBg">
+                                <label class="form-check-label" for="groupUseCustomBg">Couleur de fond personnalisée</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Couleur du fond</label>
+                            <input type="color" class="form-control form-control-color w-100" name="background_color" value="#1f2937" disabled>
+                            <div class="form-text">Désactivez pour conserver la couleur du thème.</div>
                         </div>
                     </div>
                 </div>
@@ -658,6 +671,20 @@
                                 <option value="medium" selected>Moyen</option>
                                 <option value="large">Grand</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3 g-2">
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="use_custom_background" id="gridWidgetUseCustomBg">
+                                <label class="form-check-label" for="gridWidgetUseCustomBg">Couleur de fond personnalisée</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Couleur du fond</label>
+                            <input type="color" class="form-control form-control-color w-100" name="background_color" value="#1f2937" disabled>
+                            <div class="form-text">Désactivez pour conserver la couleur du thème.</div>
                         </div>
                     </div>
                 </div>

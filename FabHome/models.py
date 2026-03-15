@@ -56,6 +56,7 @@ def init_db():
             grid_col   INTEGER NOT NULL DEFAULT 0,
             grid_row   INTEGER NOT NULL DEFAULT -1,
             sort_order INTEGER NOT NULL DEFAULT 0,
+            background_color TEXT NOT NULL DEFAULT '',
             FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS links (
@@ -90,6 +91,7 @@ def init_db():
             row_span    INTEGER NOT NULL DEFAULT 1,
             grid_col    INTEGER NOT NULL DEFAULT 0,
             grid_row    INTEGER NOT NULL DEFAULT -1,
+            background_color TEXT NOT NULL DEFAULT '',
             FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS services (
@@ -212,6 +214,8 @@ def init_db():
         conn.execute("ALTER TABLE groups_ ADD COLUMN icon_size TEXT NOT NULL DEFAULT 'medium'")
     if 'text_size' not in cols:
         conn.execute("ALTER TABLE groups_ ADD COLUMN text_size TEXT NOT NULL DEFAULT 'medium'")
+    if 'background_color' not in cols:
+        conn.execute("ALTER TABLE groups_ ADD COLUMN background_color TEXT NOT NULL DEFAULT ''")
 
     # Migration group_widgets : old schema had group_id, new schema has page_id + grid columns
     gw_cols = [r[1] for r in conn.execute("PRAGMA table_info(group_widgets)").fetchall()]
@@ -229,9 +233,15 @@ def init_db():
                 row_span    INTEGER NOT NULL DEFAULT 1,
                 grid_col    INTEGER NOT NULL DEFAULT 0,
                 grid_row    INTEGER NOT NULL DEFAULT -1,
+                background_color TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
             )
         ''')
+
+    gw_cols = [r[1] for r in conn.execute("PRAGMA table_info(group_widgets)").fetchall()]
+    if 'background_color' not in gw_cols:
+        conn.execute("ALTER TABLE group_widgets ADD COLUMN background_color TEXT NOT NULL DEFAULT ''")
+
     # Toujours créer l'index après migration (que ce soit fresh ou migré)
     conn.execute('CREATE INDEX IF NOT EXISTS idx_grid_widgets_page ON group_widgets(page_id)')
 
@@ -473,13 +483,13 @@ def get_groups(page_id=None):
 
 def create_group(name, icon='bi-folder', col_span=1, row_span=1,
                  grid_row=-1, grid_col=0, page_id=1,
-                 icon_size='medium', text_size='medium'):
+                 icon_size='medium', text_size='medium', background_color=''):
     conn = get_db()
     cur = conn.execute(
-        'INSERT INTO groups_ (name, icon, col_span, row_span, grid_row, grid_col, sort_order, page_id, icon_size, text_size) '
-        'VALUES (?,?,?,?,?,?,0,?,?,?)',
+        'INSERT INTO groups_ (name, icon, col_span, row_span, grid_row, grid_col, sort_order, page_id, icon_size, text_size, background_color) '
+        'VALUES (?,?,?,?,?,?,0,?,?,?,?)',
         (name, icon, max(1, min(4, col_span)), max(1, min(4, row_span)),
-         grid_row, grid_col, page_id, icon_size, text_size))
+         grid_row, grid_col, page_id, icon_size, text_size, background_color or ''))
     gid = cur.lastrowid
     conn.commit()
     conn.close()
@@ -488,7 +498,7 @@ def create_group(name, icon='bi-folder', col_span=1, row_span=1,
 
 def update_group(gid, name, icon, col_span=None, row_span=None,
                  grid_row=None, grid_col=None, page_id=None,
-                 icon_size=None, text_size=None):
+                 icon_size=None, text_size=None, background_color=None):
     conn = get_db()
     fields = ['name=?', 'icon=?']
     params = [name, icon]
@@ -513,6 +523,9 @@ def update_group(gid, name, icon, col_span=None, row_span=None,
     if text_size is not None:
         fields.append('text_size=?')
         params.append(text_size)
+    if background_color is not None:
+        fields.append('background_color=?')
+        params.append(background_color or '')
     params.append(gid)
     conn.execute('UPDATE groups_ SET ' + ','.join(fields) + ' WHERE id=?', params)
     conn.commit()
@@ -669,14 +682,16 @@ def get_grid_widget(wid):
 
 
 def create_grid_widget(page_id, wtype, config=None, icon_size='medium', text_size='medium',
-                       col_span=1, row_span=1, grid_col=0, grid_row=-1):
+                       col_span=1, row_span=1, grid_col=0, grid_row=-1,
+                       background_color=''):
     """Crée un widget autonome sur la grille"""
     conn = get_db()
     cur = conn.execute(
-        'INSERT INTO group_widgets (page_id, type, config, icon_size, text_size, col_span, row_span, grid_col, grid_row) '
-        'VALUES (?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO group_widgets (page_id, type, config, icon_size, text_size, col_span, row_span, grid_col, grid_row, background_color) '
+        'VALUES (?,?,?,?,?,?,?,?,?,?)',
         (page_id, wtype, json.dumps(config or {}), icon_size, text_size,
-         max(1, min(4, col_span)), max(1, min(4, row_span)), grid_col, grid_row))
+         max(1, min(4, col_span)), max(1, min(4, row_span)), grid_col, grid_row,
+         background_color or ''))
     wid = cur.lastrowid
     conn.commit()
     conn.close()
@@ -684,7 +699,7 @@ def create_grid_widget(page_id, wtype, config=None, icon_size='medium', text_siz
 
 
 def update_grid_widget(wid, wtype=None, config=None, icon_size=None, text_size=None,
-                       col_span=None, row_span=None):
+                       col_span=None, row_span=None, background_color=None):
     """Met à jour un widget de grille"""
     conn = get_db()
     fields = []
@@ -707,6 +722,9 @@ def update_grid_widget(wid, wtype=None, config=None, icon_size=None, text_size=N
     if row_span is not None:
         fields.append('row_span=?')
         params.append(max(1, min(4, row_span)))
+    if background_color is not None:
+        fields.append('background_color=?')
+        params.append(background_color or '')
     if fields:
         params.append(wid)
         conn.execute(f"UPDATE group_widgets SET {','.join(fields)} WHERE id=?", params)
@@ -894,11 +912,12 @@ def import_all(data):
 
         for g in data.get('groups', []):
             conn.execute(
-                'INSERT INTO groups_ (id, page_id, name, icon, col_span, row_span, grid_col, grid_row, sort_order) '
-                'VALUES (?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO groups_ (id, page_id, name, icon, col_span, row_span, grid_col, grid_row, sort_order, icon_size, text_size, background_color) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                 (g['id'], g.get('page_id', 1), g['name'], g['icon'],
                  g.get('col_span', 1), g.get('row_span', 1),
-                 g.get('grid_col', 0), g.get('grid_row', -1), g.get('sort_order', 0)))
+                 g.get('grid_col', 0), g.get('grid_row', -1), g.get('sort_order', 0),
+                 g.get('icon_size', 'medium'), g.get('text_size', 'medium'), g.get('background_color', '')))
 
         for lnk in data.get('links', []):
             conn.execute(
@@ -924,12 +943,13 @@ def import_all(data):
 
         for gw in data.get('grid_widgets', []):
             conn.execute(
-                'INSERT INTO group_widgets (page_id, type, config, grid_col, grid_row, col_span, row_span, icon_size, text_size) '
-                'VALUES (?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO group_widgets (page_id, type, config, grid_col, grid_row, col_span, row_span, icon_size, text_size, background_color) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?)',
                 (gw.get('page_id', 1), gw['type'], json.dumps(gw.get('config', {})),
                  gw.get('grid_col', 0), gw.get('grid_row', 0),
                  gw.get('col_span', 1), gw.get('row_span', 1),
-                 gw.get('icon_size', 'medium'), gw.get('text_size', 'medium')))
+                 gw.get('icon_size', 'medium'), gw.get('text_size', 'medium'),
+                 gw.get('background_color', '')))
 
         conn.execute('COMMIT')
     except Exception:

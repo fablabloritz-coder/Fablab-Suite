@@ -1,6 +1,7 @@
 """FabHome — Blueprint : API dashboard (groupes, liens, pages, widgets, grid-widgets)."""
 
 import logging
+import re
 
 from flask import Blueprint, jsonify, request, session
 
@@ -9,6 +10,8 @@ from routes import get_current_profile_id
 
 bp = Blueprint('api_dashboard', __name__)
 logger = logging.getLogger(__name__)
+
+HEX_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
 
 
 def _check_grid_collision(page_id, grid_row, grid_col, col_span, row_span,
@@ -46,6 +49,20 @@ def _clamp_span(value):
     return max(1, min(4, int(value)))
 
 
+def _normalize_background_color(raw_value):
+    """Normalise une couleur de fond en hex (#rrggbb) ou vide."""
+    if raw_value is None:
+        return ''
+    value = str(raw_value).strip()
+    if not value:
+        return ''
+    if len(value) == 4 and value.startswith('#'):
+        value = '#' + ''.join(ch * 2 for ch in value[1:])
+    if not HEX_COLOR_RE.match(value):
+        raise ValueError('Couleur invalide (format attendu: #RRGGBB)')
+    return value.lower()
+
+
 def _grid_size_for_profile(profile_id):
     """Retourne (cols, rows) depuis les settings du profil courant."""
     settings = models.get_settings(profile_id)
@@ -77,6 +94,12 @@ def api_create_group():
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify(error='Nom requis'), 400
+    try:
+        background_color = _normalize_background_color(
+            data.get('background_color', data.get('bg_color', '')))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
     page_id = int(data.get('page_id', 1))
     col_span = _clamp_span(data.get('col_span', 1))
     row_span = _clamp_span(data.get('row_span', 1))
@@ -103,7 +126,8 @@ def api_create_group():
         grid_col,
         page_id=page_id,
         icon_size=(data.get('icon_size') or 'medium')[:10],
-        text_size=(data.get('text_size') or 'medium')[:10])
+        text_size=(data.get('text_size') or 'medium')[:10],
+        background_color=background_color)
     return jsonify(id=gid), 201
 
 
@@ -113,6 +137,14 @@ def api_update_group(gid):
     name = (data.get('name') or '').strip()
     if not name:
         return jsonify(error='Nom requis'), 400
+
+    background_color = None
+    if 'background_color' in data or 'bg_color' in data:
+        try:
+            background_color = _normalize_background_color(
+                data.get('background_color', data.get('bg_color')))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
 
     group = models.get_group(gid)
     if not group:
@@ -145,7 +177,8 @@ def api_update_group(gid):
         grid_col=int(data['grid_col']) if 'grid_col' in data else None,
         page_id=page_id if 'page_id' in data else None,
         icon_size=(data['icon_size'])[:10] if 'icon_size' in data else None,
-        text_size=(data['text_size'])[:10] if 'text_size' in data else None)
+        text_size=(data['text_size'])[:10] if 'text_size' in data else None,
+        background_color=background_color)
     return jsonify(ok=True)
 
 
@@ -262,6 +295,8 @@ def api_create_grid_widget():
             return jsonify(error=f'Type invalide. Types autorisés: {", ".join(allowed_types)}'), 400
 
         page_id = int(data.get('page_id', 1))
+        background_color = _normalize_background_color(
+            data.get('background_color', data.get('bg_color', '')))
         profile_id = get_current_profile_id()
         valid_page_ids = {p['id'] for p in models.get_pages(profile_id)}
         if page_id not in valid_page_ids:
@@ -285,8 +320,11 @@ def api_create_grid_widget():
             col_span=col_span,
             row_span=row_span,
             grid_col=grid_col,
-            grid_row=grid_row)
+            grid_row=grid_row,
+            background_color=background_color)
         return jsonify(id=wid), 201
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     except Exception as e:
         logger.error(f"Erreur création widget grille: {e}")
         return jsonify(error=f'Erreur: {str(e)}'), 500
@@ -305,6 +343,11 @@ def api_update_grid_widget(wid):
         current = models.get_grid_widget(wid)
         if not current:
             return jsonify(error='Widget introuvable'), 404
+
+        background_color = None
+        if 'background_color' in data or 'bg_color' in data:
+            background_color = _normalize_background_color(
+                data.get('background_color', data.get('bg_color')))
 
         col_span = _clamp_span(data['col_span']) if 'col_span' in data else _clamp_span(current.get('col_span', 1))
         row_span = _clamp_span(data['row_span']) if 'row_span' in data else _clamp_span(current.get('row_span', 1))
@@ -326,7 +369,8 @@ def api_update_grid_widget(wid):
             icon_size=data.get('icon_size'),
             text_size=data.get('text_size'),
             col_span=col_span if 'col_span' in data else None,
-            row_span=row_span if 'row_span' in data else None)
+            row_span=row_span if 'row_span' in data else None,
+            background_color=background_color)
 
         if ('grid_row' in data or 'grid_col' in data) and (
             grid_row != int(current.get('grid_row', -1)) or grid_col != int(current.get('grid_col', 0))
@@ -334,6 +378,8 @@ def api_update_grid_widget(wid):
             models.move_grid_widget(wid, grid_row, grid_col)
 
         return jsonify(ok=True)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     except Exception as e:
         logger.error(f"Erreur mise à jour widget grille: {e}")
         return jsonify(error=f'Erreur: {str(e)}'), 500

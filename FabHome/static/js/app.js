@@ -68,6 +68,36 @@
     function joinBaseUrl(baseUrl, suffix) {
         return String(baseUrl || '').replace(/\/+$/, '') + suffix;
     }
+    function normalizeHexColor(rawColor, fallback) {
+        var color = String(rawColor || '').trim();
+        if (!color) return fallback || '';
+        if (/^#[0-9a-fA-F]{3}$/.test(color)) {
+            color = '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+        }
+        if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+            return color.toLowerCase();
+        }
+        return fallback || '';
+    }
+    function syncBackgroundColorControl(form) {
+        if (!form || !form.elements) return;
+        var toggle = form.elements.use_custom_background;
+        var picker = form.elements.background_color;
+        if (!toggle || !picker) return;
+        picker.disabled = !toggle.checked;
+    }
+    function setupBackgroundColorControl(form) {
+        if (!form || !form.elements) return;
+        var toggle = form.elements.use_custom_background;
+        if (!toggle) return;
+        if (toggle.dataset.bgBound !== '1') {
+            toggle.dataset.bgBound = '1';
+            toggle.addEventListener('change', function () {
+                syncBackgroundColorControl(form);
+            });
+        }
+        syncBackgroundColorControl(form);
+    }
     function findFirstFreeSlot(colSpan, rowSpan) {
         buildOccupiedMap();
         for (var row = 0; row < gridRows; row++) {
@@ -434,6 +464,13 @@
             form.elements.row_span.value = g ? (g.row_span || 1) : 1;
             form.elements.icon_size.value = g ? (g.icon_size || 'medium') : 'medium';
             form.elements.text_size.value = g ? (g.text_size || 'medium') : 'medium';
+            var groupColor = normalizeHexColor(g ? (g.background_color || '') : '', '');
+            if (form.elements.use_custom_background) {
+                form.elements.use_custom_background.checked = !!groupColor;
+            }
+            if (form.elements.background_color) {
+                form.elements.background_color.value = groupColor || '#1f2937';
+            }
         } else {
             title.textContent = 'Nouveau groupe';
             delete form.dataset.editId;
@@ -443,11 +480,19 @@
             form.elements.row_span.value = '1';
             form.elements.icon_size.value = 'medium';
             form.elements.text_size.value = 'medium';
+            if (form.elements.use_custom_background) {
+                form.elements.use_custom_background.checked = false;
+            }
+            if (form.elements.background_color) {
+                form.elements.background_color.value = '#1f2937';
+            }
         }
+        setupBackgroundColorControl(form);
         groupModal.show();
     }
     var groupForm = qs('#groupForm');
     if (groupForm) {
+        setupBackgroundColorControl(groupForm);
         groupForm.addEventListener('submit', function (e) {
             e.preventDefault();
             var f = e.target;
@@ -458,6 +503,9 @@
                 row_span: parseInt(f.elements.row_span.value) || 1,
                 icon_size: f.elements.icon_size.value,
                 text_size: f.elements.text_size.value,
+                background_color: (f.elements.use_custom_background && f.elements.use_custom_background.checked)
+                    ? normalizeHexColor(f.elements.background_color.value, '#1f2937')
+                    : '',
                 page_id: PAGE_DATA.currentPage || 1
             };
             var eid = f.dataset.editId;
@@ -561,16 +609,35 @@
                 form.elements.text_size.value = existing.text_size || 'medium';
                 qs('#gridWidgetColSpan').value = existing.col_span || 1;
                 qs('#gridWidgetRowSpan').value = existing.row_span || 1;
+                qs('#gridWidgetCol').value = existing.grid_col || 0;
+                qs('#gridWidgetRow').value = existing.grid_row || 0;
+                var widgetColor = normalizeHexColor(existing.background_color || '', '');
+                if (form.elements.use_custom_background) {
+                    form.elements.use_custom_background.checked = !!widgetColor;
+                }
+                if (form.elements.background_color) {
+                    form.elements.background_color.value = widgetColor || '#1f2937';
+                }
             }
         } else {
             title.textContent = 'Ajouter un widget';
             delete form.dataset.editId;
             form.reset();
+            if (form.elements.use_custom_background) {
+                form.elements.use_custom_background.checked = false;
+            }
+            if (form.elements.background_color) {
+                form.elements.background_color.value = '#1f2937';
+            }
             if (pendingPosition) {
                 qs('#gridWidgetCol').value = pendingPosition.col;
                 qs('#gridWidgetRow').value = pendingPosition.row;
+            } else {
+                qs('#gridWidgetCol').value = 0;
+                qs('#gridWidgetRow').value = 0;
             }
         }
+        setupBackgroundColorControl(form);
         gridWidgetModal.show();
     }
     
@@ -592,6 +659,7 @@
     
     var gridWidgetForm = qs('#gridWidgetForm');
     if (gridWidgetForm) {
+        setupBackgroundColorControl(gridWidgetForm);
         gridWidgetForm.addEventListener('submit', function (e) {
             e.preventDefault();
             var f = e.target;
@@ -616,6 +684,9 @@
                 config: config,
                 icon_size: f.elements.icon_size.value,
                 text_size: f.elements.text_size.value,
+                background_color: (f.elements.use_custom_background && f.elements.use_custom_background.checked)
+                    ? normalizeHexColor(f.elements.background_color.value, '#1f2937')
+                    : '',
                 col_span: parseInt(qs('#gridWidgetColSpan').value) || 1,
                 row_span: parseInt(qs('#gridWidgetRowSpan').value) || 1,
                 grid_col: parseInt(qs('#gridWidgetCol').value) || 0,

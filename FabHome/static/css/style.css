@@ -772,7 +772,7 @@ button.page-tab { border: 1px dashed var(--fh-card-border); }
 /* ── Carte de groupe ──────────────────── */
 .group-card {
     position: relative;
-    background: var(--fh-card-bg);
+    background: var(--fh-group-bg, var(--fh-card-bg));
     border: 1px solid var(--fh-card-border);
     border-radius: 16px;
     padding: 1rem 1.25rem;
@@ -973,7 +973,7 @@ button.page-tab { border: 1px dashed var(--fh-card-border); }
     padding: 0.5rem 0.6rem;
     border: 1px solid var(--fh-card-border);
     border-radius: 10px;
-    background: var(--fh-card-bg);
+    background: var(--fh-group-bg, var(--fh-card-bg));
     margin-bottom: 0.4rem;
     font-size: 0.82rem; color: var(--fh-text);
     cursor: grab;
@@ -1078,7 +1078,7 @@ body.edit-mode .group-card {
    ══════════════════════════════════════════ */
 .grid-widget-card {
     position: relative;
-    background: var(--fh-card-bg);
+    background: var(--fh-widget-bg, var(--fh-card-bg));
     border: 1px solid var(--fh-card-border);
     border-radius: 16px;
     backdrop-filter: blur(12px);
