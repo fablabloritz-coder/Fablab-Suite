@@ -1035,6 +1035,7 @@ class FabSuiteSshGui(tk.Tk):
             raise RuntimeError(
                 f"Workflow interrompu sur '{failed.label}' (code {failed.exit_code})"
             )
+        return result
 
     def _installer_local_files(self):
         base_dir = Path(__file__).resolve().parent
@@ -1413,9 +1414,17 @@ exit 0
             self._log(f"Avertissement: suppression OK mais rafraîchissement liste impossible: {exc}")
 
     def _audit_worker(self):
-        self._run_helper_action("audit")
-        code = self._run_helper_action("check-data-safety", allow_failure=True)
-        if code == 0:
+        result = self._run_operation_via_core(Operation.AUDIT)
+
+        code = None
+        for step_result in result.results:
+            if step_result.step_id == "data-safety":
+                code = step_result.exit_code
+                break
+
+        if code is None:
+            self._log("Pré-check sécurité données (post-audit): non exécuté.")
+        elif code == 0:
             self._log("Pré-check sécurité données (post-audit): aucun écrasement détecté.")
         elif code == 2:
             self._queue_ui(
