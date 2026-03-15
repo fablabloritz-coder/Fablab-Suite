@@ -125,9 +125,9 @@ class FabSuiteSshGui(tk.Tk):
         self._default_help_text = "Survole un bouton pour voir précisément ce qu'il fait."
 
         self._action_buttons = []
-        self._dual_mode_buttons = []
-        self._ssh_only_buttons = []
-        self._ssh_only_inputs = []
+        self._local_buttons = []
+        self._server_buttons = []
+        self._server_inputs = []
         self._load_config()
         self._configure_styles()
         self._build_ui()
@@ -301,174 +301,175 @@ class FabSuiteSshGui(tk.Tk):
             text="Mode simple: laisse le port à 22 et utilise user@ip + mot de passe.",
             foreground="#666666",
         ).grid(row=5, column=0, columnspan=4, sticky="w", pady=(6, 0))
-
-        ttk.Label(self.advanced_frame, text="Mode d'exécution").grid(row=6, column=0, sticky="w", pady=(6, 0))
-        ttk.Radiobutton(
+        ttk.Label(
             self.advanced_frame,
-            text="Serveur SSH",
-            variable=self.run_mode_var,
-            value="ssh",
-        ).grid(row=6, column=1, sticky="w", pady=(6, 0))
-        ttk.Radiobutton(
-            self.advanced_frame,
-            text="Local Docker",
-            variable=self.run_mode_var,
-            value="local",
-        ).grid(row=6, column=2, sticky="w", pady=(6, 0))
+            text="Le mode d'exécution se choisit via les onglets 'Déploiement Serveur' et 'Mode Local'.",
+            foreground="#666666",
+        ).grid(row=6, column=0, columnspan=4, sticky="w", pady=(6, 0))
 
-        actions = ttk.LabelFrame(ctrl_frame, text="Assistant déploiement FabSuite (SSH + local)", padding=10)
+        actions = ttk.LabelFrame(ctrl_frame, text="Déploiement FabSuite", padding=10)
         actions.pack(fill=tk.X, padx=10, pady=8)
 
         ttk.Label(
             actions,
+            text="Sélectionne un onglet selon ton objectif: déploiement serveur ou opérations locales.",
+            foreground="#666666",
+        ).pack(anchor="w", pady=(0, 6))
+
+        self.deploy_notebook = ttk.Notebook(actions)
+        self.server_tab = ttk.Frame(self.deploy_notebook)
+        self.local_tab = ttk.Frame(self.deploy_notebook)
+        self.deploy_notebook.add(self.server_tab, text="Déploiement Serveur")
+        self.deploy_notebook.add(self.local_tab, text="Mode Local")
+        self.deploy_notebook.pack(fill=tk.X, expand=True)
+        self.deploy_notebook.bind("<<NotebookTabChanged>>", self._on_deploy_tab_changed)
+
+        # Onglet serveur
+        ttk.Label(
+            self.server_tab,
             textvariable=self.mode_status_var,
             foreground="#444444",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 4))
+        ).pack(anchor="w", pady=(2, 4))
+
+        server_chain = ttk.LabelFrame(self.server_tab, text="Chaîne serveur (ordre recommandé)", padding=8)
+        server_chain.pack(fill=tk.X, pady=(0, 6))
+
         ttk.Label(
-            actions,
-            text="Actions communes disponibles en SSH et en local Docker.",
+            server_chain,
+            text="1) Upload -> 2) Audit -> 3) (Cleanup si besoin) -> 4) Prepare host -> 5) Repair env -> 6) Data safety -> 7) Install/Update -> 8) Status",
             foreground="#666666",
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
-        common_actions = ttk.LabelFrame(actions, text="Actions communes (SSH + local)", padding=8)
-        common_actions.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(0, 6))
-
-        btn_audit = self._make_action_button(
-            common_actions,
-            "Audit (mode actif)",
+        btn_upload = self._make_action_button(
+            server_chain,
+            "1) Envoyer les fichiers installateur",
+            self.action_upload_files,
+            1,
+            0,
+            desc="Copie fabsuite-ubuntu.sh et les fichiers associés sur le serveur dans le dossier distant.",
+        )
+        btn_audit_server = self._make_action_button(
+            server_chain,
+            "2) Audit serveur",
             self.action_audit,
-            0,
-            0,
-            desc="Mode SSH: audit serveur via helper. Mode local: audit docker compose local.",
-        )
-        btn_install = self._make_action_button(
-            common_actions,
-            "Installer la suite",
-            self.action_install,
-            0,
             1,
-            desc="Mode SSH: repair-env + sécurité + install helper. Mode local: docker compose up -d --build.",
+            1,
+            desc="Affiche conteneurs Docker, projets compose et diagnostics inter-apps du serveur.",
         )
-        btn_update = self._make_action_button(
-            common_actions,
-            "Mettre à jour la suite",
-            self.action_update,
-            0,
+        btn_cleanup = self._make_action_button(
+            server_chain,
+            "3) Cleanup Docker prudent",
+            self.action_cleanup_safe,
+            1,
             2,
-            desc="Mode SSH: repair-env + sécurité + update helper. Mode local: docker compose up -d --build.",
+            desc="Sauvegarde les bind mounts FabSuite puis supprime les conteneurs FabSuite et nettoie les artefacts.",
         )
-        btn_status = self._make_action_button(
-            common_actions,
-            "Vérifier l'état",
-            self.action_status,
-            1,
+        btn_prepare = self._make_action_button(
+            server_chain,
+            "4) Préparer l'hôte Ubuntu",
+            self.action_prepare_host,
+            2,
             0,
-            desc="Affiche l'état des apps selon le mode actif (SSH helper ou docker compose local).",
+            desc="Installe Docker + Docker Compose + Git sur le serveur Ubuntu.",
         )
-        btn_logs_all = self._make_action_button(
-            common_actions,
-            "Logs (toutes les apps)",
-            self.action_logs_all,
+        btn_repair = self._make_action_button(
+            server_chain,
+            "5) Réparer env monorepo",
+            self.action_repair_env,
+            2,
             1,
+            desc="Crée/répare fabsuite-ubuntu.env et valide la configuration monorepo.",
+        )
+        btn_data_safety = self._make_action_button(
+            server_chain,
+            "6) Pré-check sécurité données",
+            self.action_data_safety,
+            2,
+            2,
+            desc="Vérifie les risques de changement de chemin data avant install/update.",
+        )
+        btn_install_server = self._make_action_button(
+            server_chain,
+            "7) Installer la suite",
+            self.action_install,
+            3,
+            0,
+            desc="Exécute repair-env + data safety + install helper.",
+        )
+        btn_update_server = self._make_action_button(
+            server_chain,
+            "7b) Mettre à jour la suite",
+            self.action_update,
+            3,
             1,
-            desc="Affiche les logs selon le mode actif (SSH helper ou docker compose local).",
+            desc="Exécute repair-env + data safety + update helper.",
+        )
+        btn_status_server = self._make_action_button(
+            server_chain,
+            "8) Vérifier l'état",
+            self.action_status,
+            3,
+            2,
+            desc="Affiche l'état (running/health) de chaque app déployée sur le serveur.",
         )
 
-        logs_frame = ttk.Frame(common_actions)
-        logs_frame.grid(row=1, column=2, sticky="w")
-        ttk.Label(logs_frame, text="Logs app").pack(side=tk.LEFT)
-        ttk.Entry(logs_frame, textvariable=self.logs_app_var, width=12).pack(side=tk.LEFT, padx=4)
-        btn_logs_app = self._make_action_button(
-            logs_frame,
+        server_logs = ttk.Frame(server_chain)
+        server_logs.grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        btn_logs_all_server = self._make_action_button(
+            server_logs,
+            "Logs serveur (toutes les apps)",
+            self.action_logs_all,
+            None,
+            None,
+            pack=True,
+            desc="Affiche les derniers logs de toutes les apps côté serveur.",
+        )
+        ttk.Label(server_logs, text="Logs app").pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Entry(server_logs, textvariable=self.logs_app_var, width=12).pack(side=tk.LEFT, padx=4)
+        btn_logs_app_server = self._make_action_button(
+            server_logs,
             "Afficher",
             self.action_logs_app,
             None,
             None,
             pack=True,
-            desc="Affiche les logs d'une seule application (ex: Fabtrack).",
+            desc="Affiche les logs d'une app côté serveur (ex: Fabtrack).",
         )
 
-        self._dual_mode_buttons.extend([
-            btn_audit,
-            btn_install,
-            btn_update,
-            btn_status,
-            btn_logs_all,
-            btn_logs_app,
-        ])
-
-        ssh_actions = ttk.LabelFrame(actions, text="Actions SSH serveur uniquement", padding=8)
-        ssh_actions.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 2))
-
-        btn_upload = self._make_action_button(
-            ssh_actions,
-            "Envoyer les fichiers installateur",
-            self.action_upload_files,
-            0,
-            0,
-            desc="Copie fabsuite-ubuntu.sh et les fichiers associés sur le serveur dans le dossier distant.",
-        )
-        btn_cleanup = self._make_action_button(
-            ssh_actions,
-            "Cleanup Docker prudent",
-            self.action_cleanup_safe,
-            0,
-            1,
-            desc="Sauvegarde les bind mounts FabSuite puis supprime les conteneurs FabSuite et nettoie images/networks inutiles.",
-        )
-        btn_prepare = self._make_action_button(
-            ssh_actions,
-            "Préparer l'hôte Ubuntu",
-            self.action_prepare_host,
-            0,
-            2,
-            desc="Installe Docker + Docker Compose + Git sur le serveur Ubuntu.",
-        )
-        btn_repair = self._make_action_button(
-            ssh_actions,
-            "Réparer env monorepo",
-            self.action_repair_env,
-            1,
-            0,
-            desc="Crée/répare fabsuite-ubuntu.env, impose l'URL monorepo et valide la configuration avant install/update.",
-        )
-        btn_data_safety = self._make_action_button(
-            ssh_actions,
-            "Pré-check sécurité données",
-            self.action_data_safety,
-            1,
-            1,
-            desc="Vérifie si install/update risque d'utiliser un chemin data différent de celui actuellement en service.",
-        )
-
-        self._ssh_only_buttons.extend([
+        self._server_buttons.extend([
             btn_upload,
+            btn_audit_server,
             btn_cleanup,
             btn_prepare,
             btn_repair,
             btn_data_safety,
+            btn_install_server,
+            btn_update_server,
+            btn_status_server,
+            btn_logs_all_server,
+            btn_logs_app_server,
         ])
 
-        tri = ttk.LabelFrame(ctrl_frame, text="Tri des dossiers serveur (anciennes versions / vieux dossiers)", padding=10)
-        tri.pack(fill=tk.X, padx=10, pady=(0, 8))
+        server_tri = ttk.LabelFrame(self.server_tab, text="Maintenance dossiers serveur", padding=10)
+        server_tri.pack(fill=tk.X, pady=(0, 4))
 
-        ttk.Label(tri, text="Racine scan").grid(row=0, column=0, sticky="w")
-        dir_root_entry = ttk.Entry(tri, textvariable=self.dir_root_var, width=24)
+        ttk.Label(server_tri, text="Racine scan").grid(row=0, column=0, sticky="w")
+        dir_root_entry = ttk.Entry(server_tri, textvariable=self.dir_root_var, width=24)
         dir_root_entry.grid(row=0, column=1, padx=4, sticky="w")
-        ttk.Label(tri, text="Profondeur").grid(row=0, column=2, sticky="w")
-        dir_depth_entry = ttk.Entry(tri, textvariable=self.dir_depth_var, width=6)
+        ttk.Label(server_tri, text="Profondeur").grid(row=0, column=2, sticky="w")
+        dir_depth_entry = ttk.Entry(server_tri, textvariable=self.dir_depth_var, width=6)
         dir_depth_entry.grid(row=0, column=3, padx=4, sticky="w")
         btn_scan = self._make_action_button(
-            tri,
+            server_tri,
             "Scanner les dossiers",
             self.action_scan_dirs,
             0,
             4,
             desc="Cherche les dossiers potentiellement liés à des installations FabSuite et affiche leur taille/date.",
         )
-        ttk.Label(tri, textvariable=self.scan_info_var, foreground="#444444").grid(row=0, column=5, padx=(8, 0), sticky="w")
+        ttk.Label(server_tri, textvariable=self.scan_info_var, foreground="#444444").grid(row=0, column=5, padx=(8, 0), sticky="w")
 
-        self.dir_tree = ttk.Treeview(tri, columns=("size", "mtime", "path"), show="headings", height=6)
+        self.dir_tree = ttk.Treeview(server_tri, columns=("size", "mtime", "path"), show="headings", height=6)
         self.dir_tree.heading("size", text="Taille")
         self.dir_tree.heading("mtime", text="Dernière modif")
         self.dir_tree.heading("path", text="Chemin")
@@ -478,7 +479,7 @@ class FabSuiteSshGui(tk.Tk):
         self.dir_tree.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(8, 4))
         self.dir_tree.bind("<<TreeviewSelect>>", self._on_dir_selection_changed)
 
-        tri_btns = ttk.Frame(tri)
+        tri_btns = ttk.Frame(server_tri)
         tri_btns.grid(row=2, column=0, columnspan=6, sticky="w")
         btn_inspect = self._make_action_button(
             tri_btns,
@@ -516,15 +517,100 @@ class FabSuiteSshGui(tk.Tk):
             pack=True,
             desc="Supprime définitivement le dossier sélectionné (double confirmation). Conseil: Corriger permissions puis Archiver avant suppression.",
         )
-        self._ssh_only_buttons.extend([
+        self._server_buttons.extend([
             btn_scan,
             btn_inspect,
             btn_fix_perms,
             btn_archive,
             btn_delete,
         ])
-        self._ssh_only_inputs.extend([dir_root_entry, dir_depth_entry])
-        ttk.Label(tri, textvariable=self.selected_dir_var, foreground="#666666").grid(row=3, column=0, columnspan=6, sticky="w", pady=(4, 0))
+        self._server_inputs.extend([dir_root_entry, dir_depth_entry])
+        ttk.Label(server_tri, textvariable=self.selected_dir_var, foreground="#666666").grid(row=3, column=0, columnspan=6, sticky="w", pady=(4, 0))
+
+        # Onglet local
+        ttk.Label(
+            self.local_tab,
+            text="Mode local: exécution des opérations Docker Compose à la racine du monorepo.",
+            foreground="#444444",
+        ).pack(anchor="w", pady=(2, 6))
+
+        local_chain = ttk.LabelFrame(self.local_tab, text="Chaîne locale (ordre recommandé)", padding=8)
+        local_chain.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(
+            local_chain,
+            text="1) Audit local -> 2) Installer/Update -> 3) Status -> 4) Logs",
+            foreground="#666666",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+
+        btn_local_audit = self._make_action_button(
+            local_chain,
+            "1) Audit local",
+            self.action_audit,
+            1,
+            0,
+            desc="Audit local Docker Compose.",
+        )
+        btn_local_install = self._make_action_button(
+            local_chain,
+            "2) Installer local",
+            self.action_install,
+            1,
+            1,
+            desc="Lance docker compose up -d --build en local.",
+        )
+        btn_local_update = self._make_action_button(
+            local_chain,
+            "2b) Mettre à jour local",
+            self.action_update,
+            1,
+            2,
+            desc="Met à jour/rebuild local via docker compose up -d --build.",
+        )
+        btn_local_status = self._make_action_button(
+            local_chain,
+            "3) Vérifier l'état local",
+            self.action_status,
+            2,
+            0,
+            desc="Affiche l'état des services locaux.",
+        )
+        btn_local_logs_all = self._make_action_button(
+            local_chain,
+            "4) Logs locaux (toutes les apps)",
+            self.action_logs_all,
+            2,
+            1,
+            desc="Affiche les logs locaux de toutes les apps.",
+        )
+
+        local_logs = ttk.Frame(local_chain)
+        local_logs.grid(row=2, column=2, sticky="w")
+        ttk.Label(local_logs, text="Logs app").pack(side=tk.LEFT)
+        ttk.Entry(local_logs, textvariable=self.logs_app_var, width=12).pack(side=tk.LEFT, padx=4)
+        btn_local_logs_app = self._make_action_button(
+            local_logs,
+            "Afficher",
+            self.action_logs_app,
+            None,
+            None,
+            pack=True,
+            desc="Affiche les logs locaux d'une app (ex: Fabtrack).",
+        )
+
+        self._local_buttons.extend([
+            btn_local_audit,
+            btn_local_install,
+            btn_local_update,
+            btn_local_status,
+            btn_local_logs_all,
+            btn_local_logs_app,
+        ])
+
+        # Synchronise l'onglet actif avec le mode chargé depuis la config.
+        if self.run_mode_var.get().strip().lower() == "local":
+            self.deploy_notebook.select(self.local_tab)
+        else:
+            self.deploy_notebook.select(self.server_tab)
 
         help_frame = tk.Frame(ctrl_frame, bg="#e2e8f0", padx=10, pady=4)
         help_frame.pack(fill=tk.X, padx=10, pady=(0, 4))
@@ -601,8 +687,28 @@ class FabSuiteSshGui(tk.Tk):
             self.advanced_frame.grid_remove()
 
     def _on_run_mode_changed(self, *_args):
+        self._sync_notebook_to_mode()
         self._refresh_mode_ui()
         self._save_config()
+
+    def _on_deploy_tab_changed(self, _event=None):
+        tab_id = self.deploy_notebook.select()
+        if not tab_id:
+            return
+        tab_text = str(self.deploy_notebook.tab(tab_id, "text"))
+        target_mode = "local" if "local" in tab_text.lower() else "ssh"
+        if self.run_mode_var.get().strip().lower() != target_mode:
+            self.run_mode_var.set(target_mode)
+
+    def _sync_notebook_to_mode(self):
+        if not hasattr(self, "deploy_notebook"):
+            return
+        target_tab = self.local_tab if self._is_local_mode() else self.server_tab
+        try:
+            if self.deploy_notebook.select() != str(target_tab):
+                self.deploy_notebook.select(target_tab)
+        except tk.TclError:
+            pass
 
     def _refresh_mode_ui(self):
         is_local = self._is_local_mode()
@@ -613,15 +719,15 @@ class FabSuiteSshGui(tk.Tk):
         else:
             self.mode_status_var.set("Mode actif: Serveur SSH")
 
-        for btn in self._dual_mode_buttons:
-            state = "normal" if (is_local or connected) else "disabled"
-            btn.configure(state=state)
+        local_state = "normal" if is_local else "disabled"
+        for btn in self._local_buttons:
+            btn.configure(state=local_state)
 
-        for btn in self._ssh_only_buttons:
+        for btn in self._server_buttons:
             state = "disabled" if is_local else ("normal" if connected else "disabled")
             btn.configure(state=state)
 
-        for widget in self._ssh_only_inputs:
+        for widget in self._server_inputs:
             state = "disabled" if is_local else "normal"
             widget.configure(state=state)
 
@@ -1076,6 +1182,7 @@ class FabSuiteSshGui(tk.Tk):
         remote_dir = self._resolve_remote_dir()
         sudo_pass = self.sudo_password_var.get().strip()
         repo_url = self._effective_repo_url()
+        register_host = self._registration_host_for_server()
 
         cmd_parts = [
             f"cd {shlex.quote(remote_dir)}",
@@ -1090,6 +1197,8 @@ class FabSuiteSshGui(tk.Tk):
         if sudo_pass:
             env_prefix += f" SUDO_PASSWORD={shlex.quote(sudo_pass)}"
         env_prefix += f" GIT_REPO_URL={shlex.quote(repo_url)}"
+        if register_host:
+            env_prefix += f" FABHOME_REGISTER_HOST={shlex.quote(register_host)}"
         helper_call = f"{env_prefix} {helper_call}"
 
         cmd_parts.append(helper_call)
@@ -1105,11 +1214,32 @@ class FabSuiteSshGui(tk.Tk):
     def _core_env_prefix(self):
         sudo_pass = self.sudo_password_var.get().strip()
         repo_url = self._effective_repo_url()
+        register_host = self._registration_host_for_server()
         env_prefix = "NON_INTERACTIVE=1"
         if sudo_pass:
             env_prefix += f" SUDO_PASSWORD={shlex.quote(sudo_pass)}"
         env_prefix += f" GIT_REPO_URL={shlex.quote(repo_url)}"
+        if register_host:
+            env_prefix += f" FABHOME_REGISTER_HOST={shlex.quote(register_host)}"
         return env_prefix
+
+    def _registration_host_for_server(self):
+        # Prefer the resolved peer IP of the active SSH transport.
+        host = ""
+        try:
+            if self.client is not None:
+                transport = self.client.get_transport()
+                if transport is not None:
+                    peer = transport.getpeername()
+                    if peer and len(peer) >= 1:
+                        host = str(peer[0]).strip()
+        except Exception:
+            host = ""
+
+        if not host:
+            host = self.host_var.get().strip()
+
+        return host
 
     def _is_local_mode(self):
         return (self.run_mode_var.get().strip().lower() == "local")

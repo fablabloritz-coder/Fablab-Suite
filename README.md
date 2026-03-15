@@ -76,6 +76,18 @@ nano fabsuite-ubuntu.env
 
 ## Assistant graphique SSH (optionnel)
 
+### Lancement sans clone local (Windows)
+
+Commande unique (à coller telle quelle dans PowerShell):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression (Invoke-RestMethod 'https://raw.githubusercontent.com/fablabloritz-coder/Fablab-Suite/main/run_fabsuite_ssh.ps1')"
+```
+
+Cette ligne exécute le lanceur complet depuis GitHub. Le lanceur met en cache les fichiers GUI dans `%LOCALAPPDATA%\\FabSuite\\ssh-gui`, puis lance immédiatement l'interface.
+
+Si tu obtiens une erreur 404, cela signifie que `run_fabsuite_ssh.ps1` n'est pas encore publié sur la branche GitHub ciblée.
+
 Installer dépendance:
 
 ```bash

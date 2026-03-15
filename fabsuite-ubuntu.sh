@@ -1130,6 +1130,27 @@ autoregister_suite_apps() {
   # Auto-registers Fabtrack, PretGo and FabBoard in FabHome via its REST API.
   # Safe to call multiple times (skips already-registered URLs).
   local fabhome_url="http://localhost:${FABHOME_PORT:-3001}"
+  local register_host register_scheme
+
+  # Optional browser/public host override for links stored in FabHome.
+  # Useful when the helper runs remotely over SSH and localhost links would be wrong.
+  register_host="${FABHOME_REGISTER_HOST:-}"
+  register_scheme="${FABHOME_REGISTER_SCHEME:-http}"
+  register_host="${register_host#http://}"
+  register_host="${register_host#https://}"
+  register_host="${register_host%%/*}"
+
+  if [[ -z "$register_host" ]]; then
+    register_host="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')"
+    if [[ -z "$register_host" ]]; then
+      register_host="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    fi
+    if [[ -n "$register_host" ]]; then
+      echo "Auto-registration host detected: $register_host"
+    fi
+  else
+    echo "Auto-registration host override: $register_host"
+  fi
 
   echo "Auto-registration: waiting for FabHome at $fabhome_url ..."
   local i
@@ -1148,7 +1169,7 @@ autoregister_suite_apps() {
   local existing
   existing="$(curl -sf "${fabhome_url}/api/suite/apps" 2>/dev/null || echo '[]')"
 
-  echo "Registering suite apps in FabHome (container-safe URLs)..."
+  echo "Registering suite apps in FabHome..."
   local can_parse_existing
   can_parse_existing=0
   if command -v python3 >/dev/null 2>&1; then
@@ -1169,6 +1190,12 @@ autoregister_suite_apps() {
     url="${rest%%|*}"
     local_port="${rest##*|}"
     url="${url%/}"
+
+    if [[ -n "$register_host" ]]; then
+      # Force a browser/network-friendly URL in FabHome registrations.
+      url="${register_scheme}://${register_host}:${local_port}"
+    fi
+
     local_url="http://localhost:${local_port}/api/fabsuite/health"
 
     if echo "$existing" | grep -qF "$url"; then
