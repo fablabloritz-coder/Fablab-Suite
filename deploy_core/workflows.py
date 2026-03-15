@@ -1,3 +1,4 @@
+import shlex
 from typing import List
 
 from deploy_core.models import DeploymentMode, Operation, StepSpec, WorkflowContext
@@ -5,9 +6,19 @@ from deploy_core.models import DeploymentMode, Operation, StepSpec, WorkflowCont
 
 def _helper_cmd(ctx: WorkflowContext, action: str, app_name: str = "") -> str:
     env_arg = f" --env-file {ctx.env_file}" if ctx.env_file else ""
-    app_arg = f" {app_name}" if app_name else ""
-    base = f"cd {ctx.remote_dir} ; ./{ctx.helper_script} {action}{app_arg}{env_arg}"
-    return base
+    app_arg = f" {shlex.quote(app_name)}" if app_name else ""
+    helper_call = f"./{shlex.quote(ctx.helper_script)} {action}{app_arg}{env_arg}"
+
+    env_prefix = str((ctx.extras or {}).get("env_prefix", "")).strip()
+    if env_prefix:
+        helper_call = f"{env_prefix} {helper_call}"
+
+    cmd_parts = [
+        f"cd {shlex.quote(ctx.remote_dir)}",
+        f"chmod +x ./{shlex.quote(ctx.helper_script)}",
+        helper_call,
+    ]
+    return " && ".join(cmd_parts)
 
 
 def _build_local_workflow(op: Operation, ctx: WorkflowContext) -> List[StepSpec]:

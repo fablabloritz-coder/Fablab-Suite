@@ -104,3 +104,8 @@ Single profile object per environment:
 - Same safety behavior in both modes
 - No duplicated deployment logic between UI and scripts
 - Clear logs for each step with exit status
+
+## Current progress snapshot
+- Done: `deploy_core` scaffold (models, workflows, service, adapters)
+- Done: first GUI bridge using `deploy_core` for `Status suite` action
+- Next: move `Audit` then `Install/Update` GUI actions to `deploy_core` while preserving safety gates

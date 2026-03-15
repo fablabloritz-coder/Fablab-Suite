@@ -12,6 +12,10 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
+from deploy_core import DeploymentMode, DeploymentService, Operation, WorkflowContext
+from deploy_core.adapters.base import CommandExecutor
+from deploy_core.models import CommandResult, StepSpec
+
 
 def _ensure_paramiko():
     """Importe paramiko, l'installe automatiquement si absent."""
@@ -46,6 +50,38 @@ MSG_SET_STATUS = "set_status"
 MSG_SET_DIR_ROWS = "set_dir_rows"
 MSG_SET_SCAN_INFO = "set_scan_info"
 MSG_ALERT = "alert"
+
+
+class GuiRemoteCommandExecutor(CommandExecutor):
+    """Command executor bridge for deploy_core -> existing GUI SSH logger."""
+
+    def __init__(self, run_command_logged):
+        self.run_command_logged = run_command_logged
+
+    @staticmethod
+    def _timeout_for_step(step: StepSpec) -> int:
+        sid = (step.step_id or "").strip().lower()
+        if sid in ("prepare-host", "install", "update"):
+            return 900
+        if sid in ("repair-env", "data-safety"):
+            return 300
+        return 180
+
+    def run(self, step: StepSpec) -> CommandResult:
+        timeout_sec = self._timeout_for_step(step)
+        code = self.run_command_logged(
+            step.command,
+            allow_failure=True,
+            timeout_sec=timeout_sec,
+        )
+        return CommandResult(
+            step_id=step.step_id,
+            label=step.label,
+            command=step.command,
+            exit_code=code,
+            stdout="",
+            stderr="",
+        )
 
 
 class FabSuiteSshGui(tk.Tk):
@@ -971,6 +1007,35 @@ class FabSuiteSshGui(tk.Tk):
         self.repo_url_var.set(repo_url)
         return repo_url
 
+    def _core_env_prefix(self):
+        sudo_pass = self.sudo_password_var.get().strip()
+        repo_url = self._effective_repo_url()
+        env_prefix = "NON_INTERACTIVE=1"
+        if sudo_pass:
+            env_prefix += f" SUDO_PASSWORD={shlex.quote(sudo_pass)}"
+        env_prefix += f" GIT_REPO_URL={shlex.quote(repo_url)}"
+        return env_prefix
+
+    def _run_operation_via_core(self, operation):
+        self._ensure_remote_helper_ready()
+
+        ctx = WorkflowContext(
+            mode=DeploymentMode.SSH,
+            remote_dir=self._resolve_remote_dir(),
+            helper_script="fabsuite-ubuntu.sh",
+            logs_app=(self.logs_app_var.get().strip() or "Fabtrack"),
+        )
+        ctx.extras["env_prefix"] = self._core_env_prefix()
+
+        service = DeploymentService(GuiRemoteCommandExecutor(self._exec_remote_logged))
+        result = service.run(operation, ctx)
+
+        if result.stopped_early and result.results:
+            failed = result.results[-1]
+            raise RuntimeError(
+                f"Workflow interrompu sur '{failed.label}' (code {failed.exit_code})"
+            )
+
     def _installer_local_files(self):
         base_dir = Path(__file__).resolve().parent
         return [
@@ -1437,7 +1502,7 @@ exit 0
         self._run_async("Update suite", self._update_worker)
 
     def action_status(self):
-        self._run_async("Status suite", lambda: self._run_helper_action("status"))
+        self._run_async("Status suite", lambda: self._run_operation_via_core(Operation.STATUS))
 
     def action_logs_all(self):
         self._run_async("Logs all", lambda: self._run_helper_action("logs"))
