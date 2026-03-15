@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 from deploy_core import DeploymentMode, DeploymentService, Operation, WorkflowContext
 from deploy_core.adapters.base import CommandExecutor
+from deploy_core.adapters.local import LocalCommandExecutor
 from deploy_core.models import CommandResult, StepSpec
 
 
@@ -111,6 +112,7 @@ class FabSuiteSshGui(tk.Tk):
         self.remote_dir_var = tk.StringVar(value=DEFAULT_REMOTE_DIR)
         self.repo_url_var = tk.StringVar(value=DEFAULT_MONOREPO_URL)
         self.sudo_password_var = tk.StringVar()
+        self.run_mode_var = tk.StringVar(value="ssh")
         self.logs_app_var = tk.StringVar(value="Fabtrack")
         self.connection_status_var = tk.StringVar(value="Non connecté")
         self.button_help_var = tk.StringVar(value="Survole un bouton pour voir précisément ce qu'il fait.")
@@ -294,12 +296,26 @@ class FabSuiteSshGui(tk.Tk):
             foreground="#666666",
         ).grid(row=5, column=0, columnspan=4, sticky="w", pady=(6, 0))
 
-        actions = ttk.LabelFrame(ctrl_frame, text="Assistant serveur - Déploiement FabSuite", padding=10)
+        ttk.Label(self.advanced_frame, text="Mode d'exécution").grid(row=6, column=0, sticky="w", pady=(6, 0))
+        ttk.Radiobutton(
+            self.advanced_frame,
+            text="Serveur SSH",
+            variable=self.run_mode_var,
+            value="ssh",
+        ).grid(row=6, column=1, sticky="w", pady=(6, 0))
+        ttk.Radiobutton(
+            self.advanced_frame,
+            text="Local Docker",
+            variable=self.run_mode_var,
+            value="local",
+        ).grid(row=6, column=2, sticky="w", pady=(6, 0))
+
+        actions = ttk.LabelFrame(ctrl_frame, text="Assistant déploiement FabSuite (SSH + local)", padding=10)
         actions.pack(fill=tk.X, padx=10, pady=8)
 
         ttk.Label(
             actions,
-            text="Ordre conseillé: Connecter -> Envoyer fichiers -> Audit -> (Cleanup si besoin) -> Prepare host -> Réparer env -> Pré-check données -> Install -> Status",
+            text="Ordre conseillé (SSH): Connecter -> Envoyer fichiers -> Audit -> (Cleanup si besoin) -> Prepare host -> Réparer env -> Pré-check données -> Install -> Status",
             foreground="#444444",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
@@ -313,11 +329,11 @@ class FabSuiteSshGui(tk.Tk):
         )
         self._make_action_button(
             actions,
-            "2) Audit serveur",
+            "2) Audit (mode actif)",
             self.action_audit,
             1,
             1,
-            desc="Affiche conteneurs Docker, projets compose et ports FabSuite déjà utilisés.",
+            desc="Mode SSH: audit serveur via helper. Mode local: audit docker compose local.",
         )
         self._make_action_button(
             actions,
@@ -350,7 +366,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_install,
             2,
             2,
-            desc="Lance d'abord repair-env et le pré-check sécurité données, puis installe/rebuild depuis le monorepo unique.",
+            desc="Mode SSH: repair-env + sécurité + install helper. Mode local: docker compose up -d --build.",
         )
         self._make_action_button(
             actions,
@@ -358,7 +374,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_update,
             3,
             0,
-            desc="Lance d'abord repair-env et le pré-check sécurité données, puis update/rebuild global depuis le monorepo unique.",
+            desc="Mode SSH: repair-env + sécurité + update helper. Mode local: docker compose up -d --build.",
         )
         self._make_action_button(
             actions,
@@ -375,7 +391,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_status,
             3,
             1,
-            desc="Affiche l'état (running/health) de chaque application FabSuite.",
+            desc="Affiche l'état des apps selon le mode actif (SSH helper ou docker compose local).",
         )
         self._make_action_button(
             actions,
@@ -383,7 +399,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_logs_all,
             3,
             2,
-            desc="Affiche les derniers logs de toutes les apps.",
+            desc="Affiche les logs selon le mode actif (SSH helper ou docker compose local).",
         )
 
         logs_frame = ttk.Frame(actions)
@@ -546,6 +562,12 @@ class FabSuiteSshGui(tk.Tk):
         if path:
             self.key_path_var.set(path)
 
+    def _show_ssh_only_info(self, action_name):
+        messagebox.showinfo(
+            "Mode local",
+            f"L'action '{action_name}' est disponible uniquement en mode Serveur SSH.",
+        )
+
     def _load_config(self):
         if not CONFIG_PATH.exists():
             return
@@ -565,6 +587,8 @@ class FabSuiteSshGui(tk.Tk):
         if not saved_repo_url or "OWNER_OR_ORG" in saved_repo_url or "<owner>" in saved_repo_url:
             saved_repo_url = DEFAULT_MONOREPO_URL
         self.repo_url_var.set(saved_repo_url)
+        run_mode = str(data.get("run_mode", "ssh")).strip().lower()
+        self.run_mode_var.set("local" if run_mode == "local" else "ssh")
         self.logs_app_var.set(data.get("logs_app", "Fabtrack"))
         self.dir_root_var.set(data.get("dir_root", "~"))
         self.dir_depth_var.set(str(data.get("dir_depth", "3")))
@@ -595,6 +619,7 @@ class FabSuiteSshGui(tk.Tk):
             "key_path": key_path_value,
             "remote_dir": self.remote_dir_var.get().strip(),
             "git_repo_url": self.repo_url_var.get().strip(),
+            "run_mode": self.run_mode_var.get().strip(),
             "logs_app": self.logs_app_var.get().strip(),
             "dir_root": self.dir_root_var.get().strip(),
             "dir_depth": self.dir_depth_var.get().strip(),
@@ -1016,7 +1041,53 @@ class FabSuiteSshGui(tk.Tk):
         env_prefix += f" GIT_REPO_URL={shlex.quote(repo_url)}"
         return env_prefix
 
-    def _run_operation_via_core(self, operation):
+    def _is_local_mode(self):
+        return (self.run_mode_var.get().strip().lower() == "local")
+
+    def _run_operation_local_via_core(self, operation):
+        workspace = str(Path(__file__).resolve().parent)
+        ctx = WorkflowContext(
+            mode=DeploymentMode.LOCAL,
+            workspace_dir=workspace,
+        )
+        service = DeploymentService(LocalCommandExecutor(working_dir=workspace))
+        result = service.run(operation, ctx)
+
+        for item in result.results:
+            self._log(f"[{item.step_id}] {item.label}")
+            if item.stdout.strip():
+                self._log(item.stdout.rstrip())
+            if item.stderr.strip():
+                self._log(item.stderr.rstrip())
+            self._log(f"Exit code: {item.exit_code}")
+
+        if result.stopped_early and result.results:
+            failed = result.results[-1]
+            raise RuntimeError(
+                f"Workflow local interrompu sur '{failed.label}' (code {failed.exit_code})"
+            )
+        return result
+
+    def _run_operation_local_compose_logs_app(self, app_name):
+        workspace = Path(__file__).resolve().parent
+        proc = subprocess.run(
+            f"docker compose logs --tail=300 {shlex.quote(app_name)}",
+            cwd=str(workspace),
+            shell=True,
+            text=True,
+            capture_output=True,
+        )
+
+        if proc.stdout.strip():
+            self._log(proc.stdout.rstrip())
+        if proc.stderr.strip():
+            self._log(proc.stderr.rstrip())
+        self._log(f"Exit code: {proc.returncode}")
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"Logs local échoué pour {app_name} (code {proc.returncode})")
+
+    def _run_operation_via_core(self, operation, raise_on_failure=True):
         self._ensure_remote_helper_ready()
 
         ctx = WorkflowContext(
@@ -1030,7 +1101,7 @@ class FabSuiteSshGui(tk.Tk):
         service = DeploymentService(GuiRemoteCommandExecutor(self._exec_remote_logged))
         result = service.run(operation, ctx)
 
-        if result.stopped_early and result.results:
+        if raise_on_failure and result.stopped_early and result.results:
             failed = result.results[-1]
             raise RuntimeError(
                 f"Workflow interrompu sur '{failed.label}' (code {failed.exit_code})"
@@ -1123,6 +1194,9 @@ class FabSuiteSshGui(tk.Tk):
         )
 
     def action_upload_files(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Envoyer les fichiers installateur")
+            return
         self._run_async("Upload installer files", self._action_upload_files_worker)
 
     def _action_upload_files_worker(self):
@@ -1132,6 +1206,9 @@ class FabSuiteSshGui(tk.Tk):
         self._log("Upload complete")
 
     def action_scan_dirs(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Scanner les dossiers")
+            return
         self._run_async("Scan dossiers serveur", self._scan_dirs_worker)
 
     def _scan_dirs_worker(self):
@@ -1414,6 +1491,10 @@ exit 0
             self._log(f"Avertissement: suppression OK mais rafraîchissement liste impossible: {exc}")
 
     def _audit_worker(self):
+        if self._is_local_mode():
+            self._run_operation_local_via_core(Operation.AUDIT)
+            return
+
         result = self._run_operation_via_core(Operation.AUDIT)
 
         code = None
@@ -1439,14 +1520,21 @@ exit 0
             self._log(f"Pré-check sécurité données (post-audit): échec technique (code {code}).")
 
     def action_audit(self):
-        self._run_async("Audit serveur", self._audit_worker)
+        label = "Audit local" if self._is_local_mode() else "Audit serveur"
+        self._run_async(label, self._audit_worker)
 
     def action_cleanup_safe(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Cleanup Docker prudent")
+            return
         if not messagebox.askyesno("Confirmation", "Exécuter cleanup-safe ? Les conteneurs FabSuite seront supprimés (backup bind mounts inclus)."):
             return
         self._run_async("Cleanup prudent", lambda: self._run_helper_action("cleanup-safe"))
 
     def action_prepare_host(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Préparer l'hôte Ubuntu")
+            return
         self._run_async("Prepare host", lambda: self._run_helper_action("prepare-host"))
 
     def _repair_env_worker(self):
@@ -1457,6 +1545,9 @@ exit 0
             self._log(f"Réparer env monorepo: échec (code {code}). Consulte les lignes [repair-env] ci-dessus.")
 
     def action_repair_env(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Réparer env monorepo")
+            return
         self._run_async("Réparer env monorepo", self._repair_env_worker)
 
     def _data_safety_worker(self):
@@ -1476,50 +1567,82 @@ exit 0
             self._log(f"Pré-check sécurité données: échec technique (code {code}).")
 
     def action_data_safety(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Pré-check sécurité données")
+            return
         self._run_async("Pré-check sécurité données", self._data_safety_worker)
 
-    def _enforce_data_safety_or_stop(self):
-        code = self._run_helper_action("check-data-safety", allow_failure=True)
-        if code == 0:
-            self._log("Pré-check sécurité données: aucun écrasement détecté.")
-            return
-        if code == 2:
-            self._queue_ui(
-                MSG_ALERT,
-                (
-                    "Alerte sécurité données",
-                    "Risque de changement de chemin data détecté.\n\nInstallation/Mise à jour stoppée.\nConsulte le journal pour les détails.",
-                ),
-            )
-            raise RuntimeError("Alerte sécurité données: risque détecté, opération interrompue.")
-        raise RuntimeError(f"Pré-check sécurité données en échec (code {code}).")
-
     def _install_worker(self):
-        self._run_helper_action("repair-env")
-        self._enforce_data_safety_or_stop()
-        self._run_helper_action("install")
+        if self._is_local_mode():
+            self._run_operation_local_via_core(Operation.INSTALL)
+            return
+
+        result = self._run_operation_via_core(Operation.INSTALL, raise_on_failure=False)
+
+        if result.stopped_early and result.results:
+            failed = result.results[-1]
+            if failed.step_id == "data-safety" and failed.exit_code == 2:
+                self._queue_ui(
+                    MSG_ALERT,
+                    (
+                        "Alerte sécurité données",
+                        "Risque de changement de chemin data détecté.\n\n"
+                        "Installation stoppée. Consulte le journal pour les détails.",
+                    ),
+                )
+                raise RuntimeError("Alerte sécurité données: risque détecté, installation interrompue.")
+            raise RuntimeError(
+                f"Workflow install interrompu sur '{failed.label}' (code {failed.exit_code})"
+            )
 
     def action_install(self):
         self._run_async("Install suite", self._install_worker)
 
     def _update_worker(self):
-        self._run_helper_action("repair-env")
-        self._enforce_data_safety_or_stop()
-        self._run_helper_action("update")
+        if self._is_local_mode():
+            self._run_operation_local_via_core(Operation.UPDATE)
+            return
+
+        result = self._run_operation_via_core(Operation.UPDATE, raise_on_failure=False)
+
+        if result.stopped_early and result.results:
+            failed = result.results[-1]
+            if failed.step_id == "data-safety" and failed.exit_code == 2:
+                self._queue_ui(
+                    MSG_ALERT,
+                    (
+                        "Alerte sécurité données",
+                        "Risque de changement de chemin data détecté.\n\n"
+                        "Mise à jour stoppée. Consulte le journal pour les détails.",
+                    ),
+                )
+                raise RuntimeError("Alerte sécurité données: risque détecté, mise à jour interrompue.")
+            raise RuntimeError(
+                f"Workflow update interrompu sur '{failed.label}' (code {failed.exit_code})"
+            )
 
     def action_update(self):
         self._run_async("Update suite", self._update_worker)
 
     def action_status(self):
+        if self._is_local_mode():
+            self._run_async("Status local", lambda: self._run_operation_local_via_core(Operation.STATUS))
+            return
         self._run_async("Status suite", lambda: self._run_operation_via_core(Operation.STATUS))
 
     def action_logs_all(self):
+        if self._is_local_mode():
+            self._run_async("Logs local", lambda: self._run_operation_local_via_core(Operation.LOGS))
+            return
         self._run_async("Logs all", lambda: self._run_helper_action("logs"))
 
     def action_logs_app(self):
         app = self.logs_app_var.get().strip()
         if not app:
             messagebox.showerror("Erreur", "Renseigne un nom d'app (ex: Fabtrack)")
+            return
+        if self._is_local_mode():
+            self._run_async(f"Logs {app} (local)", lambda a=app: self._run_operation_local_compose_logs_app(a))
             return
         self._run_async(f"Logs {app}", lambda: self._run_helper_action("logs", app_name=app))
 
