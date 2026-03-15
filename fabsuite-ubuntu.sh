@@ -536,6 +536,7 @@ FABHOME_DATA_PATH=./data
 FABHOME_ICONS_PATH=./icons
 FABTRACK_URL=
 PRETGO_URL=
+FABBOARD_URL=
 EOF
   fi
 
@@ -776,12 +777,39 @@ load_env() {
   PRETGO_PORT="${PRETGO_PORT:-5000}"
   FABBOARD_PORT="${FABBOARD_PORT:-5580}"
 
-  # Compute inter-app URLs using the server hostname (resolvable from any container on the host).
-  # host.docker.internal is unreliable on Linux without extra_hosts config.
-  local _srv_host
+  # Compute container-safe inter-app URLs.
+  # All app compose files define host.docker.internal:host-gateway.
+  local _srv_host _legacy_fabtrack_url _legacy_pretgo_url _legacy_fabboard_url
   _srv_host="$(hostname)"
-  FABTRACK_URL="${FABTRACK_URL:-http://${_srv_host}:${FABTRACK_PORT:-5555}}"
-  PRETGO_URL="${PRETGO_URL:-http://${_srv_host}:${PRETGO_PORT:-5000}}"
+  _legacy_fabtrack_url="http://${_srv_host}:${FABTRACK_PORT:-5555}"
+  _legacy_pretgo_url="http://${_srv_host}:${PRETGO_PORT:-5000}"
+  _legacy_fabboard_url="http://${_srv_host}:${FABBOARD_PORT:-5580}"
+
+  # Auto-migrate legacy defaults (hostname-based) to host-gateway URLs.
+  if [[ "${FABTRACK_URL:-}" == "$_legacy_fabtrack_url" ]]; then
+    FABTRACK_URL=""
+  fi
+  if [[ "${PRETGO_URL:-}" == "$_legacy_pretgo_url" ]]; then
+    PRETGO_URL=""
+  fi
+  if [[ "${FABBOARD_URL:-}" == "$_legacy_fabboard_url" ]]; then
+    FABBOARD_URL=""
+  fi
+
+  FABTRACK_URL="${FABTRACK_URL:-http://host.docker.internal:${FABTRACK_PORT:-5555}}"
+  PRETGO_URL="${PRETGO_URL:-http://host.docker.internal:${PRETGO_PORT:-5000}}"
+  FABBOARD_URL="${FABBOARD_URL:-http://host.docker.internal:${FABBOARD_PORT:-5580}}"
+
+  # localhost URLs are not reachable from containers; normalize automatically.
+  if [[ "$FABTRACK_URL" =~ ^https?://(localhost|127\.0\.0\.1)(:|/|$) ]]; then
+    FABTRACK_URL="http://host.docker.internal:${FABTRACK_PORT:-5555}"
+  fi
+  if [[ "$PRETGO_URL" =~ ^https?://(localhost|127\.0\.0\.1)(:|/|$) ]]; then
+    PRETGO_URL="http://host.docker.internal:${PRETGO_PORT:-5000}"
+  fi
+  if [[ "$FABBOARD_URL" =~ ^https?://(localhost|127\.0\.0\.1)(:|/|$) ]]; then
+    FABBOARD_URL="http://host.docker.internal:${FABBOARD_PORT:-5580}"
+  fi
 
   if [[ -z "$FLASK_SECRET_KEY" ]]; then
     FLASK_SECRET_KEY="$(generate_secret_key)"
@@ -796,6 +824,7 @@ load_env() {
   set_env_var "FABHOME_ICONS_PATH" "$FABHOME_ICONS_PATH"
   set_env_var "FABTRACK_URL" "$FABTRACK_URL"
   set_env_var "PRETGO_URL" "$PRETGO_URL"
+  set_env_var "FABBOARD_URL" "$FABBOARD_URL"
 
   if is_placeholder_repo_url "$GIT_REPO_URL"; then
     echo "WARNING: GIT_REPO_URL uses a placeholder owner value."
@@ -1119,24 +1148,80 @@ autoregister_suite_apps() {
   local existing
   existing="$(curl -sf "${fabhome_url}/api/suite/apps" 2>/dev/null || echo '[]')"
 
-  # Use server hostname — resolvable from Docker containers on this host.
-  local _reg_host
-  _reg_host="$(hostname)"
-  echo "Registering suite apps in FabHome (using host: $_reg_host)..."
-  local entry app url local_url result j
+  echo "Registering suite apps in FabHome (container-safe URLs)..."
+  local can_parse_existing
+  can_parse_existing=0
+  if command -v python3 >/dev/null 2>&1; then
+    can_parse_existing=1
+  else
+    echo "  [INFO] python3 absent: migration auto des URLs existantes (par app_id) ignorée"
+  fi
+
+  local entry app rest expected_app_id url local_port local_url result j app_existing_id app_existing_url register_http register_tmp
   for entry in \
-    "Fabtrack|http://${_reg_host}:${FABTRACK_PORT:-5555}|${FABTRACK_PORT:-5555}" \
-    "PretGo|http://${_reg_host}:${PRETGO_PORT:-5000}|${PRETGO_PORT:-5000}" \
-    "FabBoard|http://${_reg_host}:${FABBOARD_PORT:-5580}|${FABBOARD_PORT:-5580}"; do
+    "Fabtrack|fabtrack|${FABTRACK_URL:-http://host.docker.internal:${FABTRACK_PORT:-5555}}|${FABTRACK_PORT:-5555}" \
+    "PretGo|pretgo|${PRETGO_URL:-http://host.docker.internal:${PRETGO_PORT:-5000}}|${PRETGO_PORT:-5000}" \
+    "FabBoard|fabboard|${FABBOARD_URL:-http://host.docker.internal:${FABBOARD_PORT:-5580}}|${FABBOARD_PORT:-5580}"; do
     app="${entry%%|*}"
     rest="${entry#*|}"
+    expected_app_id="${rest%%|*}"
+    rest="${rest#*|}"
     url="${rest%%|*}"
     local_port="${rest##*|}"
+    url="${url%/}"
     local_url="http://localhost:${local_port}/api/fabsuite/health"
 
     if echo "$existing" | grep -qF "$url"; then
       echo "  [$app] already registered"
       continue
+    fi
+
+    app_existing_id=""
+    app_existing_url=""
+    if [[ "$can_parse_existing" -eq 1 ]]; then
+      app_existing_id="$(python3 - "$existing" "$expected_app_id" <<'PY'
+import json
+import sys
+
+try:
+    rows = json.loads(sys.argv[1] if len(sys.argv) > 1 else '[]')
+except Exception:
+    rows = []
+target = (sys.argv[2] if len(sys.argv) > 2 else '').strip().lower()
+for row in rows:
+    rid = row.get('id')
+    app_id = str(row.get('app_id', '')).strip().lower()
+    if target and app_id == target and rid is not None:
+        print(str(rid))
+        break
+PY
+  )"
+
+      app_existing_url="$(python3 - "$existing" "$expected_app_id" <<'PY'
+import json
+import sys
+
+try:
+    rows = json.loads(sys.argv[1] if len(sys.argv) > 1 else '[]')
+except Exception:
+    rows = []
+target = (sys.argv[2] if len(sys.argv) > 2 else '').strip().lower()
+for row in rows:
+    app_id = str(row.get('app_id', '')).strip().lower()
+    if target and app_id == target:
+        print(str(row.get('url', '')).rstrip('/'))
+        break
+PY
+   )"
+    fi
+
+    if [[ -n "$app_existing_id" && "$app_existing_url" != "$url" ]]; then
+      if curl -sf -X DELETE "${fabhome_url}/api/suite/apps/${app_existing_id}" >/dev/null 2>&1; then
+        echo "  [$app] updating URL ${app_existing_url} -> ${url}"
+        existing="$(curl -sf "${fabhome_url}/api/suite/apps" 2>/dev/null || echo '[]')"
+      else
+        echo "  WARNING: [$app] impossible de supprimer l'ancienne entrée id=${app_existing_id}"
+      fi
     fi
 
     # Wait up to 30s for the app itself to be ready before registering.
@@ -1145,13 +1230,25 @@ autoregister_suite_apps() {
       sleep 2
     done
 
-    result="$(curl -sf -X POST "${fabhome_url}/api/suite/apps" \
+    if ! curl -sf -o /dev/null "$local_url" 2>/dev/null; then
+      echo "  WARNING: [$app] endpoint santé indisponible (${local_url}) — enregistrement reporté"
+      continue
+    fi
+
+    register_tmp="$(mktemp)"
+    register_http="$(curl -sS -o "$register_tmp" -w '%{http_code}' -X POST "${fabhome_url}/api/suite/apps" \
       -H 'Content-Type: application/json' \
-      -d "{\"url\": \"$url\"}" 2>/dev/null || echo '{"error":"curl failed"}')"
-    if echo "$result" | grep -q '"ok":true'; then
+      -d "{\"url\": \"$url\"}" 2>/dev/null || echo '000')"
+    result="$(cat "$register_tmp" 2>/dev/null || true)"
+    rm -f "$register_tmp"
+
+    if [[ "$register_http" =~ ^20[0-9]$ ]] && echo "$result" | grep -q '"ok":true'; then
       echo "  [$app] registered OK -> $url"
     else
-      echo "  WARNING: [$app] registration failed: $result"
+      if [[ -z "$result" ]]; then
+        result='{"error":"curl failed"}'
+      fi
+      echo "  WARNING: [$app] registration failed (HTTP ${register_http}): $result"
     fi
   done
 }

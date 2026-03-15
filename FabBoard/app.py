@@ -155,11 +155,23 @@ def _auto_bootstrap_sources():
                 ('Fabtrack', 'fabtrack', fabtrack_url, actif)
             )
             db.commit()
-        elif fabtrack_url and not _is_localhost_url(fabtrack_url):
+        elif fabtrack_url:
+            env_fabtrack_url = _normalize_base_url(os.environ.get('FABTRACK_URL', ''))
+            enforce_env_url = bool(env_fabtrack_url)
             updated = 0
             for row in existing_fabtrack_rows:
                 current_url = _normalize_base_url(row['url'])
-                if _is_localhost_url(current_url) and current_url != fabtrack_url:
+                if current_url == fabtrack_url:
+                    continue
+
+                # Migration auto des anciennes URLs localhost, et synchronisation
+                # vers l'URL d'env quand elle est explicitement fournie.
+                should_update = (
+                    not current_url
+                    or _is_localhost_url(current_url)
+                    or enforce_env_url
+                )
+                if should_update:
                     db.execute(
                         'UPDATE sources SET url = ?, derniere_erreur = ? WHERE id = ?',
                         (fabtrack_url, '', row['id'])

@@ -43,6 +43,7 @@ Paramètres importants:
 - `GIT_BRANCH` : branche à déployer (`main` par défaut)
 - `INSTALL_DIR` : dossier cible sur le serveur (`$HOME/fablab-suite` conseillé)
 - Ports (`FABHOME_PORT`, `FABTRACK_PORT`, `PRETGO_PORT`, `FABBOARD_PORT`)
+- URLs inter-apps (`FABTRACK_URL`, `PRETGO_URL`, `FABBOARD_URL`) : laissez vide pour utiliser automatiquement `host.docker.internal:<port>`
 
 Important:
 - Le mode legacy (un repo Git par app) n'est plus utilisé pour `install`/`update`.
