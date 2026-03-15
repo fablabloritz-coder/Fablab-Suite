@@ -696,11 +696,87 @@ class FabSuiteBackend:
             "Relance le lanceur depuis un dossier du monorepo ou définis FABSUITE_LOCAL_WORKSPACE vers la racine du repo."
         )
 
+    def _ensure_local_docker_ready(self):
+        """Validate that Docker daemon is reachable before local operations."""
+        try:
+            proc = subprocess.run(
+                ["docker", "info", "--format", "{{.ServerVersion}}"],
+                text=True,
+                capture_output=True,
+                timeout=20,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "Docker CLI introuvable. Installe Docker Desktop puis relance la commande locale."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "Timeout Docker. Vérifie que Docker Desktop est bien démarré puis relance."
+            ) from exc
+
+        if proc.returncode != 0:
+            details = (proc.stderr or proc.stdout or "").strip()
+            msg = "Docker n'est pas prêt pour le mode local."
+            if os.name == "nt":
+                msg += " Démarre Docker Desktop puis attends que le moteur soit lancé."
+            if details:
+                msg += f" Détail: {details}"
+            raise RuntimeError(msg)
+
+    def _cleanup_local_name_conflicts(self):
+        """Remove legacy fixed-name containers that would block local compose up."""
+        target_names = ["fabhome", "fabtrack", "pretgo", "fabboard"]
+        proc = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{.Names}}"],
+            text=True,
+            capture_output=True,
+            timeout=20,
+        )
+
+        if proc.returncode != 0:
+            details = (proc.stderr or proc.stdout or "").strip()
+            raise RuntimeError(
+                f"Impossible de lister les conteneurs Docker locaux. Détail: {details}"
+            )
+
+        existing = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+        conflicts = [name for name in target_names if name in existing]
+        if not conflicts:
+            return
+
+        self._log(f"[WARN] Conflit de noms de conteneurs détecté: {', '.join(conflicts)}")
+        self._log("[INFO] Suppression automatique des conteneurs conflictuels avant compose up...")
+
+        rm_proc = subprocess.run(
+            ["docker", "container", "rm", "-f", *conflicts],
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+
+        if rm_proc.stdout.strip():
+            self._log(rm_proc.stdout.rstrip())
+        if rm_proc.stderr.strip():
+            self._log(rm_proc.stderr.rstrip())
+
+        if rm_proc.returncode != 0:
+            details = (rm_proc.stderr or rm_proc.stdout or "").strip()
+            raise RuntimeError(
+                f"Impossible de supprimer les conteneurs conflictuels ({', '.join(conflicts)}). Détail: {details}"
+            )
+
+        self._log("[OK] Conflits de noms supprimés.")
+
     # ─── Deploy_core integration (local) ───
 
     def _run_operation_local_via_core(self, operation):
         workspace = self._resolve_local_workspace()
         self._log(f"[INFO] Workspace local: {workspace}")
+        self._ensure_local_docker_ready()
+
+        if operation in (Operation.INSTALL, Operation.UPDATE):
+            self._cleanup_local_name_conflicts()
+
         ctx = WorkflowContext(
             mode=DeploymentMode.LOCAL,
             workspace_dir=workspace,

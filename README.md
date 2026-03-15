@@ -67,6 +67,8 @@ Le GUI s'ouvre dans Edge ou Chrome en mode application (sans barre de navigation
 Gestion Docker Compose depuis votre poste Windows :
 
 - Aucun serveur SSH requis : les actions locales sont utilisables meme sans connexion distante.
+- Prerequis : Docker Desktop doit etre installe et demarre (moteur Docker actif).
+- Sur Installer/Mettre a jour, la GUI verifie Docker et supprime automatiquement les conteneurs conflictuels (`fabhome`, `fabtrack`, `pretgo`, `fabboard`) avant relance.
 
 1. **Audit** — vérifie l'état des services locaux
 2. **Installer** — `docker compose up -d --build`
