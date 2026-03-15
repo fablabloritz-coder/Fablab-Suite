@@ -65,7 +65,12 @@ $requiredFiles = @(
     "fabsuite_ssh_gui.py",
     "fabsuite-ubuntu.sh",
     "fabsuite-ubuntu.env.example",
-    "INSTALL_UBUNTU.md"
+    "INSTALL_UBUNTU.md",
+    "web/index.html",
+    "web/css/app.css",
+    "web/js/app.js",
+    "web/vendor/bootstrap.min.css",
+    "web/vendor/bootstrap.bundle.min.js"
 )
 
 $optionalFiles = @(
@@ -110,11 +115,11 @@ if (-not (Test-Path $manifestPath)) {
 }
 
 if ($needRefresh) {
-    Write-Info "Mise à jour du cache GUI depuis GitHub ($rawBase)..."
+    Write-Info "Mise a jour du cache GUI depuis GitHub ($rawBase)..."
     foreach ($rel in $requiredFiles) {
         $url = "$rawBase/$rel"
         $out = Join-Path $cacheRoot $rel
-        Write-Info "Téléchargement: $rel"
+        Write-Info "Telechargement: $rel"
         Invoke-Download -Url $url -OutFile $out
     }
 
@@ -123,7 +128,7 @@ if ($needRefresh) {
         $url = "$rawBase/$rel"
         $out = Join-Path $cacheRoot $rel
         try {
-            Write-Info "Téléchargement: $rel"
+            Write-Info "Telechargement: $rel"
             Invoke-Download -Url $url -OutFile $out
         }
         catch {
@@ -142,7 +147,7 @@ if ($needRefresh) {
 
     $requiresCore = ($guiText -match "(?m)^from deploy_core import") -or ($guiText -match "(?m)^import deploy_core")
     if ($requiresCore -and $optionalMissing.Count -gt 0) {
-        throw "Le GUI téléchargé nécessite deploy_core, mais certains fichiers sont manquants sur GitHub: $($optionalMissing -join ', ')"
+        throw "Le GUI telecharge necessite deploy_core, mais certains fichiers sont manquants sur GitHub: $($optionalMissing -join ', ')"
     }
 
     $manifestObj = @{
@@ -151,11 +156,11 @@ if ($needRefresh) {
         updated_at = (Get-Date).ToString("o")
     }
     $manifestObj | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding UTF8
-    Write-Info "Cache prêt: $cacheRoot"
+    Write-Info "Cache pret: $cacheRoot"
 }
 else {
-    Write-Info "Cache déjà prêt: $cacheRoot"
-    Write-WarnMsg "Ajoute -Update pour forcer la récupération de la dernière version."
+    Write-Info "Cache deja pret: $cacheRoot"
+    Write-WarnMsg "Ajoute -Update pour forcer la recuperation de la derniere version."
 }
 
 $pythonCmd = Resolve-PythonCommand
@@ -167,3 +172,6 @@ if ($pythonCmd.Count -eq 2) {
 else {
     & $pythonCmd[0] $guiPath
 }
+
+# Fermeture automatique du terminal quand le GUI se ferme
+exit $LASTEXITCODE

@@ -1,6 +1,7 @@
+"""FabSuite Installer GUI — Eel-based HTML/JS frontend."""
+
 import json
 import importlib
-import queue
 import socket
 import shlex
 import subprocess
@@ -9,8 +10,6 @@ import threading
 import time
 import traceback
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 from deploy_core import DeploymentMode, DeploymentService, Operation, WorkflowContext
 from deploy_core.adapters.base import CommandExecutor
@@ -18,39 +17,37 @@ from deploy_core.adapters.local import LocalCommandExecutor
 from deploy_core.models import CommandResult, StepSpec
 
 
-def _ensure_paramiko():
-    """Importe paramiko, l'installe automatiquement si absent."""
+def _ensure_package(name):
+    """Importe un package, l'installe automatiquement si absent."""
     try:
-        return importlib.import_module("paramiko")
+        return importlib.import_module(name)
     except ImportError:
         pass
     subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "paramiko"],
+        [sys.executable, "-m", "pip", "install", name],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    return importlib.import_module("paramiko")
+    return importlib.import_module(name)
 
 
 try:
-    paramiko = _ensure_paramiko()
+    paramiko = _ensure_package("paramiko")
 except Exception:
     paramiko = None
 
-APP_TITLE = "FabSuite SSH Installer GUI"
+try:
+    eel = _ensure_package("eel")
+except Exception:
+    eel = None
+
+APP_TITLE = "FabSuite Installer"
 CONFIG_PATH = Path.home() / ".fabsuite_ssh_gui.json"
 DEFAULT_REMOTE_DIR = "~/fabsuite-installer"
 DEFAULT_MONOREPO_URL = "https://github.com/fablabloritz-coder/Fablab-Suite.git"
 
 # Privacy by default: do not persist SSH target identity in local config.
 PERSIST_SSH_IDENTITY = False
-
-MSG_LOG = "log"
-MSG_SET_ACTIONS = "set_actions"
-MSG_SET_STATUS = "set_status"
-MSG_SET_DIR_ROWS = "set_dir_rows"
-MSG_SET_SCAN_INFO = "set_scan_info"
-MSG_ALERT = "alert"
 
 
 class GuiRemoteCommandExecutor(CommandExecutor):
@@ -85,662 +82,210 @@ class GuiRemoteCommandExecutor(CommandExecutor):
         )
 
 
-class FabSuiteSshGui(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title(APP_TITLE)
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        w = min(1200, sw - 80)
-        h = min(900, sh - 80)
-        self.geometry(f"{w}x{h}")
-        self.minsize(900, 600)
+class FabSuiteBackend:
+    """Backend logic — all SSH, deploy_core, config, and worker methods."""
 
+    def __init__(self):
         self.client = None
         self.remote_home = None
-        self.log_queue = queue.Queue()
         self._closing = False
 
-        self.target_var = tk.StringVar()
-        self.host_var = tk.StringVar()
-        self.port_var = tk.StringVar(value="22")
-        self.user_var = tk.StringVar()
-        self.auth_var = tk.StringVar(value="password")
-        self.advanced_var = tk.BooleanVar(value=False)
-        self.password_var = tk.StringVar()
-        self.key_path_var = tk.StringVar()
-        self.remote_dir_var = tk.StringVar(value=DEFAULT_REMOTE_DIR)
-        self.repo_url_var = tk.StringVar(value=DEFAULT_MONOREPO_URL)
-        self.sudo_password_var = tk.StringVar()
-        self.run_mode_var = tk.StringVar(value="ssh")
-        self.logs_app_var = tk.StringVar(value="Fabtrack")
-        self.connection_status_var = tk.StringVar(value="Non connecté")
-        self.button_help_var = tk.StringVar(value="Survole un bouton pour voir précisément ce qu'il fait.")
-        self.dir_root_var = tk.StringVar(value="~")
-        self.dir_depth_var = tk.StringVar(value="3")
-        self.selected_dir_var = tk.StringVar(value="Aucun dossier sélectionné")
-        self.scan_info_var = tk.StringVar(value="Aucun scan effectué")
-        self.mode_status_var = tk.StringVar(value="Mode actif: Serveur SSH")
+        # State dict (replaces tk.StringVar)
+        self.state = {
+            "target": "",
+            "host": "",
+            "port": "22",
+            "user": "",
+            "auth": "password",
+            "password": "",
+            "key_path": "",
+            "remote_dir": DEFAULT_REMOTE_DIR,
+            "repo_url": DEFAULT_MONOREPO_URL,
+            "sudo_password": "",
+            "run_mode": "ssh",
+            "logs_app": "Fabtrack",
+            "dir_root": "~",
+            "dir_depth": "3",
+            "advanced": False,
+        }
         self._dir_rows = []
-        self._default_help_text = "Survole un bouton pour voir précisément ce qu'il fait."
-
-        self._action_buttons = []
-        self._local_buttons = []
-        self._server_buttons = []
-        self._server_inputs = []
         self._load_config()
-        self._configure_styles()
-        self._build_ui()
-        self.run_mode_var.trace_add("write", self._on_run_mode_changed)
-        self._refresh_mode_ui()
-        self.after(120, self._poll_log_queue)
+        self._register_exposed()
 
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
+    # ─── Eel-exposed functions ───
 
-    def _configure_styles(self):
-        """Configure ttk theme and custom styles."""
-        self._bg = "#f0f2f5"
-        style = ttk.Style()
-        style.theme_use("clam")
+    def _register_exposed(self):
+        """Register all @eel.expose functions."""
 
-        style.configure(".", background=self._bg, font=("Segoe UI", 9))
-        style.configure("TFrame", background=self._bg)
-        style.configure("TLabelframe", background=self._bg, bordercolor="#cbd5e1")
-        style.configure("TLabelframe.Label", background=self._bg, foreground="#1e293b",
-                         font=("Segoe UI", 10, "bold"))
-        style.configure("TLabel", background=self._bg, foreground="#334155")
-        style.configure("TCheckbutton", background=self._bg, foreground="#334155")
-        style.configure("TRadiobutton", background=self._bg, foreground="#334155")
-        style.configure("TEntry", fieldbackground="white", bordercolor="#cbd5e1")
-        style.configure("TButton", padding=(10, 5), font=("Segoe UI", 9))
+        @eel.expose
+        def get_state():
+            return dict(self.state)
 
-        for name, bg_color, hover in [
-            ("Deploy", "#2563eb", "#1d4ed8"),
-            ("Success", "#16a34a", "#15803d"),
-            ("Warning", "#d97706", "#b45309"),
-            ("Danger", "#dc2626", "#b91c1c"),
-            ("Connect", "#0891b2", "#0e7490"),
-        ]:
-            style.configure(f"{name}.TButton", background=bg_color, foreground="white",
-                            font=("Segoe UI", 9, "bold"), borderwidth=0)
-            style.map(f"{name}.TButton",
-                      background=[("active", hover), ("disabled", "#94a3b8")],
-                      foreground=[("disabled", "#e2e8f0")])
+        @eel.expose
+        def set_state(key, value):
+            if key in self.state:
+                self.state[key] = value
+                self._save_config()
 
-        style.configure("Treeview", background="white", fieldbackground="white",
-                         rowheight=24, font=("Segoe UI", 9))
-        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"),
-                         background="#e2e8f0", foreground="#1e293b")
+        @eel.expose
+        def connect_ssh():
+            self.connect_ssh()
 
-        self.configure(bg=self._bg)
+        @eel.expose
+        def disconnect_ssh():
+            self.disconnect_ssh()
 
-    def _build_ui(self):
-        header = tk.Frame(self, bg="#1e293b", height=44)
-        header.pack(fill=tk.X)
-        header.pack_propagate(False)
-        tk.Label(header, text="FabSuite SSH Installer", fg="white", bg="#1e293b",
-                 font=("Segoe UI", 13, "bold")).pack(side=tk.LEFT, padx=14, pady=8)
-        tk.Label(header, text="D\u00e9ploiement Ubuntu", fg="#94a3b8", bg="#1e293b",
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(0, 14))
+        @eel.expose
+        def clear_output():
+            pass  # Terminal clear is handled in JS
 
-        # Vertical sash: controls (top, scrollable) / terminal (bottom, expands on resize)
-        paned = tk.PanedWindow(self, orient=tk.VERTICAL, sashwidth=5,
-                               sashrelief=tk.FLAT, bg="#94a3b8")
-        paned.pack(fill=tk.BOTH, expand=True)
+        @eel.expose
+        def manual_unlock_ui():
+            self._set_actions_enabled(
+                (self.client is not None) or self._is_local_mode()
+            )
+            self._log("UI deverrouillee manuellement")
 
-        # Scrollable control panel — so it never crushes the terminal on small screens
-        ctrl_outer = tk.Frame(paned, bg=self._bg)
-        paned.add(ctrl_outer, minsize=180, stretch="never")
+        @eel.expose
+        def action_upload_files():
+            self.action_upload_files()
 
-        ctrl_canvas = tk.Canvas(ctrl_outer, bg=self._bg, highlightthickness=0)
-        ctrl_scroll = ttk.Scrollbar(ctrl_outer, orient="vertical", command=ctrl_canvas.yview)
-        ctrl_canvas.configure(yscrollcommand=ctrl_scroll.set)
-        ctrl_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        ctrl_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        @eel.expose
+        def action_audit():
+            self.action_audit()
 
-        ctrl_frame = tk.Frame(ctrl_canvas, bg=self._bg)
-        _ctrl_win = ctrl_canvas.create_window((0, 0), window=ctrl_frame, anchor="nw")
+        @eel.expose
+        def action_cleanup_safe():
+            self.action_cleanup_safe()
 
-        def _on_ctrl_configure(e):
-            ctrl_canvas.configure(scrollregion=ctrl_canvas.bbox("all"))
-        def _on_canvas_resize(e):
-            ctrl_canvas.itemconfig(_ctrl_win, width=e.width)
-        ctrl_frame.bind("<Configure>", _on_ctrl_configure)
-        ctrl_canvas.bind("<Configure>", _on_canvas_resize)
+        @eel.expose
+        def action_prepare_host():
+            self.action_prepare_host()
 
-        # Mouse-wheel scrolling on the control panel
-        def _on_ctrl_wheel(e):
-            ctrl_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
-        ctrl_canvas.bind_all("<MouseWheel>", _on_ctrl_wheel)
+        @eel.expose
+        def action_repair_env():
+            self.action_repair_env()
 
-        term_frame = tk.Frame(paned, bg=self._bg)
-        paned.add(term_frame, minsize=220, stretch="always")
+        @eel.expose
+        def action_data_safety():
+            self.action_data_safety()
 
-        # Set initial sash: give terminal at least 280 px, controls get the rest
-        def _init_sash():
-            self.update_idletasks()
-            pw_h = paned.winfo_height()
-            if pw_h > 10:
-                paned.sash_place(0, 0, max(180, pw_h - 300))
-        self.after(80, _init_sash)
+        @eel.expose
+        def action_install():
+            self.action_install()
 
-        top = ttk.Frame(ctrl_frame, padding=10)
-        top.pack(fill=tk.X)
+        @eel.expose
+        def action_update():
+            self.action_update()
 
-        conn = ttk.LabelFrame(top, text="Connexion SSH", padding=10)
-        conn.pack(fill=tk.X)
+        @eel.expose
+        def action_status():
+            self.action_status()
 
-        ttk.Label(conn, text="Connexion rapide (comme en terminal)").grid(row=0, column=0, sticky="w")
-        ttk.Entry(conn, textvariable=self.target_var, width=34).grid(row=0, column=1, padx=4, sticky="w")
-        ttk.Label(conn, text="Exemple: user@192.168.1.74", foreground="#666666").grid(row=0, column=2, columnspan=2, sticky="w")
+        @eel.expose
+        def action_logs_all():
+            self.action_logs_all()
 
-        ttk.Label(conn, text="Mot de passe SSH").grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.password_entry = ttk.Entry(conn, textvariable=self.password_var, width=34, show="*")
-        self.password_entry.grid(row=1, column=1, padx=4, pady=(6, 0), sticky="w")
+        @eel.expose
+        def action_logs_app():
+            self.action_logs_app()
 
-        ttk.Button(conn, text="Connecter", command=self.connect_ssh, style="Connect.TButton").grid(row=1, column=2, padx=4, pady=(6, 0), sticky="w")
-        ttk.Button(conn, text="Déconnecter", command=self.disconnect_ssh, style="Danger.TButton").grid(row=1, column=3, padx=4, pady=(6, 0), sticky="w")
+        @eel.expose
+        def action_scan_dirs():
+            self.action_scan_dirs()
 
-        status_row = ttk.Frame(conn)
-        status_row.grid(row=2, column=0, columnspan=4, sticky="w", pady=(6, 0))
-        self.status_dot = tk.Label(status_row, text="\u25cf", fg="#dc2626", bg=self._bg, font=("Segoe UI", 12))
-        self.status_dot.pack(side=tk.LEFT)
-        ttk.Label(status_row, textvariable=self.connection_status_var).pack(side=tk.LEFT, padx=(4, 0))
+        @eel.expose
+        def action_inspect_selected_dir(path):
+            self._run_async("Inspect dossier", lambda p=path: self._inspect_dir_worker(p))
 
-        ttk.Checkbutton(
-            conn,
-            text="Afficher options avancées (port, clé SSH, dossier distant, sudo)",
-            variable=self.advanced_var,
-            command=self._toggle_advanced,
-        ).grid(row=3, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        @eel.expose
+        def action_fix_permissions_selected_dir(path):
+            self._run_async("Correction permissions", lambda p=path: self._fix_permissions_dir_worker(p))
 
-        self.advanced_frame = ttk.Frame(conn)
-        self.advanced_frame.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(6, 0))
+        @eel.expose
+        def action_archive_selected_dir(path):
+            self._run_async("Archive dossier", lambda p=path: self._archive_dir_worker(p))
 
-        ttk.Label(self.advanced_frame, text="Port SSH").grid(row=0, column=0, sticky="w")
-        ttk.Entry(self.advanced_frame, textvariable=self.port_var, width=8).grid(row=0, column=1, padx=4, sticky="w")
+        @eel.expose
+        def action_delete_selected_dir(path, token):
+            if (token or "").strip().upper() != "SUPPRIMER":
+                self._log("Suppression annulee.")
+                return
+            self._run_async("Suppression dossier", lambda p=path: self._delete_dir_worker(p))
 
-        ttk.Radiobutton(
-            self.advanced_frame,
-            text="Auth mot de passe",
-            variable=self.auth_var,
-            value="password",
-            command=self._toggle_auth,
-        ).grid(row=0, column=2, sticky="w")
-        ttk.Radiobutton(
-            self.advanced_frame,
-            text="Auth clé SSH",
-            variable=self.auth_var,
-            value="key",
-            command=self._toggle_auth,
-        ).grid(row=0, column=3, sticky="w")
+    # ─── Logging (direct Eel calls — thread-safe via WebSocket) ───
 
-        self.key_label = ttk.Label(self.advanced_frame, text="Clé privée")
-        self.key_label.grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.key_entry = ttk.Entry(self.advanced_frame, textvariable=self.key_path_var, width=36)
-        self.key_entry.grid(row=1, column=1, columnspan=2, padx=4, pady=(6, 0), sticky="w")
-        self.key_btn = ttk.Button(self.advanced_frame, text="Parcourir", command=self._browse_key)
-        self.key_btn.grid(row=1, column=3, padx=4, pady=(6, 0), sticky="w")
+    def _classify_log_tag(self, line):
+        txt = (line or "").strip()
+        low = txt.lower()
 
-        ttk.Label(self.advanced_frame, text="Dossier installateur distant").grid(row=2, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(self.advanced_frame, textvariable=self.remote_dir_var, width=36).grid(row=2, column=1, padx=4, pady=(6, 0), sticky="w")
+        if txt.startswith("---") or txt.startswith("====="):
+            return "log_section"
+        if txt.startswith("[OK]") or txt.startswith("[SAFE]"):
+            return "log_ok"
+        if txt.startswith("[KO]") or txt.startswith("[RISK]") or txt.startswith("[ALERT]"):
+            return "log_err"
+        if txt.startswith("[WARN]") or "warning" in low or "avertissement" in low:
+            return "log_warn"
+        if "traceback" in low or "runtimeerror" in low or "exception" in low:
+            return "log_err"
+        if "error" in low and "0 error" not in low:
+            return "log_err"
+        if low.startswith("exit code:"):
+            if low == "exit code: 0":
+                return "log_ok"
+            return "log_err"
+        if txt.startswith("[INFO]") or low.startswith("connected to"):
+            return "log_info"
+        return "log_normal"
 
-        ttk.Label(self.advanced_frame, text="Mot de passe sudo (optionnel)").grid(row=2, column=2, sticky="w", pady=(6, 0))
-        ttk.Entry(self.advanced_frame, textvariable=self.sudo_password_var, width=24, show="*").grid(row=2, column=3, padx=4, pady=(6, 0), sticky="w")
+    def _log(self, msg):
+        for line in str(msg).splitlines():
+            tag = self._classify_log_tag(line)
+            try:
+                eel.log_append(line, tag)()
+            except Exception:
+                print(f"[{tag}] {line}")
 
-        ttk.Label(self.advanced_frame, text="URL repo monorepo (source unique)").grid(row=3, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(self.advanced_frame, textvariable=self.repo_url_var, width=72).grid(row=3, column=1, columnspan=3, padx=4, pady=(6, 0), sticky="w")
-        ttk.Label(
-            self.advanced_frame,
-            text="Exemple: https://github.com/fablabloritz-coder/Fablab-Suite.git",
-            foreground="#666666",
-        ).grid(row=4, column=0, columnspan=4, sticky="w", pady=(4, 0))
-
-        ttk.Label(
-            self.advanced_frame,
-            text="Mode simple: laisse le port à 22 et utilise user@ip + mot de passe.",
-            foreground="#666666",
-        ).grid(row=5, column=0, columnspan=4, sticky="w", pady=(6, 0))
-        ttk.Label(
-            self.advanced_frame,
-            text="Le mode d'exécution se choisit via les onglets 'Déploiement Serveur' et 'Mode Local'.",
-            foreground="#666666",
-        ).grid(row=6, column=0, columnspan=4, sticky="w", pady=(6, 0))
-
-        actions = ttk.LabelFrame(ctrl_frame, text="Déploiement FabSuite", padding=10)
-        actions.pack(fill=tk.X, padx=10, pady=8)
-
-        ttk.Label(
-            actions,
-            text="Sélectionne un onglet selon ton objectif: déploiement serveur ou opérations locales.",
-            foreground="#666666",
-        ).pack(anchor="w", pady=(0, 6))
-
-        self.deploy_notebook = ttk.Notebook(actions)
-        self.server_tab = ttk.Frame(self.deploy_notebook)
-        self.local_tab = ttk.Frame(self.deploy_notebook)
-        self.deploy_notebook.add(self.server_tab, text="Déploiement Serveur")
-        self.deploy_notebook.add(self.local_tab, text="Mode Local")
-        self.deploy_notebook.pack(fill=tk.X, expand=True)
-        self.deploy_notebook.bind("<<NotebookTabChanged>>", self._on_deploy_tab_changed)
-
-        # Onglet serveur
-        ttk.Label(
-            self.server_tab,
-            textvariable=self.mode_status_var,
-            foreground="#444444",
-        ).pack(anchor="w", pady=(2, 4))
-
-        server_chain = ttk.LabelFrame(self.server_tab, text="Chaîne serveur (ordre recommandé)", padding=8)
-        server_chain.pack(fill=tk.X, pady=(0, 6))
-
-        ttk.Label(
-            server_chain,
-            text="1) Upload -> 2) Audit -> 3) (Cleanup si besoin) -> 4) Prepare host -> 5) Repair env -> 6) Data safety -> 7) Install/Update -> 8) Status",
-            foreground="#666666",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
-
-        btn_upload = self._make_action_button(
-            server_chain,
-            "1) Envoyer les fichiers installateur",
-            self.action_upload_files,
-            1,
-            0,
-            desc="Copie fabsuite-ubuntu.sh et les fichiers associés sur le serveur dans le dossier distant.",
-        )
-        btn_audit_server = self._make_action_button(
-            server_chain,
-            "2) Audit serveur",
-            self.action_audit,
-            1,
-            1,
-            desc="Affiche conteneurs Docker, projets compose et diagnostics inter-apps du serveur.",
-        )
-        btn_cleanup = self._make_action_button(
-            server_chain,
-            "3) Cleanup Docker prudent",
-            self.action_cleanup_safe,
-            1,
-            2,
-            desc="Sauvegarde les bind mounts FabSuite puis supprime les conteneurs FabSuite et nettoie les artefacts.",
-        )
-        btn_prepare = self._make_action_button(
-            server_chain,
-            "4) Préparer l'hôte Ubuntu",
-            self.action_prepare_host,
-            2,
-            0,
-            desc="Installe Docker + Docker Compose + Git sur le serveur Ubuntu.",
-        )
-        btn_repair = self._make_action_button(
-            server_chain,
-            "5) Réparer env monorepo",
-            self.action_repair_env,
-            2,
-            1,
-            desc="Crée/répare fabsuite-ubuntu.env et valide la configuration monorepo.",
-        )
-        btn_data_safety = self._make_action_button(
-            server_chain,
-            "6) Pré-check sécurité données",
-            self.action_data_safety,
-            2,
-            2,
-            desc="Vérifie les risques de changement de chemin data avant install/update.",
-        )
-        btn_install_server = self._make_action_button(
-            server_chain,
-            "7) Installer la suite",
-            self.action_install,
-            3,
-            0,
-            desc="Exécute repair-env + data safety + install helper.",
-        )
-        btn_update_server = self._make_action_button(
-            server_chain,
-            "7b) Mettre à jour la suite",
-            self.action_update,
-            3,
-            1,
-            desc="Exécute repair-env + data safety + update helper.",
-        )
-        btn_status_server = self._make_action_button(
-            server_chain,
-            "8) Vérifier l'état",
-            self.action_status,
-            3,
-            2,
-            desc="Affiche l'état (running/health) de chaque app déployée sur le serveur.",
-        )
-
-        server_logs = ttk.Frame(server_chain)
-        server_logs.grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
-        btn_logs_all_server = self._make_action_button(
-            server_logs,
-            "Logs serveur (toutes les apps)",
-            self.action_logs_all,
-            None,
-            None,
-            pack=True,
-            desc="Affiche les derniers logs de toutes les apps côté serveur.",
-        )
-        ttk.Label(server_logs, text="Logs app").pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Entry(server_logs, textvariable=self.logs_app_var, width=12).pack(side=tk.LEFT, padx=4)
-        btn_logs_app_server = self._make_action_button(
-            server_logs,
-            "Afficher",
-            self.action_logs_app,
-            None,
-            None,
-            pack=True,
-            desc="Affiche les logs d'une app côté serveur (ex: Fabtrack).",
-        )
-
-        self._server_buttons.extend([
-            btn_upload,
-            btn_audit_server,
-            btn_cleanup,
-            btn_prepare,
-            btn_repair,
-            btn_data_safety,
-            btn_install_server,
-            btn_update_server,
-            btn_status_server,
-            btn_logs_all_server,
-            btn_logs_app_server,
-        ])
-
-        server_tri = ttk.LabelFrame(self.server_tab, text="Maintenance dossiers serveur", padding=10)
-        server_tri.pack(fill=tk.X, pady=(0, 4))
-
-        ttk.Label(server_tri, text="Racine scan").grid(row=0, column=0, sticky="w")
-        dir_root_entry = ttk.Entry(server_tri, textvariable=self.dir_root_var, width=24)
-        dir_root_entry.grid(row=0, column=1, padx=4, sticky="w")
-        ttk.Label(server_tri, text="Profondeur").grid(row=0, column=2, sticky="w")
-        dir_depth_entry = ttk.Entry(server_tri, textvariable=self.dir_depth_var, width=6)
-        dir_depth_entry.grid(row=0, column=3, padx=4, sticky="w")
-        btn_scan = self._make_action_button(
-            server_tri,
-            "Scanner les dossiers",
-            self.action_scan_dirs,
-            0,
-            4,
-            desc="Cherche les dossiers potentiellement liés à des installations FabSuite et affiche leur taille/date.",
-        )
-        ttk.Label(server_tri, textvariable=self.scan_info_var, foreground="#444444").grid(row=0, column=5, padx=(8, 0), sticky="w")
-
-        self.dir_tree = ttk.Treeview(server_tri, columns=("size", "mtime", "path"), show="headings", height=6)
-        self.dir_tree.heading("size", text="Taille")
-        self.dir_tree.heading("mtime", text="Dernière modif")
-        self.dir_tree.heading("path", text="Chemin")
-        self.dir_tree.column("size", width=90, anchor="center")
-        self.dir_tree.column("mtime", width=140, anchor="center")
-        self.dir_tree.column("path", width=760, anchor="w")
-        self.dir_tree.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(8, 4))
-        self.dir_tree.bind("<<TreeviewSelect>>", self._on_dir_selection_changed)
-
-        tri_btns = ttk.Frame(server_tri)
-        tri_btns.grid(row=2, column=0, columnspan=6, sticky="w")
-        btn_inspect = self._make_action_button(
-            tri_btns,
-            "Inspecter sélection",
-            self.action_inspect_selected_dir,
-            None,
-            None,
-            pack=True,
-            desc="Affiche le contenu et les sous-dossiers principaux du dossier sélectionné.",
-        )
-        btn_fix_perms = self._make_action_button(
-            tri_btns,
-            "Corriger permissions",
-            self.action_fix_permissions_selected_dir,
-            None,
-            None,
-            pack=True,
-            desc="Tente de reprendre la propriété du dossier sélectionné pour permettre archivage/suppression ensuite.",
-        )
-        btn_archive = self._make_action_button(
-            tri_btns,
-            "Archiver sélection",
-            self.action_archive_selected_dir,
-            None,
-            None,
-            pack=True,
-            desc="Crée une archive .tgz de sauvegarde avant suppression éventuelle.",
-        )
-        btn_delete = self._make_action_button(
-            tri_btns,
-            "Supprimer sélection",
-            self.action_delete_selected_dir,
-            None,
-            None,
-            pack=True,
-            desc="Supprime définitivement le dossier sélectionné (double confirmation). Conseil: Corriger permissions puis Archiver avant suppression.",
-        )
-        self._server_buttons.extend([
-            btn_scan,
-            btn_inspect,
-            btn_fix_perms,
-            btn_archive,
-            btn_delete,
-        ])
-        self._server_inputs.extend([dir_root_entry, dir_depth_entry])
-        ttk.Label(server_tri, textvariable=self.selected_dir_var, foreground="#666666").grid(row=3, column=0, columnspan=6, sticky="w", pady=(4, 0))
-
-        # Onglet local
-        ttk.Label(
-            self.local_tab,
-            text="Mode local: exécution des opérations Docker Compose à la racine du monorepo.",
-            foreground="#444444",
-        ).pack(anchor="w", pady=(2, 6))
-
-        local_chain = ttk.LabelFrame(self.local_tab, text="Chaîne locale (ordre recommandé)", padding=8)
-        local_chain.pack(fill=tk.X, pady=(0, 4))
-        ttk.Label(
-            local_chain,
-            text="1) Audit local -> 2) Installer/Update -> 3) Status -> 4) Logs",
-            foreground="#666666",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
-
-        btn_local_audit = self._make_action_button(
-            local_chain,
-            "1) Audit local",
-            self.action_audit,
-            1,
-            0,
-            desc="Audit local Docker Compose.",
-        )
-        btn_local_install = self._make_action_button(
-            local_chain,
-            "2) Installer local",
-            self.action_install,
-            1,
-            1,
-            desc="Lance docker compose up -d --build en local.",
-        )
-        btn_local_update = self._make_action_button(
-            local_chain,
-            "2b) Mettre à jour local",
-            self.action_update,
-            1,
-            2,
-            desc="Met à jour/rebuild local via docker compose up -d --build.",
-        )
-        btn_local_status = self._make_action_button(
-            local_chain,
-            "3) Vérifier l'état local",
-            self.action_status,
-            2,
-            0,
-            desc="Affiche l'état des services locaux.",
-        )
-        btn_local_logs_all = self._make_action_button(
-            local_chain,
-            "4) Logs locaux (toutes les apps)",
-            self.action_logs_all,
-            2,
-            1,
-            desc="Affiche les logs locaux de toutes les apps.",
-        )
-
-        local_logs = ttk.Frame(local_chain)
-        local_logs.grid(row=2, column=2, sticky="w")
-        ttk.Label(local_logs, text="Logs app").pack(side=tk.LEFT)
-        ttk.Entry(local_logs, textvariable=self.logs_app_var, width=12).pack(side=tk.LEFT, padx=4)
-        btn_local_logs_app = self._make_action_button(
-            local_logs,
-            "Afficher",
-            self.action_logs_app,
-            None,
-            None,
-            pack=True,
-            desc="Affiche les logs locaux d'une app (ex: Fabtrack).",
-        )
-
-        self._local_buttons.extend([
-            btn_local_audit,
-            btn_local_install,
-            btn_local_update,
-            btn_local_status,
-            btn_local_logs_all,
-            btn_local_logs_app,
-        ])
-
-        # Synchronise l'onglet actif avec le mode chargé depuis la config.
-        if self.run_mode_var.get().strip().lower() == "local":
-            self.deploy_notebook.select(self.local_tab)
-        else:
-            self.deploy_notebook.select(self.server_tab)
-
-        help_frame = tk.Frame(ctrl_frame, bg="#e2e8f0", padx=10, pady=4)
-        help_frame.pack(fill=tk.X, padx=10, pady=(0, 4))
-        tk.Label(help_frame, text="Aide:", fg="#475569", bg="#e2e8f0",
-                 font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
-        tk.Label(help_frame, textvariable=self.button_help_var, fg="#475569",
-                 bg="#e2e8f0", font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(6, 0))
-
-        out_frame = ttk.LabelFrame(term_frame, text="Output", padding=10)
-        out_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(4, 0))
-
-        self.output = scrolledtext.ScrolledText(
-            out_frame, wrap=tk.WORD, font=("Consolas", 10),
-            bg="#1a1b26", fg="#a9b1d6", insertbackground="#a9b1d6",
-            selectbackground="#33467c", selectforeground="#c0caf5",
-            relief=tk.FLAT, borderwidth=0, padx=8, pady=8,
-        )
-        self.output.pack(fill=tk.BOTH, expand=True)
-        self.output.tag_configure("log_ok", foreground="#9ece6a")
-        self.output.tag_configure("log_err", foreground="#f7768e")
-        self.output.tag_configure("log_warn", foreground="#e0af68")
-        self.output.tag_configure("log_info", foreground="#7aa2f7")
-        self.output.tag_configure("log_section", foreground="#7dcfff")
-        self.output.tag_configure("log_normal", foreground="#a9b1d6")
-
-        bottom = ttk.Frame(term_frame, padding=(10, 4, 10, 8))
-        bottom.pack(fill=tk.X)
-        ttk.Button(bottom, text="Clear output", command=self._clear_output).pack(side=tk.LEFT)
-        ttk.Button(bottom, text="Débloquer interface", command=self._manual_unlock_ui,
-                   style="Warning.TButton").pack(side=tk.LEFT, padx=(8, 0))
-
-        self._toggle_auth()
-        self._toggle_advanced()
-        self._set_actions_enabled(False)
-
-    def _make_action_button(self, parent, text, cmd, row, col, pack=False, desc="", btn_style=""):
-        if not btn_style:
-            t = text.lower()
-            if "supprimer" in t:
-                btn_style = "Danger.TButton"
-            elif "cleanup" in t or "archiver" in t or "permissions" in t:
-                btn_style = "Warning.TButton"
-            elif "installer" in t:
-                btn_style = "Success.TButton"
-            elif "envoyer" in t or "préparer" in t or "mettre à jour" in t:
-                btn_style = "Deploy.TButton"
-        kw = {"text": text, "command": cmd}
-        if btn_style:
-            kw["style"] = btn_style
-        btn = ttk.Button(parent, **kw)
-        if pack:
-            btn.pack(side=tk.LEFT, padx=4)
-        else:
-            btn.grid(row=row, column=col, padx=4, pady=4, sticky="ew")
-        if desc:
-            btn.bind("<Enter>", lambda _e, d=desc: self.button_help_var.set(d))
-            btn.bind("<Leave>", lambda _e: self.button_help_var.set(self._default_help_text))
-        self._action_buttons.append(btn)
-        return btn
-
-    def _toggle_auth(self):
-        key_mode = self.auth_var.get() == "key"
-        if key_mode:
-            self.key_entry.configure(state="normal")
-            self.key_btn.configure(state="normal")
-        else:
-            self.key_entry.configure(state="disabled")
-            self.key_btn.configure(state="disabled")
-
-    def _toggle_advanced(self):
-        if self.advanced_var.get():
-            self.advanced_frame.grid()
-        else:
-            self.advanced_frame.grid_remove()
-
-    def _on_run_mode_changed(self, *_args):
-        self._sync_notebook_to_mode()
-        self._refresh_mode_ui()
-        self._save_config()
-
-    def _on_deploy_tab_changed(self, _event=None):
-        tab_id = self.deploy_notebook.select()
-        if not tab_id:
-            return
-        tab_text = str(self.deploy_notebook.tab(tab_id, "text"))
-        target_mode = "local" if "local" in tab_text.lower() else "ssh"
-        if self.run_mode_var.get().strip().lower() != target_mode:
-            self.run_mode_var.set(target_mode)
-
-    def _sync_notebook_to_mode(self):
-        if not hasattr(self, "deploy_notebook"):
-            return
-        target_tab = self.local_tab if self._is_local_mode() else self.server_tab
+    def _set_connection_status(self, text):
+        connected = "Connect" in text
         try:
-            if self.deploy_notebook.select() != str(target_tab):
-                self.deploy_notebook.select(target_tab)
-        except tk.TclError:
+            eel.set_connection_status(text, connected)()
+        except Exception:
             pass
 
-    def _refresh_mode_ui(self):
-        is_local = self._is_local_mode()
-        connected = self.client is not None
+    def _set_actions_enabled(self, enabled):
+        try:
+            eel.set_actions_enabled(bool(enabled))()
+        except Exception:
+            pass
 
-        if is_local:
-            self.mode_status_var.set("Mode actif: Local Docker (actions serveur désactivées)")
-        else:
-            self.mode_status_var.set("Mode actif: Serveur SSH")
+    def _set_dir_rows(self, rows):
+        self._dir_rows = rows
+        try:
+            eel.set_dir_rows(rows)()
+        except Exception:
+            pass
 
-        local_state = "normal" if is_local else "disabled"
-        for btn in self._local_buttons:
-            btn.configure(state=local_state)
+    def _set_scan_info(self, text):
+        try:
+            eel.set_scan_info(text)()
+        except Exception:
+            pass
 
-        for btn in self._server_buttons:
-            state = "disabled" if is_local else ("normal" if connected else "disabled")
-            btn.configure(state=state)
-
-        for widget in self._server_inputs:
-            state = "disabled" if is_local else "normal"
-            widget.configure(state=state)
-
-    def _browse_key(self):
-        path = filedialog.askopenfilename(title="Select private key")
-        if path:
-            self.key_path_var.set(path)
+    def _show_alert(self, title, msg):
+        try:
+            eel.show_alert(title, msg)()
+        except Exception:
+            pass
 
     def _show_ssh_only_info(self, action_name):
-        messagebox.showinfo(
+        self._show_alert(
             "Mode local",
             f"L'action '{action_name}' est disponible uniquement en mode Serveur SSH.",
         )
+
+    # ─── Config persistence ───
 
     def _load_config(self):
         if not CONFIG_PATH.exists():
@@ -750,33 +295,33 @@ class FabSuiteSshGui(tk.Tk):
         except Exception:
             return
 
-        self.host_var.set("")
-        self.port_var.set(str(data.get("port", "22")))
-        self.user_var.set("")
-        self.target_var.set("")
-        self.auth_var.set(data.get("auth", "password"))
-        self.key_path_var.set("")
-        self.remote_dir_var.set(data.get("remote_dir", DEFAULT_REMOTE_DIR))
+        self.state["host"] = ""
+        self.state["port"] = str(data.get("port", "22"))
+        self.state["user"] = ""
+        self.state["target"] = ""
+        self.state["auth"] = data.get("auth", "password")
+        self.state["key_path"] = ""
+        self.state["remote_dir"] = data.get("remote_dir", DEFAULT_REMOTE_DIR)
         saved_repo_url = (data.get("git_repo_url") or "").strip()
         if not saved_repo_url or "OWNER_OR_ORG" in saved_repo_url or "<owner>" in saved_repo_url:
             saved_repo_url = DEFAULT_MONOREPO_URL
-        self.repo_url_var.set(saved_repo_url)
+        self.state["repo_url"] = saved_repo_url
         run_mode = str(data.get("run_mode", "ssh")).strip().lower()
-        self.run_mode_var.set("local" if run_mode == "local" else "ssh")
-        self.logs_app_var.set(data.get("logs_app", "Fabtrack"))
-        self.dir_root_var.set(data.get("dir_root", "~"))
-        self.dir_depth_var.set(str(data.get("dir_depth", "3")))
+        self.state["run_mode"] = "local" if run_mode == "local" else "ssh"
+        self.state["logs_app"] = data.get("logs_app", "Fabtrack")
+        self.state["dir_root"] = data.get("dir_root", "~")
+        self.state["dir_depth"] = str(data.get("dir_depth", "3"))
         advanced_raw = data.get("advanced", False)
         if isinstance(advanced_raw, bool):
-            self.advanced_var.set(advanced_raw)
+            self.state["advanced"] = advanced_raw
         else:
-            self.advanced_var.set(str(advanced_raw).strip().lower() in ("1", "true", "yes", "on"))
+            self.state["advanced"] = str(advanced_raw).strip().lower() in ("1", "true", "yes", "on")
 
     def _save_config(self):
-        target_value = self.target_var.get().strip()
-        host_value = self.host_var.get().strip()
-        user_value = self.user_var.get().strip()
-        key_path_value = self.key_path_var.get().strip()
+        target_value = self.state.get("target", "").strip()
+        host_value = self.state.get("host", "").strip()
+        user_value = self.state.get("user", "").strip()
+        key_path_value = self.state.get("key_path", "").strip()
 
         if not PERSIST_SSH_IDENTITY:
             target_value = ""
@@ -787,30 +332,31 @@ class FabSuiteSshGui(tk.Tk):
         data = {
             "target": target_value,
             "host": host_value,
-            "port": self.port_var.get().strip(),
+            "port": self.state.get("port", "22").strip(),
             "user": user_value,
-            "auth": self.auth_var.get().strip(),
+            "auth": self.state.get("auth", "password").strip(),
             "key_path": key_path_value,
-            "remote_dir": self.remote_dir_var.get().strip(),
-            "git_repo_url": self.repo_url_var.get().strip(),
-            "run_mode": self.run_mode_var.get().strip(),
-            "logs_app": self.logs_app_var.get().strip(),
-            "dir_root": self.dir_root_var.get().strip(),
-            "dir_depth": self.dir_depth_var.get().strip(),
-            "advanced": bool(self.advanced_var.get()),
+            "remote_dir": self.state.get("remote_dir", DEFAULT_REMOTE_DIR).strip(),
+            "git_repo_url": self.state.get("repo_url", DEFAULT_MONOREPO_URL).strip(),
+            "run_mode": self.state.get("run_mode", "ssh").strip(),
+            "logs_app": self.state.get("logs_app", "Fabtrack").strip(),
+            "dir_root": self.state.get("dir_root", "~").strip(),
+            "dir_depth": self.state.get("dir_depth", "3").strip(),
+            "advanced": bool(self.state.get("advanced", False)),
         }
         try:
             CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception as exc:
             self._log(f"Warning: cannot save config: {exc}")
 
-    def _parse_ssh_target(self):
-        target = self.target_var.get().strip()
-        host = self.host_var.get().strip()
-        user = self.user_var.get().strip()
-        port_str = self.port_var.get().strip() or "22"
+    # ─── SSH target parsing ───
 
-        # Backward compatibility: if target empty, use host/user fields when available.
+    def _parse_ssh_target(self):
+        target = self.state.get("target", "").strip()
+        host = self.state.get("host", "").strip()
+        user = self.state.get("user", "").strip()
+        port_str = self.state.get("port", "22").strip() or "22"
+
         if target:
             if "@" in target:
                 user_part, host_part = target.split("@", 1)
@@ -822,7 +368,6 @@ class FabSuiteSshGui(tk.Tk):
             if not user:
                 raise RuntimeError("Format attendu: utilisateur@hote (ex: loritz@192.168.1.74)")
 
-            # Optional syntax support: user@host:port (simple IPv4/hostname case)
             if host_part.count(":") == 1:
                 h, p = host_part.rsplit(":", 1)
                 if p.isdigit():
@@ -841,171 +386,13 @@ class FabSuiteSshGui(tk.Tk):
         except ValueError as exc:
             raise RuntimeError("Port SSH invalide") from exc
 
-        self.host_var.set(host)
-        self.user_var.set(user)
-        self.port_var.set(str(port))
-        self.target_var.set(f"{user}@{host}")
+        self.state["host"] = host
+        self.state["user"] = user
+        self.state["port"] = str(port)
+        self.state["target"] = f"{user}@{host}"
         return host, user, port
 
-    def _poll_log_queue(self):
-        if self._closing:
-            return
-        while True:
-            try:
-                item = self.log_queue.get_nowait()
-            except queue.Empty:
-                break
-
-            try:
-                msg_type, payload = item
-            except Exception:
-                msg_type, payload = MSG_LOG, str(item)
-
-            if msg_type == MSG_LOG:
-                self._append_output_colored(str(payload))
-            elif msg_type == MSG_SET_ACTIONS:
-                self._set_actions_enabled(bool(payload))
-            elif msg_type == MSG_SET_STATUS:
-                self.connection_status_var.set(str(payload))
-                try:
-                    color = "#16a34a" if "Connecté:" in str(payload) else "#dc2626"
-                    self.status_dot.configure(fg=color)
-                except (tk.TclError, AttributeError):
-                    pass
-            elif msg_type == MSG_SET_DIR_ROWS:
-                self._set_dir_rows(payload if isinstance(payload, list) else [])
-            elif msg_type == MSG_SET_SCAN_INFO:
-                self.scan_info_var.set(str(payload))
-            elif msg_type == MSG_ALERT:
-                title, msg = payload if isinstance(payload, tuple) and len(payload) == 2 else ("Alerte", str(payload))
-                try:
-                    messagebox.showwarning(str(title), str(msg))
-                except tk.TclError:
-                    pass
-
-        try:
-            self.after(120, self._poll_log_queue)
-        except tk.TclError:
-            pass
-
-    def _classify_log_tag(self, line):
-        txt = (line or "").strip()
-        low = txt.lower()
-
-        if txt.startswith("---") or txt.startswith("====="):
-            return "log_section"
-
-        if txt.startswith("[OK]") or txt.startswith("[SAFE]"):
-            return "log_ok"
-
-        if txt.startswith("[KO]") or txt.startswith("[RISK]") or txt.startswith("[ALERT]"):
-            return "log_err"
-
-        if txt.startswith("[WARN]") or "warning" in low or "avertissement" in low:
-            return "log_warn"
-
-        if "traceback" in low or "runtimeerror" in low or "exception" in low:
-            return "log_err"
-
-        if "error" in low and "0 error" not in low:
-            return "log_err"
-
-        if low.startswith("exit code:"):
-            if low == "exit code: 0":
-                return "log_ok"
-            return "log_err"
-
-        if txt.startswith("[INFO]") or low.startswith("connected to"):
-            return "log_info"
-
-        return "log_normal"
-
-    def _append_output_colored(self, text):
-        lines = text.splitlines() or [""]
-        for line in lines:
-            tag = self._classify_log_tag(line)
-            self.output.insert(tk.END, line + "\n", tag)
-        self.output.see(tk.END)
-
-    def _log(self, msg):
-        self.log_queue.put((MSG_LOG, msg))
-
-    def _queue_ui(self, msg_type, payload):
-        self.log_queue.put((msg_type, payload))
-
-    def _clear_output(self):
-        self.output.delete("1.0", tk.END)
-
-    def _manual_unlock_ui(self):
-        self._set_actions_enabled((self.client is not None) or self._is_local_mode())
-        self._log("UI déverrouillée manuellement")
-
-    def _set_connection_status(self, text):
-        if threading.current_thread() is threading.main_thread():
-            try:
-                self.connection_status_var.set(text)
-                self.status_dot.configure(fg="#16a34a" if "Connecté:" in text else "#dc2626")
-            except (tk.TclError, AttributeError):
-                pass
-        else:
-            self._queue_ui(MSG_SET_STATUS, text)
-
-    def _set_actions_enabled(self, enabled):
-        if not enabled:
-            for btn in self._action_buttons:
-                btn.configure(state="disabled")
-            return
-        self._refresh_mode_ui()
-
-    def _set_dir_rows(self, rows):
-        self._dir_rows = rows
-        for iid in self.dir_tree.get_children():
-            self.dir_tree.delete(iid)
-
-        for row in rows:
-            self.dir_tree.insert("", tk.END, values=(row.get("size", "?"), row.get("mtime", "?"), row.get("path", "")))
-
-        if rows:
-            self.scan_info_var.set(f"{len(rows)} dossier(s) trouvé(s)")
-            first = rows[0].get("path", "")
-            if first:
-                self.selected_dir_var.set(f"Sélection: {first}")
-        else:
-            self.scan_info_var.set("Aucun dossier détecté")
-            self.selected_dir_var.set("Aucun dossier sélectionné")
-
-    def _on_dir_selection_changed(self, _event=None):
-        path = self._get_selected_remote_path()
-        if path:
-            self.selected_dir_var.set(f"Sélection: {path}")
-        else:
-            self.selected_dir_var.set("Aucun dossier sélectionné")
-
-    def _get_selected_remote_path(self):
-        sel = self.dir_tree.selection()
-        if not sel:
-            return ""
-        item = self.dir_tree.item(sel[0])
-        values = item.get("values") or []
-        if len(values) < 3:
-            return ""
-        return str(values[2]).strip()
-
-    def _ensure_safe_remote_path(self, path):
-        p = (path or "").strip()
-        if not p or p in ("/", ".", ".."):
-            raise RuntimeError("Chemin invalide")
-        if not p.startswith("/"):
-            raise RuntimeError("Chemin non absolu refusé")
-        if not self.remote_home:
-            raise RuntimeError("Dossier HOME distant inconnu, reconnecte-toi")
-
-        home = self.remote_home.rstrip("/")
-        if p == home:
-            raise RuntimeError("Suppression du HOME refusée")
-        if not p.startswith(home + "/"):
-            raise RuntimeError("Pour sécurité, seules les suppressions sous HOME sont autorisées")
-        return p
+    # ─── Async worker pattern ───
 
     def _run_async(self, label, target):
         self._set_actions_enabled(False)
@@ -1019,9 +406,13 @@ class FabSuiteSshGui(tk.Tk):
                 self._log(traceback.format_exc())
             finally:
                 self._log(f"--- end: {label} ---")
-                self._queue_ui(MSG_SET_ACTIONS, (self.client is not None) or self._is_local_mode())
+                self._set_actions_enabled(
+                    (self.client is not None) or self._is_local_mode()
+                )
 
         threading.Thread(target=worker, daemon=True).start()
+
+    # ─── SSH connection ───
 
     def connect_ssh(self):
         self._run_async("Connect SSH", self._connect_worker)
@@ -1031,7 +422,6 @@ class FabSuiteSshGui(tk.Tk):
             raise RuntimeError("paramiko is not installed. Run: pip install paramiko")
 
         host, user, port = self._parse_ssh_target()
-
         self.disconnect_ssh(silent=True)
 
         client = paramiko.SSHClient()
@@ -1046,16 +436,17 @@ class FabSuiteSshGui(tk.Tk):
             "look_for_keys": False,
         }
 
-        auth = self.auth_var.get().strip()
+        auth = self.state.get("auth", "password").strip()
         if auth == "key":
-            key_path = self.key_path_var.get().strip()
+            key_path = self.state.get("key_path", "").strip()
             if not key_path:
                 raise RuntimeError("Key path is required for key auth")
             kwargs["key_filename"] = key_path
-            if self.password_var.get().strip():
-                kwargs["passphrase"] = self.password_var.get().strip()
+            pwd = self.state.get("password", "").strip()
+            if pwd:
+                kwargs["passphrase"] = pwd
         else:
-            password = self.password_var.get()
+            password = self.state.get("password", "")
             if not password:
                 raise RuntimeError("Password is required for password auth")
             kwargs["password"] = password
@@ -1064,7 +455,7 @@ class FabSuiteSshGui(tk.Tk):
         self.client = client
         self.remote_home = self._exec_remote_simple("echo $HOME").strip()
         self._save_config()
-        self._set_connection_status(f"Connecté: {user}@{host}:{port}")
+        self._set_connection_status(f"Connecte: {user}@{host}:{port}")
         self._log(f"Connected to {host}:{port} as {user}")
 
     def disconnect_ssh(self, silent=False):
@@ -1074,32 +465,21 @@ class FabSuiteSshGui(tk.Tk):
             finally:
                 self.client = None
                 self.remote_home = None
-        self._set_connection_status("Non connecté")
+        self._set_connection_status("Non connecte")
         self._set_actions_enabled(self._is_local_mode())
         self._set_dir_rows([])
-        self.scan_info_var.set("Aucun scan effectué")
+        self._set_scan_info("Aucun scan effectue")
         if not silent:
             self._log("Disconnected")
 
-    def _on_close(self):
-        self._closing = True
-        self.disconnect_ssh(silent=True)
-        self.destroy()
-
-    def report_callback_exception(self, exc, val, tb):
-        self._log("Tkinter callback exception:")
-        self._log("".join(traceback.format_exception(exc, val, tb)).rstrip())
-        try:
-            messagebox.showerror("Erreur interface", f"{exc.__name__}: {val}")
-        except Exception:
-            pass
+    # ─── Remote command execution ───
 
     def _require_connection(self):
         if self.client is None:
             raise RuntimeError("Not connected. Click Connect first")
 
     def _resolve_remote_dir(self):
-        remote_dir = self.remote_dir_var.get().strip() or DEFAULT_REMOTE_DIR
+        remote_dir = self.state.get("remote_dir", DEFAULT_REMOTE_DIR).strip() or DEFAULT_REMOTE_DIR
         if remote_dir.startswith("~/"):
             if not self.remote_home:
                 self.remote_home = self._exec_remote_simple("echo $HOME").strip()
@@ -1134,8 +514,6 @@ class FabSuiteSshGui(tk.Tk):
         channel.exec_command(wrapped)
 
         start = time.time()
-        out_chunks = []
-        err_chunks = []
 
         while True:
             had_data = False
@@ -1144,14 +522,12 @@ class FabSuiteSshGui(tk.Tk):
                 if channel.recv_ready():
                     chunk = channel.recv(8192).decode("utf-8", errors="replace")
                     if chunk:
-                        out_chunks.append(chunk)
                         self._log(chunk.rstrip())
                         had_data = True
 
                 if channel.recv_stderr_ready():
                     chunk = channel.recv_stderr(8192).decode("utf-8", errors="replace")
                     if chunk:
-                        err_chunks.append(chunk)
                         self._log(chunk.rstrip())
                         had_data = True
             except socket.timeout:
@@ -1178,9 +554,11 @@ class FabSuiteSshGui(tk.Tk):
             raise RuntimeError("Remote command failed")
         return code
 
+    # ─── Deployment helpers ───
+
     def _helper_command(self, action, app_name=None):
         remote_dir = self._resolve_remote_dir()
-        sudo_pass = self.sudo_password_var.get().strip()
+        sudo_pass = self.state.get("sudo_password", "").strip()
         repo_url = self._effective_repo_url()
         register_host = self._registration_host_for_server()
 
@@ -1205,14 +583,14 @@ class FabSuiteSshGui(tk.Tk):
         return " && ".join(cmd_parts)
 
     def _effective_repo_url(self):
-        repo_url = (self.repo_url_var.get().strip() or DEFAULT_MONOREPO_URL)
+        repo_url = (self.state.get("repo_url", "").strip() or DEFAULT_MONOREPO_URL)
         if "OWNER_OR_ORG" in repo_url or "<owner>" in repo_url:
             raise RuntimeError("URL monorepo invalide: remplace le placeholder par une vraie URL GitHub")
-        self.repo_url_var.set(repo_url)
+        self.state["repo_url"] = repo_url
         return repo_url
 
     def _core_env_prefix(self):
-        sudo_pass = self.sudo_password_var.get().strip()
+        sudo_pass = self.state.get("sudo_password", "").strip()
         repo_url = self._effective_repo_url()
         register_host = self._registration_host_for_server()
         env_prefix = "NON_INTERACTIVE=1"
@@ -1224,7 +602,6 @@ class FabSuiteSshGui(tk.Tk):
         return env_prefix
 
     def _registration_host_for_server(self):
-        # Prefer the resolved peer IP of the active SSH transport.
         host = ""
         try:
             if self.client is not None:
@@ -1235,14 +612,14 @@ class FabSuiteSshGui(tk.Tk):
                         host = str(peer[0]).strip()
         except Exception:
             host = ""
-
         if not host:
-            host = self.host_var.get().strip()
-
+            host = self.state.get("host", "").strip()
         return host
 
     def _is_local_mode(self):
-        return (self.run_mode_var.get().strip().lower() == "local")
+        return self.state.get("run_mode", "ssh").strip().lower() == "local"
+
+    # ─── Deploy_core integration (local) ───
 
     def _run_operation_local_via_core(self, operation):
         workspace = str(Path(__file__).resolve().parent)
@@ -1277,15 +654,15 @@ class FabSuiteSshGui(tk.Tk):
             text=True,
             capture_output=True,
         )
-
         if proc.stdout.strip():
             self._log(proc.stdout.rstrip())
         if proc.stderr.strip():
             self._log(proc.stderr.rstrip())
         self._log(f"Exit code: {proc.returncode}")
-
         if proc.returncode != 0:
-            raise RuntimeError(f"Logs local échoué pour {app_name} (code {proc.returncode})")
+            raise RuntimeError(f"Logs local echoue pour {app_name} (code {proc.returncode})")
+
+    # ─── Deploy_core integration (SSH) ───
 
     def _run_operation_via_core(self, operation, raise_on_failure=True):
         self._ensure_remote_helper_ready()
@@ -1294,7 +671,7 @@ class FabSuiteSshGui(tk.Tk):
             mode=DeploymentMode.SSH,
             remote_dir=self._resolve_remote_dir(),
             helper_script="fabsuite-ubuntu.sh",
-            logs_app=(self.logs_app_var.get().strip() or "Fabtrack"),
+            logs_app=(self.state.get("logs_app", "Fabtrack").strip() or "Fabtrack"),
         )
         ctx.extras["env_prefix"] = self._core_env_prefix()
 
@@ -1308,6 +685,8 @@ class FabSuiteSshGui(tk.Tk):
             )
         return result
 
+    # ─── File upload (local → remote) ───
+
     def _installer_local_files(self):
         base_dir = Path(__file__).resolve().parent
         return [
@@ -1318,7 +697,6 @@ class FabSuiteSshGui(tk.Tk):
 
     def _upload_installer_files(self, remote_dir):
         files = self._installer_local_files()
-
         for f in files:
             if not f.exists():
                 raise RuntimeError(f"Missing local file: {f}")
@@ -1334,7 +712,6 @@ class FabSuiteSshGui(tk.Tk):
         finally:
             sftp.close()
 
-        # Normalize CRLF: files uploaded from Windows have \r\n which breaks bash.
         normalize_cmd = "sed -i 's/\\r$//' " + " ".join(
             shlex.quote(f"{remote_dir}/{f.name}") for f in files
         )
@@ -1373,9 +750,8 @@ class FabSuiteSshGui(tk.Tk):
         if not self._remote_file_exists(helper_path):
             self._log("Helper absent sur le serveur: upload automatique en cours...")
             self._upload_installer_files(remote_dir)
-            self._log("Upload automatique terminé")
+            self._log("Upload automatique termine")
         else:
-            # Always sync helper script to ensure latest bugfixes are used remotely.
             self._upload_helper_script_only(remote_dir)
 
         return remote_dir
@@ -1392,6 +768,26 @@ class FabSuiteSshGui(tk.Tk):
             allow_failure=allow_failure,
             timeout_sec=timeout_sec,
         )
+
+    # ─── Path safety ───
+
+    def _ensure_safe_remote_path(self, path):
+        p = (path or "").strip()
+        if not p or p in ("/", ".", ".."):
+            raise RuntimeError("Chemin invalide")
+        if not p.startswith("/"):
+            raise RuntimeError("Chemin non absolu refuse")
+        if not self.remote_home:
+            raise RuntimeError("Dossier HOME distant inconnu, reconnecte-toi")
+
+        home = self.remote_home.rstrip("/")
+        if p == home:
+            raise RuntimeError("Suppression du HOME refusee")
+        if not p.startswith(home + "/"):
+            raise RuntimeError("Pour securite, seules les suppressions sous HOME sont autorisees")
+        return p
+
+    # ─── Action entry points ───
 
     def action_upload_files(self):
         if self._is_local_mode():
@@ -1413,15 +809,14 @@ class FabSuiteSshGui(tk.Tk):
 
     def _scan_dirs_worker(self):
         self._require_connection()
-        root = self.dir_root_var.get().strip() or "~"
+        root = self.state.get("dir_root", "~").strip() or "~"
 
         try:
-            depth = int((self.dir_depth_var.get().strip() or "3"))
+            depth = int((self.state.get("dir_depth", "3").strip() or "3"))
         except ValueError as exc:
             raise RuntimeError("Profondeur invalide (entier attendu)") from exc
         depth = max(1, min(depth, 8))
 
-        # Recherche des dossiers candidats: noms connus FabSuite + tout dossier contenant docker-compose.yml.
         cmd = f"""
 ROOT={shlex.quote(root)}
 if [ "$ROOT" = "~" ]; then ROOT="$HOME"; fi
@@ -1447,7 +842,6 @@ sort -u "$tmp_file" | while IFS= read -r d; do
 done
 rm -f "$tmp_file"
 """
-
         out = self._exec_remote_simple(cmd)
         rows = []
         for line in out.splitlines():
@@ -1461,16 +855,9 @@ rm -f "$tmp_file"
                 continue
             rows.append({"size": parts[0], "mtime": parts[1], "path": parts[2]})
 
-        self._queue_ui(MSG_SET_DIR_ROWS, rows)
-        self._queue_ui(MSG_SET_SCAN_INFO, f"Scan terminé: {len(rows)} dossier(s)")
-        self._log(f"Scan dossiers: {len(rows)} résultat(s)")
-
-    def action_inspect_selected_dir(self):
-        path = self._get_selected_remote_path()
-        if not path:
-            messagebox.showwarning("Aucune sélection", "Sélectionne d'abord un dossier dans la liste.")
-            return
-        self._run_async("Inspect dossier", lambda p=path: self._inspect_dir_worker(p))
+        self._set_dir_rows(rows)
+        self._set_scan_info(f"Scan termine: {len(rows)} dossier(s)")
+        self._log(f"Scan dossiers: {len(rows)} resultat(s)")
 
     def _inspect_dir_worker(self, path):
         self._require_connection()
@@ -1490,23 +877,10 @@ du -h --max-depth=2 "$target" 2>/dev/null | sort -h | tail -n 30
 """
         self._exec_remote_logged(cmd, allow_failure=False)
 
-    def action_fix_permissions_selected_dir(self):
-        path = self._get_selected_remote_path()
-        if not path:
-            messagebox.showwarning("Aucune sélection", "Sélectionne d'abord un dossier dans la liste.")
-            return
-        if not messagebox.askyesno(
-            "Confirmer",
-            f"Corriger les permissions pour ce dossier ?\n\n{path}\n\n"
-            "Cela peut utiliser sudo et appliquer chown/chmod de façon récursive.",
-        ):
-            return
-        self._run_async("Correction permissions", lambda p=path: self._fix_permissions_dir_worker(p))
-
     def _fix_permissions_dir_worker(self, path):
         self._require_connection()
         safe_path = self._ensure_safe_remote_path(path)
-        sudo_pass = shlex.quote(self.sudo_password_var.get().strip())
+        sudo_pass = shlex.quote(self.state.get("sudo_password", "").strip())
         cmd = f"""
 set +e
 target={shlex.quote(safe_path)}
@@ -1520,19 +894,16 @@ if [ ! -e "$target" ]; then
   exit 1
 fi
 
-# 1) Tentative sans sudo.
 if chown -R "$uid:$gid" "$target" >/dev/null 2>&1; then
     method="sans sudo"
 fi
 
-# 2) Tentative avec sudo + mot de passe fourni.
 if [ -z "$method" ] && [ -n "$sudo_pass" ]; then
     if printf '%s\\n' "$sudo_pass" | sudo -S -p '' chown -R "$uid:$gid" "$target" >/dev/null 2>&1; then
         method="avec sudo"
     fi
 fi
 
-# 3) Tentative sudo non interactive (NOPASSWD).
 if [ -z "$method" ]; then
     if sudo -n chown -R "$uid:$gid" "$target" >/dev/null 2>&1; then
         method="avec sudo -n"
@@ -1540,11 +911,10 @@ if [ -z "$method" ]; then
 fi
 
 if [ -z "$method" ]; then
-    echo "Permissions insuffisantes: renseigne 'Mot de passe sudo' dans Options avancées."
+    echo "Permissions insuffisantes: renseigne 'Mot de passe sudo' dans Options avancees."
     exit 1
 fi
 
-# Le chmod est best-effort: l'action principale est la reprise de propriété.
 if [ "$method" = "sans sudo" ]; then
     chmod -R u+rwX "$target" >/dev/null 2>&1 || true
 elif [ "$method" = "avec sudo" ]; then
@@ -1553,28 +923,19 @@ else
     sudo -n chmod -R u+rwX "$target" >/dev/null 2>&1 || true
 fi
 
-echo "Permissions corrigées ($method): $target"
+echo "Permissions corrigees ($method): $target"
 exit 0
 """
         self._exec_remote_logged(cmd, allow_failure=False)
         try:
             self._scan_dirs_worker()
         except Exception as exc:
-            self._log(f"Avertissement: correction OK mais rafraîchissement liste impossible: {exc}")
-
-    def action_archive_selected_dir(self):
-        path = self._get_selected_remote_path()
-        if not path:
-            messagebox.showwarning("Aucune sélection", "Sélectionne d'abord un dossier dans la liste.")
-            return
-        if not messagebox.askyesno("Confirmer", f"Créer une archive de sauvegarde pour:\n{path} ?"):
-            return
-        self._run_async("Archive dossier", lambda p=path: self._archive_dir_worker(p))
+            self._log(f"Avertissement: correction OK mais rafraichissement liste impossible: {exc}")
 
     def _archive_dir_worker(self, path):
         self._require_connection()
         safe_path = self._ensure_safe_remote_path(path)
-        sudo_pass = shlex.quote(self.sudo_password_var.get().strip())
+        sudo_pass = shlex.quote(self.state.get("sudo_password", "").strip())
         cmd = f"""
 set +e
 target={shlex.quote(safe_path)}
@@ -1591,75 +952,50 @@ ts=$(date +%F-%H%M%S)
 archive="$backup_dir/${{base}}-${{ts}}.tgz"
 
 if tar -czf "$archive" -C "$parent" "$base" 2>/dev/null; then
-    echo "Archive créée (sans sudo): $archive"
+    echo "Archive creee (sans sudo): $archive"
     exit 0
 fi
 
 if [ -n "$sudo_pass" ]; then
     if printf '%s\\n' "$sudo_pass" | sudo -S -p '' tar -czf "$archive" -C "$parent" "$base"; then
         sudo chown "$(id -u):$(id -g)" "$archive" 2>/dev/null || true
-        echo "Archive créée (avec sudo): $archive"
+        echo "Archive creee (avec sudo): $archive"
         exit 0
     fi
-    echo "Archivage échoué avec sudo. Vérifie le mot de passe sudo."
+    echo "Archivage echoue avec sudo. Verifie le mot de passe sudo."
     exit 1
 fi
 
 if sudo -n tar -czf "$archive" -C "$parent" "$base" 2>/dev/null; then
     sudo -n chown "$(id -u):$(id -g)" "$archive" 2>/dev/null || true
-    echo "Archive créée (avec sudo -n): $archive"
+    echo "Archive creee (avec sudo -n): $archive"
     exit 0
 fi
 
-echo "Permissions insuffisantes: renseigne 'Mot de passe sudo' dans Options avancées."
+echo "Permissions insuffisantes: renseigne 'Mot de passe sudo' dans Options avancees."
 exit 1
 """
         self._exec_remote_logged(cmd, allow_failure=False)
 
-    def action_delete_selected_dir(self):
-        path = self._get_selected_remote_path()
-        if not path:
-            messagebox.showwarning("Aucune sélection", "Sélectionne d'abord un dossier dans la liste.")
-            return
-
-        if not messagebox.askyesno(
-            "Suppression définitive",
-            f"Supprimer définitivement ce dossier ?\n\n{path}\n\nConseil: fais d'abord Archiver sélection.",
-        ):
-            return
-
-        token = simpledialog.askstring(
-            "Confirmation",
-            "Tape SUPPRIMER pour confirmer la suppression:",
-            parent=self,
-        )
-        if (token or "").strip().upper() != "SUPPRIMER":
-            messagebox.showinfo("Annulé", "Suppression annulée.")
-            return
-
-        self._run_async("Suppression dossier", lambda p=path: self._delete_dir_worker(p))
-
     def _delete_dir_worker(self, path):
         self._require_connection()
         safe_path = self._ensure_safe_remote_path(path)
-        sudo_pass = shlex.quote(self.sudo_password_var.get().strip())
+        sudo_pass = shlex.quote(self.state.get("sudo_password", "").strip())
         cmd = f"""
 set +e
 target={shlex.quote(safe_path)}
 sudo_pass={sudo_pass}
 method=""
 if [ ! -e "$target" ]; then
-  echo "Déjà absent: $target"
+  echo "Deja absent: $target"
   exit 0
 fi
 
-# 1) Tentative sans sudo.
 rm -rf -- "$target" >/dev/null 2>&1 || true
 if [ ! -e "$target" ]; then
     method="sans sudo"
 fi
 
-# 2) Tentative avec sudo + mot de passe fourni.
 if [ -z "$method" ] && [ -n "$sudo_pass" ]; then
     printf '%s\\n' "$sudo_pass" | sudo -S -p '' rm -rf -- "$target" >/dev/null 2>&1 || true
     if [ ! -e "$target" ]; then
@@ -1667,7 +1003,6 @@ if [ -z "$method" ] && [ -n "$sudo_pass" ]; then
     fi
 fi
 
-# 3) Tentative sudo non interactive (NOPASSWD).
 if [ -z "$method" ]; then
     sudo -n rm -rf -- "$target" >/dev/null 2>&1 || true
     if [ ! -e "$target" ]; then
@@ -1676,19 +1011,20 @@ if [ -z "$method" ]; then
 fi
 
 if [ -z "$method" ]; then
-    echo "Permissions insuffisantes: renseigne 'Mot de passe sudo' dans Options avancées."
+    echo "Permissions insuffisantes: renseigne 'Mot de passe sudo' dans Options avancees."
     exit 1
 fi
 
-echo "Supprimé ($method): $target"
+echo "Supprime ($method): $target"
 exit 0
 """
         self._exec_remote_logged(cmd, allow_failure=False)
-        # Rafraîchit la liste après suppression.
         try:
             self._scan_dirs_worker()
         except Exception as exc:
-            self._log(f"Avertissement: suppression OK mais rafraîchissement liste impossible: {exc}")
+            self._log(f"Avertissement: suppression OK mais rafraichissement liste impossible: {exc}")
+
+    # ─── Audit / Deploy / Status / Logs workers ───
 
     def _audit_worker(self):
         if self._is_local_mode():
@@ -1704,20 +1040,18 @@ exit 0
                 break
 
         if code is None:
-            self._log("Pré-check sécurité données (post-audit): non exécuté.")
+            self._log("Pre-check securite donnees (post-audit): non execute.")
         elif code == 0:
-            self._log("Pré-check sécurité données (post-audit): aucun écrasement détecté.")
+            self._log("Pre-check securite donnees (post-audit): aucun ecrasement detecte.")
         elif code == 2:
-            self._queue_ui(
-                MSG_ALERT,
-                (
-                    "Alerte sécurité données",
-                    "Le pré-check post-audit a détecté un risque de changement de chemin data.\n\nL'installation/mise à jour sera bloquée tant que le risque persiste.",
-                ),
+            self._show_alert(
+                "Alerte securite donnees",
+                "Le pre-check post-audit a detecte un risque de changement de chemin data.\n\n"
+                "L'installation/mise a jour sera bloquee tant que le risque persiste.",
             )
-            self._log("Pré-check sécurité données (post-audit): risque détecté.")
+            self._log("Pre-check securite donnees (post-audit): risque detecte.")
         else:
-            self._log(f"Pré-check sécurité données (post-audit): échec technique (code {code}).")
+            self._log(f"Pre-check securite donnees (post-audit): echec technique (code {code}).")
 
     def action_audit(self):
         label = "Audit local" if self._is_local_mode() else "Audit serveur"
@@ -1727,50 +1061,46 @@ exit 0
         if self._is_local_mode():
             self._show_ssh_only_info("Cleanup Docker prudent")
             return
-        if not messagebox.askyesno("Confirmation", "Exécuter cleanup-safe ? Les conteneurs FabSuite seront supprimés (backup bind mounts inclus)."):
-            return
+        # Confirmation handled in JS
         self._run_async("Cleanup prudent", lambda: self._run_helper_action("cleanup-safe"))
 
     def action_prepare_host(self):
         if self._is_local_mode():
-            self._show_ssh_only_info("Préparer l'hôte Ubuntu")
+            self._show_ssh_only_info("Preparer l'hote Ubuntu")
             return
         self._run_async("Prepare host", lambda: self._run_helper_action("prepare-host"))
 
     def _repair_env_worker(self):
         code = self._run_helper_action("repair-env", allow_failure=True)
         if code == 0:
-            self._log("Réparer env monorepo: OK")
+            self._log("Reparer env monorepo: OK")
         else:
-            self._log(f"Réparer env monorepo: échec (code {code}). Consulte les lignes [repair-env] ci-dessus.")
+            self._log(f"Reparer env monorepo: echec (code {code}). Consulte les lignes [repair-env] ci-dessus.")
 
     def action_repair_env(self):
         if self._is_local_mode():
-            self._show_ssh_only_info("Réparer env monorepo")
+            self._show_ssh_only_info("Reparer env monorepo")
             return
-        self._run_async("Réparer env monorepo", self._repair_env_worker)
+        self._run_async("Reparer env monorepo", self._repair_env_worker)
 
     def _data_safety_worker(self):
         code = self._run_helper_action("check-data-safety", allow_failure=True)
         if code == 0:
-            self._log("Pré-check sécurité données: aucun écrasement détecté.")
+            self._log("Pre-check securite donnees: aucun ecrasement detecte.")
         elif code == 2:
-            self._queue_ui(
-                MSG_ALERT,
-                (
-                    "Alerte sécurité données",
-                    "Risque de changement de chemin data détecté.\n\nConsulte le journal pour les détails avant install/update.",
-                ),
+            self._show_alert(
+                "Alerte securite donnees",
+                "Risque de changement de chemin data detecte.\n\nConsulte le journal pour les details avant install/update.",
             )
-            self._log("Pré-check sécurité données: risque détecté.")
+            self._log("Pre-check securite donnees: risque detecte.")
         else:
-            self._log(f"Pré-check sécurité données: échec technique (code {code}).")
+            self._log(f"Pre-check securite donnees: echec technique (code {code}).")
 
     def action_data_safety(self):
         if self._is_local_mode():
-            self._show_ssh_only_info("Pré-check sécurité données")
+            self._show_ssh_only_info("Pre-check securite donnees")
             return
-        self._run_async("Pré-check sécurité données", self._data_safety_worker)
+        self._run_async("Pre-check securite donnees", self._data_safety_worker)
 
     def _install_worker(self):
         if self._is_local_mode():
@@ -1782,15 +1112,12 @@ exit 0
         if result.stopped_early and result.results:
             failed = result.results[-1]
             if failed.step_id == "data-safety" and failed.exit_code == 2:
-                self._queue_ui(
-                    MSG_ALERT,
-                    (
-                        "Alerte sécurité données",
-                        "Risque de changement de chemin data détecté.\n\n"
-                        "Installation stoppée. Consulte le journal pour les détails.",
-                    ),
+                self._show_alert(
+                    "Alerte securite donnees",
+                    "Risque de changement de chemin data detecte.\n\n"
+                    "Installation stoppee. Consulte le journal pour les details.",
                 )
-                raise RuntimeError("Alerte sécurité données: risque détecté, installation interrompue.")
+                raise RuntimeError("Alerte securite donnees: risque detecte, installation interrompue.")
             raise RuntimeError(
                 f"Workflow install interrompu sur '{failed.label}' (code {failed.exit_code})"
             )
@@ -1808,15 +1135,12 @@ exit 0
         if result.stopped_early and result.results:
             failed = result.results[-1]
             if failed.step_id == "data-safety" and failed.exit_code == 2:
-                self._queue_ui(
-                    MSG_ALERT,
-                    (
-                        "Alerte sécurité données",
-                        "Risque de changement de chemin data détecté.\n\n"
-                        "Mise à jour stoppée. Consulte le journal pour les détails.",
-                    ),
+                self._show_alert(
+                    "Alerte securite donnees",
+                    "Risque de changement de chemin data detecte.\n\n"
+                    "Mise a jour stoppee. Consulte le journal pour les details.",
                 )
-                raise RuntimeError("Alerte sécurité données: risque détecté, mise à jour interrompue.")
+                raise RuntimeError("Alerte securite donnees: risque detecte, mise a jour interrompue.")
             raise RuntimeError(
                 f"Workflow update interrompu sur '{failed.label}' (code {failed.exit_code})"
             )
@@ -1837,9 +1161,9 @@ exit 0
         self._run_async("Logs all", lambda: self._run_helper_action("logs"))
 
     def action_logs_app(self):
-        app = self.logs_app_var.get().strip()
+        app = self.state.get("logs_app", "").strip()
         if not app:
-            messagebox.showerror("Erreur", "Renseigne un nom d'app (ex: Fabtrack)")
+            self._show_alert("Erreur", "Renseigne un nom d'app (ex: Fabtrack)")
             return
         if self._is_local_mode():
             self._run_async(f"Logs {app} (local)", lambda a=app: self._run_operation_local_compose_logs_app(a))
@@ -1848,8 +1172,31 @@ exit 0
 
 
 def main():
-    app = FabSuiteSshGui()
-    app.mainloop()
+    if eel is None:
+        print("ERROR: Eel is required. Run: pip install eel")
+        sys.exit(1)
+
+    web_dir = str(Path(__file__).resolve().parent / "web")
+    eel.init(web_dir)
+
+    backend = FabSuiteBackend()
+
+    def on_close(page, sockets):
+        backend.disconnect_ssh(silent=True)
+        backend._closing = True
+        sys.exit(0)
+
+    try:
+        eel.start("index.html", size=(1200, 900), mode="edge",
+                  close_callback=on_close, port=0)
+    except EnvironmentError:
+        try:
+            eel.start("index.html", size=(1200, 900), mode="default",
+                      close_callback=on_close, port=0)
+        except Exception as exc:
+            print(f"Cannot open browser: {exc}")
+            print("Install Microsoft Edge or Google Chrome.")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

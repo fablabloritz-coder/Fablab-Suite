@@ -28,53 +28,73 @@ Structure principale:
 - `FabBoard/`
 - `docker-compose.yml` (lancement global local)
 - `.env.example` (variables de base)
-- `MEMORY.md` (handover complet pour nouvelle session IA/dev)
 - `fabsuite-ubuntu.sh` (installation et maintenance serveur)
 - `fabsuite-ubuntu.env.example` (config serveur)
-- `fabsuite_ssh_gui.py` (assistant SSH graphique)
+- `fabsuite_ssh_gui.py` (assistant SSH graphique — interface Eel/Bootstrap)
+- `web/` (interface HTML/CSS/JS du GUI)
 - `INSTALL_UBUNTU.md` (guide serveur pas à pas)
 - `docs/APPLICATIONS.md` (détail métier par application)
-- `docs/CONTROL_CENTER_MVP.md` (approche app unique local + serveur)
 - `deploy_core/` (scaffold moteur de workflow unifié)
 
 ## Installation recommandée (méthode unique)
 
-Pour installer ou mettre à jour la suite sans dérive de configuration, passez uniquement par cette commande Windows (PowerShell):
+Lancer le GUI depuis Windows (PowerShell) — utilise le cache local, télécharge si absent :
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression (Invoke-RestMethod 'https://raw.githubusercontent.com/fablabloritz-coder/Fablab-Suite/main/run_fabsuite_ssh.ps1')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/fablabloritz-coder/Fablab-Suite/main/run_fabsuite_ssh.ps1')))"
 ```
 
-Cette commande est le parcours standard à maintenir:
-- elle récupère le lanceur maintenu dans ce repo
-- elle met en cache le GUI dans `%LOCALAPPDATA%\\FabSuite\\ssh-gui`
-- elle lance l'assistant unique pour installation et mise à jour
+Forcer la mise à jour vers la dernière version (ajouter `-Update`) :
 
-Ordre conseillé dans la GUI:
-1. Connect SSH
-2. 1) Envoyer les fichiers installateur
-3. 2) Audit serveur
-4. 4) Préparer l'hôte Ubuntu
-5. 5) Réparer env monorepo
-6. 6) Pré-check sécurité données
-7. 7) Installer la suite (ou 7b Mettre à jour la suite)
-8. 8) Vérifier l'état
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/fablabloritz-coder/Fablab-Suite/main/run_fabsuite_ssh.ps1'))) -Update"
+```
 
-Le GUI est conçu pour rester neutre et stable:
-- pas de serveur prérempli en dur dans le code
-- pas de persistance d'identité SSH (hôte/utilisateur) dans la config locale
-- bouton dédié "Réparer env monorepo" pour corriger automatiquement les problèmes d'env courants
-- source unique de déploiement/mise à jour: monorepo Git (`GIT_REPO_URL`)
-- si un ancien layout legacy est détecté, `repair-env` prépare automatiquement la bascule vers le monorepo (`$HOME/fablab-suite`) en conservant les chemins data
-- les URLs inter-apps par défaut sont container-safe (`host.docker.internal:<port>`) pour éviter les erreurs d'auto-config
-- Install et Update lancent automatiquement une réparation d'env avant exécution
-- Install et Update lancent automatiquement un pré-check sécurité données (arrêt + alerte si risque détecté)
-- Audit serveur lance aussi automatiquement un pré-check sécurité données informatif
-- terminal Output colorisé automatiquement (OK en vert, erreurs en rouge, warnings en orange)
+Cette commande :
+- Télécharge le GUI et ses fichiers dans `%LOCALAPPDATA%\FabSuite\ssh-gui`
+- Réutilise le cache si déjà présent (évite le téléchargement à chaque lancement)
+- `-Update` force le re-téléchargement depuis GitHub (nouvelle version)
+- Lance l'interface graphique (Edge/Chrome en mode app)
+- Ferme automatiquement le terminal quand le GUI est fermé
+
+## Utilisation du GUI
+
+Le GUI s'ouvre dans Edge ou Chrome en mode application (sans barre de navigation).
+
+### Mode Local
+
+Gestion Docker Compose depuis votre poste Windows :
+
+1. **Audit** — vérifie l'état des services locaux
+2. **Installer** — `docker compose up -d --build`
+3. **Mettre à jour** — rebuild et redémarre les services
+4. **Status** — état en cours de chaque conteneur
+5. **Logs** — logs de toutes les apps ou d'une app spécifique
+
+### Serveur SSH
+
+Déploiement et maintenance d'un serveur Ubuntu distant :
+
+**Connexion** : saisir `user@host`, mot de passe (ou clé SSH via Options avancées)
+
+**① Préparation**
+1. Upload fichiers — envoie les scripts d'installation sur le serveur
+2. Audit serveur — diagnostique Docker, projets, inter-apps
+3. Cleanup Docker — sauvegarde puis nettoie les conteneurs FabSuite
+4. Préparer hôte — installe Docker + Compose + Git sur Ubuntu
+
+**② Déploiement**
+1. Repair env — corrige/crée `fabsuite-ubuntu.env`
+2. Data safety — vérifie les risques avant migration
+3. Installer — déploiement complet de la suite
+4. Mettre à jour — `git pull` + rebuild
+
+**③ Monitoring**
+- Status, Logs (toutes apps ou app spécifique)
+
+**Maintenance dossiers** : scan, inspection, correction permissions, archivage, suppression
 
 ## Méthodes alternatives (avancées)
-
-Ces méthodes restent disponibles pour debug/contribution, mais ne sont pas le parcours standard utilisateur.
 
 ### Démarrage rapide local (dev)
 
@@ -107,11 +127,11 @@ nano fabsuite-ubuntu.env
 ### Lancement manuel du GUI depuis un clone local
 
 ```bash
-pip install -r requirements-ssh-gui.txt
+pip install eel paramiko
 python fabsuite_ssh_gui.py
 ```
 
-## Maintenance
+## Maintenance serveur
 
 ```bash
 ./fabsuite-ubuntu.sh audit

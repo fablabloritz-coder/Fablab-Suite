@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FabSuite Installer</title>
+  <link rel="stylesheet" href="/vendor/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+  <!-- ═══ HEADER ═══ -->
+  <header class="app-header d-flex align-items-center px-3">
+    <span class="header-icon me-2">&#x2692;</span>
+    <span class="header-title">FabSuite</span>
+    <span class="header-subtitle ms-1">Installer</span>
+    <span class="badge bg-accent ms-3">v2.0</span>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <span id="connectionText" class="header-connection-text small">Non connect&eacute;</span>
+      <span id="connectionDot" class="status-dot text-danger">&#x25cf;</span>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN LAYOUT ═══ -->
+  <div class="app-body d-flex flex-column">
+
+    <!-- Tab bar -->
+    <ul class="nav nav-tabs px-3 pt-2" id="deployTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="localTab" data-bs-toggle="tab"
+                data-bs-target="#localPane" data-mode="local" type="button" role="tab">
+          &#x2302; Mode Local
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sshTab" data-bs-toggle="tab"
+                data-bs-target="#sshPane" data-mode="ssh" type="button" role="tab">
+          &#x2601; Serveur SSH
+        </button>
+      </li>
+    </ul>
+
+    <!-- Tab content (scrollable) -->
+    <div class="tab-content flex-grow-1 overflow-auto px-3 py-2" id="tabContent">
+
+      <!-- ═══ LOCAL TAB ═══ -->
+      <div class="tab-pane fade show active" id="localPane" role="tabpanel">
+        <p class="text-muted small mb-2">Docker Compose local &mdash; build et d&eacute;ploiement depuis ce poste</p>
+        <div class="row g-2 mb-2">
+          <div class="col"><button class="btn btn-outline-secondary w-100 action-btn" data-action="action_audit" data-help="Audit local Docker Compose.">&#x2699; Audit</button></div>
+          <div class="col"><button class="btn btn-success w-100 action-btn" data-action="action_install" data-help="Lance docker compose up -d --build en local.">&#x2B07; Installer</button></div>
+          <div class="col"><button class="btn btn-primary w-100 action-btn" data-action="action_update" data-help="Met a jour/rebuild local via docker compose up -d --build.">&#x21BB; Mettre a jour</button></div>
+          <div class="col"><button class="btn btn-outline-secondary w-100 action-btn" data-action="action_status" data-help="Affiche l'etat des services locaux.">&#x2714; Status</button></div>
+          <div class="col"><button class="btn btn-outline-secondary w-100 action-btn" data-action="action_logs_all" data-help="Affiche les logs locaux de toutes les apps.">&#x2630; Logs</button></div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <label class="small text-muted">Logs app :</label>
+          <input type="text" class="form-control form-control-sm" id="localLogsApp" style="width:120px" value="Fabtrack">
+          <button class="btn btn-sm btn-outline-secondary action-btn" data-action="action_logs_app" data-help="Affiche les logs locaux d'une app (ex: Fabtrack).">Afficher</button>
+        </div>
+      </div>
+
+      <!-- ═══ SSH TAB ═══ -->
+      <div class="tab-pane fade" id="sshPane" role="tabpanel">
+
+        <!-- Connexion -->
+        <div class="card card-dark mb-2">
+          <div class="card-header py-1 px-2"><small>&#x26A1; Connexion</small></div>
+          <div class="card-body py-2 px-2">
+            <div class="row g-2 align-items-center">
+              <div class="col-auto"><label class="col-form-label col-form-label-sm">Cible :</label></div>
+              <div class="col-auto"><input type="text" class="form-control form-control-sm" id="target" placeholder="user@host" style="width:180px"></div>
+              <div class="col-auto"><label class="col-form-label col-form-label-sm">Mot de passe :</label></div>
+              <div class="col-auto"><input type="password" class="form-control form-control-sm" id="password" style="width:150px"></div>
+              <div class="col-auto">
+                <button class="btn btn-sm btn-info" id="btnConnect" data-help="Connexion SSH au serveur distant.">&#x25B6; Connecter</button>
+                <button class="btn btn-sm btn-outline-danger" id="btnDisconnect" data-help="Deconnexion SSH.">&#x25A0; Couper</button>
+              </div>
+            </div>
+            <div class="d-flex align-items-center mt-1">
+              <small class="text-muted">user@host</small>
+              <div class="form-check form-check-inline ms-auto mb-0">
+                <input class="form-check-input" type="checkbox" id="advancedToggle">
+                <label class="form-check-label small" for="advancedToggle">&#x2630; Avanc&eacute;</label>
+              </div>
+            </div>
+
+            <!-- Advanced options (collapsed) -->
+            <div class="collapse mt-2" id="advancedOptions">
+              <div class="row g-2 align-items-center mb-1">
+                <div class="col-auto"><label class="col-form-label col-form-label-sm">Port</label></div>
+                <div class="col-auto"><input type="text" class="form-control form-control-sm" id="port" value="22" style="width:60px"></div>
+                <div class="col-auto">
+                  <div class="form-check form-check-inline mb-0">
+                    <input class="form-check-input" type="radio" name="authMethod" id="authPassword" value="password" checked>
+                    <label class="form-check-label small" for="authPassword">Mot de passe</label>
+                  </div>
+                  <div class="form-check form-check-inline mb-0">
+                    <input class="form-check-input" type="radio" name="authMethod" id="authKey" value="key">
+                    <label class="form-check-label small" for="authKey">Cl&eacute; SSH</label>
+                  </div>
+                </div>
+              </div>
+              <div class="row g-2 align-items-center mb-1" id="keyPathRow" style="display:none">
+                <div class="col-auto"><label class="col-form-label col-form-label-sm">Cl&eacute; priv&eacute;e</label></div>
+                <div class="col"><input type="text" class="form-control form-control-sm" id="keyPath" placeholder="~/.ssh/id_rsa"></div>
+              </div>
+              <div class="row g-2 align-items-center mb-1">
+                <div class="col-auto"><label class="col-form-label col-form-label-sm">Dossier distant</label></div>
+                <div class="col"><input type="text" class="form-control form-control-sm" id="remoteDir" value="~/fabsuite-installer"></div>
+                <div class="col-auto"><label class="col-form-label col-form-label-sm">Sudo</label></div>
+                <div class="col-auto"><input type="password" class="form-control form-control-sm" id="sudoPassword" style="width:130px"></div>
+              </div>
+              <div class="row g-2 align-items-center">
+                <div class="col-auto"><label class="col-form-label col-form-label-sm">Monorepo URL</label></div>
+                <div class="col"><input type="text" class="form-control form-control-sm" id="repoUrl"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 1 : Preparation -->
+        <div class="card card-dark mb-2">
+          <div class="card-header py-1 px-2"><small>&#x2460; Pr&eacute;paration</small></div>
+          <div class="card-body py-2 px-2">
+            <div class="row g-2">
+              <div class="col"><button class="btn btn-outline-secondary btn-sm w-100 action-btn ssh-btn" data-action="action_upload_files" data-help="Copie fabsuite-ubuntu.sh et fichiers associes sur le serveur.">&#x2191; Upload fichiers</button></div>
+              <div class="col"><button class="btn btn-outline-secondary btn-sm w-100 action-btn ssh-btn" data-action="action_audit" data-help="Conteneurs Docker, projets compose et diagnostics inter-apps.">&#x2699; Audit serveur</button></div>
+              <div class="col"><button class="btn btn-warning btn-sm w-100 action-btn ssh-btn" data-action="action_cleanup_safe" data-confirm="Executer cleanup-safe ? Les conteneurs FabSuite seront supprimes (backup bind mounts inclus)." data-help="Sauvegarde bind mounts puis supprime conteneurs FabSuite.">&#x2672; Cleanup Docker</button></div>
+              <div class="col"><button class="btn btn-primary btn-sm w-100 action-btn ssh-btn" data-action="action_prepare_host" data-help="Installe Docker + Docker Compose + Git sur le serveur Ubuntu.">&#x229B; Pr&eacute;parer h&ocirc;te</button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 2 : Deploiement -->
+        <div class="card card-dark mb-2">
+          <div class="card-header py-1 px-2"><small>&#x2461; D&eacute;ploiement</small></div>
+          <div class="card-body py-2 px-2">
+            <div class="row g-2">
+              <div class="col"><button class="btn btn-outline-secondary btn-sm w-100 action-btn ssh-btn" data-action="action_repair_env" data-help="Cree/repare fabsuite-ubuntu.env et valide la config monorepo.">&#x2692; Repair env</button></div>
+              <div class="col"><button class="btn btn-warning btn-sm w-100 action-btn ssh-btn" data-action="action_data_safety" data-help="Verifie les risques de changement de chemin data.">&#x26A0; Data safety</button></div>
+              <div class="col"><button class="btn btn-success btn-sm w-100 action-btn ssh-btn" data-action="action_install" data-help="Execute repair-env + data safety + install helper.">&#x2B07; Installer</button></div>
+              <div class="col"><button class="btn btn-primary btn-sm w-100 action-btn ssh-btn" data-action="action_update" data-help="Execute repair-env + data safety + update helper.">&#x21BB; Mettre a jour</button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 3 : Monitoring -->
+        <div class="card card-dark mb-2">
+          <div class="card-header py-1 px-2"><small>&#x2462; Monitoring</small></div>
+          <div class="card-body py-2 px-2">
+            <div class="row g-2 align-items-center">
+              <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_status" data-help="Etat (running/health) de chaque app deployee.">&#x2714; Status</button></div>
+              <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_logs_all" data-help="Derniers logs de toutes les apps cote serveur.">&#x2630; Logs</button></div>
+              <div class="col-auto"><label class="col-form-label col-form-label-sm">App :</label></div>
+              <div class="col-auto"><input type="text" class="form-control form-control-sm" id="sshLogsApp" value="Fabtrack" style="width:120px"></div>
+              <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_logs_app" data-help="Logs d'une app cote serveur (ex: Fabtrack).">Afficher</button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Maintenance dossiers -->
+        <div class="card card-dark mb-2">
+          <div class="card-header py-1 px-2"><small>&#x2637; Maintenance dossiers</small></div>
+          <div class="card-body py-2 px-2">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <label class="col-form-label col-form-label-sm">Racine :</label>
+              <input type="text" class="form-control form-control-sm" id="dirRoot" value="~" style="width:120px">
+              <label class="col-form-label col-form-label-sm">Prof. :</label>
+              <input type="text" class="form-control form-control-sm" id="dirDepth" value="3" style="width:50px">
+              <button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_scan_dirs" data-help="Cherche les dossiers FabSuite et affiche taille/date.">&#x2315; Scanner</button>
+              <span id="scanInfo" class="text-muted small">Aucun scan effectu&eacute;</span>
+            </div>
+            <div class="table-responsive" style="max-height:160px">
+              <table class="table table-hover table-sm mb-2" id="dirTable">
+                <thead><tr><th style="width:80px">Taille</th><th style="width:140px">Modifi&eacute;</th><th>Chemin</th></tr></thead>
+                <tbody id="dirTableBody"></tbody>
+              </table>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_inspect_dir" data-help="Contenu et sous-dossiers du dossier selectionne.">&#x2690; Inspecter</button>
+              <button class="btn btn-warning btn-sm action-btn ssh-btn" data-action="action_fix_permissions" data-confirm="Corriger les permissions pour ce dossier ? Cela peut utiliser sudo et appliquer chown/chmod de facon recursive." data-help="Reprendre la propriete du dossier selectionne.">&#x2692; Permissions</button>
+              <button class="btn btn-primary btn-sm action-btn ssh-btn" data-action="action_archive_dir" data-confirm="Creer une archive de sauvegarde pour ce dossier ?" data-help="Archive .tgz de sauvegarde avant suppression.">&#x2B07; Archiver</button>
+              <button class="btn btn-danger btn-sm action-btn ssh-btn" data-action="action_delete_dir" data-help="Suppression definitive (double confirmation).">&#x2716; Supprimer</button>
+              <span id="selectedDir" class="text-muted small ms-2">Aucun dossier s&eacute;lectionn&eacute;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help bar -->
+    <div class="help-bar px-3 py-1 d-flex align-items-center">
+      <span class="text-info me-2">&#x2139;</span>
+      <span id="helpText" class="text-muted small">Survole un bouton pour voir pr&eacute;cis&eacute;ment ce qu'il fait.</span>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal-section">
+      <div class="d-flex align-items-center px-3 py-1">
+        <span class="terminal-icon me-1">&#x2588;&#x2588;</span>
+        <span class="terminal-label">Terminal</span>
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-outline-secondary btn-xs" id="btnClear">&#x2716; Clear</button>
+          <button class="btn btn-outline-warning btn-xs" id="btnUnlock">&#x26A1; D&eacute;bloquer</button>
+        </div>
+      </div>
+      <div id="terminal" class="terminal-output"></div>
+    </div>
+  </div>
+
+  <!-- ═══ MODALS ═══ -->
+
+  <!-- Alert modal -->
+  <div class="modal fade" id="alertModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content bg-modal">
+      <div class="modal-header py-2"><h6 class="modal-title" id="alertTitle">Alerte</h6><button type="button" class="btn-close btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="alertBody"></div>
+      <div class="modal-footer py-1"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">OK</button></div>
+    </div></div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content bg-modal">
+      <div class="modal-header py-2"><h6 class="modal-title" id="confirmTitle">Confirmation</h6><button type="button" class="btn-close btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-footer py-1">
+        <button type="button" class="btn btn-sm btn-secondary" id="confirmCancel" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-sm btn-primary" id="confirmOk">Confirmer</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Prompt modal (for delete confirmation) -->
+  <div class="modal fade" id="promptModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content bg-modal">
+      <div class="modal-header py-2"><h6 class="modal-title" id="promptTitle">Confirmation</h6><button type="button" class="btn-close btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <p id="promptBody"></p>
+        <input type="text" class="form-control form-control-sm" id="promptInput" placeholder="Tape SUPPRIMER">
+      </div>
+      <div class="modal-footer py-1">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-sm btn-danger" id="promptOk">Confirmer</button>
+      </div>
+    </div></div>
+  </div>
+
+  <script src="/vendor/bootstrap.bundle.min.js"></script>
+  <script type="text/javascript" src="/eel.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
