@@ -109,4 +109,5 @@ Single profile object per environment:
 - Done: `deploy_core` scaffold (models, workflows, service, adapters)
 - Done: GUI bridge using `deploy_core` for `Status suite`, `Audit serveur`, `Install suite`, `Mettre à jour la suite`
 - Done: GUI Local mode selector (`Serveur SSH` / `Local Docker`) with shared workflows for audit/install/update/status/logs
-- Next: unify scan/cleanup server-only controls in dedicated SSH section to reduce operator confusion
+- Done: séparation UX des actions `communes` vs `SSH serveur uniquement` avec désactivation automatique selon mode
+- Next: brancher les actions de scan/archivage/suppression dossier serveur sur un sous-module `server_maintenance` (même style que `deploy_core`)
