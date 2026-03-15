@@ -28,11 +28,14 @@ Structure principale:
 - `FabBoard/`
 - `docker-compose.yml` (lancement global local)
 - `.env.example` (variables de base)
+- `MEMORY.md` (handover complet pour nouvelle session IA/dev)
 - `fabsuite-ubuntu.sh` (installation et maintenance serveur)
 - `fabsuite-ubuntu.env.example` (config serveur)
 - `fabsuite_ssh_gui.py` (assistant SSH graphique)
 - `INSTALL_UBUNTU.md` (guide serveur pas à pas)
 - `docs/APPLICATIONS.md` (détail métier par application)
+- `docs/CONTROL_CENTER_MVP.md` (approche app unique local + serveur)
+- `deploy_core/` (scaffold moteur de workflow unifié)
 
 ## Démarrage rapide (local)
 
