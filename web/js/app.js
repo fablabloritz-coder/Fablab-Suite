@@ -262,6 +262,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentMode = e.target.dataset.mode;
       eel.set_state("run_mode", currentMode);
       refreshModeUI();
+      eel.refresh_actions_state();
     });
   });
 
@@ -315,5 +316,5 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Initial UI state
   refreshModeUI();
-  set_actions_enabled(currentMode === "local");
+  eel.refresh_actions_state();
 });

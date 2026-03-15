@@ -50,6 +50,99 @@ function Resolve-PythonCommand {
     throw "Python introuvable. Installe Python 3 puis relance."
 }
 
+function Test-FabSuiteWorkspace {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    if (-not (Test-Path -Path $Path -PathType Container)) {
+        return $false
+    }
+
+    if (-not (Test-Path -Path (Join-Path $Path "docker-compose.yml") -PathType Leaf)) {
+        return $false
+    }
+
+    foreach ($d in @("FabHome", "Fabtrack", "PretGo", "FabBoard")) {
+        if (-not (Test-Path -Path (Join-Path $Path $d) -PathType Container)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Ensure-LocalWorkspace {
+    param(
+        [Parameter(Mandatory = $true)][string]$AppRoot,
+        [Parameter(Mandatory = $true)][string]$RepoOwner,
+        [Parameter(Mandatory = $true)][string]$RepoName,
+        [Parameter(Mandatory = $true)][string]$Branch,
+        [Parameter(Mandatory = $false)][bool]$ForceRefresh = $false
+    )
+
+    $cwdPath = (Get-Location).Path
+    if (Test-FabSuiteWorkspace -Path $cwdPath) {
+        Write-Info "Workspace local detecte depuis le dossier courant: $cwdPath"
+        return $cwdPath
+    }
+
+    $workspaceRoot = Join-Path $AppRoot "workspace"
+    $hasGit = $null -ne (Get-Command git -ErrorAction SilentlyContinue)
+
+    if (Test-FabSuiteWorkspace -Path $workspaceRoot) {
+        if ($ForceRefresh -and $hasGit -and (Test-Path -Path (Join-Path $workspaceRoot ".git") -PathType Container)) {
+            Write-Info "Mise a jour du workspace local: $workspaceRoot"
+            & git -C $workspaceRoot fetch origin $Branch
+            if ($LASTEXITCODE -eq 0) {
+                & git -C $workspaceRoot reset --hard ("origin/" + $Branch)
+            }
+            if ($LASTEXITCODE -ne 0) {
+                Write-WarnMsg "Impossible de mettre a jour le workspace local (git). Utilisation de la version existante."
+            }
+        }
+        return $workspaceRoot
+    }
+
+    if (-not $hasGit) {
+        Write-WarnMsg "Git introuvable: mode local indisponible sans workspace monorepo preexistant."
+        return ""
+    }
+
+    $repoUrl = "https://github.com/$RepoOwner/$RepoName.git"
+    Write-Info "Initialisation du workspace local pour le mode local: $workspaceRoot"
+
+    if (Test-Path -Path $workspaceRoot -PathType Container) {
+        $children = @(Get-ChildItem -Force -Path $workspaceRoot -ErrorAction SilentlyContinue)
+        if ($children.Count -gt 0) {
+            Write-WarnMsg "Workspace local existant non reconnu: $workspaceRoot"
+            Write-WarnMsg "Conserve ce dossier et configure FABSUITE_LOCAL_WORKSPACE manuellement si besoin."
+            return ""
+        }
+        Remove-Item -Force -Path $workspaceRoot
+    }
+
+    $workspaceParent = Split-Path -Parent $workspaceRoot
+    if (-not (Test-Path $workspaceParent)) {
+        New-Item -ItemType Directory -Force -Path $workspaceParent | Out-Null
+    }
+
+    & git clone --branch $Branch $repoUrl $workspaceRoot
+    if ($LASTEXITCODE -ne 0) {
+        Write-WarnMsg "Clone du workspace local echoue. Le mode local sera indisponible."
+        return ""
+    }
+
+    if (Test-FabSuiteWorkspace -Path $workspaceRoot) {
+        return $workspaceRoot
+    }
+
+    Write-WarnMsg "Workspace clone mais structure locale non valide pour docker compose racine."
+    return ""
+}
+
 # Compat TLS pour certains environnements Windows PowerShell 5.1.
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -57,9 +150,11 @@ try {
 }
 
 $cacheRoot = Join-Path $env:LOCALAPPDATA "FabSuite\ssh-gui"
+$appRoot = Join-Path $env:LOCALAPPDATA "FabSuite"
 $manifestPath = Join-Path $cacheRoot "cache-manifest.json"
 $guiPath = Join-Path $cacheRoot "fabsuite_ssh_gui.py"
 $rawBase = "https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch"
+$cacheSchemaVersion = 2
 
 $requiredFiles = @(
     "fabsuite_ssh_gui.py",
@@ -101,7 +196,11 @@ if (-not $needRefresh -and (Test-Path $manifestPath)) {
     try {
         $manifest = Get-Content -Raw -Path $manifestPath | ConvertFrom-Json
         $expectedCount = $requiredFiles.Count + $optionalFiles.Count
-        if (($manifest.raw_base -ne $rawBase) -or ($manifest.file_count -ne $expectedCount)) {
+        $manifestSchema = 0
+        if ($manifest.PSObject.Properties.Name -contains "schema_version") {
+            $manifestSchema = [int]$manifest.schema_version
+        }
+        if (($manifest.raw_base -ne $rawBase) -or ($manifest.file_count -ne $expectedCount) -or ($manifestSchema -ne $cacheSchemaVersion)) {
             $needRefresh = $true
         }
     }
@@ -151,6 +250,7 @@ if ($needRefresh) {
     }
 
     $manifestObj = @{
+        schema_version = $cacheSchemaVersion
         raw_base   = $rawBase
         file_count = ($requiredFiles.Count + $optionalFiles.Count)
         updated_at = (Get-Date).ToString("o")
@@ -161,6 +261,15 @@ if ($needRefresh) {
 else {
     Write-Info "Cache deja pret: $cacheRoot"
     Write-WarnMsg "Ajoute -Update pour forcer la recuperation de la derniere version."
+}
+
+$localWorkspace = Ensure-LocalWorkspace -AppRoot $appRoot -RepoOwner $RepoOwner -RepoName $RepoName -Branch $Branch -ForceRefresh:$Update.IsPresent
+if (-not [string]::IsNullOrWhiteSpace($localWorkspace)) {
+    $env:FABSUITE_LOCAL_WORKSPACE = $localWorkspace
+    Write-Info "FABSUITE_LOCAL_WORKSPACE=$localWorkspace"
+}
+else {
+    Write-WarnMsg "Aucun workspace local valide detecte. Le mode local GUI restera indisponible."
 }
 
 $pythonCmd = Resolve-PythonCommand

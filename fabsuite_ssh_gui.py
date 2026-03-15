@@ -2,6 +2,7 @@
 
 import json
 import importlib
+import os
 import socket
 import shlex
 import subprocess
@@ -45,6 +46,7 @@ APP_TITLE = "FabSuite Installer"
 CONFIG_PATH = Path.home() / ".fabsuite_ssh_gui.json"
 DEFAULT_REMOTE_DIR = "~/fabsuite-installer"
 DEFAULT_MONOREPO_URL = "https://github.com/fablabloritz-coder/Fablab-Suite.git"
+LOCAL_WORKSPACE_ENV = "FABSUITE_LOCAL_WORKSPACE"
 
 # Privacy by default: do not persist SSH target identity in local config.
 PERSIST_SSH_IDENTITY = False
@@ -89,6 +91,7 @@ class FabSuiteBackend:
         self.client = None
         self.remote_home = None
         self._closing = False
+        self._actions_locked = False
 
         # State dict (replaces tk.StringVar)
         self.state = {
@@ -124,8 +127,22 @@ class FabSuiteBackend:
         @eel.expose
         def set_state(key, value):
             if key in self.state:
-                self.state[key] = value
+                if key == "run_mode":
+                    run_mode = str(value).strip().lower()
+                    self.state[key] = "local" if run_mode == "local" else "ssh"
+                    self._refresh_actions_state()
+                elif key == "advanced":
+                    if isinstance(value, bool):
+                        self.state[key] = value
+                    else:
+                        self.state[key] = str(value).strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    self.state[key] = value
                 self._save_config()
+
+        @eel.expose
+        def refresh_actions_state():
+            self._refresh_actions_state()
 
         @eel.expose
         def connect_ssh():
@@ -141,9 +158,8 @@ class FabSuiteBackend:
 
         @eel.expose
         def manual_unlock_ui():
-            self._set_actions_enabled(
-                (self.client is not None) or self._is_local_mode()
-            )
+            self._actions_locked = False
+            self._refresh_actions_state()
             self._log("UI deverrouillee manuellement")
 
         @eel.expose
@@ -259,6 +275,14 @@ class FabSuiteBackend:
             eel.set_actions_enabled(bool(enabled))()
         except Exception:
             pass
+
+    def _compute_actions_enabled(self):
+        if self._actions_locked:
+            return False
+        return (self.client is not None) or self._is_local_mode()
+
+    def _refresh_actions_state(self):
+        self._set_actions_enabled(self._compute_actions_enabled())
 
     def _set_dir_rows(self, rows):
         self._dir_rows = rows
@@ -395,7 +419,8 @@ class FabSuiteBackend:
     # ─── Async worker pattern ───
 
     def _run_async(self, label, target):
-        self._set_actions_enabled(False)
+        self._actions_locked = True
+        self._refresh_actions_state()
 
         def worker():
             self._log(f"--- {label} ---")
@@ -406,9 +431,8 @@ class FabSuiteBackend:
                 self._log(traceback.format_exc())
             finally:
                 self._log(f"--- end: {label} ---")
-                self._set_actions_enabled(
-                    (self.client is not None) or self._is_local_mode()
-                )
+                self._actions_locked = False
+                self._refresh_actions_state()
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -466,7 +490,7 @@ class FabSuiteBackend:
                 self.client = None
                 self.remote_home = None
         self._set_connection_status("Non connecte")
-        self._set_actions_enabled(self._is_local_mode())
+        self._refresh_actions_state()
         self._set_dir_rows([])
         self._set_scan_info("Aucun scan effectue")
         if not silent:
@@ -619,10 +643,64 @@ class FabSuiteBackend:
     def _is_local_mode(self):
         return self.state.get("run_mode", "ssh").strip().lower() == "local"
 
+    def _is_valid_local_workspace(self, path: Path) -> bool:
+        """Checks if a path looks like the FabSuite monorepo root for local compose mode."""
+        if not path or not path.is_dir():
+            return False
+        if not (path / "docker-compose.yml").is_file():
+            return False
+        required_dirs = ("FabHome", "Fabtrack", "PretGo", "FabBoard")
+        return all((path / d).is_dir() for d in required_dirs)
+
+    def _resolve_local_workspace(self) -> str:
+        """Resolve a valid local monorepo path used by docker compose local mode."""
+        candidates = []
+
+        env_ws = os.environ.get(LOCAL_WORKSPACE_ENV, "").strip()
+        if env_ws:
+            candidates.append(Path(env_ws).expanduser())
+
+        try:
+            candidates.append(Path.cwd())
+        except Exception:
+            pass
+
+        script_dir = Path(__file__).resolve().parent
+        candidates.append(script_dir)
+        candidates.append(script_dir.parent)
+
+        local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
+        if local_appdata:
+            candidates.append(Path(local_appdata) / "FabSuite" / "workspace")
+
+        home = Path.home()
+        candidates.extend([
+            home / "fablab-suite",
+            home / "Fablab-Suite",
+            home / "FabLab-Suite",
+        ])
+
+        seen = set()
+        for c in candidates:
+            key = str(c).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            if self._is_valid_local_workspace(c):
+                resolved = str(c.resolve())
+                os.environ[LOCAL_WORKSPACE_ENV] = resolved
+                return resolved
+
+        raise RuntimeError(
+            "Mode local indisponible: workspace FabSuite introuvable (docker-compose.yml + apps). "
+            "Relance le lanceur depuis un dossier du monorepo ou définis FABSUITE_LOCAL_WORKSPACE vers la racine du repo."
+        )
+
     # ─── Deploy_core integration (local) ───
 
     def _run_operation_local_via_core(self, operation):
-        workspace = str(Path(__file__).resolve().parent)
+        workspace = self._resolve_local_workspace()
+        self._log(f"[INFO] Workspace local: {workspace}")
         ctx = WorkflowContext(
             mode=DeploymentMode.LOCAL,
             workspace_dir=workspace,
@@ -646,7 +724,8 @@ class FabSuiteBackend:
         return result
 
     def _run_operation_local_compose_logs_app(self, app_name):
-        workspace = Path(__file__).resolve().parent
+        workspace = Path(self._resolve_local_workspace())
+        self._log(f"[INFO] Workspace local: {workspace}")
         proc = subprocess.run(
             f"docker compose logs --tail=300 {shlex.quote(app_name)}",
             cwd=str(workspace),

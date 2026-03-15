@@ -53,6 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create
 Cette commande :
 - Télécharge le GUI et ses fichiers dans `%LOCALAPPDATA%\FabSuite\ssh-gui`
 - Réutilise le cache si déjà présent (évite le téléchargement à chaque lancement)
+- Prépare automatiquement un workspace monorepo pour le mode local (`%LOCALAPPDATA%\FabSuite\workspace`) si absent
 - `-Update` force le re-téléchargement depuis GitHub (nouvelle version)
 - Lance l'interface graphique (Edge/Chrome en mode app)
 - Ferme automatiquement le terminal quand le GUI est fermé
@@ -64,6 +65,8 @@ Le GUI s'ouvre dans Edge ou Chrome en mode application (sans barre de navigation
 ### Mode Local
 
 Gestion Docker Compose depuis votre poste Windows :
+
+- Aucun serveur SSH requis : les actions locales sont utilisables meme sans connexion distante.
 
 1. **Audit** — vérifie l'état des services locaux
 2. **Installer** — `docker compose up -d --build`
