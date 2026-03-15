@@ -35,6 +35,8 @@ Important URL rules:
   - FABTRACK_URL = http://host.docker.internal:5555
   - PRETGO_URL = http://host.docker.internal:5000
   - FABBOARD_URL = http://host.docker.internal:5580
+- FabHome registered app URLs (browser links) should use server network host/IP, not localhost.
+- Server auto-registration now supports `FABHOME_REGISTER_HOST` (and optional `FABHOME_REGISTER_SCHEME`).
 - Legacy hostname URLs can fail from containers; helper now normalizes/migrates these.
 
 ## 5) Monorepo policy (critical)
@@ -48,6 +50,7 @@ Important URL rules:
 
 ## 6) Canonical operational entry points
 Primary automation files:
+- `run_fabsuite_ssh.ps1` (Windows one-liner launcher, recommended entry)
 - `fabsuite-ubuntu.sh` (install/update/audit/safety)
 - `fabsuite_ssh_gui.py` (one-click SSH orchestration)
 - `fabsuite-ubuntu.env.example` (server config template)
@@ -68,14 +71,16 @@ Daily update:
 4. `./fabsuite-ubuntu.sh audit`
 
 GUI flow (recommended):
-1. Connect SSH
-2. Upload installer files
-3. Audit serveur
-4. Prepare host
-5. Reparer env monorepo
-6. Pre-check securite donnees
-7. Installer la suite (first time) OR Mettre a jour la suite (next times)
-8. Verifier l etat
+1. Start GUI from Windows one-liner launcher:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression (Invoke-RestMethod 'https://raw.githubusercontent.com/fablabloritz-coder/Fablab-Suite/main/run_fabsuite_ssh.ps1')"`
+2. In tab `Deploiement Serveur`: Connect SSH
+3. 1) Envoyer les fichiers installateur
+4. 2) Audit serveur
+5. 4) Preparer l hote Ubuntu
+6. 5) Reparer env monorepo
+7. 6) Pre-check securite donnees
+8. 7) Installer la suite (first time) OR 7b) Mettre a jour la suite
+9. 8) Verifier l etat
 
 Notes:
 - GUI Install/Update already run repair-env + data safety precheck automatically.
@@ -102,7 +107,10 @@ Safety mechanism:
 ## 9) Inter-app auto-configuration status
 Current behavior:
 - Helper auto-registers Fabtrack/PretGo/FabBoard in FabHome
-- Registration uses container-safe URLs
+- Registration health checks are done via localhost on server (`http://localhost:<port>/api/fabsuite/health`)
+- Registered URLs for FabHome can be forced to browser/network-friendly host via `FABHOME_REGISTER_HOST`
+- If `FABHOME_REGISTER_HOST` is missing, helper tries auto-detect (route src IP, then `hostname -I`)
+- SSH GUI injects `FABHOME_REGISTER_HOST` from active SSH peer host/IP to avoid localhost links in FabHome
 - Existing app entries in FabHome can be replaced when URL changed (by app_id)
 - Registration logging is explicit (HTTP code + payload)
 - If app health endpoint not ready: registration deferred with warning
@@ -147,6 +155,9 @@ FabHome suite endpoints:
 - If FabBoard worker diagnostics are KO/slow, check deployed FabBoard version and source URL.
 
 ## 14) Quick commands
+Recommended Windows entry (install/update via GUI):
+- `powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression (Invoke-RestMethod 'https://raw.githubusercontent.com/fablabloritz-coder/Fablab-Suite/main/run_fabsuite_ssh.ps1')"`
+
 Local full stack:
 - `cp .env.example .env`
 - `docker compose up -d --build`
@@ -159,11 +170,14 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 Recent commits (latest first):
+- `eff4048` docs(readme): promote single recommended installer command
+- `257b96e` feat(installer): one-line Windows launcher and robust server app registration
+- `7827937` feat(gui): separer UX actions communes et SSH-only
+- `6b27449` feat(gui): ajouter mode local et unifier workflows deploy_core
+- `9734009` feat(control-center): migrer audit GUI vers deploy_core
+- `e7e0fb4` feat(control-center): brancher status GUI sur deploy_core
+- `041eae6` feat(control-center): init memory and unified workflow scaffold
 - `27d448d` fix(installer): centraliser auto-config inter-app et transparence UI
-- `d69f53e` fix(installer): migrer legacy vers monorepo
-- `7bc3f77` feat(installer): imposer les updates monorepo
-- `078fc9b` fix(installer): rendre la source update explicite
-- `5d0356a` feat(fabhome): couleur de fond groupe/widget
 
 ## 16) If you are a new AI entering this repo
 Start here:
