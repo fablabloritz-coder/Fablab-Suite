@@ -532,6 +532,8 @@ FABHOME_PORT=3001
 FABTRACK_PORT=5555
 PRETGO_PORT=5000
 FABBOARD_PORT=5580
+FABHOME_DATA_PATH=./data
+FABHOME_ICONS_PATH=./icons
 FABTRACK_URL=
 PRETGO_URL=
 EOF
@@ -581,6 +583,11 @@ set_env_var() {
 is_placeholder_repo_url() {
   local url="$1"
   [[ "$url" == *"<owner>"* || "$url" == *"OWNER_OR_ORG"* ]]
+}
+
+has_legacy_suite_layout() {
+  local base="$1"
+  [[ -f "$base/FabHome/docker-compose.yml" && -f "$base/Fabtrack/docker-compose.yml" && -f "$base/PretGo/docker-compose.yml" && -f "$base/FabBoard/docker-compose.yml" ]]
 }
 
 require_valid_repo_url() {
@@ -744,6 +751,8 @@ load_env() {
   GIT_BRANCH="${GIT_BRANCH:-main}"
   INSTALL_DIR="${INSTALL_DIR:-$HOME/fablab-suite}"
   APPS="${APPS:-FabHome Fabtrack PretGo FabBoard}"
+  FABHOME_DATA_PATH="${FABHOME_DATA_PATH:-./data}"
+  FABHOME_ICONS_PATH="${FABHOME_ICONS_PATH:-./icons}"
 
   if is_placeholder_repo_url "$GIT_REPO_URL"; then
     local _detected_url
@@ -783,6 +792,8 @@ load_env() {
   # Keep key defaults explicit in env file for readability.
   set_env_var "GIT_REPO_URL" "$GIT_REPO_URL"
   set_env_var "TZ" "$TZ"
+  set_env_var "FABHOME_DATA_PATH" "$FABHOME_DATA_PATH"
+  set_env_var "FABHOME_ICONS_PATH" "$FABHOME_ICONS_PATH"
   set_env_var "FABTRACK_URL" "$FABTRACK_URL"
   set_env_var "PRETGO_URL" "$PRETGO_URL"
 
@@ -810,13 +821,45 @@ run_repair_env() {
 
   if [[ -d "$INSTALL_DIR" && ! -d "$INSTALL_DIR/.git" ]]; then
     if [[ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
-      echo "[repair-env] ERROR: INSTALL_DIR existe mais n'est pas un monorepo git: $INSTALL_DIR"
-      echo "[repair-env] Le mode legacy multi-repos n'est plus supporté pour install/update."
-      echo "[repair-env] Action recommandée:"
-      echo "[repair-env]   1) définir INSTALL_DIR vers un dossier vide (ex: \$HOME/fablab-suite)"
-      echo "[repair-env]   2) relancer install (clone monorepo + rebuild complet)"
-      echo "[repair-env]   3) conserver les données via les variables *_DATA_PATH si besoin"
-      exit 1
+      if has_legacy_suite_layout "$INSTALL_DIR"; then
+        local legacy_dir monorepo_dir
+        legacy_dir="$INSTALL_DIR"
+        monorepo_dir="$HOME/fablab-suite"
+
+        if [[ "$legacy_dir" == "$monorepo_dir" ]]; then
+          echo "[repair-env] ERROR: dossier legacy détecté mais INSTALL_DIR pointe déjà vers $monorepo_dir"
+          echo "[repair-env] Déplace/renomme l'ancien dossier puis relance repair-env."
+          exit 1
+        fi
+
+        INSTALL_DIR="$monorepo_dir"
+        mkdir -p "$INSTALL_DIR"
+        set_env_var "INSTALL_DIR" "$INSTALL_DIR"
+
+        FABHOME_DATA_PATH="${legacy_dir}/FabHome/data"
+        FABHOME_ICONS_PATH="${legacy_dir}/FabHome/icons"
+        set_env_var "FABHOME_DATA_PATH" "$FABHOME_DATA_PATH"
+        set_env_var "FABHOME_ICONS_PATH" "$FABHOME_ICONS_PATH"
+
+        set_env_var "FABTRACK_DATA_PATH" "${legacy_dir}/Fabtrack/docker-data/data"
+        set_env_var "FABTRACK_UPLOADS_PATH" "${legacy_dir}/Fabtrack/docker-data/uploads"
+        set_env_var "PRETGO_DATA_PATH" "${legacy_dir}/PretGo/docker-data/data"
+        set_env_var "PRETGO_UPLOADS_PATH" "${legacy_dir}/PretGo/docker-data/uploads/materiel"
+        set_env_var "FABBOARD_DATA_PATH" "${legacy_dir}/FabBoard/docker-data/data"
+
+        echo "[repair-env] MIGRATION: layout legacy détecté dans ${legacy_dir}"
+        echo "[repair-env] MIGRATION: INSTALL_DIR basculé vers monorepo ${INSTALL_DIR}"
+        echo "[repair-env] MIGRATION: chemins de données conservés vers les dossiers legacy"
+        echo "[repair-env] MIGRATION: relance install pour cloner le monorepo et rebuild proprement"
+      else
+        echo "[repair-env] ERROR: INSTALL_DIR existe mais n'est pas un monorepo git: $INSTALL_DIR"
+        echo "[repair-env] Le mode legacy multi-repos n'est plus supporté pour install/update."
+        echo "[repair-env] Action recommandée:"
+        echo "[repair-env]   1) définir INSTALL_DIR vers un dossier vide (ex: \$HOME/fablab-suite)"
+        echo "[repair-env]   2) relancer install (clone monorepo + rebuild complet)"
+        echo "[repair-env]   3) conserver les données via les variables *_DATA_PATH si besoin"
+        exit 1
+      fi
     fi
   fi
 
@@ -840,7 +883,8 @@ run_check_data_safety() {
 
   local -a specs
   specs=(
-    "FabHome|fabhome|core-data|/app/data|-|./data"
+    "FabHome|fabhome|core-data|/app/data|FABHOME_DATA_PATH|./data"
+    "FabHome|fabhome|icons|/app/static/icons|FABHOME_ICONS_PATH|./icons"
     "Fabtrack|fabtrack|core-data|/app/data|FABTRACK_DATA_PATH|./docker-data/data"
     "PretGo|pretgo|core-data|/app/data|PRETGO_DATA_PATH|./docker-data/data"
     "FabBoard|fabboard|core-data|/app/data|FABBOARD_DATA_PATH|./docker-data/data"
@@ -852,11 +896,7 @@ run_check_data_safety() {
   for spec in "${specs[@]}"; do
     IFS='|' read -r app container label dest var_name default_rel <<< "$spec"
 
-    if [[ "$var_name" == "-" ]]; then
-      raw_path="$default_rel"
-    else
-      raw_path="${!var_name:-$default_rel}"
-    fi
+    raw_path="${!var_name:-$default_rel}"
 
     expected="$(resolve_bind_source_path "$app" "$raw_path")"
     current="$(container_bind_source_for_dest "$container" "$dest")"

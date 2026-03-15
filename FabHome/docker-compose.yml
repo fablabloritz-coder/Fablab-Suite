@@ -5,8 +5,8 @@ services:
     ports:
       - "${FABHOME_PORT:-3001}:3000"
     volumes:
-      - ./data:/app/data
-      - ./icons:/app/static/icons
+      - ${FABHOME_DATA_PATH:-./data}:/app/data
+      - ${FABHOME_ICONS_PATH:-./icons}:/app/static/icons
     restart: unless-stopped
     stop_grace_period: 20s
     environment:

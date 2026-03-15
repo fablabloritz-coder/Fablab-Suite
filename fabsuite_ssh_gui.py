@@ -1375,11 +1375,34 @@ exit 0
     def action_prepare_host(self):
         self._run_async("Prepare host", lambda: self._run_helper_action("prepare-host"))
 
+    def _repair_env_worker(self):
+        code = self._run_helper_action("repair-env", allow_failure=True)
+        if code == 0:
+            self._log("Réparer env monorepo: OK")
+        else:
+            self._log(f"Réparer env monorepo: échec (code {code}). Consulte les lignes [repair-env] ci-dessus.")
+
     def action_repair_env(self):
-        self._run_async("Réparer env monorepo", lambda: self._run_helper_action("repair-env"))
+        self._run_async("Réparer env monorepo", self._repair_env_worker)
+
+    def _data_safety_worker(self):
+        code = self._run_helper_action("check-data-safety", allow_failure=True)
+        if code == 0:
+            self._log("Pré-check sécurité données: aucun écrasement détecté.")
+        elif code == 2:
+            self._queue_ui(
+                MSG_ALERT,
+                (
+                    "Alerte sécurité données",
+                    "Risque de changement de chemin data détecté.\n\nConsulte le journal pour les détails avant install/update.",
+                ),
+            )
+            self._log("Pré-check sécurité données: risque détecté.")
+        else:
+            self._log(f"Pré-check sécurité données: échec technique (code {code}).")
 
     def action_data_safety(self):
-        self._run_async("Pré-check sécurité données", lambda: self._run_helper_action("check-data-safety"))
+        self._run_async("Pré-check sécurité données", self._data_safety_worker)
 
     def _enforce_data_safety_or_stop(self):
         code = self._run_helper_action("check-data-safety", allow_failure=True)

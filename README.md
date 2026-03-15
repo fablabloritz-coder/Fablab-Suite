@@ -90,6 +90,7 @@ Le GUI est conçu pour rester neutre:
 - pas de persistance d'identité SSH (hôte/utilisateur) dans la config locale
 - bouton dédié "Réparer env monorepo" pour corriger automatiquement les problèmes d'env courants
 - source unique de déploiement/mise à jour: monorepo Git (`GIT_REPO_URL`)
+- si un ancien layout legacy est détecté, `repair-env` prépare automatiquement la bascule vers le monorepo (`$HOME/fablab-suite`) en conservant les chemins data
 - Install et Update lancent automatiquement une réparation d'env avant exécution
 - Install et Update lancent automatiquement un pré-check sécurité données (arrêt + alerte si risque détecté)
 - Audit serveur lance aussi automatiquement un pré-check sécurité données informatif

@@ -47,7 +47,7 @@ Paramètres importants:
 Important:
 - Le mode legacy (un repo Git par app) n'est plus utilisé pour `install`/`update`.
 - La mise à jour globale passe uniquement par le monorepo (`INSTALL_DIR` doit être un checkout Git racine du monorepo).
-- Si votre ancien dossier n'est pas un monorepo Git, pointez `INSTALL_DIR` vers un dossier vide puis relancez `install`.
+- Si un ancien dossier legacy est détecté (ex: `$HOME/fabsuite`), `repair-env` bascule automatiquement `INSTALL_DIR` vers `$HOME/fablab-suite` et conserve les chemins de données existants via les variables `*_DATA_PATH`.
 
 ## 3) Installer la suite
 
