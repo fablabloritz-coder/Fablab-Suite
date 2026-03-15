@@ -39,10 +39,15 @@ nano fabsuite-ubuntu.env
 ```
 
 Paramètres importants:
-- `GIT_REPO_URL` : URL Git du monorepo (ex: `https://github.com/OWNER_OR_ORG/Fablab-Suite.git`)
+- `GIT_REPO_URL` : URL Git du monorepo (ex: `https://github.com/fablabloritz-coder/Fablab-Suite.git`)
 - `GIT_BRANCH` : branche à déployer (`main` par défaut)
 - `INSTALL_DIR` : dossier cible sur le serveur (`$HOME/fablab-suite` conseillé)
 - Ports (`FABHOME_PORT`, `FABTRACK_PORT`, `PRETGO_PORT`, `FABBOARD_PORT`)
+
+Important:
+- Le mode legacy (un repo Git par app) n'est plus utilisé pour `install`/`update`.
+- La mise à jour globale passe uniquement par le monorepo (`INSTALL_DIR` doit être un checkout Git racine du monorepo).
+- Si votre ancien dossier n'est pas un monorepo Git, pointez `INSTALL_DIR` vers un dossier vide puis relancez `install`.
 
 ## 3) Installer la suite
 

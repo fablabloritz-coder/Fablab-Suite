@@ -35,6 +35,7 @@ except Exception:
 APP_TITLE = "FabSuite SSH Installer GUI"
 CONFIG_PATH = Path.home() / ".fabsuite_ssh_gui.json"
 DEFAULT_REMOTE_DIR = "~/fabsuite-installer"
+DEFAULT_MONOREPO_URL = "https://github.com/fablabloritz-coder/Fablab-Suite.git"
 
 # Privacy by default: do not persist SSH target identity in local config.
 PERSIST_SSH_IDENTITY = False
@@ -72,7 +73,7 @@ class FabSuiteSshGui(tk.Tk):
         self.password_var = tk.StringVar()
         self.key_path_var = tk.StringVar()
         self.remote_dir_var = tk.StringVar(value=DEFAULT_REMOTE_DIR)
-        self.repo_url_var = tk.StringVar()
+        self.repo_url_var = tk.StringVar(value=DEFAULT_MONOREPO_URL)
         self.sudo_password_var = tk.StringVar()
         self.logs_app_var = tk.StringVar(value="Fabtrack")
         self.connection_status_var = tk.StringVar(value="Non connecté")
@@ -243,11 +244,11 @@ class FabSuiteSshGui(tk.Tk):
         ttk.Label(self.advanced_frame, text="Mot de passe sudo (optionnel)").grid(row=2, column=2, sticky="w", pady=(6, 0))
         ttk.Entry(self.advanced_frame, textvariable=self.sudo_password_var, width=24, show="*").grid(row=2, column=3, padx=4, pady=(6, 0), sticky="w")
 
-        ttk.Label(self.advanced_frame, text="URL repo monorepo (optionnel)").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(self.advanced_frame, text="URL repo monorepo (source unique)").grid(row=3, column=0, sticky="w", pady=(6, 0))
         ttk.Entry(self.advanced_frame, textvariable=self.repo_url_var, width=72).grid(row=3, column=1, columnspan=3, padx=4, pady=(6, 0), sticky="w")
         ttk.Label(
             self.advanced_frame,
-            text="Exemple: https://github.com/OWNER_OR_ORG/Fablab-Suite.git",
+            text="Exemple: https://github.com/fablabloritz-coder/Fablab-Suite.git",
             foreground="#666666",
         ).grid(row=4, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
@@ -305,7 +306,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_repair_env,
             2,
             1,
-            desc="Crée/répare fabsuite-ubuntu.env, corrige les placeholders et valide la configuration avant install/update.",
+            desc="Crée/répare fabsuite-ubuntu.env, impose l'URL monorepo et valide la configuration avant install/update.",
         )
         self._make_action_button(
             actions,
@@ -313,7 +314,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_install,
             2,
             2,
-            desc="Lance d'abord repair-env et le pré-check sécurité données, puis installe/rebuild la suite si tout est sûr.",
+            desc="Lance d'abord repair-env et le pré-check sécurité données, puis installe/rebuild depuis le monorepo unique.",
         )
         self._make_action_button(
             actions,
@@ -321,7 +322,7 @@ class FabSuiteSshGui(tk.Tk):
             self.action_update,
             3,
             0,
-            desc="Lance d'abord repair-env et le pré-check sécurité données, puis update/rebuild la suite si tout est sûr.",
+            desc="Lance d'abord repair-env et le pré-check sécurité données, puis update/rebuild global depuis le monorepo unique.",
         )
         self._make_action_button(
             actions,
@@ -524,7 +525,10 @@ class FabSuiteSshGui(tk.Tk):
         self.auth_var.set(data.get("auth", "password"))
         self.key_path_var.set("")
         self.remote_dir_var.set(data.get("remote_dir", DEFAULT_REMOTE_DIR))
-        self.repo_url_var.set(data.get("git_repo_url", ""))
+        saved_repo_url = (data.get("git_repo_url") or "").strip()
+        if not saved_repo_url or "OWNER_OR_ORG" in saved_repo_url or "<owner>" in saved_repo_url:
+            saved_repo_url = DEFAULT_MONOREPO_URL
+        self.repo_url_var.set(saved_repo_url)
         self.logs_app_var.set(data.get("logs_app", "Fabtrack"))
         self.dir_root_var.set(data.get("dir_root", "~"))
         self.dir_depth_var.set(str(data.get("dir_depth", "3")))
@@ -940,7 +944,7 @@ class FabSuiteSshGui(tk.Tk):
     def _helper_command(self, action, app_name=None):
         remote_dir = self._resolve_remote_dir()
         sudo_pass = self.sudo_password_var.get().strip()
-        repo_url = self.repo_url_var.get().strip()
+        repo_url = self._effective_repo_url()
 
         cmd_parts = [
             f"cd {shlex.quote(remote_dir)}",
@@ -954,12 +958,18 @@ class FabSuiteSshGui(tk.Tk):
         env_prefix = "NON_INTERACTIVE=1"
         if sudo_pass:
             env_prefix += f" SUDO_PASSWORD={shlex.quote(sudo_pass)}"
-        if repo_url:
-            env_prefix += f" GIT_REPO_URL={shlex.quote(repo_url)}"
+        env_prefix += f" GIT_REPO_URL={shlex.quote(repo_url)}"
         helper_call = f"{env_prefix} {helper_call}"
 
         cmd_parts.append(helper_call)
         return " && ".join(cmd_parts)
+
+    def _effective_repo_url(self):
+        repo_url = (self.repo_url_var.get().strip() or DEFAULT_MONOREPO_URL)
+        if "OWNER_OR_ORG" in repo_url or "<owner>" in repo_url:
+            raise RuntimeError("URL monorepo invalide: remplace le placeholder par une vraie URL GitHub")
+        self.repo_url_var.set(repo_url)
+        return repo_url
 
     def _installer_local_files(self):
         base_dir = Path(__file__).resolve().parent

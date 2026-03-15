@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/fabsuite-ubuntu.env"
 ACTION=""
 LOG_APP=""
+DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
 
 usage() {
   cat <<'EOF'
@@ -521,7 +522,7 @@ create_env_from_example() {
     cp "${SCRIPT_DIR}/fabsuite-ubuntu.env.example" "$ENV_FILE"
   else
     cat > "$ENV_FILE" <<'EOF'
-GIT_REPO_URL=https://github.com/OWNER_OR_ORG/Fablab-Suite.git
+GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git
 GIT_BRANCH=main
 INSTALL_DIR=$HOME/fablab-suite
 APPS="FabHome Fabtrack PretGo FabBoard"
@@ -553,8 +554,14 @@ normalize_env_file() {
 
   # Backward compatibility: old placeholder '<owner>' breaks shell parsing on source.
   if grep -q '<owner>' "$file"; then
-    sed -i 's#<owner>#OWNER_OR_ORG#g' "$file"
-    echo "Normalized unsafe placeholder '<owner>' -> 'OWNER_OR_ORG': $file"
+    sed -i 's#<owner>#fablabloritz-coder#g' "$file"
+    echo "Normalized unsafe placeholder '<owner>' -> 'fablabloritz-coder': $file"
+  fi
+
+  # Normalize legacy placeholder owner to the default monorepo owner.
+  if grep -q 'OWNER_OR_ORG' "$file"; then
+    sed -i 's#OWNER_OR_ORG#fablabloritz-coder#g' "$file"
+    echo "Normalized placeholder 'OWNER_OR_ORG' -> 'fablabloritz-coder': $file"
   fi
 }
 
@@ -576,17 +583,12 @@ is_placeholder_repo_url() {
   [[ "$url" == *"<owner>"* || "$url" == *"OWNER_OR_ORG"* ]]
 }
 
-has_legacy_suite_layout() {
-  local base="$1"
-  [[ -f "$base/FabHome/docker-compose.yml" && -f "$base/Fabtrack/docker-compose.yml" && -f "$base/PretGo/docker-compose.yml" && -f "$base/FabBoard/docker-compose.yml" ]]
-}
-
 require_valid_repo_url() {
   local url="$1"
   if is_placeholder_repo_url "$url"; then
     echo "ERROR: GIT_REPO_URL is not configured (placeholder detected)."
     echo "Edit $ENV_FILE and set e.g.:"
-    echo "  GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git"
+    echo "  GIT_REPO_URL=${DEFAULT_MONOREPO_URL}"
     return 1
   fi
   return 0
@@ -738,17 +740,10 @@ load_env() {
   source "$ENV_FILE"
   set +a
 
-  GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/OWNER_OR_ORG/Fablab-Suite.git}"
+  GIT_REPO_URL="${GIT_REPO_URL:-${DEFAULT_MONOREPO_URL}}"
   GIT_BRANCH="${GIT_BRANCH:-main}"
   INSTALL_DIR="${INSTALL_DIR:-$HOME/fablab-suite}"
   APPS="${APPS:-FabHome Fabtrack PretGo FabBoard}"
-
-  # Backward compatibility: if legacy path exists, keep using it.
-  if [[ ! -d "$INSTALL_DIR" && -d "$HOME/fabsuite" ]] && has_legacy_suite_layout "$HOME/fabsuite"; then
-    INSTALL_DIR="$HOME/fabsuite"
-    set_env_var "INSTALL_DIR" "$INSTALL_DIR"
-    echo "Detected legacy INSTALL_DIR and switched to: $INSTALL_DIR"
-  fi
 
   if is_placeholder_repo_url "$GIT_REPO_URL"; then
     local _detected_url
@@ -757,6 +752,10 @@ load_env() {
       GIT_REPO_URL="$_detected_url"
       set_env_var "GIT_REPO_URL" "$GIT_REPO_URL"
       echo "Auto-detected GIT_REPO_URL from existing checkout: $GIT_REPO_URL"
+    else
+      GIT_REPO_URL="$DEFAULT_MONOREPO_URL"
+      set_env_var "GIT_REPO_URL" "$GIT_REPO_URL"
+      echo "Normalized placeholder GIT_REPO_URL -> $GIT_REPO_URL"
     fi
   fi
 
@@ -788,13 +787,8 @@ load_env() {
   set_env_var "PRETGO_URL" "$PRETGO_URL"
 
   if is_placeholder_repo_url "$GIT_REPO_URL"; then
-    if has_legacy_suite_layout "$INSTALL_DIR"; then
-      echo "INFO: GIT_REPO_URL placeholder detected, but legacy local suite layout found in $INSTALL_DIR."
-      echo "INFO: install/start can continue with local files; set GIT_REPO_URL for clone/update from GitHub."
-    else
-      echo "WARNING: GIT_REPO_URL uses a placeholder owner value."
-      echo "Edit $ENV_FILE and set your real GitHub repo URL before install/update."
-    fi
+    echo "WARNING: GIT_REPO_URL uses a placeholder owner value."
+    echo "Edit $ENV_FILE and set your real GitHub repo URL before install/update."
   fi
 }
 
@@ -807,15 +801,23 @@ run_repair_env() {
   echo "[repair-env] APPS: $APPS"
 
   if is_placeholder_repo_url "$GIT_REPO_URL"; then
-    if has_legacy_suite_layout "$INSTALL_DIR"; then
-      echo "[repair-env] OK: placeholder toléré (layout legacy détecté)."
-    else
-      echo "[repair-env] ERROR: GIT_REPO_URL est encore un placeholder et aucun layout local n'a été trouvé."
-      echo "[repair-env] Renseigne GIT_REPO_URL dans $ENV_FILE ou via la GUI (champ URL repo monorepo)."
-      exit 1
-    fi
+    echo "[repair-env] ERROR: GIT_REPO_URL est encore un placeholder."
+    echo "[repair-env] Renseigne GIT_REPO_URL dans $ENV_FILE ou via la GUI (champ URL repo monorepo)."
+    exit 1
   else
     echo "[repair-env] OK: GIT_REPO_URL=$GIT_REPO_URL"
+  fi
+
+  if [[ -d "$INSTALL_DIR" && ! -d "$INSTALL_DIR/.git" ]]; then
+    if [[ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+      echo "[repair-env] ERROR: INSTALL_DIR existe mais n'est pas un monorepo git: $INSTALL_DIR"
+      echo "[repair-env] Le mode legacy multi-repos n'est plus supporté pour install/update."
+      echo "[repair-env] Action recommandée:"
+      echo "[repair-env]   1) définir INSTALL_DIR vers un dossier vide (ex: \$HOME/fablab-suite)"
+      echo "[repair-env]   2) relancer install (clone monorepo + rebuild complet)"
+      echo "[repair-env]   3) conserver les données via les variables *_DATA_PATH si besoin"
+      exit 1
+    fi
   fi
 
   local app
@@ -949,13 +951,6 @@ bootstrap_repo() {
   fi
 
   if [[ -d "$target" ]]; then
-    # Allow pre-populated legacy folder (one repo per app) and start from local files.
-    if has_legacy_suite_layout "$target"; then
-      echo "[suite] existing legacy layout detected at $target -> using local files"
-      echo "[suite] INFO: update will use per-app git repos when available."
-      return 0
-    fi
-
     # Allow empty target dir created by install workflow.
     if [[ -z "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
       require_valid_repo_url "$url" || exit 1
@@ -1029,25 +1024,6 @@ stop_app() {
 
 update_app() {
   local app="$1"
-  local app_dir="${INSTALL_DIR}/${app}"
-
-  # In monorepo mode, git update is handled once at suite root.
-  if [[ ! -d "${INSTALL_DIR}/.git" && -d "$app_dir/.git" ]]; then
-    local remote before after
-    remote="$(git -C "$app_dir" remote get-url origin 2>/dev/null || echo "unknown")"
-    before="$(git -C "$app_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-    echo "[$app] mode: legacy repo"
-    echo "[$app] source: $remote"
-    echo "[$app] commit before pull: $before"
-    echo "[$app] git pull --ff-only"
-    if ! git -C "$app_dir" pull --ff-only origin "$GIT_BRANCH"; then
-      echo "ERROR: [$app] git pull failed in legacy mode. Update aborted for this app."
-      return 1
-    fi
-    after="$(git -C "$app_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-    echo "[$app] commit after pull: $after"
-  fi
-
   start_app "$app"
 }
 
@@ -1147,6 +1123,17 @@ run_install() {
 
   local failed=""
   bootstrap_repo || { echo "ERROR: suite bootstrap failed"; exit 1; }
+  if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
+    echo "ERROR: INSTALL_DIR n'est pas un monorepo git: $INSTALL_DIR"
+    exit 1
+  fi
+
+  local suite_remote suite_head
+  suite_remote="$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "unknown")"
+  suite_head="$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+  echo "[suite] mode: monorepo"
+  echo "[suite] source: $suite_remote"
+  echo "[suite] commit: $suite_head"
 
   read -r -a app_list <<< "$APPS"
   for app in "${app_list[@]}"; do
@@ -1207,17 +1194,18 @@ run_update() {
   mkdir -p "$INSTALL_DIR"
 
   bootstrap_repo || { echo "ERROR: suite update (git fetch/reset) failed"; exit 1; }
-
-  if [[ -d "${INSTALL_DIR}/.git" ]]; then
-    local suite_remote suite_head
-    suite_remote="$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "unknown")"
-    suite_head="$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-    echo "[suite] mode: monorepo"
-    echo "[suite] source: $suite_remote"
-    echo "[suite] commit: $suite_head"
-  else
-    echo "[suite] mode: legacy per-app repositories"
+  if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
+    echo "ERROR: INSTALL_DIR n'est pas un monorepo git: $INSTALL_DIR"
+    echo "Le mode legacy multi-repos n'est plus supporté pour update."
+    exit 1
   fi
+
+  local suite_remote suite_head
+  suite_remote="$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "unknown")"
+  suite_head="$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+  echo "[suite] mode: monorepo"
+  echo "[suite] source: $suite_remote"
+  echo "[suite] commit: $suite_head"
 
   local failed=""
   read -r -a app_list <<< "$APPS"
