@@ -217,6 +217,12 @@ body {
    ============================================ */
 .lookup-field {
     position: relative;
+    z-index: 40;
+}
+
+.general-info-card,
+.general-info-card .card-body {
+    overflow: visible !important;
 }
 
 .lookup-suggestions {
@@ -230,7 +236,7 @@ body {
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
     max-height: 280px;
     overflow-y: auto;
-    z-index: 30;
+    z-index: 1200;
 }
 
 .lookup-suggestion-item {
