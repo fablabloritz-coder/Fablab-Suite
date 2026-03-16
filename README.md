@@ -72,7 +72,7 @@ Gestion Docker Compose depuis votre poste Windows :
 
 1. **Audit** — vérifie l'état des services locaux
 2. **Installer** — `docker compose up -d --build`
-3. **Mettre à jour** — rebuild et redémarre les services
+3. **Mettre à jour** — relance rapide sans rebuild (`docker compose up -d`)
 4. **Status** — état en cours de chaque conteneur
 5. **Logs** — logs de toutes les apps ou d'une app spécifique
 

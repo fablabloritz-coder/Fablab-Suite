@@ -68,9 +68,7 @@
                 </div>
 
                 <div class="d-flex align-items-center gap-2 mt-2">
-                    <button type="button" id="btn-add-item" class="btn btn-outline-primary btn-sm">
-                        <i class="bi bi-plus-circle"></i> Ajouter un objet
-                    </button>
+                    <small class="text-muted">Nouvelle ligne ajoutée automatiquement après chaque objet reconnu.</small>
                     <button type="button" id="btn-simuler-scan"
                             class="btn btn-link btn-sm text-muted p-0 opacity-50 position-relative"
                             title="Test: simuler une impulsion de douchette USB">
@@ -332,12 +330,70 @@ function toggleDuree() {
 // ══════════════════════════════════════
 (function() {
     const container = document.getElementById('items-container');
-    const btnAdd = document.getElementById('btn-add-item');
     const btnSimulerScan = document.getElementById('btn-simuler-scan');
     let itemIndex = 1;
     let debounceTimers = {};
     let activeScanTarget = null;
     let html5QrCode = null;
+
+    function createItemRow(index) {
+        const row = document.createElement('div');
+        row.className = 'item-row mb-2 position-relative';
+        row.dataset.index = index;
+        row.innerHTML = `
+            <div class="input-group">
+                <input type="text" name="items_description[]"
+                       class="form-control form-control-lg item-input"
+                       placeholder="N° inventaire, marque, modèle ou texte libre..."
+                       autocomplete="off" required>
+                <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="">
+                {% if mode_scanner != 'douchette' %}
+                <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
+                    <i class="bi bi-upc-scan"></i>
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-outline-danger btn-remove-item" title="Retirer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="item-linked mt-1" style="display:none">
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label"></span></span>
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-unlink-item">délier</button>
+            </div>
+            <div class="item-suggestions autocomplete-results" style="display:none"></div>
+        `;
+        return row;
+    }
+
+    function rowIsAvailableForScan(row) {
+        const inputVal = (row.querySelector('.item-input')?.value || '').trim();
+        const linkedId = (row.querySelector('.item-materiel-id')?.value || '').trim();
+        return !linkedId && inputVal.length === 0;
+    }
+
+    function ensureEmptyRow(focusInput = false) {
+        let row = Array.from(container.querySelectorAll('.item-row')).find(rowIsAvailableForScan);
+        if (!row) {
+            row = createItemRow(itemIndex);
+            itemIndex++;
+            container.appendChild(row);
+            updateRemoveButtons();
+        }
+        if (focusInput) {
+            const input = row.querySelector('.item-input');
+            if (input) input.focus();
+        }
+        return row;
+    }
+
+    function focusNextItemRow(currentRow) {
+        const rows = Array.from(container.querySelectorAll('.item-row'));
+        const currentIndex = rows.indexOf(currentRow);
+        let next = rows.slice(currentIndex + 1).find(rowIsAvailableForScan);
+        if (!next) next = ensureEmptyRow(false);
+        const input = next?.querySelector('.item-input');
+        if (input) input.focus();
+    }
 
     function updateRemoveButtons() {
         const rows = container.querySelectorAll('.item-row');
@@ -351,9 +407,7 @@ function toggleDuree() {
         if (activeEl && activeEl.classList && activeEl.classList.contains('item-input')) {
             return activeEl.closest('.item-row');
         }
-        const rows = Array.from(container.querySelectorAll('.item-row'));
-        const emptyRow = rows.find(row => !row.querySelector('.item-materiel-id').value);
-        return emptyRow || rows[0] || null;
+        return ensureEmptyRow(false);
     }
 
     function simulerImpulsionDouchette() {
@@ -381,39 +435,6 @@ function toggleDuree() {
             simulerImpulsionDouchette();
         });
     }
-
-    // Ajouter un item
-    btnAdd.addEventListener('click', function() {
-        const row = document.createElement('div');
-        row.className = 'item-row mb-2 position-relative';
-        row.dataset.index = itemIndex;
-        row.innerHTML = `
-            <div class="input-group">
-                <input type="text" name="items_description[]"
-                       class="form-control form-control-lg item-input"
-                       placeholder="N° inventaire, marque, modèle ou texte libre..."
-                       autocomplete="off" required>
-                <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="">
-                {% if mode_scanner != 'douchette' %}
-                <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
-                    <i class="bi bi-upc-scan"></i>
-                </button>
-                {% endif %}
-                <button type="button" class="btn btn-outline-danger btn-remove-item" title="Retirer">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </div>
-            <div class="item-linked mt-1" style="display:none">
-                <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label"></span></span>
-                <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-unlink-item">délier</button>
-            </div>
-            <div class="item-suggestions autocomplete-results" style="display:none"></div>
-        `;
-        container.appendChild(row);
-        itemIndex++;
-        updateRemoveButtons();
-        row.querySelector('.item-input').focus();
-    });
 
     // Event delegation
     container.addEventListener('click', function(e) {
@@ -495,12 +516,8 @@ function toggleDuree() {
                     if (shouldBeep && typeof window.playBeep === 'function') {
                         window.playBeep(0.15, 'up');
                     }
-                    
-                    // Focus sur le bouton "Ajouter un autre objet" ou prochain champ
-                    const addBtn = document.getElementById('btn-add-item');
-                    if (addBtn) {
-                        addBtn.focus();
-                    }
+
+                    focusNextItemRow(row);
                     return;
                 }
                 
@@ -539,12 +556,16 @@ function toggleDuree() {
                         row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
                         row.querySelector('.item-linked').style.display = 'block';
                         box.style.display = 'none';
+                        focusNextItemRow(row);
                     });
                     box.appendChild(div);
                 });
                 box.style.display = 'block';
             }).catch(() => {});
     }
+
+    ensureEmptyRow(false);
+    updateRemoveButtons();
 
     // ── Scanner code-barres ──
     {% if mode_scanner != 'douchette' %}

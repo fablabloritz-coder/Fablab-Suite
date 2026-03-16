@@ -13,16 +13,30 @@ bp = Blueprint('api', __name__)
 @bp.route('/api/personnes')
 def api_personnes():
     conn = get_app_db()
-    q = request.args.get('q', '').strip()
+    q = ' '.join(request.args.get('q', '').split())
 
     if q:
+        like = f'%{q}%'
+        prefix = f'{q}%'
         personnes = conn.execute('''
             SELECT id, nom, prenom, categorie, classe, email
             FROM personnes
-            WHERE actif = 1 AND (nom LIKE ? OR prenom LIKE ? OR classe LIKE ? OR email LIKE ?)
-            ORDER BY nom, prenom
+            WHERE actif = 1 AND (
+                nom LIKE ? OR prenom LIKE ? OR classe LIKE ? OR email LIKE ?
+                OR (nom || ' ' || prenom) LIKE ?
+                OR (prenom || ' ' || nom) LIKE ?
+            )
+            ORDER BY
+                CASE
+                    WHEN nom LIKE ? THEN 0
+                    WHEN prenom LIKE ? THEN 1
+                    WHEN (nom || ' ' || prenom) LIKE ? THEN 2
+                    WHEN (prenom || ' ' || nom) LIKE ? THEN 3
+                    ELSE 4
+                END,
+                nom, prenom
             LIMIT 20
-        ''', (f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%')).fetchall()
+        ''', (like, like, like, like, like, like, prefix, prefix, prefix, prefix)).fetchall()
     else:
         personnes = conn.execute('''
             SELECT id, nom, prenom, categorie, classe, email

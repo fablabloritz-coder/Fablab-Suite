@@ -30,16 +30,18 @@
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label"><i class="bi bi-mortarboard me-1"></i> Classe</label>
-                <select id="classe_id" class="form-select">
-                    <option value="">Optionnel...</option>
-                </select>
+                <input type="text" id="classe_search" class="form-control" list="classes_datalist"
+                       placeholder="Tapez pour filtrer..." autocomplete="off">
+                <datalist id="classes_datalist"></datalist>
+                <input type="hidden" id="classe_id" value="">
             </div>
             <div class="col-md-6">
                 <label class="form-label"><i class="bi bi-person-badge me-1"></i> Référent</label>
                 <div class="input-group">
-                    <select id="referent_id" class="form-select">
-                        <option value="">Optionnel...</option>
-                    </select>
+                    <input type="text" id="referent_search" class="form-control" list="referents_datalist"
+                           placeholder="Tapez pour filtrer..." autocomplete="off">
+                    <datalist id="referents_datalist"></datalist>
+                    <input type="hidden" id="referent_id" value="">
                     <button type="button" class="btn btn-outline-secondary" onclick="addNewReferent()" title="Ajouter un référent">
                         <i class="bi bi-plus-lg"></i>
                     </button>
@@ -108,10 +110,13 @@
 const DECOUPE_TYPES = ['Découpe Laser', 'CNC / Fraisage'];
 let actionCounter = 0;   // auto-increment id for actions
 let actionUnits = {};     // per-action decoupe unit
+let classeChoices = [];
+let referentChoices = [];
 
 /* ---------- lifecycle ---------- */
 function onReferenceDataLoaded() {
     populateGlobalSelects();
+    bindGlobalLookupInputs();
     setDefaultDate();
     addAction();           // start with one empty action
     loadRecent();
@@ -155,18 +160,100 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function populateGlobalSelects() {
-    const classSel = document.getElementById('classe_id');
-    classSel.innerHTML = '<option value="">Optionnel...</option>';
-    REF_DATA.classes.forEach(c => {
-        classSel.innerHTML += `<option value="${c.id}">${c.nom}</option>`;
+    const classList = document.getElementById('classes_datalist');
+    classList.innerHTML = '';
+    classeChoices = (REF_DATA.classes || []).map(c => {
+        const opt = document.createElement('option');
+        opt.value = c.nom;
+        classList.appendChild(opt);
+        return {
+            id: c.id,
+            display: c.nom,
+            matchKeys: [normalizeLookup(c.nom)],
+        };
     });
 
-    const refSel = document.getElementById('referent_id');
-    refSel.innerHTML = '<option value="">Optionnel...</option>';
-    REF_DATA.referents.forEach(r => {
-        const cat = r.categorie ? ` (${r.categorie})` : '';
-        refSel.innerHTML += `<option value="${r.id}">${r.nom}${cat}</option>`;
+    const refList = document.getElementById('referents_datalist');
+    refList.innerHTML = '';
+    referentChoices = (REF_DATA.referents || []).map(r => {
+        const display = formatReferentDisplay(r);
+        const opt = document.createElement('option');
+        opt.value = display;
+        refList.appendChild(opt);
+        return {
+            id: r.id,
+            display,
+            matchKeys: [...new Set([
+                normalizeLookup(display),
+                normalizeLookup(r.nom),
+                normalizeLookup(`${r.nom} ${r.categorie || ''}`),
+            ].filter(Boolean))],
+        };
     });
+
+    syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices);
+    syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices);
+}
+
+function normalizeLookup(value) {
+    return (value || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function formatReferentDisplay(ref) {
+    const cat = ref.categorie ? ` (${ref.categorie})` : '';
+    return `${ref.nom}${cat}`;
+}
+
+function resolveChoiceId(rawValue, choices) {
+    const key = normalizeLookup(rawValue);
+    if (!key) return '';
+
+    const exact = choices.find(c => c.matchKeys.includes(key));
+    if (exact) return String(exact.id);
+
+    const partial = choices.filter(c => c.matchKeys.some(k => k.includes(key)));
+    if (partial.length === 1) return String(partial[0].id);
+
+    return '';
+}
+
+function syncGlobalLookupHidden(inputId, hiddenId, choices) {
+    const input = document.getElementById(inputId);
+    const hidden = document.getElementById(hiddenId);
+    if (!input || !hidden) return;
+    hidden.value = resolveChoiceId(input.value, choices);
+}
+
+function setLookupInputFromId(inputId, idValue, choices) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const numericId = parseInt(idValue, 10);
+    const found = choices.find(c => parseInt(c.id, 10) === numericId);
+    input.value = found ? found.display : '';
+}
+
+function bindGlobalLookupInputs() {
+    const classInput = document.getElementById('classe_search');
+    if (classInput && !classInput.dataset.lookupBound) {
+        classInput.dataset.lookupBound = '1';
+        classInput.addEventListener('input', () => syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices));
+        classInput.addEventListener('change', () => syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices));
+        classInput.addEventListener('blur', () => syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices));
+    }
+
+    const referentInput = document.getElementById('referent_search');
+    if (referentInput && !referentInput.dataset.lookupBound) {
+        referentInput.dataset.lookupBound = '1';
+        referentInput.addEventListener('input', () => syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices));
+        referentInput.addEventListener('change', () => syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices));
+        referentInput.addEventListener('blur', () => syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices));
+    }
 }
 
 /* ---------- helpers ---------- */
@@ -497,10 +584,11 @@ async function addNewReferent() {
     });
     const data = await res.json();
     if (data.success && data.id) {
-        REF_DATA.referents.push({id: data.id, nom: nom.trim(), actif: 1});
+        REF_DATA.referents.push({id: data.id, nom: nom.trim(), categorie: '', actif: 1});
         REF_DATA.referents.sort((a, b) => a.nom.localeCompare(b.nom));
         populateGlobalSelects();
-        document.getElementById('referent_id').value = data.id;
+        document.getElementById('referent_id').value = String(data.id);
+        setLookupInputFromId('referent_search', data.id, referentChoices);
         showToast(`Référent "${nom.trim()}" ajouté`);
     }
 }
@@ -606,6 +694,8 @@ function resetActions() {
 function resetForm() {
     document.getElementById('date_saisie').value = '';
     document.getElementById('projet_nom').value = '';
+    document.getElementById('classe_search').value = '';
+    document.getElementById('referent_search').value = '';
     document.getElementById('classe_id').value = '';
     document.getElementById('referent_id').value = '';
     userChangedDate = false;

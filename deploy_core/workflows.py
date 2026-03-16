@@ -22,9 +22,13 @@ def _helper_cmd(ctx: WorkflowContext, action: str, app_name: str = "") -> str:
 
 
 def _build_local_workflow(op: Operation, ctx: WorkflowContext) -> List[StepSpec]:
-    if op in (Operation.INSTALL, Operation.UPDATE):
+    if op == Operation.INSTALL:
         return [
             StepSpec("local-up", "Local compose up", "docker compose up -d --build"),
+        ]
+    if op == Operation.UPDATE:
+        return [
+            StepSpec("local-up", "Local compose up (no build)", "docker compose up -d"),
         ]
     if op == Operation.AUDIT:
         return [

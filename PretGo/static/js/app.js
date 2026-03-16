@@ -31,7 +31,8 @@ function initAutocomplete() {
     let timeout = null;
 
     searchInput.addEventListener('input', function () {
-        const query = this.value.trim();
+        const rawQuery = this.value || '';
+        const query = rawQuery.replace(/\s+/g, ' ').trim();
         clearTimeout(timeout);
 
         if (query.length < 1) {
