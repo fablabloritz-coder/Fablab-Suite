@@ -30,21 +30,25 @@
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label"><i class="bi bi-mortarboard me-1"></i> Classe</label>
-                <input type="text" id="classe_search" class="form-control" list="classes_datalist"
-                       placeholder="Tapez pour filtrer..." autocomplete="off">
-                <datalist id="classes_datalist"></datalist>
+                <div id="classe_lookup" class="lookup-field">
+                    <input type="text" id="classe_search" class="form-control"
+                           placeholder="Tapez pour filtrer..." autocomplete="off">
+                    <div id="classe_suggestions" class="lookup-suggestions" style="display:none"></div>
+                </div>
                 <input type="hidden" id="classe_id" value="">
             </div>
             <div class="col-md-6">
                 <label class="form-label"><i class="bi bi-person-badge me-1"></i> Référent</label>
-                <div class="input-group">
-                    <input type="text" id="referent_search" class="form-control" list="referents_datalist"
-                           placeholder="Tapez pour filtrer..." autocomplete="off">
-                    <datalist id="referents_datalist"></datalist>
-                    <input type="hidden" id="referent_id" value="">
-                    <button type="button" class="btn btn-outline-secondary" onclick="addNewReferent()" title="Ajouter un référent">
-                        <i class="bi bi-plus-lg"></i>
-                    </button>
+                <div id="referent_lookup" class="lookup-field">
+                    <div class="input-group">
+                        <input type="text" id="referent_search" class="form-control"
+                               placeholder="Tapez pour filtrer..." autocomplete="off">
+                        <input type="hidden" id="referent_id" value="">
+                        <button type="button" class="btn btn-outline-secondary" onclick="addNewReferent()" title="Ajouter un référent">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </div>
+                    <div id="referent_suggestions" class="lookup-suggestions" style="display:none"></div>
                 </div>
             </div>
         </div>
@@ -160,12 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function populateGlobalSelects() {
-    const classList = document.getElementById('classes_datalist');
-    classList.innerHTML = '';
     classeChoices = (REF_DATA.classes || []).map(c => {
-        const opt = document.createElement('option');
-        opt.value = c.nom;
-        classList.appendChild(opt);
         return {
             id: c.id,
             display: c.nom,
@@ -173,13 +172,8 @@ function populateGlobalSelects() {
         };
     });
 
-    const refList = document.getElementById('referents_datalist');
-    refList.innerHTML = '';
     referentChoices = (REF_DATA.referents || []).map(r => {
         const display = formatReferentDisplay(r);
-        const opt = document.createElement('option');
-        opt.value = display;
-        refList.appendChild(opt);
         return {
             id: r.id,
             display,
@@ -193,6 +187,8 @@ function populateGlobalSelects() {
 
     syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices);
     syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices);
+    hideLookupSuggestions('classe_suggestions');
+    hideLookupSuggestions('referent_suggestions');
 }
 
 function normalizeLookup(value) {
@@ -238,21 +234,114 @@ function setLookupInputFromId(inputId, idValue, choices) {
     input.value = found ? found.display : '';
 }
 
-function bindGlobalLookupInputs() {
-    const classInput = document.getElementById('classe_search');
-    if (classInput && !classInput.dataset.lookupBound) {
-        classInput.dataset.lookupBound = '1';
-        classInput.addEventListener('input', () => syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices));
-        classInput.addEventListener('change', () => syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices));
-        classInput.addEventListener('blur', () => syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices));
+function filterLookupChoices(rawValue, choices) {
+    const key = normalizeLookup(rawValue);
+    if (!key) return [];
+    return choices
+        .filter(choice => choice.matchKeys.some(matchKey => matchKey.includes(key)))
+        .slice(0, 12);
+}
+
+function hideLookupSuggestions(suggestionsId) {
+    const box = document.getElementById(suggestionsId);
+    if (!box) return;
+    box.innerHTML = '';
+    box.style.display = 'none';
+}
+
+function chooseLookupSuggestion(inputId, hiddenId, suggestionsId, choice) {
+    const input = document.getElementById(inputId);
+    const hidden = document.getElementById(hiddenId);
+    if (!input || !hidden) return;
+    input.value = choice.display;
+    hidden.value = String(choice.id);
+    hideLookupSuggestions(suggestionsId);
+}
+
+function renderLookupSuggestions(inputId, hiddenId, suggestionsId, choices) {
+    const input = document.getElementById(inputId);
+    const hidden = document.getElementById(hiddenId);
+    const box = document.getElementById(suggestionsId);
+    if (!input || !hidden || !box) return;
+
+    const matches = filterLookupChoices(input.value, choices);
+    if (!matches.length) {
+        hideLookupSuggestions(suggestionsId);
+        return;
     }
 
-    const referentInput = document.getElementById('referent_search');
-    if (referentInput && !referentInput.dataset.lookupBound) {
-        referentInput.dataset.lookupBound = '1';
-        referentInput.addEventListener('input', () => syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices));
-        referentInput.addEventListener('change', () => syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices));
-        referentInput.addEventListener('blur', () => syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices));
+    const currentId = String(hidden.value || '');
+    box.innerHTML = '';
+    matches.forEach(choice => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'lookup-suggestion-item';
+        if (String(choice.id) === currentId) {
+            item.classList.add('active');
+        }
+        item.textContent = choice.display;
+        item.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            chooseLookupSuggestion(inputId, hiddenId, suggestionsId, choice);
+        });
+        box.appendChild(item);
+    });
+
+    box.style.display = 'block';
+}
+
+function bindLookupInput(inputId, hiddenId, suggestionsId, getChoices) {
+    const input = document.getElementById(inputId);
+    if (!input || input.dataset.lookupBound) return;
+    input.dataset.lookupBound = '1';
+
+    const syncOnly = () => {
+        syncGlobalLookupHidden(inputId, hiddenId, getChoices());
+    };
+
+    input.addEventListener('input', () => {
+        syncOnly();
+        renderLookupSuggestions(inputId, hiddenId, suggestionsId, getChoices());
+    });
+
+    input.addEventListener('focus', () => {
+        renderLookupSuggestions(inputId, hiddenId, suggestionsId, getChoices());
+    });
+
+    input.addEventListener('change', syncOnly);
+
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        const box = document.getElementById(suggestionsId);
+        if (!box || box.style.display !== 'block') return;
+        const first = box.querySelector('.lookup-suggestion-item');
+        if (!first) return;
+        event.preventDefault();
+        first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            syncOnly();
+            hideLookupSuggestions(suggestionsId);
+        }, 120);
+    });
+}
+
+function bindGlobalLookupInputs() {
+    bindLookupInput('classe_search', 'classe_id', 'classe_suggestions', () => classeChoices);
+    bindLookupInput('referent_search', 'referent_id', 'referent_suggestions', () => referentChoices);
+
+    if (!document.body.dataset.lookupOutsideBound) {
+        document.body.dataset.lookupOutsideBound = '1';
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('#classe_lookup')) {
+                hideLookupSuggestions('classe_suggestions');
+            }
+            if (!event.target.closest('#referent_lookup')) {
+                hideLookupSuggestions('referent_suggestions');
+            }
+        });
     }
 }
 
@@ -698,6 +787,8 @@ function resetForm() {
     document.getElementById('referent_search').value = '';
     document.getElementById('classe_id').value = '';
     document.getElementById('referent_id').value = '';
+    hideLookupSuggestions('classe_suggestions');
+    hideLookupSuggestions('referent_suggestions');
     userChangedDate = false;
     setDefaultDate();
     resetActions();

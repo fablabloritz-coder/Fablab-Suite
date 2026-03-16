@@ -150,6 +150,23 @@
     background: #263040;
 }
 
+[data-bs-theme="dark"] .lookup-suggestions {
+    background: #263040;
+    border-color: #374151;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+}
+
+[data-bs-theme="dark"] .lookup-suggestion-item {
+    color: #e5e7eb;
+    border-bottom-color: #374151;
+}
+
+[data-bs-theme="dark"] .lookup-suggestion-item:hover,
+[data-bs-theme="dark"] .lookup-suggestion-item.active {
+    background: #3d2510;
+    color: #fcd9b6;
+}
+
 [data-bs-theme="dark"] ::-webkit-scrollbar-track {
     background: #1f2937;
 }

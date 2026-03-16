@@ -213,6 +213,58 @@ body {
 }
 
 /* ============================================
+   LOOKUP SUGGESTIONS — Classe / Référent
+   ============================================ */
+.lookup-field {
+    position: relative;
+}
+
+.lookup-suggestions {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    border: 2px solid var(--ft-border);
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 30;
+}
+
+.lookup-suggestion-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 50px;
+    padding: 0.72rem 0.95rem;
+    border: 0;
+    border-bottom: 1px solid #edf0f3;
+    background: transparent;
+    text-align: left;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--ft-text);
+    cursor: pointer;
+}
+
+.lookup-suggestion-item:last-child {
+    border-bottom: 0;
+}
+
+.lookup-suggestion-item:hover,
+.lookup-suggestion-item.active {
+    background: var(--ft-primary-light);
+    color: #8f4d0c;
+}
+
+.lookup-suggestion-item:focus-visible {
+    outline: 2px solid var(--ft-primary);
+    outline-offset: -2px;
+}
+
+/* ============================================
    BUTTONS — Tactile
    ============================================ */
 .btn {
