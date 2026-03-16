@@ -1093,7 +1093,11 @@ stop_app() {
 
 update_app() {
   local app="$1"
-  start_app "$app"
+  if ! check_port_free "$app"; then
+    return 1
+  fi
+  echo "[$app] docker compose up -d"
+  with_repo "$app" up -d
 }
 
 print_status() {

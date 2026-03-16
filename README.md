@@ -92,7 +92,7 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 1. Repair env — corrige/crée `fabsuite-ubuntu.env`
 2. Data safety — vérifie les risques avant migration
 3. Installer — déploiement complet de la suite
-4. Mettre à jour — `git pull` + rebuild
+4. Mettre à jour — `git pull` + relance rapide (sans rebuild)
 
 **③ Monitoring**
 - Status, Logs (toutes apps ou app spécifique)
