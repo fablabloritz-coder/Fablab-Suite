@@ -24,11 +24,15 @@ def _helper_cmd(ctx: WorkflowContext, action: str, app_name: str = "") -> str:
 def _build_local_workflow(op: Operation, ctx: WorkflowContext) -> List[StepSpec]:
     if op == Operation.INSTALL:
         return [
-            StepSpec("local-up", "Local compose up", "docker compose up -d --build"),
+            StepSpec("local-up", "Local compose up (install)", "docker compose up -d --build"),
         ]
     if op == Operation.UPDATE:
         return [
-            StepSpec("local-up", "Local compose up (no build)", "docker compose up -d"),
+            StepSpec("local-up", "Local compose up (update rebuild)", "docker compose up -d --build"),
+        ]
+    if op == Operation.RESTART:
+        return [
+            StepSpec("local-restart", "Local compose restart", "docker compose restart"),
         ]
     if op == Operation.AUDIT:
         return [
@@ -58,6 +62,10 @@ def _build_ssh_workflow(op: Operation, ctx: WorkflowContext) -> List[StepSpec]:
             StepSpec("repair-env", "Repair env", _helper_cmd(ctx, "repair-env")),
             StepSpec("data-safety", "Data safety precheck", _helper_cmd(ctx, "check-data-safety")),
             StepSpec("update", "Update suite", _helper_cmd(ctx, "update")),
+        ]
+    if op == Operation.RESTART:
+        return [
+            StepSpec("restart", "Restart suite", _helper_cmd(ctx, "restart")),
         ]
     if op == Operation.AUDIT:
         return [

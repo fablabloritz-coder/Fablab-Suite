@@ -11,6 +11,7 @@ class DeploymentMode(str, Enum):
 class Operation(str, Enum):
     INSTALL = "install"
     UPDATE = "update"
+    RESTART = "restart"
     AUDIT = "audit"
     STATUS = "status"
     LOGS = "logs"

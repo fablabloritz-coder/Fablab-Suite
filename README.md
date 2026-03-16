@@ -72,9 +72,10 @@ Gestion Docker Compose depuis votre poste Windows :
 
 1. **Audit** — vérifie l'état des services locaux
 2. **Installer** — `docker compose up -d --build`
-3. **Mettre à jour** — relance rapide sans rebuild (`docker compose up -d`)
-4. **Status** — état en cours de chaque conteneur
-5. **Logs** — logs de toutes les apps ou d'une app spécifique
+3. **Mettre à jour** — `git pull --ff-only` puis rebuild (`docker compose up -d --build`)
+4. **Redémarrer** — relance rapide sans pull Git ni rebuild (`docker compose restart`)
+5. **Status** — état en cours de chaque conteneur
+6. **Logs** — logs de toutes les apps ou d'une app spécifique
 
 ### Serveur SSH
 
@@ -92,10 +93,10 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 1. Repair env — corrige/crée `fabsuite-ubuntu.env`
 2. Data safety — vérifie les risques avant migration
 3. Installer — déploiement complet de la suite
-4. Mettre à jour — `git pull` + relance rapide (sans rebuild)
+4. Mettre à jour — sync GitHub + rebuild des apps
 
 **③ Monitoring**
-- Status, Logs (toutes apps ou app spécifique)
+- Redémarrer (sans pull/rebuild), Status, Logs (toutes apps ou app spécifique)
 
 **Maintenance dossiers** : scan, inspection, correction permissions, archivage, suppression
 

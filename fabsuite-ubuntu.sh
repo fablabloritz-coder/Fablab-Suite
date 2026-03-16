@@ -1093,11 +1093,7 @@ stop_app() {
 
 update_app() {
   local app="$1"
-  if ! check_port_free "$app"; then
-    return 1
-  fi
-  echo "[$app] docker compose up -d"
-  with_repo "$app" up -d
+  start_app "$app"
 }
 
 print_status() {
@@ -1356,6 +1352,23 @@ run_stop() {
   done
 }
 
+run_restart() {
+  require_docker_compose
+  local failed=""
+  read -r -a app_list <<< "$APPS"
+  for app in "${app_list[@]}"; do
+    if repo_exists "$app"; then
+      echo "[$app] docker compose restart"
+      with_repo "$app" restart || { echo "WARNING: [$app] restart failed"; failed="$failed $app"; }
+    else
+      echo "[$app] skipped (missing repo at ${INSTALL_DIR}/${app})"
+    fi
+  done
+  if [[ -n "$failed" ]]; then
+    echo "WARNING: some apps had errors:$failed"
+  fi
+}
+
 run_update() {
   require_cmd git
   require_docker_compose
@@ -1447,8 +1460,7 @@ case "$ACTION" in
     run_stop
     ;;
   restart)
-    run_stop
-    run_start
+    run_restart
     ;;
   status)
     require_docker_compose

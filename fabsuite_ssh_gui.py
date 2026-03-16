@@ -195,6 +195,10 @@ class FabSuiteBackend:
             self.action_update()
 
         @eel.expose
+        def action_restart():
+            self.action_restart()
+
+        @eel.expose
         def action_status():
             self.action_status()
 
@@ -767,12 +771,68 @@ class FabSuiteBackend:
 
         self._log("[OK] Conflits de noms supprimés.")
 
+    def _sync_local_workspace_from_git(self, workspace):
+        """Synchronize local workspace from remote before update."""
+        workspace_path = Path(workspace)
+        if not (workspace_path / ".git").exists():
+            raise RuntimeError(
+                "Mise a jour locale indisponible: le workspace n'est pas un depot git. "
+                "Utilise Installer pour deployer l'etat local actuel."
+            )
+
+        self._log("[INFO] MAJ locale: verification des changements locaux...")
+        try:
+            status_proc = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(workspace_path),
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("Git introuvable. Installe Git puis relance la mise a jour.") from exc
+
+        if status_proc.returncode != 0:
+            details = (status_proc.stderr or status_proc.stdout or "").strip()
+            raise RuntimeError(f"Impossible de verifier l'etat git local. Detail: {details}")
+
+        if status_proc.stdout.strip():
+            raise RuntimeError(
+                "Mise a jour locale annulee: modifications locales detectees dans le workspace. "
+                "Commit/stash ces changements puis relance, ou utilise Installer pour deployer l'etat local."
+            )
+
+        self._log("[INFO] MAJ locale: synchronisation GitHub (git pull --ff-only)...")
+        pull_proc = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            cwd=str(workspace_path),
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+
+        if pull_proc.stdout.strip():
+            self._log(pull_proc.stdout.rstrip())
+        if pull_proc.stderr.strip():
+            self._log(pull_proc.stderr.rstrip())
+
+        if pull_proc.returncode != 0:
+            details = (pull_proc.stderr or pull_proc.stdout or "").strip()
+            raise RuntimeError(
+                f"Mise a jour locale git echouee (git pull --ff-only). Detail: {details}"
+            )
+
+        self._log("[OK] MAJ locale: workspace git synchronise.")
+
     # ─── Deploy_core integration (local) ───
 
     def _run_operation_local_via_core(self, operation):
         workspace = self._resolve_local_workspace()
         self._log(f"[INFO] Workspace local: {workspace}")
         self._ensure_local_docker_ready()
+
+        if operation == Operation.UPDATE:
+            self._sync_local_workspace_from_git(workspace)
 
         if operation in (Operation.INSTALL, Operation.UPDATE):
             self._cleanup_local_name_conflicts()
@@ -1302,6 +1362,12 @@ exit 0
 
     def action_update(self):
         self._run_async("Update suite", self._update_worker)
+
+    def action_restart(self):
+        if self._is_local_mode():
+            self._run_async("Restart local", lambda: self._run_operation_local_via_core(Operation.RESTART))
+            return
+        self._run_async("Restart suite", lambda: self._run_operation_via_core(Operation.RESTART))
 
     def action_status(self):
         if self._is_local_mode():

@@ -48,8 +48,9 @@
         <p class="text-muted small mb-2">Docker Compose local &mdash; build et d&eacute;ploiement depuis ce poste</p>
         <div class="row g-2 mb-2">
           <div class="col"><button class="btn btn-outline-secondary w-100 action-btn" data-action="action_audit" data-help="Audit local Docker Compose.">&#x2699; Audit</button></div>
-          <div class="col"><button class="btn btn-success w-100 action-btn" data-action="action_install" data-help="Installation/rebuild complet en local via docker compose up -d --build.">&#x2B07; Installer</button></div>
-          <div class="col"><button class="btn btn-primary w-100 action-btn" data-action="action_update" data-help="Mise a jour rapide locale sans rebuild via docker compose up -d.">&#x21BB; Mettre a jour</button></div>
+          <div class="col"><button class="btn btn-success w-100 action-btn" data-action="action_install" data-help="Installation complete locale (deploiement/rebuild complet) via docker compose up -d --build.">&#x2B07; Installer</button></div>
+          <div class="col"><button class="btn btn-primary w-100 action-btn" data-action="action_update" data-help="Mise a jour locale: git pull --ff-only puis rebuild via docker compose up -d --build.">&#x21BB; Mettre a jour</button></div>
+          <div class="col"><button class="btn btn-outline-warning w-100 action-btn" data-action="action_restart" data-help="Redemarre la suite locale sans pull git ni rebuild d'image.">&#x27F3; Redemarrer</button></div>
           <div class="col"><button class="btn btn-outline-secondary w-100 action-btn" data-action="action_status" data-help="Affiche l'etat des services locaux.">&#x2714; Status</button></div>
           <div class="col"><button class="btn btn-outline-secondary w-100 action-btn" data-action="action_logs_all" data-help="Affiche les logs locaux de toutes les apps.">&#x2630; Logs</button></div>
         </div>
@@ -140,7 +141,7 @@
               <div class="col"><button class="btn btn-outline-secondary btn-sm w-100 action-btn ssh-btn" data-action="action_repair_env" data-help="Cree/repare fabsuite-ubuntu.env et valide la config monorepo.">&#x2692; Repair env</button></div>
               <div class="col"><button class="btn btn-warning btn-sm w-100 action-btn ssh-btn" data-action="action_data_safety" data-help="Verifie les risques de changement de chemin data.">&#x26A0; Data safety</button></div>
               <div class="col"><button class="btn btn-success btn-sm w-100 action-btn ssh-btn" data-action="action_install" data-help="Execute repair-env + data safety + install helper (rebuild complet).">&#x2B07; Installer</button></div>
-              <div class="col"><button class="btn btn-primary btn-sm w-100 action-btn ssh-btn" data-action="action_update" data-help="Execute repair-env + data safety + update helper (relance rapide sans rebuild).">&#x21BB; Mettre a jour</button></div>
+              <div class="col"><button class="btn btn-primary btn-sm w-100 action-btn ssh-btn" data-action="action_update" data-help="Execute repair-env + data safety + update helper (sync git + rebuild).">&#x21BB; Mettre a jour</button></div>
             </div>
           </div>
         </div>
@@ -150,6 +151,7 @@
           <div class="card-header py-1 px-2"><small>&#x2462; Monitoring</small></div>
           <div class="card-body py-2 px-2">
             <div class="row g-2 align-items-center">
+              <div class="col-auto"><button class="btn btn-outline-warning btn-sm action-btn ssh-btn" data-action="action_restart" data-help="Redemarre la suite serveur sans pull git ni rebuild.">&#x27F3; Redemarrer</button></div>
               <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_status" data-help="Etat (running/health) de chaque app deployee.">&#x2714; Status</button></div>
               <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_logs_all" data-help="Derniers logs de toutes les apps cote serveur.">&#x2630; Logs</button></div>
               <div class="col-auto"><label class="col-form-label col-form-label-sm">App :</label></div>
