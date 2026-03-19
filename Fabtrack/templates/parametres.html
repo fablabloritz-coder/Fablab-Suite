@@ -1696,7 +1696,11 @@ function filterList(section, query) {
             item.dataset.searchIndex = normalizeSearchText(rawText);
         }
         const visible = (!q || item.dataset.searchIndex.includes(q));
-        item.style.display = visible ? '' : 'none';
+        if (visible) {
+            item.style.removeProperty('display');
+        } else {
+            item.style.setProperty('display', 'none', 'important');
+        }
         if (visible) visibleCount += 1;
     });
     listEl.querySelectorAll('.search-empty-message').forEach(el => el.remove());
