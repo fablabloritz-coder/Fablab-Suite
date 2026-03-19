@@ -259,9 +259,21 @@ def csv_response(output, filename_prefix):
 #  HELPER REQUÊTE INVENTAIRE
 # ============================================================
 
-def query_inventaire(filtre_type='tous', recherche='', etat_only=None, page=None, par_page=50, tri='type'):
+def query_inventaire(
+    filtre_type='tous',
+    recherche='',
+    etat_only=None,
+    page=None,
+    par_page=50,
+    tri='type',
+    filtre_types=None,
+    ids_only=None
+):
     """Helper : interroge l'inventaire avec filtres et pagination optionnelle.
-    Renvoie (items, types, comptages) ou (items, types, comptages, total, total_pages, page) si page est fourni."""
+
+    Renvoie (items, types, comptages) ou
+    (items, types, comptages, total, total_pages, page) si page est fourni.
+    """
     conn = get_app_db()
     query = 'SELECT * FROM inventaire WHERE actif = 1'
     count_query = 'SELECT COUNT(*) FROM inventaire WHERE actif = 1'
@@ -274,11 +286,36 @@ def query_inventaire(filtre_type='tous', recherche='', etat_only=None, page=None
         params.append(etat_only)
         count_params.append(etat_only)
 
-    if filtre_type != 'tous':
-        query += ' AND type_materiel = ?'
-        count_query += ' AND type_materiel = ?'
-        params.append(filtre_type)
-        count_params.append(filtre_type)
+    selected_types = []
+    if filtre_types:
+        for raw_type in filtre_types:
+            value = str(raw_type or '').strip()
+            if value and value.lower() != 'tous' and value not in selected_types:
+                selected_types.append(value)
+    if not selected_types and filtre_type != 'tous':
+        selected_types.append(filtre_type)
+
+    if selected_types:
+        placeholders = ','.join(['?'] * len(selected_types))
+        query += f' AND type_materiel IN ({placeholders})'
+        count_query += f' AND type_materiel IN ({placeholders})'
+        params.extend(selected_types)
+        count_params.extend(selected_types)
+
+    if ids_only is not None:
+        selected_ids = []
+        for raw_id in ids_only:
+            if str(raw_id).isdigit():
+                selected_ids.append(int(raw_id))
+        if selected_ids:
+            placeholders = ','.join(['?'] * len(selected_ids))
+            query += f' AND id IN ({placeholders})'
+            count_query += f' AND id IN ({placeholders})'
+            params.extend(selected_ids)
+            count_params.extend(selected_ids)
+        else:
+            query += ' AND 1 = 0'
+            count_query += ' AND 1 = 0'
 
     if recherche:
         like_clause = ' AND (numero_inventaire LIKE ? OR marque LIKE ? OR modele LIKE ? OR numero_serie LIKE ?)'
@@ -287,15 +324,32 @@ def query_inventaire(filtre_type='tous', recherche='', etat_only=None, page=None
         params.extend([f'%{recherche}%'] * 4)
         count_params.extend([f'%{recherche}%'] * 4)
 
-    # Tri dynamique
-    if tri == 'date_asc':
-        # Utiliser id en clé secondaire pour garantir une alternance visible
-        # même quand plusieurs matériels ont la même date_creation.
-        query += ' ORDER BY date_creation ASC, id ASC'
-    elif tri == 'date_desc':
-        query += ' ORDER BY date_creation DESC, id DESC'
-    else:  # tri == 'type' (défaut)
-        query += ' ORDER BY type_materiel, numero_inventaire'
+    order_clauses = {
+        'type': 'type_materiel ASC, numero_inventaire ASC',
+        'inventaire_asc': 'numero_inventaire ASC, id ASC',
+        'inventaire_desc': 'numero_inventaire DESC, id DESC',
+        'marque_modele_asc': "COALESCE(marque, '') ASC, COALESCE(modele, '') ASC, numero_inventaire ASC",
+        'marque_modele_desc': "COALESCE(marque, '') DESC, COALESCE(modele, '') DESC, numero_inventaire ASC",
+        'etat_asc': (
+            "CASE etat "
+            "WHEN 'disponible' THEN 0 "
+            "WHEN 'prete' THEN 1 "
+            "WHEN 'en_panne' THEN 2 "
+            "WHEN 'reforme' THEN 3 "
+            "ELSE 4 END ASC, numero_inventaire ASC"
+        ),
+        'etat_desc': (
+            "CASE etat "
+            "WHEN 'disponible' THEN 0 "
+            "WHEN 'prete' THEN 1 "
+            "WHEN 'en_panne' THEN 2 "
+            "WHEN 'reforme' THEN 3 "
+            "ELSE 4 END DESC, numero_inventaire ASC"
+        ),
+        'date_asc': 'date_creation ASC, id ASC',
+        'date_desc': 'date_creation DESC, id DESC',
+    }
+    query += ' ORDER BY ' + order_clauses.get(tri, order_clauses['type'])
 
     if page is not None:
         total = conn.execute(count_query, count_params).fetchone()[0]

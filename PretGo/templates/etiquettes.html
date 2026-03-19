@@ -9,12 +9,98 @@
     </h1>
 </div>
 
-<!-- Barre d'actions impression (apparaît quand des items sont cochés) -->
-<div id="printBar" class="alert alert-info d-flex align-items-center gap-3 mb-3" style="display:none !important;">
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('inventaire.etiquettes') }}" id="filtersForm">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-lg-7">
+                    <label class="form-label fw-bold">Recherche cumulative</label>
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="text" name="q" class="form-control"
+                               placeholder="N° inventaire, marque, modèle, n° série..."
+                               value="{{ recherche }}">
+                    </div>
+                </div>
+                <div class="col-12 col-md-6 col-lg-3">
+                    <label class="form-label fw-bold">Tri multi-colonnes</label>
+                    <select name="tri" class="form-select">
+                        {% for tri_value, tri_label in tri_options %}
+                        <option value="{{ tri_value }}" {{ 'selected' if tri == tri_value else '' }}>
+                            {{ tri_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 col-lg-1 d-grid">
+                    <button type="submit" class="btn btn-primary" title="Appliquer">
+                        <i class="bi bi-funnel"></i>
+                    </button>
+                </div>
+                <div class="col-6 col-md-3 col-lg-1 d-grid">
+                    <a href="{{ url_for('inventaire.etiquettes') }}" class="btn btn-outline-secondary" title="Réinitialiser">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label fw-bold mb-0">Filtre multi-catégories</label>
+                    <small class="text-muted">
+                        {% if selected_types %}
+                            {{ selected_types|length }} catégorie(s) cochée(s)
+                        {% else %}
+                            Toutes les catégories
+                        {% endif %}
+                    </small>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    {% for t in types %}
+                    {% set checked = t.type_materiel in selected_types %}
+                    <label class="btn btn-sm {{ 'btn-dark' if checked else 'btn-outline-dark' }}">
+                        <input type="checkbox" class="form-check-input me-1" name="types" value="{{ t.type_materiel }}"
+                               {{ 'checked' if checked else '' }}>
+                        {{ t.type_materiel }} ({{ comptages.get(t.type_materiel, 0) }})
+                    </label>
+                    {% endfor %}
+                </div>
+                <div class="form-text">
+                    Décochez tout pour afficher l'ensemble de l'inventaire.
+                </div>
+            </div>
+
+            {% if selected_only %}
+            <input type="hidden" name="selected_only" value="1">
+            <input type="hidden" name="ids" value="{{ selected_ids_csv }}">
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{% if selected_only %}
+<div class="alert alert-warning d-flex align-items-center justify-content-between mb-3">
+    <div>
+        <i class="bi bi-stars me-2"></i>
+        Vue restreinte à la sélection d'étiquettes.
+    </div>
+    <a href="{{ url_for('inventaire.etiquettes', q=recherche if recherche else None, tri=tri if tri != 'type' else None, types=selected_types if selected_types else None) }}"
+       class="btn btn-outline-dark btn-sm">
+        <i class="bi bi-list-task"></i> Revenir à la liste complète
+    </a>
+</div>
+{% endif %}
+
+<!-- Barre d'actions impression (pilotée par panier persistant) -->
+<div id="printBar" class="alert alert-info d-flex align-items-center gap-2 flex-wrap mb-3" style="display:none !important;">
     <i class="bi bi-printer fs-5"></i>
-    <span><strong id="printCount">0</strong> étiquette(s) sélectionnée(s)</span>
-    <button class="btn btn-primary btn-sm ms-auto" onclick="imprimerSelection()">
-        <i class="bi bi-printer"></i> Générer les étiquettes
+    <span><strong id="printCount">0</strong> étiquette(s) dans le panier</span>
+    <span class="text-muted small" id="printContext"></span>
+    <button class="btn btn-outline-primary btn-sm ms-auto" onclick="voirSelection()">
+        <i class="bi bi-eye"></i> Voir la sélection
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="imprimerSelection()">
+        <i class="bi bi-printer"></i> Imprimer la sélection
     </button>
     {% if zebra_active %}
     <button class="btn btn-outline-dark btn-sm" onclick="imprimerZebra()">
@@ -22,58 +108,8 @@
     </button>
     {% endif %}
     <button class="btn btn-outline-secondary btn-sm" onclick="decocher()">
-        <i class="bi bi-x-lg"></i> Tout désélectionner
+        <i class="bi bi-trash"></i> Vider la sélection
     </button>
-</div>
-
-<!-- Filtres par type -->
-<div class="d-flex flex-wrap gap-2 mb-3">
-    <a href="{{ url_for('inventaire.etiquettes', q=recherche if recherche else None, tri=tri if tri != 'type' else None) }}"
-       class="btn {{ 'btn-dark' if filtre_type == 'tous' else 'btn-outline-dark' }} btn-sm">
-        Tous ({{ comptages.total }})
-    </a>
-    {% for t in types %}
-    <a href="{{ url_for('inventaire.etiquettes', type=t.type_materiel, q=recherche if recherche else None, tri=tri if tri != 'type' else None) }}"
-       class="btn {{ 'btn-dark' if filtre_type == t.type_materiel else 'btn-outline-dark' }} btn-sm">
-        {% if t.type_materiel == 'Ordinateur' %}
-            <i class="bi bi-laptop"></i>
-        {% elif t.type_materiel == 'Vidéoprojecteur' %}
-            <i class="bi bi-projector"></i>
-        {% elif t.type_materiel == 'Casque audio' %}
-            <i class="bi bi-headset"></i>
-        {% else %}
-            <i class="bi bi-box"></i>
-        {% endif %}
-        {{ t.type_materiel }} ({{ comptages.get(t.type_materiel, 0) }})
-    </a>
-    {% endfor %}
-</div>
-
-<!-- Barre de recherche -->
-<div class="mb-4">
-    <form method="GET" action="{{ url_for('inventaire.etiquettes') }}" class="d-flex gap-2">
-        {% if filtre_type != 'tous' %}
-        <input type="hidden" name="type" value="{{ filtre_type }}">
-        {% endif %}
-        {% if tri != 'type' %}
-        <input type="hidden" name="tri" value="{{ tri }}">
-        {% endif %}
-        <div class="search-box flex-grow-1">
-            <i class="bi bi-search"></i>
-            <input type="text" name="q" class="form-control"
-                   placeholder="Rechercher par n° inventaire, marque, modèle, n° série..."
-                   value="{{ recherche }}">
-        </div>
-        <button type="submit" class="btn btn-primary">
-            <i class="bi bi-search"></i>
-        </button>
-        {% if recherche %}
-        <a href="{{ url_for('inventaire.etiquettes', type=filtre_type if filtre_type != 'tous' else None, tri=tri if tri != 'type' else None) }}"
-           class="btn btn-outline-secondary">
-            <i class="bi bi-x-lg"></i>
-        </a>
-        {% endif %}
-    </form>
 </div>
 
 {% if items %}
@@ -90,24 +126,7 @@
                 <th>Marque / Modèle</th>
                 <th>N° série</th>
                 <th>État</th>
-                <th>
-                    {% if tri == 'date_asc' %}
-                    <a href="{{ url_for('inventaire.etiquettes', type=filtre_type if filtre_type != 'tous' else None, q=recherche if recherche else None, tri='date_desc') }}"
-                       class="text-decoration-none text-reset" title="Trier par date décroissante">
-                        Date d'ajout <i class="bi bi-sort-down-alt text-primary ms-1"></i>
-                    </a>
-                    {% elif tri == 'date_desc' %}
-                    <a href="{{ url_for('inventaire.etiquettes', type=filtre_type if filtre_type != 'tous' else None, q=recherche if recherche else None, tri='date_asc') }}"
-                       class="text-decoration-none text-reset" title="Trier par date croissante">
-                        Date d'ajout <i class="bi bi-sort-up text-primary ms-1"></i>
-                    </a>
-                    {% else %}
-                    <a href="{{ url_for('inventaire.etiquettes', type=filtre_type if filtre_type != 'tous' else None, q=recherche if recherche else None, tri='date_asc') }}"
-                       class="text-decoration-none text-reset" title="Trier par date croissante">
-                        Date d'ajout <i class="bi bi-arrow-down-up ms-1 text-muted"></i>
-                    </a>
-                    {% endif %}
-                </th>
+                <th>Date d'ajout</th>
             </tr>
         </thead>
         <tbody>
@@ -167,7 +186,8 @@
 </div>
 
 <div class="text-muted small mt-2">
-    <i class="bi bi-info-circle"></i> Cliquez sur une ligne pour la sélectionner, ou utilisez les cases à cocher.
+    <i class="bi bi-info-circle"></i>
+    Le panier d'étiquettes est conservé entre les filtres pendant toute la session du navigateur.
 </div>
 {% else %}
 <div class="empty-state">
@@ -175,8 +195,10 @@
     <p class="mt-3 fs-5">
         {% if recherche %}
             Aucun matériel trouvé pour "{{ recherche }}"
-        {% elif filtre_type != 'tous' %}
-            Aucun matériel de type "{{ filtre_type }}"
+        {% elif selected_only %}
+            La sélection ne contient aucun matériel visible
+        {% elif selected_types %}
+            Aucun matériel pour les catégories sélectionnées
         {% else %}
             Aucun matériel dans l'inventaire
         {% endif %}
@@ -185,6 +207,54 @@
 {% endif %}
 
 <script>
+const BASKET_KEY = 'pretgo_etiquettes_panier_v1';
+
+function loadBasketSet() {
+    try {
+        const raw = sessionStorage.getItem(BASKET_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return new Set();
+        return new Set(parsed.map(v => String(v)).filter(v => /^\d+$/.test(v)));
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function saveBasketSet(setObj) {
+    const values = Array.from(setObj).map(v => String(v)).filter(v => /^\d+$/.test(v));
+    sessionStorage.setItem(BASKET_KEY, JSON.stringify(values));
+}
+
+function getSelectedIds() {
+    return Array.from(loadBasketSet());
+}
+
+function applyBasketToVisibleRows() {
+    const basket = loadBasketSet();
+    document.querySelectorAll('.item-check').forEach(cb => {
+        cb.checked = basket.has(String(cb.value));
+        cb.closest('tr').classList.toggle('table-primary', cb.checked);
+    });
+}
+
+function syncVisibleRowsToBasket() {
+    const basket = loadBasketSet();
+    document.querySelectorAll('.item-check').forEach(cb => {
+        const id = String(cb.value);
+        if (cb.checked) basket.add(id);
+        else basket.delete(id);
+    });
+    saveBasketSet(basket);
+    return basket;
+}
+
+function updateMasterCheckbox(checkedVisible, visibleCount) {
+    const master = document.getElementById('checkAll');
+    if (!master) return;
+    master.checked = visibleCount > 0 && checkedVisible === visibleCount;
+    master.indeterminate = checkedVisible > 0 && checkedVisible < visibleCount;
+}
+
 function toggleAll(master) {
     document.querySelectorAll('.item-check').forEach(cb => cb.checked = master.checked);
     majBarreImpression();
@@ -199,15 +269,33 @@ function toggleRow(tr, event) {
 }
 
 function majBarreImpression() {
+    const basket = syncVisibleRowsToBasket();
     const checked = document.querySelectorAll('.item-check:checked');
+    const visibleCount = document.querySelectorAll('.item-check').length;
+    const checkedVisible = checked.length;
+    const totalSelected = basket.size;
+    const hiddenSelected = Math.max(0, totalSelected - checkedVisible);
     const bar = document.getElementById('printBar');
     const count = document.getElementById('printCount');
-    if (checked.length > 0) {
+    const context = document.getElementById('printContext');
+
+    updateMasterCheckbox(checkedVisible, visibleCount);
+
+    if (totalSelected > 0) {
         bar.style.setProperty('display', 'flex', 'important');
-        count.textContent = checked.length;
+        count.textContent = totalSelected;
+        if (context) {
+            if (hiddenSelected > 0) {
+                context.textContent = `${checkedVisible} visible(s), ${hiddenSelected} hors filtre.`;
+            } else {
+                context.textContent = `${checkedVisible} visible(s)`;
+            }
+        }
     } else {
         bar.style.setProperty('display', 'none', 'important');
+        if (context) context.textContent = '';
     }
+
     // Highlight selected rows
     document.querySelectorAll('.item-check').forEach(cb => {
         cb.closest('tr').classList.toggle('table-primary', cb.checked);
@@ -215,13 +303,14 @@ function majBarreImpression() {
 }
 
 function decocher() {
+    saveBasketSet(new Set());
     document.querySelectorAll('.item-check').forEach(cb => cb.checked = false);
-    document.getElementById('checkAll').checked = false;
+    const master = document.getElementById('checkAll');
+    if (master) {
+        master.checked = false;
+        master.indeterminate = false;
+    }
     majBarreImpression();
-}
-
-function getSelectedIds() {
-    return Array.from(document.querySelectorAll('.item-check:checked')).map(cb => cb.value);
 }
 
 function imprimerSelection() {
@@ -229,6 +318,15 @@ function imprimerSelection() {
     if (ids) {
         window.open("{{ url_for('inventaire.imprimer_etiquettes') }}?ids=" + ids, '_blank');
     }
+}
+
+function voirSelection() {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('selected_only', '1');
+    params.set('ids', ids.join(','));
+    window.location.href = "{{ url_for('inventaire.etiquettes') }}?" + params.toString();
 }
 
 {% if zebra_active %}
@@ -276,5 +374,10 @@ function imprimerZebra() {
     .catch(err => alert('Erreur impression Zebra : ' + err.message));
 }
 {% endif %}
+
+document.addEventListener('DOMContentLoaded', () => {
+    applyBasketToVisibleRows();
+    majBarreImpression();
+});
 </script>
 {% endblock %}
