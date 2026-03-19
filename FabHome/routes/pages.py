@@ -27,23 +27,6 @@ def index():
     groups = models.get_groups(page_id=page_id)
     widgets = {w['type']: w for w in models.get_widgets(profile_id)}
 
-    # Parse camera URLs from settings
-    camera_urls = settings.get('camera_urls', '')
-    camera_streams = []
-    if camera_urls:
-        for line in camera_urls.strip().split('\n'):
-            line = line.strip()
-            if '|' in line:
-                name, cam_url = line.split('|', 1)
-                camera_streams.append({'name': name.strip(), 'url': cam_url.strip()})
-
-    # Add camera streams to camera widget
-    if 'camera' not in widgets:
-        widgets['camera'] = {'type': 'camera', 'enabled': True, 'config': {}}
-    if not widgets['camera'].get('config'):
-        widgets['camera']['config'] = {}
-    widgets['camera']['config']['streams'] = camera_streams
-
     services = models.get_services()
     profiles = models.get_profiles()
     current_profile = models.get_profile(profile_id)

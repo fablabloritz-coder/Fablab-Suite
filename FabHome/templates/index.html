@@ -241,12 +241,13 @@
                     <div class="calendar-events gw-calendar-events"></div>
                 </div>
                 {% elif gw.type == 'camera' %}
-                <div class="gw-card-body gw-camera gw-camera-deprecated">
-                    <div class="gw-camera-placeholder">
-                        <i class="bi bi-camera-video-off"></i>
-                        <span>Widget caméra retiré</span>
-                        <small>Supprimez ce widget et utilisez un service dédié.</small>
-                    </div>
+                {% set cam_url = gw.config.get('camera_url', '') %}
+                <div class="gw-card-body gw-camera" data-camera-url="{{ cam_url }}">
+                    {% if cam_url %}
+                    <img class="gw-camera-img" src="{{ cam_url }}" alt="Caméra" loading="lazy">
+                    {% else %}
+                    <div class="gw-camera-placeholder"><i class="bi bi-camera-video"></i><span>Aucune URL configurée</span></div>
+                    {% endif %}
                 </div>
                 {% elif gw.type == 'fabsuite' %}
                 <div class="gw-card-body gw-fabsuite" data-gw-id="{{ gw.id }}">
@@ -588,7 +589,7 @@
                             <option value="">-- Choisir --</option>
                             <option value="note">📝 Note</option>
                             <option value="calendar">📅 Calendrier</option>
-                            <option value="camera" disabled>📷 Caméra (retiré)</option>
+                            <option value="camera">📷 Caméra</option>
                             <option value="service">🔌 Service</option>
                             <option value="fabsuite">🔗 FabLab Suite</option>
                         </select>
@@ -623,10 +624,9 @@
                     </div>
                     
                     <div class="mb-3" id="widgetConfigCamera" style="display: none;">
-                        <div class="alert alert-warning small mb-0">
-                            <i class="bi bi-exclamation-triangle me-1"></i>
-                            Le widget caméra est retiré. Utilisez un widget <strong>Service</strong> pour afficher une source externe.
-                        </div>
+                        <label class="form-label">URL du flux caméra (snapshot JPEG)</label>
+                        <input type="text" class="form-control" name="camera_url" placeholder="http://192.168.1.100/snapshot.jpg">
+                        <small class="form-text text-muted">URL d'un snapshot JPEG — rafraîchi automatiquement</small>
                     </div>
                     
                     <div class="mb-3" id="widgetConfigService" style="display: none;">
@@ -856,7 +856,7 @@
                                 <div class="d-flex align-items-center justify-content-between">
                                     <strong><i class="bi bi-arrow-repeat"></i> Rafraîchissement auto</strong>
                                 </div>
-                                <small class="form-text text-muted">Intervalle de mise à jour des widgets services et caméras</small>
+                                <small class="form-text text-muted">Intervalle de mise à jour des widgets services</small>
                                 <select class="form-select form-select-sm mt-2" name="refresh_interval">
                                     {% set ri = settings.get('refresh_interval', '30') %}
                                     <option value="5" {% if ri=='5' %}selected{% endif %}>5 secondes</option>
@@ -889,21 +889,6 @@
                                     </div>
                                 </div>
                                 <small class="form-text text-muted">Connexion CalDAV — ajoutez un widget Calendrier sur le dashboard pour voir les événements</small>
-                            </div>
-                            {% set wcam = widgets.get('camera', {}) %}
-                            <div class="settings-widget-row">
-                                <div class="d-flex align-items-center justify-content-between">
-                                    <strong><i class="bi bi-camera-video"></i> Caméras de sécurité</strong>
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" name="camera_enabled"
-                                               {% if wcam and wcam.enabled %}checked{% endif %}>
-                                    </div>
-                                </div>
-                                <div class="mt-2">
-                                    <textarea class="form-control form-control-sm" name="camera_urls" rows="4" 
-                                              placeholder="Une URL par ligne:&#10;Caméra Entrée|http://192.168.1.100/snapshot.jpg&#10;Caméra Jardin|http://192.168.1.101/snapshot.jpg">{{ settings.get('camera_urls', '') }}</textarea>
-                                    <small class="form-text text-muted">Format: Nom|URL (un flux par ligne)</small>
-                                </div>
                             </div>
                         </div>
                         <div class="tab-pane fade" id="stServices">

@@ -602,6 +602,9 @@
                 if (existing.type === 'service' && form.elements.service_id) {
                     form.elements.service_id.value = (existing.config || {}).service_id || '';
                 }
+                if (existing.type === 'camera' && form.elements.camera_url) {
+                    form.elements.camera_url.value = (existing.config || {}).camera_url || '';
+                }
                 form.elements.icon_size.value = existing.icon_size || 'medium';
                 form.elements.text_size.value = existing.text_size || 'medium';
                 qs('#gridWidgetColSpan').value = existing.col_span || 1;
@@ -672,8 +675,7 @@
             } else if (type === 'service') {
                 config.service_id = parseInt(f.elements.service_id.value) || 0;
             } else if (type === 'camera') {
-                showToast('Le widget caméra est retiré. Choisissez un autre type.', 'error');
-                return;
+                config.camera_url = f.elements.camera_url ? f.elements.camera_url.value.trim() : '';
             }
             
             var body = {
@@ -727,7 +729,6 @@
                 caldav_url: f.elements.caldav_url ? f.elements.caldav_url.value : '',
                 caldav_username: f.elements.caldav_username ? f.elements.caldav_username.value : '',
                 caldav_password: f.elements.caldav_password ? f.elements.caldav_password.value : '',
-                camera_urls: f.elements.camera_urls ? f.elements.camera_urls.value : '',
                 fabboard_url: browserSafeUrl(normalizeHttpUrl(
                     f.elements.fabboard_url ? f.elements.fabboard_url.value : '',
                     'http://localhost:5580'
@@ -752,8 +753,7 @@
                     }
                 },
                 health: { enabled: f.elements.health_enabled.checked, config: {} },
-                calendar: { enabled: true, config: {} },
-                camera: { enabled: f.elements.camera_enabled ? f.elements.camera_enabled.checked : false, config: {} }
+                calendar: { enabled: true, config: {} }
             };
             Promise.all([
                 api('PUT', '/api/settings', settingsBody),
@@ -1520,10 +1520,19 @@
         });
     }
     loadGridWidgetServices();
+    // ── Grid Widget camera refresh ──
+    function refreshGridWidgetCameras() {
+        qsa('.gw-camera-img').forEach(function(img) {
+            var base = img.dataset.baseSrc || img.getAttribute('src');
+            if (!img.dataset.baseSrc) img.dataset.baseSrc = base.split('?')[0];
+            img.src = img.dataset.baseSrc + '?t=' + Date.now();
+        });
+    }
     // ── Dynamic refresh interval ──
     var refreshMs = parseInt(PAGE_DATA.settings.refresh_interval || '30') * 1000;
     if (refreshMs > 0) {
         setInterval(loadGridWidgetServices, refreshMs);
+        setInterval(refreshGridWidgetCameras, refreshMs);
     }
     /* ══════════════════════════════════════
        GESTION DES PROFILS

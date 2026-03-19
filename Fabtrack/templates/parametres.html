@@ -984,6 +984,14 @@ function getTypeColor(id) {
     return t ? (t.couleur||'#6b7280') : '#6b7280';
 }
 
+function toSearchText() {
+    return Array.from(arguments)
+        .filter(v => v !== null && typeof v !== 'undefined')
+        .map(v => String(v))
+        .join(' ')
+        .toLowerCase();
+}
+
 function renderAll() {
     renderTypesActivite();
     renderMachines();
@@ -1028,7 +1036,7 @@ function renderTypesActivite() {
             : `<span class="fs-4 me-1">${t.icone||'🔧'}</span>`;
         const machCount = REF_DATA.machines.filter(m => m.type_activite_id === t.id).length;
         return `
-        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${t.nom.toLowerCase()}">
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(t.nom, t.unite_defaut, t.couleur)}">
             <div class="d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" data-entity="types_activite" data-id="${t.id}" onchange="onCheckboxChange('types_activite',${t.id},this.checked)">
                 ${imgOrEmoji}
@@ -1129,7 +1137,7 @@ function renderMachines() {
         const princLabels = {'ajout':'Ajout','enlevement':'Enlèvement','deformation':'Déformation'};
         const princBadges = (m.principes_conception||'').split(',').filter(Boolean).map(p => `<span class="badge bg-info bg-opacity-10 text-info" style="font-size:0.65em">${princLabels[p]||p}</span>`).join(' ');
         return `
-        <div class="list-group-item py-3" data-search="${m.nom.toLowerCase()} ${(m.marque||'').toLowerCase()}">
+        <div class="list-group-item py-3" data-search="${toSearchText(m.nom, m.marque, getTypeName(m.type_activite_id), m.statut, m.zone_travail, m.puissance, m.description)}">
             <div class="d-flex justify-content-between align-items-start">
                 <div class="d-flex align-items-start gap-2">
                     <input type="checkbox" class="form-check-input mt-1" data-entity="machines" data-id="${m.id}" onchange="onCheckboxChange('machines',${m.id},this.checked)">
@@ -1243,8 +1251,9 @@ function renderMateriaux() {
     }
     list.innerHTML = REF_DATA.materiaux.map(m => {
         const imgHtml = m.image_path ? `<img src="${m.image_path}" class="rounded me-2 entity-img-mat">` : getMaterialImg(m.nom);
+        const linkedMachines = getLinkedMachineNames(m.id).replace(/<[^>]+>/g, ' ');
         return `
-        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${m.nom.toLowerCase()}">
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(m.nom, m.unite, linkedMachines)}">
             <div class="d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" data-entity="materiaux" data-id="${m.id}" onchange="onCheckboxChange('materiaux',${m.id},this.checked)">
                 ${imgHtml}
@@ -1313,7 +1322,7 @@ function renderClasses() {
     selectedIds.classes.clear(); updateMassDeleteBtn('classes');
     if (!REF_DATA.classes.length) { list.innerHTML='<div class="empty-state"><i class="bi bi-mortarboard"></i><p>Aucune classe</p></div>'; return; }
     list.innerHTML = REF_DATA.classes.map(c => `
-        <div class="list-group-item d-flex justify-content-between align-items-center py-2" data-search="${c.nom.toLowerCase()}">
+        <div class="list-group-item d-flex justify-content-between align-items-center py-2" data-search="${toSearchText(c.nom)}">
             <div class="d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" data-entity="classes" data-id="${c.id}" onchange="onCheckboxChange('classes',${c.id},this.checked)">
                 <span><i class="bi bi-mortarboard me-1 text-muted"></i> ${c.nom}</span>
@@ -1365,7 +1374,7 @@ function renderReferents() {
     list.innerHTML = REF_DATA.referents.map(r => {
         const imgHtml = r.image_path ? `<img src="${r.image_path}" class="rounded-circle me-1 entity-img-prep">` : '';
         return `
-        <div class="list-group-item d-flex justify-content-between align-items-center py-2" data-search="${r.nom.toLowerCase()} ${(r.categorie||'').toLowerCase()}">
+        <div class="list-group-item d-flex justify-content-between align-items-center py-2" data-search="${toSearchText(r.nom, r.categorie)}">
             <div class="d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" data-entity="referents" data-id="${r.id}" onchange="onCheckboxChange('referents',${r.id},this.checked)">
                 ${imgHtml}<span>${REF_CATEGORIES[r.categorie]||'📌'}</span>
@@ -1429,7 +1438,7 @@ function renderPreparateurs() {
             ? `<img src="${p.image_path}" class="rounded-circle me-2 entity-img-prep">`
             : '<i class="bi bi-person-circle me-2 text-primary"></i>';
         return `
-        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${p.nom.toLowerCase()}">
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(p.nom)}">
             <div class="d-flex align-items-center">
                 <input type="checkbox" class="form-check-input me-2" data-entity="preparateurs" data-id="${p.id}" onchange="onCheckboxChange('preparateurs',${p.id},this.checked)">
                 ${prepVisual}<strong>${p.nom}</strong>
@@ -1648,13 +1657,28 @@ function massDeleteSelected(entity) {
 
 // ========== FILTRAGE ==========
 function normalizeSearchText(value) {
-    return (value || '')
+    const raw = (value || '')
         .toString()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
         .replace(/\s+/g, ' ')
         .trim();
+    if (!raw) return '';
+    try {
+        return raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    } catch (e) {
+        return raw;
+    }
+}
+
+function getSearchInput(section) {
+    return document.querySelector(`input[onkeyup*="filterList('${section}',"]`);
+}
+
+function applyAllSectionFilters() {
+    ['types_activite', 'machines', 'materiaux', 'classes', 'referents', 'preparateurs'].forEach(section => {
+        const input = getSearchInput(section);
+        if (input) filterList(section, input.value || '');
+    });
 }
 
 function filterList(section, query) {
@@ -1662,13 +1686,26 @@ function filterList(section, query) {
     const listMap = {machines:'machinesList',materiaux:'materiauxList',classes:'classesList',referents:'referentsList',types_activite:'typesActiviteList',preparateurs:'preparateursList'};
     const lid = listMap[section];
     if (!lid) return;
-    document.querySelectorAll(`#${lid} .list-group-item`).forEach(item => {
+    const listEl = document.getElementById(lid);
+    if (!listEl) return;
+    const rows = listEl.querySelectorAll('.list-group-item');
+    let visibleCount = 0;
+    rows.forEach(item => {
         if (!item.dataset.searchIndex) {
             const rawText = `${item.getAttribute('data-search') || ''} ${item.textContent || ''}`;
             item.dataset.searchIndex = normalizeSearchText(rawText);
         }
-        item.style.display = (!q || item.dataset.searchIndex.includes(q)) ? '' : 'none';
+        const visible = (!q || item.dataset.searchIndex.includes(q));
+        item.style.display = visible ? '' : 'none';
+        if (visible) visibleCount += 1;
     });
+    listEl.querySelectorAll('.search-empty-message').forEach(el => el.remove());
+    if (rows.length > 0 && visibleCount === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'list-group-item text-muted small search-empty-message';
+        empty.textContent = '0 résultat pour cette recherche.';
+        listEl.appendChild(empty);
+    }
 }
 
 async function reloadRef() {
@@ -1677,6 +1714,7 @@ async function reloadRef() {
     populateUserSelect();
     populateTypeSelects();
     renderAll();
+    applyAllSectionFilters();
 }
 
 // ========== PERSONNALISATION ICÔNES ==========
