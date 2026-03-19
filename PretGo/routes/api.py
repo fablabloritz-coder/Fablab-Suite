@@ -8,6 +8,7 @@ import string
 import uuid
 
 bp = Blueprint('api', __name__)
+MAX_UPLOAD_SIZE_BYTES = 12 * 1024 * 1024
 
 
 @bp.route('/api/personnes')
@@ -82,16 +83,35 @@ def api_upload_image():
     if not allowed_file(fichier.filename):
         return jsonify({'error': 'Format non autorisé (jpg, png, gif, webp uniquement)'}), 400
 
+    # Vérifie la taille réelle du fichier quand le flux est seekable.
+    try:
+        pos = fichier.stream.tell()
+        fichier.stream.seek(0, os.SEEK_END)
+        taille = fichier.stream.tell()
+        fichier.stream.seek(pos)
+        if taille > MAX_UPLOAD_SIZE_BYTES:
+            max_mb = MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)
+            return jsonify({'error': f'Image trop volumineuse (max {max_mb} Mo)'}), 413
+    except Exception:
+        # Certains flux ne sont pas seekable, on laisse alors le serveur gérer.
+        pass
+
     # Garder le nom original nettoyé, ajouter un suffixe unique si doublon
     nom_original = secure_filename(fichier.filename)
+    if not nom_original:
+        return jsonify({'error': 'Nom de fichier invalide'}), 400
     nom_final = nom_original
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     chemin = os.path.join(UPLOAD_FOLDER, nom_final)
     if os.path.exists(chemin):
         base, ext = os.path.splitext(nom_original)
         nom_final = f"{base}_{uuid.uuid4().hex[:6]}{ext}"
         chemin = os.path.join(UPLOAD_FOLDER, nom_final)
 
-    fichier.save(chemin)
+    try:
+        fichier.save(chemin)
+    except Exception as e:
+        return jsonify({'error': f'Impossible de sauvegarder l\'image: {str(e)}'}), 500
     return jsonify({'filename': nom_final})
 
 

@@ -290,7 +290,7 @@ def api_create_grid_widget():
         if not wtype:
             return jsonify(error='type requis'), 400
 
-        allowed_types = {'clock', 'weather', 'calendar', 'camera', 'service', 'health', 'note', 'fabsuite'}
+        allowed_types = {'clock', 'weather', 'calendar', 'service', 'health', 'note', 'fabsuite'}
         if wtype not in allowed_types:
             return jsonify(error=f'Type invalide. Types autorisés: {", ".join(allowed_types)}'), 400
 
@@ -336,7 +336,7 @@ def api_update_grid_widget(wid):
     try:
         data = request.get_json() or {}
 
-        allowed_types = {'clock', 'weather', 'calendar', 'camera', 'service', 'health', 'note', 'fabsuite'}
+        allowed_types = {'clock', 'weather', 'calendar', 'service', 'health', 'note', 'fabsuite'}
         if 'type' in data and data.get('type') not in allowed_types:
             return jsonify(error='Type de widget invalide'), 400
 

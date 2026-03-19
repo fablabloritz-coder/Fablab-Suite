@@ -94,9 +94,9 @@
                             </button>
                             <div class="d-flex gap-2 align-items-center">
                                 <span class="text-muted small">ou</span>
-                                <label class="btn btn-outline-secondary btn-sm mb-0">
+                                <label class="btn btn-outline-secondary btn-sm mb-0 js-image-upload-btn">
                                     <i class="bi bi-upload"></i> Uploader une nouvelle image
-                                    <input type="file" accept="image/*" class="d-none" id="upload_nouvelle_image" onchange="uploadImage(this)">
+                                    <input type="file" accept="image/*" class="d-none js-image-upload-input" id="upload_nouvelle_image" onchange="uploadImage(this)">
                                 </label>
                             </div>
                             <div id="upload_status" class="small mt-1"></div>
@@ -174,10 +174,11 @@
                 </div>
             </div>
             <div class="modal-footer justify-content-between">
-                <label class="btn btn-outline-secondary btn-sm mb-0">
+                <label class="btn btn-outline-secondary btn-sm mb-0 js-image-upload-btn">
                     <i class="bi bi-upload"></i> Uploader une image
-                    <input type="file" accept="image/*" class="d-none" onchange="uploadImageGalerie(this)">
+                    <input type="file" accept="image/*" class="d-none js-image-upload-input" id="upload_galerie_image" onchange="uploadImageGalerie(this)">
                 </label>
+                <div id="upload_status_galerie" class="small flex-grow-1 text-start ms-2"></div>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
             </div>
         </div>
@@ -189,6 +190,67 @@ const UPLOAD_URL = '{{ url_for("api.api_upload_image") }}';
 const LIST_URL = '{{ url_for("api.api_liste_images") }}';
 const BASE_IMG_URL = '{{ url_for("static", filename="uploads/materiel/") }}';
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+const UPLOAD_TIMEOUT_MS = 25000;
+let uploadInProgress = false;
+
+function setUploadStatus(el, level, message) {
+    if (!el) return;
+    if (!message) {
+        el.innerHTML = '';
+        return;
+    }
+    const iconMap = { info: 'hourglass-split', success: 'check-lg', error: 'exclamation-triangle' };
+    const classMap = { info: 'text-primary', success: 'text-success', error: 'text-danger' };
+    const icon = iconMap[level] || 'info-circle';
+    const cls = classMap[level] || 'text-muted';
+    el.innerHTML = `<span class="${cls}"><i class="bi bi-${icon}"></i> ${message}</span>`;
+}
+
+function setUploadBusy(isBusy) {
+    uploadInProgress = isBusy;
+    document.querySelectorAll('.js-image-upload-input').forEach(input => {
+        input.disabled = isBusy;
+    });
+    document.querySelectorAll('.js-image-upload-btn').forEach(btn => {
+        btn.classList.toggle('disabled', isBusy);
+        btn.setAttribute('aria-disabled', isBusy ? 'true' : 'false');
+    });
+}
+
+function readableUploadError(error) {
+    if (!error) return 'Erreur inconnue pendant l\'upload.';
+    if (error.name === 'AbortError') {
+        return 'Upload interrompu (délai dépassé). Vérifiez la connexion et réessayez.';
+    }
+    return error.message || 'Erreur inconnue pendant l\'upload.';
+}
+
+async function uploadImageRequest(file) {
+    const fd = new FormData();
+    fd.append('image', file);
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
+    try {
+        const r = await fetch(UPLOAD_URL, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': CSRF_TOKEN },
+            body: fd,
+            signal: controller.signal
+        });
+        const contentType = r.headers.get('content-type') || '';
+        const data = contentType.includes('application/json')
+            ? await r.json()
+            : { error: 'Réponse serveur invalide.' };
+        if (!r.ok || data.error) {
+            throw new Error(data.error || ('Erreur HTTP ' + r.status));
+        }
+        return data;
+    } finally {
+        window.clearTimeout(timeoutId);
+    }
+}
 
 function selectionnerImage(filename) {
     document.getElementById('image_selectionnee').value = filename;
@@ -212,6 +274,7 @@ function retirerImage() {
 function ouvrirGalerie() {
     const galerie = document.getElementById('galerie_images');
     const vide = document.getElementById('galerie_vide');
+    setUploadStatus(document.getElementById('upload_status_galerie'), null, '');
     galerie.innerHTML = '<div class="text-center w-100 py-3"><div class="spinner-border text-primary"></div></div>';
     vide.classList.add('d-none');
 
@@ -240,58 +303,61 @@ function ouvrirGalerie() {
                 div.onmouseleave = () => { if (f !== document.getElementById('image_selectionnee').value) div.style.borderColor = 'transparent'; };
                 galerie.appendChild(div);
             });
+        })
+        .catch((e) => {
+            galerie.innerHTML = '';
+            vide.classList.remove('d-none');
+            setUploadStatus(document.getElementById('upload_status_galerie'), 'error', readableUploadError(e));
         });
 }
 
-function uploadImage(input) {
-    if (!input.files[0]) return;
+async function uploadImage(input) {
+    if (!input.files || !input.files[0]) return;
     const status = document.getElementById('upload_status');
-    status.innerHTML = '<span class="text-primary"><i class="bi bi-hourglass-split"></i> Upload en cours...</span>';
-    const fd = new FormData();
-    fd.append('image', input.files[0]);
-    fetch(UPLOAD_URL, {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': CSRF_TOKEN },
-        body: fd
-    })
-        .then(async (r) => {
-            const contentType = r.headers.get('content-type') || '';
-            const data = contentType.includes('application/json') ? await r.json() : { error: 'Réponse serveur invalide.' };
-            if (!r.ok || data.error) {
-                throw new Error(data.error || ('Erreur HTTP ' + r.status));
-            }
-            return data;
-        })
-        .then(data => {
-            status.innerHTML = '<span class="text-success"><i class="bi bi-check-lg"></i> Image uploadée !</span>';
-            selectionnerImage(data.filename);
-            setTimeout(() => status.innerHTML = '', 3000);
-        })
-        .catch((e) => { status.innerHTML = `<span class="text-danger">${e.message}</span>`; });
-    input.value = '';
+
+    if (uploadInProgress) {
+        setUploadStatus(status, 'error', 'Un upload est déjà en cours.');
+        input.value = '';
+        return;
+    }
+
+    setUploadStatus(status, 'info', 'Upload en cours...');
+    setUploadBusy(true);
+    try {
+        const data = await uploadImageRequest(input.files[0]);
+        setUploadStatus(status, 'success', 'Image uploadée.');
+        selectionnerImage(data.filename);
+        window.setTimeout(() => setUploadStatus(status, null, ''), 3000);
+    } catch (e) {
+        setUploadStatus(status, 'error', readableUploadError(e));
+    } finally {
+        setUploadBusy(false);
+        input.value = '';
+    }
 }
 
-function uploadImageGalerie(input) {
-    if (!input.files[0]) return;
-    const fd = new FormData();
-    fd.append('image', input.files[0]);
-    fetch(UPLOAD_URL, {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': CSRF_TOKEN },
-        body: fd
-    })
-        .then(async (r) => {
-            const contentType = r.headers.get('content-type') || '';
-            const data = contentType.includes('application/json') ? await r.json() : { error: 'Réponse serveur invalide.' };
-            if (!r.ok || data.error) {
-                throw new Error(data.error || ('Erreur HTTP ' + r.status));
-            }
-            return data;
-        })
-        .then(data => {
-            if (!data.error) ouvrirGalerie();
-        });
-    input.value = '';
+async function uploadImageGalerie(input) {
+    if (!input.files || !input.files[0]) return;
+    const status = document.getElementById('upload_status_galerie');
+
+    if (uploadInProgress) {
+        setUploadStatus(status, 'error', 'Un upload est déjà en cours.');
+        input.value = '';
+        return;
+    }
+
+    setUploadStatus(status, 'info', 'Upload en cours...');
+    setUploadBusy(true);
+    try {
+        await uploadImageRequest(input.files[0]);
+        setUploadStatus(status, 'success', 'Image ajoutée à la bibliothèque.');
+        ouvrirGalerie();
+    } catch (e) {
+        setUploadStatus(status, 'error', readableUploadError(e));
+    } finally {
+        setUploadBusy(false);
+        input.value = '';
+    }
 }
 
 function toggleTypeFields() {

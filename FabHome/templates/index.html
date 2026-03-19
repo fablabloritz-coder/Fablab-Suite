@@ -241,13 +241,12 @@
                     <div class="calendar-events gw-calendar-events"></div>
                 </div>
                 {% elif gw.type == 'camera' %}
-                {% set cam_url = gw.config.get('camera_url', '') %}
-                <div class="gw-card-body gw-camera" data-camera-url="{{ cam_url }}">
-                    {% if cam_url %}
-                    <img class="gw-camera-img" src="{{ cam_url }}" alt="Caméra" loading="lazy">
-                    {% else %}
-                    <div class="gw-camera-placeholder"><i class="bi bi-camera-video"></i><span>Aucune URL configurée</span></div>
-                    {% endif %}
+                <div class="gw-card-body gw-camera gw-camera-deprecated">
+                    <div class="gw-camera-placeholder">
+                        <i class="bi bi-camera-video-off"></i>
+                        <span>Widget caméra retiré</span>
+                        <small>Supprimez ce widget et utilisez un service dédié.</small>
+                    </div>
                 </div>
                 {% elif gw.type == 'fabsuite' %}
                 <div class="gw-card-body gw-fabsuite" data-gw-id="{{ gw.id }}">
@@ -589,7 +588,7 @@
                             <option value="">-- Choisir --</option>
                             <option value="note">📝 Note</option>
                             <option value="calendar">📅 Calendrier</option>
-                            <option value="camera">📷 Caméra</option>
+                            <option value="camera" disabled>📷 Caméra (retiré)</option>
                             <option value="service">🔌 Service</option>
                             <option value="fabsuite">🔗 FabLab Suite</option>
                         </select>
@@ -624,9 +623,10 @@
                     </div>
                     
                     <div class="mb-3" id="widgetConfigCamera" style="display: none;">
-                        <label class="form-label">URL du flux caméra (snapshot JPEG)</label>
-                        <input type="text" class="form-control" name="camera_url" placeholder="http://192.168.1.100/snapshot.jpg">
-                        <small class="form-text text-muted">URL d'un snapshot JPEG — rafraîchi automatiquement</small>
+                        <div class="alert alert-warning small mb-0">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Le widget caméra est retiré. Utilisez un widget <strong>Service</strong> pour afficher une source externe.
+                        </div>
                     </div>
                     
                     <div class="mb-3" id="widgetConfigService" style="display: none;">

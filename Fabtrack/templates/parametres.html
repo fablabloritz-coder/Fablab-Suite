@@ -1647,14 +1647,27 @@ function massDeleteSelected(entity) {
 }
 
 // ========== FILTRAGE ==========
+function normalizeSearchText(value) {
+    return (value || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function filterList(section, query) {
-    const q = query.toLowerCase().trim();
+    const q = normalizeSearchText(query);
     const listMap = {machines:'machinesList',materiaux:'materiauxList',classes:'classesList',referents:'referentsList',types_activite:'typesActiviteList',preparateurs:'preparateursList'};
     const lid = listMap[section];
     if (!lid) return;
     document.querySelectorAll(`#${lid} .list-group-item`).forEach(item => {
-        const text = item.getAttribute('data-search') || item.textContent.toLowerCase();
-        item.style.display = text.includes(q) ? '' : 'none';
+        if (!item.dataset.searchIndex) {
+            const rawText = `${item.getAttribute('data-search') || ''} ${item.textContent || ''}`;
+            item.dataset.searchIndex = normalizeSearchText(rawText);
+        }
+        item.style.display = (!q || item.dataset.searchIndex.includes(q)) ? '' : 'none';
     });
 }
 
