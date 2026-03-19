@@ -262,6 +262,21 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_missions_statut ON missions(statut);
     CREATE INDEX IF NOT EXISTS idx_missions_echeance ON missions(date_echeance);
     CREATE INDEX IF NOT EXISTS idx_missions_priorite ON missions(priorite);
+
+    CREATE TABLE IF NOT EXISTS mission_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mission_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL CHECK(event_type IN ('created','status_changed')),
+        from_statut TEXT CHECK(from_statut IN ('a_faire','en_cours','termine')),
+        to_statut TEXT CHECK(to_statut IN ('a_faire','en_cours','termine')),
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mission_events_mission ON mission_events(mission_id);
+    CREATE INDEX IF NOT EXISTS idx_mission_events_created_at ON mission_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_mission_events_to_statut ON mission_events(to_statut);
+
     CREATE INDEX IF NOT EXISTS idx_stock_articles_fournisseur ON stock_articles(fournisseur_id);
     ''')
 
@@ -350,6 +365,78 @@ def _migrate_db(c):
     )''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_stock_fourn_mats_fournisseur ON stock_fournisseur_materiaux(fournisseur_id)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_stock_fourn_mats_materiau ON stock_fournisseur_materiaux(materiau_id)')
+
+    _ensure_mission_events_schema(c)
+    _backfill_mission_events(c)
+
+
+def _ensure_mission_events_schema(c):
+    """Crée/complète le schéma des événements de missions."""
+    c.executescript('''
+        CREATE TABLE IF NOT EXISTS mission_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mission_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL CHECK(event_type IN ('created','status_changed')),
+            from_statut TEXT CHECK(from_statut IN ('a_faire','en_cours','termine')),
+            to_statut TEXT CHECK(to_statut IN ('a_faire','en_cours','termine')),
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mission_events_mission ON mission_events(mission_id);
+        CREATE INDEX IF NOT EXISTS idx_mission_events_created_at ON mission_events(created_at);
+        CREATE INDEX IF NOT EXISTS idx_mission_events_to_statut ON mission_events(to_statut);
+    ''')
+
+    ecols = [r[1] for r in c.execute("PRAGMA table_info(mission_events)").fetchall()]
+    if 'from_statut' not in ecols:
+        c.execute("ALTER TABLE mission_events ADD COLUMN from_statut TEXT")
+    if 'to_statut' not in ecols:
+        c.execute("ALTER TABLE mission_events ADD COLUMN to_statut TEXT")
+
+
+def _backfill_mission_events(c):
+    """Backfill minimal des événements manquants pour les missions existantes."""
+    # Création : 1 événement par mission si absent.
+    c.execute('''
+        INSERT INTO mission_events (mission_id, event_type, to_statut, created_at)
+        SELECT m.id, 'created', 'a_faire',
+               COALESCE(NULLIF(m.created_at, ''), datetime('now','localtime'))
+        FROM missions m
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM mission_events e
+            WHERE e.mission_id = m.id AND e.event_type = 'created'
+        )
+    ''')
+
+    # Statuts existants : reconstitue un passage en_cours pour les missions déjà avancées.
+    c.execute('''
+        INSERT INTO mission_events (mission_id, event_type, from_statut, to_statut, created_at)
+        SELECT m.id, 'status_changed', 'a_faire', 'en_cours',
+               COALESCE(NULLIF(m.updated_at, ''), NULLIF(m.created_at, ''), datetime('now','localtime'))
+        FROM missions m
+        WHERE m.statut IN ('en_cours', 'termine')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM mission_events e
+              WHERE e.mission_id = m.id AND e.to_statut = 'en_cours'
+          )
+    ''')
+
+    # Statuts existants : reconstitue un passage terminé si absent.
+    c.execute('''
+        INSERT INTO mission_events (mission_id, event_type, from_statut, to_statut, created_at)
+        SELECT m.id, 'status_changed', 'en_cours', 'termine',
+               COALESCE(NULLIF(m.updated_at, ''), NULLIF(m.created_at, ''), datetime('now','localtime'))
+        FROM missions m
+        WHERE m.statut = 'termine'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM mission_events e
+              WHERE e.mission_id = m.id AND e.to_statut = 'termine'
+          )
+    ''')
 
 
 def _migrate_materiaux_to_junction(c):
@@ -598,6 +685,7 @@ def reset_db():
             DROP TABLE IF EXISTS stock_fournisseur_materiaux;
             DROP TABLE IF EXISTS stock_fournisseurs;
             DROP TABLE IF EXISTS stock_unites;
+            DROP TABLE IF EXISTS mission_events;
             DROP TABLE IF EXISTS missions;
         ''')
         conn.commit()
@@ -754,6 +842,8 @@ def generate_demo_data():
                        (titre, description, statut, priorite, ordre, date_echeance)
                        VALUES (?,?,?,?,?,?)''',
                       (titre, description, statut, priorite, ordre, echeance))
+
+        _backfill_mission_events(c)
 
         preps = [(r[0], r[1]) for r in c.execute('SELECT id,nom FROM preparateurs WHERE actif=1')]
         types = {r[1]: (r[0], r[1]) for r in c.execute('SELECT id,nom FROM types_activite WHERE actif=1')}

@@ -55,6 +55,11 @@
     gap: 0.4rem;
     min-height: 80px;
 }
+.kanban-col-subheader {
+    font-size: 0.72rem;
+    color: var(--bs-secondary-color);
+    padding: 0.2rem 0.8rem 0;
+}
 .kanban-empty {
     text-align: center;
     color: var(--bs-secondary);
@@ -136,6 +141,46 @@
 }
 .mission-card:hover .mission-actions { opacity: 1; }
 .mission-actions .btn { padding: 0.15rem 0.35rem; font-size: 0.75rem; }
+
+/* ── Historique ── */
+.history-list {
+    display: flex;
+    flex-direction: column;
+}
+.history-item {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+.history-item:last-child {
+    border-bottom: none;
+}
+.history-title {
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+}
+.history-desc {
+    font-size: 0.82rem;
+    color: var(--bs-secondary-color);
+    margin-bottom: 0.35rem;
+    line-height: 1.35;
+}
+.history-timeline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.8rem;
+    font-size: 0.78rem;
+    color: var(--bs-secondary-color);
+}
+.history-timeline-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.history-empty {
+    padding: 1rem;
+    text-align: center;
+    color: var(--bs-secondary-color);
+}
 </style>
 {% endblock %}
 
@@ -174,7 +219,31 @@
             <i class="bi bi-check-circle"></i> Terminé
             <span class="kanban-count" id="countDone">0</span>
         </div>
+        <div class="kanban-col-subheader" id="doneLimitInfo">10 plus récentes affichées</div>
         <div class="kanban-col-body" id="colDone"></div>
+    </div>
+</div>
+
+<!-- Historique des missions terminées -->
+<div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historique des missions</h6>
+            <small class="text-muted">Missions terminées avec timeline d'avancement</small>
+        </div>
+        <span class="badge text-bg-secondary" id="historyCountBadge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="history-list" id="historyList"></div>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center">
+        <button class="btn btn-sm btn-outline-secondary" id="historyPrevBtn" onclick="changeHistoryPage(-1)">
+            <i class="bi bi-chevron-left me-1"></i>Précédent
+        </button>
+        <small class="text-muted" id="historyPageInfo">Page 1 / 1</small>
+        <button class="btn btn-sm btn-outline-secondary" id="historyNextBtn" onclick="changeHistoryPage(1)">
+            Suivant<i class="bi bi-chevron-right ms-1"></i>
+        </button>
     </div>
 </div>
 
@@ -233,6 +302,9 @@
 const API = '/missions/api';
 let missions = [];
 let modal;
+const HISTORY_PAGE_SIZE = 10;
+let historyPage = 1;
+let historyPagination = { page: 1, page_size: HISTORY_PAGE_SIZE, total: 0, total_pages: 1 };
 
 document.addEventListener('DOMContentLoaded', () => {
     modal = new bootstrap.Modal(document.getElementById('modalMission'));
@@ -246,20 +318,50 @@ async function loadMissions() {
         if (j.success) {
             missions = j.data;
             renderKanban();
+            loadHistory(historyPage);
         }
     } catch(e) {
         console.error('Erreur chargement missions:', e);
     }
 }
 
+async function loadHistory(page = 1) {
+    try {
+        const r = await fetch(`${API}/history?page=${page}&page_size=${HISTORY_PAGE_SIZE}`);
+        const j = await r.json();
+        if (!j.success) return;
+
+        historyPagination = j.pagination || historyPagination;
+        historyPage = historyPagination.page || 1;
+        renderHistory(j.data || []);
+    } catch (e) {
+        console.error('Erreur chargement historique missions:', e);
+    }
+}
+
+function changeHistoryPage(delta) {
+    const nextPage = historyPage + delta;
+    if (nextPage < 1 || nextPage > (historyPagination.total_pages || 1)) return;
+    loadHistory(nextPage);
+}
+
 function renderKanban() {
     const todo = missions.filter(m => m.statut === 'a_faire');
     const doing = missions.filter(m => m.statut === 'en_cours');
-    const done = missions.filter(m => m.statut === 'termine');
+    const doneAll = missions
+        .filter(m => m.statut === 'termine')
+        .sort((a, b) => getDateSortValue(b.timeline_finished_at || b.completed_at || b.updated_at || b.created_at)
+            - getDateSortValue(a.timeline_finished_at || a.completed_at || a.updated_at || a.created_at));
+    const done = doneAll.slice(0, 10);
 
     document.getElementById('countTodo').textContent = todo.length;
     document.getElementById('countDoing').textContent = doing.length;
-    document.getElementById('countDone').textContent = done.length;
+    document.getElementById('countDone').textContent = doneAll.length;
+
+    const doneInfo = document.getElementById('doneLimitInfo');
+    doneInfo.textContent = doneAll.length > 10
+        ? `10 affichées sur ${doneAll.length} missions terminées`
+        : `${doneAll.length} mission${doneAll.length > 1 ? 's' : ''} terminée${doneAll.length > 1 ? 's' : ''}`;
 
     document.getElementById('colTodo').innerHTML = todo.length
         ? todo.map(cardHtml).join('') : '<div class="kanban-empty">Aucune mission</div>';
@@ -267,6 +369,44 @@ function renderKanban() {
         ? doing.map(cardHtml).join('') : '<div class="kanban-empty">Aucune mission</div>';
     document.getElementById('colDone').innerHTML = done.length
         ? done.map(cardHtml).join('') : '<div class="kanban-empty">Aucune mission</div>';
+}
+
+function renderHistory(rows) {
+    const el = document.getElementById('historyList');
+    const countBadge = document.getElementById('historyCountBadge');
+    const pageInfo = document.getElementById('historyPageInfo');
+    const prevBtn = document.getElementById('historyPrevBtn');
+    const nextBtn = document.getElementById('historyNextBtn');
+
+    const total = historyPagination.total || 0;
+    countBadge.textContent = `${total}`;
+    pageInfo.textContent = `Page ${historyPagination.page} / ${historyPagination.total_pages}`;
+    prevBtn.disabled = historyPagination.page <= 1;
+    nextBtn.disabled = historyPagination.page >= historyPagination.total_pages;
+
+    if (!rows.length) {
+        el.innerHTML = '<div class="history-empty">Aucune mission terminée dans l\'historique.</div>';
+        return;
+    }
+
+    el.innerHTML = rows.map((m) => {
+        const desc = m.description ? `<div class="history-desc">${escapeHtml(m.description)}</div>` : '';
+        const createdAt = formatDateTime(m.timeline_created_at || m.created_at);
+        const startedAt = formatDateTime(m.timeline_started_at);
+        const finishedAt = formatDateTime(m.timeline_finished_at || m.completed_at || m.updated_at);
+
+        return `
+            <div class="history-item">
+                <div class="history-title">${escapeHtml(m.titre)}</div>
+                ${desc}
+                <div class="history-timeline">
+                    <span class="history-timeline-item"><i class="bi bi-plus-circle"></i>Créée le ${createdAt}</span>
+                    <span class="history-timeline-item"><i class="bi bi-arrow-repeat"></i>En cours le ${startedAt}</span>
+                    <span class="history-timeline-item"><i class="bi bi-check-circle"></i>Terminée le ${finishedAt}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 function cardHtml(m) {
@@ -322,6 +462,30 @@ function echeanceBadge(dateStr, statut) {
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function formatDate(d) { const p = d.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
+
+function parseDateTime(value) {
+    if (!value) return null;
+    const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getDateSortValue(value) {
+    const d = parseDateTime(value);
+    return d ? d.getTime() : 0;
+}
+
+function formatDateTime(value) {
+    const d = parseDateTime(value);
+    if (!d) return '—';
+    return d.toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
 
 // ── CRUD ──
 
