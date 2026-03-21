@@ -69,7 +69,7 @@
 
 /* ── Mission Card ── */
 .mission-card {
-    background: var(--bs-tertiary-bg);
+    background: var(--mission-card-bg, var(--bs-tertiary-bg));
     border-radius: 8px;
     padding: 0.6rem 0.75rem;
     border-left: 4px solid transparent;
@@ -79,11 +79,9 @@
 .mission-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
 .mission-card.prio-haute {
     border-left-color: #f59e0b;
-    background: rgba(245,158,11,0.06);
 }
 .mission-card.prio-urgente {
     border-left-color: #ef4444;
-    background: rgba(239,68,68,0.06);
 }
 .mission-card.overdue {
     box-shadow: 0 0 0 1px rgba(239,68,68,0.5);
@@ -680,13 +678,29 @@ function cardHtml(m) {
         ? `<span class="mission-category"><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
         : '';
     const footer = footerBadges ? `<div class="mission-footer">${footerBadges}${actions}</div>` : `<div class="mission-footer">${actions}</div>`;
+    const cardStyle = m.categorie_couleur && isHexColor(m.categorie_couleur)
+        ? ` style="--mission-card-bg:${hexToRgba(m.categorie_couleur, 0.10)};"`
+        : '';
 
-    return `<div class="mission-card ${prioClass} ${overdueClass}" onclick="openEditModal(${m.id})" data-id="${m.id}">
+    return `<div class="mission-card ${prioClass} ${overdueClass}" onclick="openEditModal(${m.id})" data-id="${m.id}"${cardStyle}>
         <div class="mission-meta">${category}</div>
         <div class="mission-titre">${escapeHtml(m.titre)}</div>
         ${desc}
         ${footer}
     </div>`;
+}
+
+function isHexColor(value) {
+    return /^#[0-9a-fA-F]{6}$/.test(value || '');
+}
+
+function hexToRgba(hex, alpha) {
+    const h = (hex || '').replace('#', '');
+    if (h.length !== 6) return `rgba(107,114,128,${alpha})`;
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function echeanceBadge(dateStr, statut) {

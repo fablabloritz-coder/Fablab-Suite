@@ -60,18 +60,40 @@
     gap: 0.25rem;
 }
 .widget-fabtrack-missions .mission-card {
-    background: rgba(255,255,255,0.05);
+    background: var(--mission-card-bg, rgba(255,255,255,0.05));
     border-radius: 6px;
     padding: 0.4em 0.5em;
     border-left: 4px solid transparent;
 }
 .widget-fabtrack-missions .mission-card.prio-haute {
     border-left-color: #f59e0b;
-    background: rgba(245,158,11,0.08);
 }
 .widget-fabtrack-missions .mission-card.prio-urgente {
     border-left-color: #ef4444;
-    background: rgba(239,68,68,0.1);
+}
+.widget-fabtrack-missions .mission-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35em;
+    margin-bottom: 0.15em;
+}
+.widget-fabtrack-missions .mission-category {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    font-size: calc(0.56rem * var(--ws, 1));
+    font-weight: 700;
+    border: 1px solid rgba(148,163,184,0.4);
+    border-radius: 9999px;
+    padding: 0.08em 0.45em;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.25);
+}
+.widget-fabtrack-missions .mission-category-dot {
+    width: 0.52em;
+    height: 0.52em;
+    border-radius: 50%;
+    flex: 0 0 0.52em;
 }
 .widget-fabtrack-missions .mission-titre {
     font-size: calc(0.72rem * var(--ws, 1));
@@ -150,6 +172,19 @@
         } catch (e) { return ''; }
     }
 
+    function isHexColor(value) {
+        return /^#[0-9a-fA-F]{6}$/.test(value || '');
+    }
+
+    function hexToRgba(hex, alpha) {
+        const h = (hex || '').replace('#', '');
+        if (h.length !== 6) return 'rgba(148,163,184,' + alpha + ')';
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+
     function render(missions) {
         const grouped = { a_faire: [], en_cours: [], termine: [] };
         (missions || []).forEach(function (m) {
@@ -165,7 +200,14 @@
                       const desc = m.description ? '<div class="mission-desc">' + esc(m.description) + '</div>' : '';
                       const ech = echeanceHtml(m.date_echeance);
                       const footer = ech ? '<div class="mission-footer">' + ech + '</div>' : '';
-                      return '<div class="mission-card ' + pCls + '">'
+                      const cat = m.categorie_nom
+                          ? '<span class="mission-category"><span class="mission-category-dot" style="background:' + esc(m.categorie_couleur || '#6b7280') + ';"></span>' + esc(m.categorie_nom) + '</span>'
+                          : '';
+                      const cardStyle = isHexColor(m.categorie_couleur)
+                          ? ' style="--mission-card-bg:' + hexToRgba(m.categorie_couleur, 0.10) + ';"'
+                          : '';
+                      return '<div class="mission-card ' + pCls + '"' + cardStyle + '>'
+                          + (cat ? '<div class="mission-meta">' + cat + '</div>' : '')
                           + '<div class="mission-titre">' + esc(m.titre) + '</div>'
                           + desc + footer + '</div>';
                   }).join('')
