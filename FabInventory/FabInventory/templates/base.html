@@ -20,6 +20,7 @@
       <ul class="navbar-nav">
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="/"><i class="bi bi-house-door me-1"></i>Dashboard</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'upload' %}active{% endif %}" href="/upload"><i class="bi bi-cloud-upload me-1"></i>Importer</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.endpoint == 'search_multi_master' %}active{% endif %}" href="/search"><i class="bi bi-search me-1"></i>Recherche globale</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compare' %}active{% endif %}" href="/compare"><i class="bi bi-arrow-left-right me-1"></i>Comparer</a></li>
       </ul>
     </div>

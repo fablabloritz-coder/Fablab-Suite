@@ -43,6 +43,48 @@ function Select-OutputHtmlPath {
     return $dialog.FileName
 }
 
+function Get-WindowsReleaseLabel {
+    try {
+        $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+        $displayVersion = ($cv.DisplayVersion | Out-String).Trim()
+        $releaseId = ($cv.ReleaseId | Out-String).Trim()
+        $build = ($cv.CurrentBuild | Out-String).Trim()
+        $ubr = ($cv.UBR | Out-String).Trim()
+
+        $versionLabel = ""
+        if (-not [string]::IsNullOrWhiteSpace($displayVersion)) {
+            $versionLabel = $displayVersion
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($releaseId)) {
+            $versionLabel = $releaseId
+        }
+
+        $buildLabel = ""
+        if (-not [string]::IsNullOrWhiteSpace($build)) {
+            if (-not [string]::IsNullOrWhiteSpace($ubr)) {
+                $buildLabel = "$build.$ubr"
+            }
+            else {
+                $buildLabel = $build
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($versionLabel) -and -not [string]::IsNullOrWhiteSpace($buildLabel)) {
+            return "$versionLabel (build $buildLabel)"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($versionLabel)) {
+            return $versionLabel
+        }
+        if (-not [string]::IsNullOrWhiteSpace($buildLabel)) {
+            return "build $buildLabel"
+        }
+    }
+    catch {
+    }
+
+    return ""
+}
+
 function Get-SoftwareList {
     $items = @()
     $paths = @(
@@ -81,7 +123,12 @@ try {
 
     $software = Get-SoftwareList
 
-    $os = (Get-CimInstance Win32_OperatingSystem).Caption
+    $osBase = (Get-CimInstance Win32_OperatingSystem).Caption
+    $windowsRelease = Get-WindowsReleaseLabel
+    $os = $osBase
+    if (-not [string]::IsNullOrWhiteSpace($windowsRelease)) {
+        $os = "$osBase $windowsRelease"
+    }
     $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
     $ramGo = [math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB), 2)
     $fabricant = (Get-CimInstance Win32_ComputerSystem).Manufacturer
@@ -132,6 +179,7 @@ code{background:#f0f3f8;padding:2px 6px;border-radius:4px}
   <div class="row"><span class="label">PC</span><span>$(Escape-Html $pcName)</span></div>
   <div class="row"><span class="label">Date</span><span>$(Escape-Html $scanDate)</span></div>
   <div class="row"><span class="label">OS</span><span>$(Escape-Html $os)</span></div>
+    <div class="row"><span class="label">Version Windows</span><span>$(Escape-Html $windowsRelease)</span></div>
   <div class="row"><span class="label">CPU</span><span>$(Escape-Html $cpu)</span></div>
   <div class="row"><span class="label">RAM</span><span>$ramGo Go</span></div>
   <div class="row"><span class="label">Fabricant</span><span>$(Escape-Html $fabricant)</span></div>

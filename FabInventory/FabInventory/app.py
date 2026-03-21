@@ -216,10 +216,19 @@ def parse_inventory_html(html_content):
 
 def extract_system_info(html_content):
     """Try to extract system info from HTML structure."""
-    info = {"os": "", "cpu": "", "ram": 0, "fabricant": "", "num_serie": "", "domaine": ""}
+    info = {
+        "os": "",
+        "windows_version": "",
+        "cpu": "",
+        "ram": 0,
+        "fabricant": "",
+        "num_serie": "",
+        "domaine": "",
+    }
 
     patterns = {
         "os": [r'<span class="label">OS</span>\s*<span>(.*?)</span>', r'"OS":\s*"(.*?)"'],
+        "windows_version": [r'<span class="label">Version Windows</span>\s*<span>(.*?)</span>'],
         "cpu": [r'<span class="label">CPU</span>\s*<span>(.*?)</span>', r'"CPU":\s*"(.*?)"'],
         "ram": [r'<span class="label">RAM</span>\s*<span>([\d.,]+)', r'"RAM":\s*"([\d.,]+)'],
         "fabricant": [r'<span class="label">Fabricant</span>\s*<span>(.*?)</span>'],
@@ -240,6 +249,24 @@ def extract_system_info(html_content):
     return info
 
 
+def _compose_os_info(sys_info):
+    base = str((sys_info or {}).get("os", "") or "").strip()
+    win_version = str((sys_info or {}).get("windows_version", "") or "").strip()
+    if win_version and win_version.lower() not in base.lower():
+        if base:
+            return f"{base} ({win_version})"
+        return win_version
+    return base
+
+
+def _parse_preview_limit(raw_value, default_value=10):
+    try:
+        value = int(str(raw_value or "").strip())
+    except (TypeError, ValueError):
+        value = default_value
+    return max(5, min(value, 200))
+
+
 def _normalize_software_map(software_list):
     result = {}
     for item in software_list or []:
@@ -256,7 +283,7 @@ def _normalize_software_map(software_list):
     return result
 
 
-def _build_software_diff(old_software, new_software):
+def _build_software_diff(old_software, new_software, preview_limit=10):
     old_map = _normalize_software_map(old_software)
     new_map = _normalize_software_map(new_software)
 
@@ -283,9 +310,10 @@ def _build_software_diff(old_software, new_software):
         "added_count": len(added_keys),
         "removed_count": len(removed_keys),
         "changed_count": len(version_changed),
-        "added_examples": [new_map[k].get("n", k) for k in added_keys[:10]],
-        "removed_examples": [old_map[k].get("n", k) for k in removed_keys[:10]],
-        "changed_examples": version_changed[:10],
+        "preview_limit": preview_limit,
+        "added_examples": [new_map[k].get("n", k) for k in added_keys[:preview_limit]],
+        "removed_examples": [old_map[k].get("n", k) for k in removed_keys[:preview_limit]],
+        "changed_examples": version_changed[:preview_limit],
     }
 
 
@@ -475,7 +503,7 @@ def upload():
                     fabricant, num_serie, domaine, software_json, total_software)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                master_id, scan_date, sys_info["os"], sys_info["cpu"],
+                master_id, scan_date, _compose_os_info(sys_info), sys_info["cpu"],
                 sys_info["ram"], sys_info["fabricant"], sys_info["num_serie"],
                 sys_info["domaine"], json.dumps(software, ensure_ascii=False),
                 len(software)
@@ -531,7 +559,9 @@ def master_update(master_id):
     _cleanup_pending_updates()
 
     if request.method == "GET":
-        return render_template("master_update.html", master=master, latest=latest, step="upload")
+        return render_template("master_update.html", master=master, latest=latest, step="upload", preview_limit=10)
+
+    preview_limit = _parse_preview_limit(request.form.get("preview_limit"), default_value=10)
 
     confirm_token = request.form.get("confirm_token", "").strip()
     if confirm_token:
@@ -555,6 +585,23 @@ def master_update(master_id):
         sys_info = payload.get("sys_info") or {}
         scan_date = payload.get("scan_date") or datetime.now().strftime("%d/%m/%Y %H:%M")
 
+        if request.form.get("preview_only") == "1":
+            latest_sw = json.loads(latest["software_json"]) if latest and latest["software_json"] else []
+            diff = _build_software_diff(latest_sw, software, preview_limit=preview_limit)
+            system_changes = _build_system_diff(latest, sys_info)
+            return render_template(
+                "master_update.html",
+                master=master,
+                latest=latest,
+                step="confirm",
+                confirm_token=confirm_token,
+                incoming_scan_date=scan_date,
+                incoming_pc_name=str(payload.get("pc_name_from_file", "") or ""),
+                diff=diff,
+                system_changes=system_changes,
+                preview_limit=preview_limit,
+            )
+
         db.execute(
             """
             INSERT INTO snapshots (master_id, scan_date, os_info, cpu_info, ram_go,
@@ -564,7 +611,7 @@ def master_update(master_id):
             (
                 master_id,
                 scan_date,
-                sys_info.get("os", ""),
+                _compose_os_info(sys_info),
                 sys_info.get("cpu", ""),
                 float(sys_info.get("ram", 0) or 0),
                 sys_info.get("fabricant", ""),
@@ -608,7 +655,7 @@ def master_update(master_id):
     sys_info = extract_system_info(html_content)
 
     latest_sw = json.loads(latest["software_json"]) if latest and latest["software_json"] else []
-    diff = _build_software_diff(latest_sw, software)
+    diff = _build_software_diff(latest_sw, software, preview_limit=preview_limit)
     system_changes = _build_system_diff(latest, sys_info)
 
     token = secrets.token_hex(16)
@@ -633,6 +680,7 @@ def master_update(master_id):
         incoming_pc_name=pc_name_from_file,
         diff=diff,
         system_changes=system_changes,
+        preview_limit=preview_limit,
     )
 
 
@@ -707,6 +755,79 @@ def compare():
         FROM masters m ORDER BY m.pc_name
     """).fetchall()
     return render_template("compare.html", masters=masters)
+
+
+@app.route("/search")
+def search_multi_master():
+    db = get_db()
+    query = (request.args.get("q") or "").strip()
+    scope = (request.args.get("scope") or "latest").strip().lower()
+    if scope not in ("latest", "all"):
+        scope = "latest"
+
+    results = []
+    total_scanned = 0
+
+    if query:
+        query_lower = query.lower()
+        if scope == "latest":
+            snapshots = db.execute(
+                """
+                SELECT s.id, s.master_id, s.scan_date, s.software_json, m.pc_name, m.label
+                FROM snapshots s
+                JOIN masters m ON m.id = s.master_id
+                WHERE s.id IN (
+                    SELECT id FROM snapshots WHERE master_id = m.id ORDER BY created_at DESC, id DESC LIMIT 1
+                )
+                ORDER BY m.pc_name
+                """
+            ).fetchall()
+        else:
+            snapshots = db.execute(
+                """
+                SELECT s.id, s.master_id, s.scan_date, s.software_json, m.pc_name, m.label
+                FROM snapshots s
+                JOIN masters m ON m.id = s.master_id
+                ORDER BY m.pc_name, s.created_at DESC, s.id DESC
+                """
+            ).fetchall()
+
+        for snap in snapshots:
+            total_scanned += 1
+            try:
+                software_list = json.loads(snap["software_json"] or "[]")
+            except json.JSONDecodeError:
+                software_list = []
+
+            for sw in software_list:
+                name = str(sw.get("n", "") or "")
+                version = str(sw.get("v", "") or "")
+                editor = str(sw.get("e", "") or "")
+                source = str(sw.get("src", "") or "")
+
+                hay = " ".join([name, version, editor, source]).lower()
+                if query_lower not in hay:
+                    continue
+
+                results.append({
+                    "master_id": snap["master_id"],
+                    "master_name": snap["pc_name"],
+                    "master_label": snap["label"],
+                    "snapshot_id": snap["id"],
+                    "scan_date": snap["scan_date"],
+                    "name": name,
+                    "version": version,
+                    "editor": editor,
+                    "source": source,
+                })
+
+    return render_template(
+        "search.html",
+        query=query,
+        scope=scope,
+        results=results,
+        total_scanned=total_scanned,
+    )
 
 
 @app.route("/api/compare", methods=["POST"])
