@@ -8,7 +8,7 @@ import json
 import sqlite3
 import re
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fabinventory-secret-change-me")
@@ -249,6 +249,24 @@ def index():
         FROM masters m ORDER BY m.pc_name
     """).fetchall()
     return render_template("index.html", masters=masters)
+
+
+@app.route("/download/master-script")
+def download_master_script():
+    script_dir = os.path.join(app.root_path, "static", "downloads")
+    script_name = "inventaire_master.ps1"
+    script_path = os.path.join(script_dir, script_name)
+
+    if not os.path.isfile(script_path):
+        flash("Script d'inventaire introuvable sur le serveur", "error")
+        return redirect(url_for("index"))
+
+    return send_from_directory(
+        script_dir,
+        script_name,
+        as_attachment=True,
+        download_name="FabInventory-Inventaire-Master.ps1",
+    )
 
 
 @app.route("/upload", methods=["GET", "POST"])

@@ -4,7 +4,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2><i class="bi bi-speedometer2 me-2"></i>Dashboard</h2>
-  <a href="/upload" class="btn btn-primary"><i class="bi bi-cloud-upload me-1"></i>Importer un inventaire</a>
+  <div class="d-flex gap-2">
+    <a href="/download/master-script" class="btn btn-outline-secondary">
+      <i class="bi bi-download me-1"></i>Telecharger le script master
+    </a>
+    <a href="/upload" class="btn btn-primary"><i class="bi bi-cloud-upload me-1"></i>Importer un inventaire</a>
+  </div>
 </div>
 
 {% if not masters %}
@@ -12,7 +17,12 @@
   <i class="bi bi-inbox display-1 text-muted"></i>
   <h4 class="mt-3 text-muted">Aucun master enregistre</h4>
   <p class="text-muted">Lancez le script d'inventaire sur un PC master, puis importez le fichier HTML ici.</p>
-  <a href="/upload" class="btn btn-primary btn-lg mt-2"><i class="bi bi-cloud-upload me-1"></i>Importer</a>
+  <div class="d-flex justify-content-center gap-2 mt-2 flex-wrap">
+    <a href="/download/master-script" class="btn btn-outline-secondary btn-lg">
+      <i class="bi bi-download me-1"></i>Telecharger le script
+    </a>
+    <a href="/upload" class="btn btn-primary btn-lg"><i class="bi bi-cloud-upload me-1"></i>Importer</a>
+  </div>
 </div>
 {% else %}
 
