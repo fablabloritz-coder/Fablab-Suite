@@ -355,9 +355,26 @@ def master_detail(master_id):
 @app.route("/master/<int:master_id>/edit", methods=["POST"])
 def master_edit(master_id):
     db = get_db()
+    pc_name = request.form.get("pc_name", "").strip()
     label = request.form.get("label", "")
     notes = request.form.get("notes", "")
-    db.execute("UPDATE masters SET label = ?, notes = ? WHERE id = ?", (label, notes, master_id))
+
+    if not pc_name:
+        flash("Le nom du master est obligatoire", "error")
+        return redirect(url_for("master_detail", master_id=master_id))
+
+    existing = db.execute(
+        "SELECT id FROM masters WHERE lower(pc_name) = lower(?) AND id != ?",
+        (pc_name, master_id),
+    ).fetchone()
+    if existing:
+        flash("Un autre master utilise deja ce nom", "error")
+        return redirect(url_for("master_detail", master_id=master_id))
+
+    db.execute(
+        "UPDATE masters SET pc_name = ?, label = ?, notes = ? WHERE id = ?",
+        (pc_name, label, notes, master_id),
+    )
     db.commit()
     flash("Master mis a jour", "success")
     return redirect(url_for("master_detail", master_id=master_id))

@@ -106,6 +106,7 @@
       <form method="post" action="/master/{{ master.id }}/edit">
         <div class="modal-header"><h5 class="modal-title">Modifier {{ master.pc_name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Nom du master</label><input type="text" name="pc_name" class="form-control" value="{{ master.pc_name }}" required></div>
           <div class="mb-3"><label class="form-label">Label / Description</label><input type="text" name="label" class="form-control" value="{{ master.label }}" placeholder="Ex: Salle Info 1 - SolidWorks"></div>
           <div class="mb-3"><label class="form-label">Notes</label><textarea name="notes" class="form-control" rows="4" placeholder="Notes libres...">{{ master.notes }}</textarea></div>
         </div>
