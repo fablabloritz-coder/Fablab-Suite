@@ -262,6 +262,24 @@
         return 'bi-cloud';
     }
     var searchForm = qs('#search-form');
+    function autoFocusSearchInput() {
+        var input = qs('#search-input');
+        if (!input) return;
+        if (input.disabled || input.readOnly) return;
+        if (input.offsetParent === null) return;
+        if (document.activeElement && document.activeElement !== document.body) return;
+
+        window.setTimeout(function () {
+            if (qs('.modal.show')) return;
+            if (document.activeElement && document.activeElement !== document.body) return;
+            try {
+                input.focus({ preventScroll: true });
+            } catch (e) {
+                input.focus();
+            }
+            input.select();
+        }, 60);
+    }
     if (searchForm) {
         searchForm.addEventListener('submit', function (e) {
             e.preventDefault();
@@ -276,6 +294,7 @@
             var sp = PAGE_DATA.settings.search_provider || 'google';
             window.open((providers[sp] || providers.google) + encodeURIComponent(q), '_blank');
         });
+        autoFocusSearchInput();
     }
     function checkStatuses() {
         var dots = qsa('[data-status-id]');
