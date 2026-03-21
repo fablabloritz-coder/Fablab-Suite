@@ -762,6 +762,18 @@ def search_multi_master():
     db = get_db()
     query = (request.args.get("q") or "").strip()
     scope = (request.args.get("scope") or "latest").strip().lower()
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(1, page)
+
+    try:
+        per_page = int(request.args.get("per_page", 25))
+    except (TypeError, ValueError):
+        per_page = 25
+    per_page = max(10, min(per_page, 200))
+
     if scope not in ("latest", "all"):
         scope = "latest"
 
@@ -821,12 +833,25 @@ def search_multi_master():
                     "source": source,
                 })
 
+    total_results = len(results)
+    total_pages = max(1, (total_results + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    paged_results = results[start_idx:end_idx]
+
     return render_template(
         "search.html",
         query=query,
         scope=scope,
-        results=results,
+        results=paged_results,
         total_scanned=total_scanned,
+        total_results=total_results,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
     )
 
 
