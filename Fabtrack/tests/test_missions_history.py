@@ -52,6 +52,16 @@ class MissionsHistoryApiTests(unittest.TestCase):
         self.assertTrue(body.get("success"), body)
         return int(body["data"]["id"])
 
+    def _create_category(self, nom="Maintenance"):
+        response = self.client.post(
+            "/missions/api/categories",
+            json={"nom": nom, "couleur": "#123abc"},
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        body = response.get_json()
+        self.assertTrue(body.get("success"), body)
+        return int(body["data"]["id"])
+
     def test_create_mission_logs_created_event(self):
         mission_id = self._create_mission("Créer mission historique")
 
@@ -140,6 +150,56 @@ class MissionsHistoryApiTests(unittest.TestCase):
         self.assertTrue(body2.get("success"), body2)
         self.assertEqual(len(body2["data"]), 2)
         self.assertEqual(body2["pagination"]["page"], 2)
+
+    def test_mission_list_and_history_include_category_fields(self):
+        category_id = self._create_category("Infrastructure")
+        create_res = self.client.post(
+            "/missions/api/create",
+            json={
+                "titre": "Mission catégorisée",
+                "description": "Mission de test catégorie",
+                "statut": "termine",
+                "priorite": 1,
+                "category_id": category_id,
+            },
+        )
+        self.assertEqual(create_res.status_code, 201, create_res.data)
+
+        list_res = self.client.get("/missions/api/list")
+        self.assertEqual(list_res.status_code, 200, list_res.data)
+        list_body = list_res.get_json()
+        self.assertTrue(list_body.get("success"), list_body)
+        self.assertEqual(list_body["data"][0]["categorie_nom"], "Infrastructure")
+        self.assertEqual(list_body["data"][0]["categorie_couleur"], "#123abc")
+
+        history_res = self.client.get("/missions/api/history?page=1&page_size=10")
+        self.assertEqual(history_res.status_code, 200, history_res.data)
+        history_body = history_res.get_json()
+        self.assertTrue(history_body.get("success"), history_body)
+        self.assertEqual(history_body["data"][0]["categorie_nom"], "Infrastructure")
+
+    def test_history_exports_support_csv_html_pdf(self):
+        mission_id = self._create_mission("Mission export", statut="termine")
+        self.assertGreater(mission_id, 0)
+
+        csv_res = self.client.get("/missions/api/history/export?format=csv")
+        self.assertEqual(csv_res.status_code, 200, csv_res.data)
+        self.assertIn("text/csv", csv_res.headers.get("Content-Type", ""))
+        csv_text = csv_res.data.decode("utf-8")
+        self.assertIn("Mission export", csv_text)
+        self.assertIn("ID;Titre;Description;Categorie;Priorite;Creee le;Debut;Terminee le", csv_text)
+
+        html_res = self.client.get("/missions/api/history/export?format=html")
+        self.assertEqual(html_res.status_code, 200, html_res.data)
+        self.assertIn("text/html", html_res.headers.get("Content-Type", ""))
+        html_text = html_res.data.decode("utf-8")
+        self.assertIn("<html", html_text.lower())
+        self.assertIn("Mission export", html_text)
+
+        pdf_res = self.client.get("/missions/api/history/export?format=pdf")
+        self.assertEqual(pdf_res.status_code, 200, pdf_res.data)
+        self.assertIn("application/pdf", pdf_res.headers.get("Content-Type", ""))
+        self.assertTrue(pdf_res.data.startswith(b"%PDF-"))
 
 
 if __name__ == "__main__":

@@ -251,10 +251,22 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         titre TEXT NOT NULL,
         description TEXT DEFAULT '',
+        category_id INTEGER,
         statut TEXT NOT NULL DEFAULT 'a_faire' CHECK(statut IN ('a_faire','en_cours','termine')),
         priorite INTEGER DEFAULT 0 CHECK(priorite IN (0,1,2)),
         ordre INTEGER DEFAULT 0,
         date_echeance TEXT DEFAULT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (category_id) REFERENCES mission_categories(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mission_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom TEXT NOT NULL UNIQUE,
+        couleur TEXT NOT NULL DEFAULT '#6b7280',
+        ordre INTEGER DEFAULT 0,
+        actif INTEGER NOT NULL DEFAULT 1 CHECK(actif IN (0,1)),
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
@@ -262,6 +274,9 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_missions_statut ON missions(statut);
     CREATE INDEX IF NOT EXISTS idx_missions_echeance ON missions(date_echeance);
     CREATE INDEX IF NOT EXISTS idx_missions_priorite ON missions(priorite);
+    CREATE INDEX IF NOT EXISTS idx_missions_category ON missions(category_id);
+    CREATE INDEX IF NOT EXISTS idx_mission_categories_actif ON mission_categories(actif);
+    CREATE INDEX IF NOT EXISTS idx_mission_categories_ordre ON mission_categories(ordre);
 
     CREATE TABLE IF NOT EXISTS mission_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -282,6 +297,7 @@ def init_db():
 
     _migrate_db(c)
     _insert_reference_data(c)
+    _insert_mission_categories_seed(c)
     _insert_stock_reference_data(c)
     conn.commit()
     conn.close()
@@ -366,8 +382,49 @@ def _migrate_db(c):
     c.execute('CREATE INDEX IF NOT EXISTS idx_stock_fourn_mats_fournisseur ON stock_fournisseur_materiaux(fournisseur_id)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_stock_fourn_mats_materiau ON stock_fournisseur_materiaux(materiau_id)')
 
+    _ensure_mission_categories_schema(c)
     _ensure_mission_events_schema(c)
     _backfill_mission_events(c)
+
+
+def _ensure_mission_categories_schema(c):
+    """Crée/complète le schéma des catégories de missions."""
+    c.executescript('''
+        CREATE TABLE IF NOT EXISTS mission_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL UNIQUE,
+            couleur TEXT NOT NULL DEFAULT '#6b7280',
+            ordre INTEGER DEFAULT 0,
+            actif INTEGER NOT NULL DEFAULT 1 CHECK(actif IN (0,1)),
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mission_categories_actif ON mission_categories(actif);
+        CREATE INDEX IF NOT EXISTS idx_mission_categories_ordre ON mission_categories(ordre);
+    ''')
+
+    mcols = [r[1] for r in c.execute("PRAGMA table_info(missions)").fetchall()]
+    if 'category_id' not in mcols:
+        c.execute("ALTER TABLE missions ADD COLUMN category_id INTEGER")
+    c.execute('CREATE INDEX IF NOT EXISTS idx_missions_category ON missions(category_id)')
+
+    _insert_mission_categories_seed(c)
+
+
+def _insert_mission_categories_seed(c):
+    """Insère les catégories missions par défaut (idempotent)."""
+    categories = [
+        ('Maintenance', '#0ea5e9', 10),
+        ('Approvisionnement', '#10b981', 20),
+        ('Formation', '#8b5cf6', 30),
+        ('Organisation', '#f59e0b', 40),
+    ]
+    for nom, couleur, ordre in categories:
+        c.execute(
+            'INSERT OR IGNORE INTO mission_categories (nom, couleur, ordre) VALUES (?,?,?)',
+            (nom, couleur, ordre),
+        )
 
 
 def _ensure_mission_events_schema(c):
@@ -686,6 +743,7 @@ def reset_db():
             DROP TABLE IF EXISTS stock_fournisseurs;
             DROP TABLE IF EXISTS stock_unites;
             DROP TABLE IF EXISTS mission_events;
+            DROP TABLE IF EXISTS mission_categories;
             DROP TABLE IF EXISTS missions;
         ''')
         conn.commit()

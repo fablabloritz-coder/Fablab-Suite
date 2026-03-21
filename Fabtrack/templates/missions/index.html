@@ -93,6 +93,30 @@
     font-size: 0.9rem;
     margin-bottom: 0;
 }
+.mission-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.2rem;
+}
+.mission-category {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 9999px;
+    padding: 0.08rem 0.45rem;
+    background: color-mix(in srgb, var(--bs-body-bg) 85%, transparent);
+}
+.mission-category-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    flex: 0 0 0.55rem;
+}
 .mission-desc {
     font-size: 0.78rem;
     color: var(--bs-secondary);
@@ -181,6 +205,33 @@
     text-align: center;
     color: var(--bs-secondary-color);
 }
+
+.category-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 260px;
+    overflow-y: auto;
+}
+.category-item {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.category-color-swatch {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.2);
+}
+.category-item-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 0.35rem;
+}
 </style>
 {% endblock %}
 
@@ -190,9 +241,14 @@
         <h4 class="mb-0"><i class="bi bi-kanban me-2"></i>Missions</h4>
         <small class="text-muted">Gestion des tâches et missions du FabLab</small>
     </div>
-    <button class="btn btn-success" onclick="openCreateModal()">
-        <i class="bi bi-plus-lg me-1"></i>Nouvelle mission
-    </button>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" onclick="openCategoriesModal()">
+            <i class="bi bi-tags me-1"></i>Catégories
+        </button>
+        <button class="btn btn-success" onclick="openCreateModal()">
+            <i class="bi bi-plus-lg me-1"></i>Nouvelle mission
+        </button>
+    </div>
 </div>
 
 <!-- Kanban Board -->
@@ -231,7 +287,20 @@
             <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historique des missions</h6>
             <small class="text-muted">Missions terminées avec timeline d'avancement</small>
         </div>
-        <span class="badge text-bg-secondary" id="historyCountBadge">0</span>
+        <div class="d-flex align-items-center gap-2">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Export historique missions">
+                <button class="btn btn-outline-secondary" onclick="exportHistory('csv')" title="Exporter CSV">
+                    <i class="bi bi-filetype-csv"></i>
+                </button>
+                <button class="btn btn-outline-secondary" onclick="exportHistory('html')" title="Exporter HTML">
+                    <i class="bi bi-filetype-html"></i>
+                </button>
+                <button class="btn btn-outline-secondary" onclick="exportHistory('pdf')" title="Exporter PDF">
+                    <i class="bi bi-filetype-pdf"></i>
+                </button>
+            </div>
+            <span class="badge text-bg-secondary" id="historyCountBadge">0</span>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="history-list" id="historyList"></div>
@@ -266,6 +335,10 @@
                     <textarea class="form-control" id="missionDesc" rows="3" maxlength="1000"></textarea>
                 </div>
                 <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Catégorie</label>
+                        <select class="form-select" id="missionCategory"></select>
+                    </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-semibold">Statut</label>
                         <select class="form-select" id="missionStatut">
@@ -282,7 +355,7 @@
                             <option value="2">Urgente</option>
                         </select>
                     </div>
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-2 mb-3">
                         <label class="form-label fw-semibold">Échéance</label>
                         <input type="date" class="form-control" id="missionEcheance">
                     </div>
@@ -298,18 +371,178 @@
     </div>
 </div>
 
+<!-- Modal Catégories -->
+<div class="modal fade" id="modalCategories" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-tags me-2"></i>Catégories de missions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="categoryId">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-7">
+                        <label class="form-label fw-semibold">Nom</label>
+                        <input type="text" class="form-control" id="categoryName" maxlength="80" placeholder="Ex: Maintenance">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Couleur</label>
+                        <input type="color" class="form-control form-control-color w-100" id="categoryColor" value="#6b7280">
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button class="btn btn-primary" onclick="saveCategory()">
+                            <i class="bi bi-check-lg me-1"></i>Enregistrer
+                        </button>
+                    </div>
+                </div>
+                <div class="category-list" id="categoryList"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="resetCategoryForm()">Nouvelle catégorie</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const API = '/missions/api';
 let missions = [];
+let missionCategories = [];
 let modal;
+let categoriesModal;
 const HISTORY_PAGE_SIZE = 10;
 let historyPage = 1;
 let historyPagination = { page: 1, page_size: HISTORY_PAGE_SIZE, total: 0, total_pages: 1 };
 
 document.addEventListener('DOMContentLoaded', () => {
     modal = new bootstrap.Modal(document.getElementById('modalMission'));
-    loadMissions();
+    categoriesModal = new bootstrap.Modal(document.getElementById('modalCategories'));
+    loadCategories().then(() => loadMissions());
 });
+
+async function loadCategories() {
+    try {
+        const r = await fetch(`${API}/categories`);
+        const j = await r.json();
+        if (!j.success) return;
+        missionCategories = Array.isArray(j.data) ? j.data : [];
+        renderCategorySelect();
+        renderCategoryList();
+    } catch (e) {
+        console.error('Erreur chargement catégories missions:', e);
+    }
+}
+
+function renderCategorySelect(selectedId = null) {
+    const select = document.getElementById('missionCategory');
+    if (!select) return;
+    const options = ['<option value="">Sans catégorie</option>'];
+    for (const c of missionCategories) {
+        const selectedAttr = selectedId && Number(selectedId) === Number(c.id) ? ' selected' : '';
+        options.push(`<option value="${c.id}"${selectedAttr}>${escapeHtml(c.nom)}</option>`);
+    }
+    select.innerHTML = options.join('');
+}
+
+function renderCategoryList() {
+    const list = document.getElementById('categoryList');
+    if (!list) return;
+    if (!missionCategories.length) {
+        list.innerHTML = '<div class="text-muted text-center py-3">Aucune catégorie active.</div>';
+        return;
+    }
+    list.innerHTML = missionCategories.map((c) => `
+        <div class="category-item">
+            <span class="category-color-swatch" style="background:${c.couleur};"></span>
+            <div>
+                <div class="fw-semibold">${escapeHtml(c.nom)}</div>
+                <small class="text-muted">${escapeHtml(c.couleur)}</small>
+            </div>
+            <div class="category-item-actions">
+                <button class="btn btn-sm btn-outline-secondary" onclick="editCategory(${c.id})" title="Modifier">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory(${c.id})" title="Supprimer">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function openCategoriesModal() {
+    resetCategoryForm();
+    renderCategoryList();
+    categoriesModal.show();
+}
+
+function resetCategoryForm() {
+    document.getElementById('categoryId').value = '';
+    document.getElementById('categoryName').value = '';
+    document.getElementById('categoryColor').value = '#6b7280';
+}
+
+function editCategory(id) {
+    const c = missionCategories.find((x) => Number(x.id) === Number(id));
+    if (!c) return;
+    document.getElementById('categoryId').value = c.id;
+    document.getElementById('categoryName').value = c.nom;
+    document.getElementById('categoryColor').value = c.couleur || '#6b7280';
+}
+
+async function saveCategory() {
+    const id = document.getElementById('categoryId').value;
+    const nom = document.getElementById('categoryName').value.trim();
+    const couleur = document.getElementById('categoryColor').value;
+    if (!nom) {
+        showToast('Le nom de catégorie est requis', 'warning');
+        return;
+    }
+
+    const payload = { nom, couleur };
+    const url = id ? `${API}/categories/${id}` : `${API}/categories`;
+    const method = id ? 'PUT' : 'POST';
+
+    try {
+        const r = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const j = await r.json();
+        if (!j.success) {
+            showToast(j.error || 'Erreur catégorie', 'danger');
+            return;
+        }
+        showToast(id ? 'Catégorie modifiée' : 'Catégorie ajoutée', 'success');
+        resetCategoryForm();
+        await loadCategories();
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+async function deleteCategory(id) {
+    const cat = missionCategories.find((x) => Number(x.id) === Number(id));
+    if (!cat) return;
+    if (!confirm(`Supprimer la catégorie "${cat.nom}" ? Les missions associées resteront sans catégorie.`)) return;
+    try {
+        const r = await fetch(`${API}/categories/${id}`, { method: 'DELETE' });
+        const j = await r.json();
+        if (!j.success) {
+            showToast(j.error || 'Erreur suppression', 'danger');
+            return;
+        }
+        showToast('Catégorie supprimée', 'success');
+        await loadCategories();
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
 
 async function loadMissions() {
     try {
@@ -343,6 +576,11 @@ function changeHistoryPage(delta) {
     const nextPage = historyPage + delta;
     if (nextPage < 1 || nextPage > (historyPagination.total_pages || 1)) return;
     loadHistory(nextPage);
+}
+
+function exportHistory(format) {
+    const fmt = ['csv', 'html', 'pdf'].includes(format) ? format : 'csv';
+    window.open(`${API}/history/export?format=${fmt}`, '_blank');
 }
 
 function renderKanban() {
@@ -394,10 +632,13 @@ function renderHistory(rows) {
         const createdAt = formatDateTime(m.timeline_created_at || m.created_at);
         const startedAt = formatDateTime(m.timeline_started_at);
         const finishedAt = formatDateTime(m.timeline_finished_at || m.completed_at || m.updated_at);
+        const categoryBadge = m.categorie_nom
+            ? `<span class="mission-category"><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
+            : '';
 
         return `
             <div class="history-item">
-                <div class="history-title">${escapeHtml(m.titre)}</div>
+                <div class="history-title d-flex align-items-center gap-2">${escapeHtml(m.titre)} ${categoryBadge}</div>
                 ${desc}
                 <div class="history-timeline">
                     <span class="history-timeline-item"><i class="bi bi-plus-circle"></i>Créée le ${createdAt}</span>
@@ -435,9 +676,13 @@ function cardHtml(m) {
     actions += '</div>';
 
     const desc = m.description ? `<div class="mission-desc">${escapeHtml(m.description)}</div>` : '';
+    const category = m.categorie_nom
+        ? `<span class="mission-category"><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
+        : '';
     const footer = footerBadges ? `<div class="mission-footer">${footerBadges}${actions}</div>` : `<div class="mission-footer">${actions}</div>`;
 
     return `<div class="mission-card ${prioClass} ${overdueClass}" onclick="openEditModal(${m.id})" data-id="${m.id}">
+        <div class="mission-meta">${category}</div>
         <div class="mission-titre">${escapeHtml(m.titre)}</div>
         ${desc}
         ${footer}
@@ -496,6 +741,7 @@ function openCreateModal() {
     document.getElementById('missionStatut').value = 'a_faire';
     document.getElementById('missionPriorite').value = '0';
     document.getElementById('missionEcheance').value = '';
+    renderCategorySelect(null);
     document.getElementById('modalMissionTitle').textContent = 'Nouvelle mission';
     modal.show();
     setTimeout(() => document.getElementById('missionTitre').focus(), 300);
@@ -510,6 +756,7 @@ function openEditModal(id) {
     document.getElementById('missionStatut').value = m.statut;
     document.getElementById('missionPriorite').value = m.priorite;
     document.getElementById('missionEcheance').value = m.date_echeance || '';
+    renderCategorySelect(m.category_id || null);
     document.getElementById('modalMissionTitle').textContent = 'Modifier la mission';
     modal.show();
 }
@@ -522,6 +769,7 @@ async function saveMission() {
     const payload = {
         titre,
         description: document.getElementById('missionDesc').value.trim(),
+        category_id: document.getElementById('missionCategory').value || null,
         statut: document.getElementById('missionStatut').value,
         priorite: parseInt(document.getElementById('missionPriorite').value),
         date_echeance: document.getElementById('missionEcheance').value || null,
