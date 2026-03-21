@@ -274,7 +274,6 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_missions_statut ON missions(statut);
     CREATE INDEX IF NOT EXISTS idx_missions_echeance ON missions(date_echeance);
     CREATE INDEX IF NOT EXISTS idx_missions_priorite ON missions(priorite);
-    CREATE INDEX IF NOT EXISTS idx_missions_category ON missions(category_id);
     CREATE INDEX IF NOT EXISTS idx_mission_categories_actif ON mission_categories(actif);
     CREATE INDEX IF NOT EXISTS idx_mission_categories_ordre ON mission_categories(ordre);
 
