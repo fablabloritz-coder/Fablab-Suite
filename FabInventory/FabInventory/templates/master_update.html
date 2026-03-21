@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Mise a jour {{ master.pc_name }} - FabInventory{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+    <li class="breadcrumb-item"><a href="/master/{{ master.id }}">{{ master.pc_name }}</a></li>
+    <li class="breadcrumb-item active">Mettre a jour</li>
+  </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-arrow-repeat me-2 text-success"></i>Mettre a jour {{ master.pc_name }}</h2>
+  <a href="/master/{{ master.id }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Retour</a>
+</div>
+
+{% if step == "upload" %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <p class="text-muted mb-3">
+      Importez un nouveau fichier HTML d'inventaire pour ce master. Avant validation, FabInventory affichera un comparatif avec le dernier snapshot.
+    </p>
+    <form method="post" enctype="multipart/form-data" class="row g-3">
+      <div class="col-md-8">
+        <label class="form-label">Fichier d'inventaire (.html)</label>
+        <input type="file" name="file" class="form-control" accept=".html" required>
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button type="submit" class="btn btn-success w-100">
+          <i class="bi bi-search me-1"></i>Comparer avant mise a jour
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% elif step == "confirm" %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <h5 class="mb-3"><i class="bi bi-check2-square me-2"></i>Verification avant enregistrement</h5>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="text-muted small">Scan entrant</div>
+          <div class="fw-semibold">{{ incoming_scan_date }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="text-muted small">Nom dans le fichier</div>
+          <div class="fw-semibold">{{ incoming_pc_name or '-' }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 h-100">
+          <div class="text-muted small">Master cible</div>
+          <div class="fw-semibold">{{ master.pc_name }}</div>
+        </div>
+      </div>
+    </div>
+
+    {% if incoming_pc_name and incoming_pc_name != master.pc_name %}
+    <div class="alert alert-warning mt-3 mb-0">
+      <i class="bi bi-exclamation-triangle me-1"></i>
+      Le nom dans le fichier ne correspond pas au master cible. La mise a jour sera quand meme appliquee a <strong>{{ master.pc_name }}</strong>.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Logiciels avant</div><div class="fs-4 fw-bold">{{ diff.old_total }}</div></div></div></div>
+  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Logiciels apres</div><div class="fs-4 fw-bold">{{ diff.new_total }}</div></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Ajoutes</div><div class="fs-5 fw-bold text-success">+{{ diff.added_count }}</div></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Supprimes</div><div class="fs-5 fw-bold text-danger">-{{ diff.removed_count }}</div></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Versions</div><div class="fs-5 fw-bold text-primary">{{ diff.changed_count }}</div></div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold text-success">Nouveaux logiciels (max 10)</div>
+      <div class="card-body">
+        {% if diff.added_examples %}
+          <ul class="mb-0">
+            {% for name in diff.added_examples %}<li>{{ name }}</li>{% endfor %}
+          </ul>
+        {% else %}
+          <span class="text-muted">Aucun</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold text-danger">Logiciels retires (max 10)</div>
+      <div class="card-body">
+        {% if diff.removed_examples %}
+          <ul class="mb-0">
+            {% for name in diff.removed_examples %}<li>{{ name }}</li>{% endfor %}
+          </ul>
+        {% else %}
+          <span class="text-muted">Aucun</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold text-primary">Versions modifiees (max 10)</div>
+      <div class="card-body">
+        {% if diff.changed_examples %}
+          <ul class="mb-0">
+            {% for item in diff.changed_examples %}
+            <li>{{ item.name }}: {{ item.old_version or '-' }} -> {{ item.new_version or '-' }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <span class="text-muted">Aucune</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if system_changes %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white fw-semibold">Changements systeme detectes</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Champ</th><th>Avant</th><th>Apres</th></tr></thead>
+        <tbody>
+          {% for c in system_changes %}
+          <tr>
+            <td>{{ c.label }}</td>
+            <td>{{ c.old }}</td>
+            <td>{{ c.new }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="d-flex gap-2">
+  <form method="post">
+    <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
+    <button type="submit" class="btn btn-success"><i class="bi bi-check2-circle me-1"></i>Confirmer la mise a jour</button>
+  </form>
+  <a href="/master/{{ master.id }}/update" class="btn btn-outline-secondary">Annuler</a>
+</div>
+{% endif %}
+
+{% endblock %}

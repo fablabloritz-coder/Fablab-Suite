@@ -7,6 +7,8 @@ import os
 import json
 import sqlite3
 import re
+import time
+import secrets
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory
 
@@ -236,6 +238,119 @@ def extract_system_info(html_content):
     return info
 
 
+def _normalize_software_map(software_list):
+    result = {}
+    for item in software_list or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("n", "")).strip()
+        if not name:
+            continue
+        key = name.lower()
+        result[key] = {
+            "n": name,
+            "v": str(item.get("v", "") or "").strip(),
+        }
+    return result
+
+
+def _build_software_diff(old_software, new_software):
+    old_map = _normalize_software_map(old_software)
+    new_map = _normalize_software_map(new_software)
+
+    old_keys = set(old_map.keys())
+    new_keys = set(new_map.keys())
+
+    added_keys = sorted(new_keys - old_keys)
+    removed_keys = sorted(old_keys - new_keys)
+
+    version_changed = []
+    for key in sorted(old_keys & new_keys):
+        old_v = old_map[key].get("v", "")
+        new_v = new_map[key].get("v", "")
+        if old_v != new_v:
+            version_changed.append({
+                "name": new_map[key].get("n", key),
+                "old_version": old_v,
+                "new_version": new_v,
+            })
+
+    return {
+        "old_total": len(old_map),
+        "new_total": len(new_map),
+        "added_count": len(added_keys),
+        "removed_count": len(removed_keys),
+        "changed_count": len(version_changed),
+        "added_examples": [new_map[k].get("n", k) for k in added_keys[:10]],
+        "removed_examples": [old_map[k].get("n", k) for k in removed_keys[:10]],
+        "changed_examples": version_changed[:10],
+    }
+
+
+def _build_system_diff(latest_snapshot, new_sys_info):
+    fields = [
+        ("os_info", "OS"),
+        ("cpu_info", "CPU"),
+        ("ram_go", "RAM"),
+        ("fabricant", "Fabricant"),
+        ("num_serie", "Numero serie"),
+        ("domaine", "Domaine"),
+    ]
+
+    mapping = {
+        "os_info": "os",
+        "cpu_info": "cpu",
+        "ram_go": "ram",
+        "fabricant": "fabricant",
+        "num_serie": "num_serie",
+        "domaine": "domaine",
+    }
+
+    changes = []
+    if not latest_snapshot:
+        return changes
+
+    for db_key, label in fields:
+        old_val = latest_snapshot[db_key]
+        new_val = new_sys_info.get(mapping[db_key], "")
+        if db_key == "ram_go":
+            old_num = float(old_val or 0)
+            new_num = float(new_val or 0)
+            if abs(old_num - new_num) > 0.001:
+                changes.append({"label": label, "old": old_num, "new": new_num})
+        else:
+            old_txt = str(old_val or "").strip()
+            new_txt = str(new_val or "").strip()
+            if old_txt != new_txt:
+                changes.append({"label": label, "old": old_txt or "-", "new": new_txt or "-"})
+
+    return changes
+
+
+def _pending_update_file(token):
+    safe_token = re.sub(r"[^a-zA-Z0-9_-]", "", token)
+    return os.path.join(UPLOAD_FOLDER, f"pending_update_{safe_token}.json")
+
+
+def _cleanup_pending_updates(max_age_seconds=86400):
+    now = time.time()
+    try:
+        entries = os.listdir(UPLOAD_FOLDER)
+    except OSError:
+        return
+
+    for name in entries:
+        if not name.startswith("pending_update_") or not name.endswith(".json"):
+            continue
+        path = os.path.join(UPLOAD_FOLDER, name)
+        try:
+            age = now - os.path.getmtime(path)
+            if age > max_age_seconds:
+                os.remove(path)
+        except OSError:
+            continue
+
+
 # ===== ROUTES =====
 
 @app.route("/")
@@ -350,6 +465,127 @@ def master_detail(master_id):
 
     return render_template("master.html", master=master, snapshots=snapshots,
                            software=software, flags=flags, latest=latest)
+
+
+@app.route("/master/<int:master_id>/update", methods=["GET", "POST"])
+def master_update(master_id):
+    db = get_db()
+    master = db.execute("SELECT * FROM masters WHERE id = ?", (master_id,)).fetchone()
+    if not master:
+        flash("Master introuvable", "error")
+        return redirect(url_for("index"))
+
+    latest = db.execute(
+        "SELECT * FROM snapshots WHERE master_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        (master_id,),
+    ).fetchone()
+
+    _cleanup_pending_updates()
+
+    if request.method == "GET":
+        return render_template("master_update.html", master=master, latest=latest, step="upload")
+
+    confirm_token = request.form.get("confirm_token", "").strip()
+    if confirm_token:
+        pending_path = _pending_update_file(confirm_token)
+        if not os.path.isfile(pending_path):
+            flash("Confirmation expiree. Recommencez la mise a jour.", "error")
+            return redirect(url_for("master_update", master_id=master_id))
+
+        try:
+            with open(pending_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            flash("Confirmation invalide. Recommencez la mise a jour.", "error")
+            return redirect(url_for("master_update", master_id=master_id))
+
+        if int(payload.get("master_id", -1)) != master_id:
+            flash("Jeton de confirmation invalide", "error")
+            return redirect(url_for("master_update", master_id=master_id))
+
+        software = payload.get("software") or []
+        sys_info = payload.get("sys_info") or {}
+        scan_date = payload.get("scan_date") or datetime.now().strftime("%d/%m/%Y %H:%M")
+
+        db.execute(
+            """
+            INSERT INTO snapshots (master_id, scan_date, os_info, cpu_info, ram_go,
+                fabricant, num_serie, domaine, software_json, total_software)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                master_id,
+                scan_date,
+                sys_info.get("os", ""),
+                sys_info.get("cpu", ""),
+                float(sys_info.get("ram", 0) or 0),
+                sys_info.get("fabricant", ""),
+                sys_info.get("num_serie", ""),
+                sys_info.get("domaine", ""),
+                json.dumps(software, ensure_ascii=False),
+                len(software),
+            ),
+        )
+        db.commit()
+
+        try:
+            os.remove(pending_path)
+        except OSError:
+            pass
+
+        flash("Master mis a jour: nouveau snapshot enregistre", "success")
+        return redirect(url_for("master_detail", master_id=master_id))
+
+    upload_file = request.files.get("file")
+    if not upload_file or not upload_file.filename:
+        flash("Selectionnez un fichier HTML d'inventaire", "error")
+        return redirect(url_for("master_update", master_id=master_id))
+
+    if not upload_file.filename.lower().endswith(".html"):
+        flash("Le fichier doit etre au format .html", "error")
+        return redirect(url_for("master_update", master_id=master_id))
+
+    html_content = upload_file.read().decode("utf-8", errors="ignore")
+    parsed = parse_inventory_html(html_content)
+    if not parsed:
+        flash("Format invalide: bloc inventoryData introuvable", "error")
+        return redirect(url_for("master_update", master_id=master_id))
+
+    software = parsed.get("software")
+    if not isinstance(software, list):
+        software = []
+
+    scan_date = parsed.get("date") or datetime.now().strftime("%d/%m/%Y %H:%M")
+    pc_name_from_file = str(parsed.get("pcName", "")).strip()
+    sys_info = extract_system_info(html_content)
+
+    latest_sw = json.loads(latest["software_json"]) if latest and latest["software_json"] else []
+    diff = _build_software_diff(latest_sw, software)
+    system_changes = _build_system_diff(latest, sys_info)
+
+    token = secrets.token_hex(16)
+    pending_path = _pending_update_file(token)
+    payload = {
+        "master_id": master_id,
+        "scan_date": scan_date,
+        "pc_name_from_file": pc_name_from_file,
+        "sys_info": sys_info,
+        "software": software,
+    }
+    with open(pending_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
+
+    return render_template(
+        "master_update.html",
+        master=master,
+        latest=latest,
+        step="confirm",
+        confirm_token=token,
+        incoming_scan_date=scan_date,
+        incoming_pc_name=pc_name_from_file,
+        diff=diff,
+        system_changes=system_changes,
+    )
 
 
 @app.route("/master/<int:master_id>/edit", methods=["POST"])
