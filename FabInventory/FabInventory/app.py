@@ -9,6 +9,8 @@ import sqlite3
 import re
 import time
 import secrets
+import io
+import zipfile
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory
 
@@ -399,6 +401,34 @@ def download_master_launcher():
         launcher_name,
         as_attachment=True,
         download_name="FabInventory-Lancer-Inventaire-Master.bat",
+    )
+
+
+@app.route("/download/master-bundle")
+def download_master_bundle():
+    script_dir = os.path.join(app.root_path, "static", "downloads")
+    files_to_pack = [
+        "inventaire_master.ps1",
+        "lancer_inventaire_master.bat",
+    ]
+
+    missing = [name for name in files_to_pack if not os.path.isfile(os.path.join(script_dir, name))]
+    if missing:
+        flash("Pack d'inventaire incomplet sur le serveur", "error")
+        return redirect(url_for("index"))
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in files_to_pack:
+            zf.write(os.path.join(script_dir, name), arcname=name)
+
+    buffer.seek(0)
+    return app.response_class(
+        buffer.getvalue(),
+        mimetype="application/zip",
+        headers={
+            "Content-Disposition": "attachment; filename=FabInventory-Snapshot-Pack.zip"
+        },
     )
 
 
