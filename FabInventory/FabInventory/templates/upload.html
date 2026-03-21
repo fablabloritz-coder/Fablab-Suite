@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}FabInventory - Importer{% endblock %}
+{% block content %}
+
+<h2 class="mb-4"><i class="bi bi-cloud-upload me-2"></i>Importer des inventaires</h2>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <form method="post" enctype="multipart/form-data" id="uploadForm">
+          <div class="drop-zone" id="dropZone">
+            <i class="bi bi-file-earmark-arrow-up display-3 text-primary"></i>
+            <h5 class="mt-3">Glissez vos fichiers HTML ici</h5>
+            <p class="text-muted">ou cliquez pour parcourir</p>
+            <p class="text-muted small">Fichiers generes par le script d'inventaire USB (v3)</p>
+            <input type="file" name="file" id="fileInput" multiple accept=".html" class="d-none">
+          </div>
+          <div id="fileList" class="mt-3"></div>
+          <button type="submit" class="btn btn-primary btn-lg w-100 mt-3 d-none" id="submitBtn">
+            <i class="bi bi-upload me-1"></i>Importer <span id="fileCount"></span> fichier(s)
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dz = document.getElementById('dropZone');
+const fi = document.getElementById('fileInput');
+const fl = document.getElementById('fileList');
+const sb = document.getElementById('submitBtn');
+const fc = document.getElementById('fileCount');
+
+dz.addEventListener('click', () => fi.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  fi.files = e.dataTransfer.files;
+  showFiles(fi.files);
+});
+fi.addEventListener('change', () => showFiles(fi.files));
+
+function showFiles(files) {
+  fl.innerHTML = '';
+  let count = 0;
+  for (const f of files) {
+    if (f.name.endsWith('.html')) {
+      count++;
+      fl.innerHTML += '<div class="d-flex align-items-center gap-2 p-2 border rounded mb-2"><i class="bi bi-file-earmark-code text-primary"></i><span>' + f.name + '</span><span class="text-muted small ms-auto">' + (f.size/1024).toFixed(0) + ' Ko</span></div>';
+    }
+  }
+  if (count > 0) { sb.classList.remove('d-none'); fc.textContent = count; }
+  else { sb.classList.add('d-none'); }
+}
+</script>
+{% endblock %}

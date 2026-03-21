@@ -8,7 +8,7 @@ setlocal EnableDelayedExpansion
 :: ============================================================
 
 set "ROOT=%~dp0"
-set "APPS=FabHome Fabtrack PretGo FabBoard"
+set "APPS=FabHome Fabtrack PretGo FabBoard FabInventory"
 
 :: Couleurs
 set "GREEN=[92m"
@@ -22,12 +22,14 @@ set "PORT_FabHome=3001"
 set "PORT_Fabtrack=5555"
 set "PORT_PretGo=5000"
 set "PORT_FabBoard=5580"
+set "PORT_FabInventory=5590"
 
 :: Noms des conteneurs
 set "CONTAINER_FabHome=fabhome"
 set "CONTAINER_Fabtrack=fabtrack"
 set "CONTAINER_PretGo=pretgo"
 set "CONTAINER_FabBoard=fabboard"
+set "CONTAINER_FabInventory=fabinventory"
 
 :: Parse argument (défaut: start)
 set "ACTION=%~1"
@@ -151,12 +153,14 @@ echo   FabHome   http://localhost:3001
 echo   Fabtrack  http://localhost:5555
 echo   PretGo    http://localhost:5000
 echo   FabBoard  http://localhost:5580
+echo   FabInventory  http://localhost:5590
 echo.
 echo %CYAN%Enregistrer les apps dans FabHome :%RESET%
 echo   Réglages ^> FabLab Suite ^> ajouter :
 echo     http://host.docker.internal:5555   (Fabtrack)
 echo     http://host.docker.internal:5000   (PretGo)
 echo     http://host.docker.internal:5580   (FabBoard)
+echo     http://host.docker.internal:5590   (FabInventory)
 echo.
 goto :end
 

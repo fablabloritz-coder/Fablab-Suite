@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}{{ master.pc_name }} - FabInventory{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+    <li class="breadcrumb-item active">{{ master.pc_name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h2><i class="bi bi-pc-display me-2 text-primary"></i>{{ master.pc_name }}</h2>
+    {% if master.label %}<p class="text-muted"><i class="bi bi-tag me-1"></i>{{ master.label }}</p>{% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editModal">
+      <i class="bi bi-pencil me-1"></i>Modifier
+    </button>
+    <form method="post" action="/master/{{ master.id }}/delete" onsubmit="return confirm('Supprimer ce master et tout son historique ?')">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i>Supprimer</button>
+    </form>
+  </div>
+</div>
+
+{% if latest %}
+<!-- System Info -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">OS</div><strong>{{ latest.os_info or '-' }}</strong></div></div></div>
+  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">CPU</div><strong>{{ latest.cpu_info or '-' }}</strong></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">RAM</div><strong>{{ latest.ram_go }} Go</strong></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Logiciels</div><strong class="text-primary fs-4">{{ latest.total_software }}</strong></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Dernier scan</div><strong>{{ latest.scan_date }}</strong></div></div></div>
+</div>
+
+<!-- Toolbar -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2 d-flex gap-2 align-items-center flex-wrap">
+    <input type="text" id="searchBox" class="form-control form-control-sm" style="max-width:300px" placeholder="Rechercher un logiciel..." oninput="filterSw()">
+    <button class="btn btn-sm btn-outline-success" onclick="toggleImportant()" id="btnImportant">
+      <i class="bi bi-star me-1"></i>Importants uniquement
+    </button>
+    <span class="text-muted small ms-auto" id="counter">0 important(s)</span>
+  </div>
+</div>
+
+<!-- Software Table -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0" id="swTable">
+      <thead>
+        <tr>
+          <th style="width:40px" class="text-center"><i class="bi bi-star-fill text-warning"></i></th>
+          <th class="sortable" onclick="sortSw(0)">Nom <i class="bi bi-arrow-down-up small"></i></th>
+          <th class="sortable" onclick="sortSw(1)">Version <i class="bi bi-arrow-down-up small"></i></th>
+          <th class="sortable" onclick="sortSw(2)">Editeur <i class="bi bi-arrow-down-up small"></i></th>
+          <th class="sortable" onclick="sortSw(3)">Date <i class="bi bi-arrow-down-up small"></i></th>
+          <th class="sortable" onclick="sortSw(4)">Taille <i class="bi bi-arrow-down-up small"></i></th>
+          <th>Source</th>
+          <th style="min-width:160px">Note</th>
+        </tr>
+      </thead>
+      <tbody id="swBody"></tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Snapshots History -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historique des scans ({{ snapshots|length }})</h5></div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Date du scan</th><th>OS</th><th>Logiciels</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for s in snapshots %}
+        <tr>
+          <td>{{ s.scan_date }}</td>
+          <td><small>{{ s.os_info }}</small></td>
+          <td><span class="badge bg-primary">{{ s.total_software }}</span></td>
+          <td>
+            <a href="/snapshot/{{ s.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+            <form method="post" action="/snapshot/{{ s.id }}/delete" class="d-inline" onsubmit="return confirm('Supprimer ce scan ?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if master.notes %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Notes</h5></div>
+  <div class="card-body"><p>{{ master.notes }}</p></div>
+</div>
+{% endif %}
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="/master/{{ master.id }}/edit">
+        <div class="modal-header"><h5 class="modal-title">Modifier {{ master.pc_name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Label / Description</label><input type="text" name="label" class="form-control" value="{{ master.label }}" placeholder="Ex: Salle Info 1 - SolidWorks"></div>
+          <div class="mb-3"><label class="form-label">Notes</label><textarea name="notes" class="form-control" rows="4" placeholder="Notes libres...">{{ master.notes }}</textarea></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button><button type="submit" class="btn btn-primary">Enregistrer</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MASTER_ID = {{ master.id }};
+const SW = {{ software|tojson }};
+const FLAGS = {{ flags|tojson }};
+let showImportantOnly = false;
+let sortCol = -1, sortAsc = true;
+
+function renderSw() {
+  const tbody = document.getElementById('swBody');
+  let rows = SW.map((s, i) => ({...s, idx: i}));
+
+  if (sortCol >= 0) {
+    const keys = ['n','v','e','d','s'];
+    rows.sort((a, b) => {
+      let va = a[keys[sortCol]] || '';
+      let vb = b[keys[sortCol]] || '';
+      if (sortCol === 4) { va = parseFloat(va)||0; vb = parseFloat(vb)||0; return sortAsc ? va-vb : vb-va; }
+      va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+      return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  }
+
+  const q = (document.getElementById('searchBox').value || '').toLowerCase();
+  let html = '', impCount = 0;
+
+  rows.forEach(s => {
+    const key = s.n;
+    const flag = FLAGS[key] || {important:0, note:''};
+    const isImp = flag.important == 1;
+    if (isImp) impCount++;
+
+    const matchSearch = !q || JSON.stringify(s).toLowerCase().includes(q);
+    const matchFilter = !showImportantOnly || isImp;
+    if (!matchSearch || !matchFilter) return;
+
+    const srcBadge = s.src === 'Registre' ? 'bg-primary' : s.src === 'Utilisateur' ? 'bg-info' : s.src === 'AppX' ? 'bg-purple' : 'bg-warning text-dark';
+    const rowClass = isImp ? 'table-success' : '';
+    const sz = s.s > 0 ? s.s.toFixed(1) + ' Mo' : '-';
+
+    html += '<tr class="'+rowClass+'">' +
+      '<td class="text-center"><input type="checkbox" class="form-check-input" '+(isImp?'checked':'')+' onchange="flagSw(\''+key.replace(/'/g,"\\'")+'\',this.checked)"></td>' +
+      '<td>'+esc(s.n)+'</td><td><small>'+esc(s.v)+'</small></td><td><small>'+esc(s.e)+'</small></td><td><small>'+s.d+'</small></td><td><small>'+sz+'</small></td>' +
+      '<td><span class="badge '+srcBadge+' badge-sm">'+s.src+'</span></td>' +
+      '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" value="'+esc(flag.note || '')+'" placeholder="..." onchange="noteSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"></td></tr>';
+  });
+
+  tbody.innerHTML = html || '<tr><td colspan="8" class="text-center text-muted py-4">Aucun logiciel trouve</td></tr>';
+  document.getElementById('counter').textContent = impCount + ' important(s)';
+}
+
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '-'; }
+
+function filterSw() { renderSw(); }
+function toggleImportant() {
+  showImportantOnly = !showImportantOnly;
+  document.getElementById('btnImportant').classList.toggle('btn-success', showImportantOnly);
+  document.getElementById('btnImportant').classList.toggle('btn-outline-success', !showImportantOnly);
+  renderSw();
+}
+function sortSw(col) {
+  if (sortCol === col) sortAsc = !sortAsc;
+  else { sortCol = col; sortAsc = true; }
+  renderSw();
+}
+
+function flagSw(name, checked) {
+  const flag = FLAGS[name] || {important:0, note:''};
+  flag.important = checked ? 1 : 0;
+  FLAGS[name] = flag;
+  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note})});
+  renderSw();
+}
+
+function noteSw(name, note) {
+  const flag = FLAGS[name] || {important:0, note:''};
+  flag.note = note;
+  FLAGS[name] = flag;
+  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note})});
+}
+
+renderSw();
+</script>
+<style>.bg-purple{background:#8e44ad;color:#fff}</style>
+{% endblock %}

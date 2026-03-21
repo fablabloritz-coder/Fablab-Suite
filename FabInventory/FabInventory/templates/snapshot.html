@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Scan {{ snap.scan_date }} - {{ snap.pc_name }}{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+    <li class="breadcrumb-item"><a href="/master/{{ snap.master_id }}">{{ snap.pc_name }}</a></li>
+    <li class="breadcrumb-item active">Scan du {{ snap.scan_date }}</li>
+  </ol>
+</nav>
+
+<h2 class="mb-4"><i class="bi bi-camera me-2"></i>Scan du {{ snap.scan_date }} &mdash; {{ snap.pc_name }}</h2>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">OS</div><strong>{{ snap.os_info or '-' }}</strong></div></div></div>
+  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">CPU</div><strong>{{ snap.cpu_info or '-' }}</strong></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">RAM</div><strong>{{ snap.ram_go }} Go</strong></div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Logiciels</div><strong class="text-primary fs-4">{{ snap.total_software }}</strong></div></div></div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <input type="text" id="searchBox" class="form-control form-control-sm" style="max-width:300px" placeholder="Rechercher..." oninput="filterSnap()">
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0" id="snapTable">
+      <thead><tr><th>Nom</th><th>Version</th><th>Editeur</th><th>Date</th><th>Taille</th><th>Source</th></tr></thead>
+      <tbody>
+        {% for s in software %}
+        <tr>
+          <td>{{ s.n }}</td><td><small>{{ s.v }}</small></td><td><small>{{ s.e }}</small></td>
+          <td><small>{{ s.d }}</small></td><td><small>{{ s.s if s.s > 0 else '-' }}</small></td>
+          <td><span class="badge {% if s.src == 'Registre' %}bg-primary{% elif s.src == 'AppX' %}bg-purple{% else %}bg-secondary{% endif %} badge-sm">{{ s.src }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+function filterSnap() {
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  document.querySelectorAll('#snapTable tbody tr').forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
+<style>.bg-purple{background:#8e44ad;color:#fff}</style>
+{% endblock %}

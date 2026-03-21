@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Comparer - FabInventory{% endblock %}
+{% block content %}
+
+<h2 class="mb-4"><i class="bi bi-arrow-left-right me-2"></i>Comparer deux masters</h2>
+
+{% if masters|length < 2 %}
+<div class="alert alert-info">Il faut au moins 2 masters importes pour utiliser la comparaison.</div>
+{% else %}
+<div class="row g-3 mb-4">
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <label class="form-label fw-bold"><i class="bi bi-pc-display me-1 text-primary"></i>Master A</label>
+        <select id="selA" class="form-select">
+          <option value="">-- Choisir --</option>
+          {% for m in masters %}{% if m.latest_snap_id %}
+          <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
+          {% endif %}{% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2 d-flex align-items-center justify-content-center">
+    <button class="btn btn-primary btn-lg rounded-circle" onclick="doCompare()" id="btnCompare" disabled>
+      <i class="bi bi-arrow-left-right"></i>
+    </button>
+  </div>
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <label class="form-label fw-bold"><i class="bi bi-pc-display me-1 text-primary"></i>Master B</label>
+        <select id="selB" class="form-select">
+          <option value="">-- Choisir --</option>
+          {% for m in masters %}{% if m.latest_snap_id %}
+          <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
+          {% endif %}{% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="result" class="d-none">
+  <div class="row g-3 mb-3" id="statsRow"></div>
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+      <input type="text" id="cmpSearch" class="form-control form-control-sm" style="max-width:300px" placeholder="Rechercher..." oninput="filterCmp()">
+    </div>
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0">
+        <thead><tr><th>Logiciel</th><th id="colA">Master A</th><th id="colB">Master B</th><th>Statut</th></tr></thead>
+        <tbody id="cmpBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let cmpData = [];
+const selA = document.getElementById('selA');
+const selB = document.getElementById('selB');
+const btn = document.getElementById('btnCompare');
+
+if (selA && selB) {
+  selA.addEventListener('change', checkReady);
+  selB.addEventListener('change', checkReady);
+}
+
+function checkReady() { btn.disabled = !(selA.value && selB.value && selA.value !== selB.value); }
+
+async function doCompare() {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch('/api/compare', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({a:selA.value, b:selB.value})});
+  const data = await res.json();
+  btn.innerHTML = '<i class="bi bi-arrow-left-right"></i>';
+  btn.disabled = false;
+
+  cmpData = data.results;
+  const s = data.stats;
+
+  document.getElementById('colA').textContent = s.name_a;
+  document.getElementById('colB').textContent = s.name_b;
+  document.getElementById('statsRow').innerHTML =
+    '<div class="col-md-3"><div class="card border-0 shadow-sm border-start border-primary border-4"><div class="card-body"><div class="text-muted small">En commun</div><div class="fs-3 fw-bold text-primary">'+s.common+'</div></div></div></div>' +
+    '<div class="col-md-3"><div class="card border-0 shadow-sm border-start border-success border-4"><div class="card-body"><div class="text-muted small">Uniquement dans '+s.name_a+'</div><div class="fs-3 fw-bold text-success">'+s.only_a+'</div></div></div></div>' +
+    '<div class="col-md-3"><div class="card border-0 shadow-sm border-start border-danger border-4"><div class="card-body"><div class="text-muted small">Uniquement dans '+s.name_b+'</div><div class="fs-3 fw-bold text-danger">'+s.only_b+'</div></div></div></div>';
+
+  renderCmp();
+  document.getElementById('result').classList.remove('d-none');
+}
+
+function renderCmp() {
+  const q = (document.getElementById('cmpSearch')?.value || '').toLowerCase();
+  let html = '';
+  cmpData.forEach(r => {
+    if (q && !r.name.toLowerCase().includes(q)) return;
+    const cls = r.status === 'common' ? '' : r.status === 'only_a' ? 'table-success' : 'table-danger';
+    const badge = r.status === 'common' ? '<span class="badge bg-primary">Commun</span>' : r.status === 'only_a' ? '<span class="badge bg-success">Unique A</span>' : '<span class="badge bg-danger">Unique B</span>';
+    html += '<tr class="'+cls+'"><td>'+r.name+'</td><td>'+r.vA+'</td><td>'+r.vB+'</td><td>'+badge+'</td></tr>';
+  });
+  document.getElementById('cmpBody').innerHTML = html;
+}
+function filterCmp() { renderCmp(); }
+</script>
+{% endblock %}

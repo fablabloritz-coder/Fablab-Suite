@@ -1,0 +1,21 @@
+services:
+  fabinventory:
+    build: ./FabInventory
+    container_name: fabinventory
+    ports:
+      - "${FABINVENTORY_PORT:-5590}:5590"
+    volumes:
+      - ${FABINVENTORY_DATA_PATH:-./docker-data/data}:/data
+    environment:
+      SECRET_KEY: ${FLASK_SECRET_KEY:-}
+      DB_PATH: /data/fabinventory.db
+      UPLOAD_FOLDER: /data/uploads
+      PORT: 5590
+      TZ: ${TZ:-Europe/Paris}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:5590/api/fabsuite/health', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

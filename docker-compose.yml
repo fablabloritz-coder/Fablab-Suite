@@ -10,6 +10,7 @@
 #    docker compose up -d --build fabtrack
 #    docker compose up -d --build pretgo
 #    docker compose up -d --build fabboard
+#    docker compose up -d --build fabinventory
 #
 #  Mettre à jour une application :
 #    docker compose up -d --build <nom>
@@ -20,6 +21,7 @@
 #  Voir les logs :
 #    docker compose logs -f
 #    docker compose logs -f fabtrack
+#    docker compose logs -f fabinventory
 #
 #  Copier .env.example en .env et ajuster les ports si nécessaire.
 # ═══════════════════════════════════════════════════════════════
@@ -135,6 +137,37 @@ services:
       - fabtrack
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:5580/', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    mem_limit: 512m
+
+  # ──────────────────────────────────────────────────────────────
+  # FabInventory — Inventaire masters informatique (défaut : port 5590)
+  # ──────────────────────────────────────────────────────────────
+  fabinventory:
+    build: ./FabInventory/FabInventory
+    container_name: fabinventory
+    ports:
+      - "${FABINVENTORY_PORT:-5590}:5590"
+    volumes:
+      - ${FABINVENTORY_DATA_PATH:-./FabInventory/FabInventory/docker-data/data}:/data
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      SECRET_KEY: ${FLASK_SECRET_KEY:-}
+      DB_PATH: /data/fabinventory.db
+      UPLOAD_FOLDER: /data/uploads
+      PORT: 5590
+      TZ: ${TZ:-Europe/Paris}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:5590/api/fabsuite/health', timeout=5)"]
       interval: 30s
       timeout: 5s
       retries: 3

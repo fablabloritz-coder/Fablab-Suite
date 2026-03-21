@@ -131,6 +131,7 @@ run_audit() {
   local audit_fabtrack_port=5555
   local audit_pretgo_port=5000
   local audit_fabboard_port=5580
+  local audit_fabinventory_port=5590
   local audit_fabtrack_url=""
   local audit_fabtrack_url_host=""
 
@@ -142,6 +143,7 @@ run_audit() {
       audit_fabtrack_port="${FABTRACK_PORT:-$audit_fabtrack_port}"
       audit_pretgo_port="${PRETGO_PORT:-$audit_pretgo_port}"
       audit_fabboard_port="${FABBOARD_PORT:-$audit_fabboard_port}"
+      audit_fabinventory_port="${FABINVENTORY_PORT:-$audit_fabinventory_port}"
       audit_fabtrack_url="${FABTRACK_URL:-}"
     else
       echo "[audit] Warning: impossible de charger $ENV_FILE, valeurs par défaut utilisées"
@@ -179,11 +181,11 @@ run_audit() {
   echo "===== FabSuite ports ====="
   if command -v ss >/dev/null 2>&1; then
     # Use sudo for full process info (non-root can't see other users' PIDs).
-    run_privileged ss -ltnp 2>/dev/null | grep -E ':3001|:5555|:5000|:5580' || \
-    ss -ltn 2>/dev/null | grep -E ':3001|:5555|:5000|:5580' || true
+    run_privileged ss -ltnp 2>/dev/null | grep -E ':3001|:5555|:5000|:5580|:5590' || \
+    ss -ltn 2>/dev/null | grep -E ':3001|:5555|:5000|:5580|:5590' || true
   elif command -v netstat >/dev/null 2>&1; then
-    run_privileged netstat -lntp 2>/dev/null | grep -E ':3001|:5555|:5000|:5580' || \
-    netstat -lnt 2>/dev/null | grep -E ':3001|:5555|:5000|:5580' || true
+    run_privileged netstat -lntp 2>/dev/null | grep -E ':3001|:5555|:5000|:5580|:5590' || \
+    netstat -lnt 2>/dev/null | grep -E ':3001|:5555|:5000|:5580|:5590' || true
   else
     echo "Neither ss nor netstat is available"
   fi
@@ -195,6 +197,7 @@ run_audit() {
     _check_host_health "Fabtrack" "${audit_fabtrack_url_host%/}"
     _check_host_health "PretGo" "http://127.0.0.1:${audit_pretgo_port}"
     _check_host_health "FabBoard" "http://127.0.0.1:${audit_fabboard_port}"
+    _check_host_health "FabInventory" "http://127.0.0.1:${audit_fabinventory_port}"
 
     if curl -fsS --max-time 4 "${audit_fabtrack_url_host%/}/missions/api/list" >/dev/null 2>&1; then
       echo "[OK] Host -> Fabtrack missions (${audit_fabtrack_url_host%/}/missions/api/list)"
@@ -365,9 +368,9 @@ PY
 run_cleanup_safe() {
   require_docker_compose
 
-  local containers=(fabhome fabtrack pretgo fabboard)
+  local containers=(fabhome fabtrack pretgo fabboard fabinventory)
   # Use configured ports if env already loaded, otherwise fall back to defaults.
-  local cleanup_ports=("${FABHOME_PORT:-3001}" "${FABTRACK_PORT:-5555}" "${PRETGO_PORT:-5000}" "${FABBOARD_PORT:-5580}")
+  local cleanup_ports=("${FABHOME_PORT:-3001}" "${FABTRACK_PORT:-5555}" "${PRETGO_PORT:-5000}" "${FABBOARD_PORT:-5580}" "${FABINVENTORY_PORT:-5590}")
   local ts backup_dir mounts_file
   ts="$(date +%F-%H%M%S)"
   backup_dir="$HOME/backup-fabsuite/$ts"
@@ -532,11 +535,13 @@ FABHOME_PORT=3001
 FABTRACK_PORT=5555
 PRETGO_PORT=5000
 FABBOARD_PORT=5580
+FABINVENTORY_PORT=5590
 FABHOME_DATA_PATH=./data
 FABHOME_ICONS_PATH=./icons
 FABTRACK_URL=
 PRETGO_URL=
 FABBOARD_URL=
+FABINVENTORY_URL=
 EOF
   fi
 
@@ -651,7 +656,7 @@ detect_repo_url_from_existing_checkouts() {
 
   # 2) Try legacy per-app repositories and infer monorepo owner.
   for base in "$INSTALL_DIR" "$HOME/fabsuite" "$HOME/fablab-suite"; do
-    for app in FabHome Fabtrack PretGo FabBoard; do
+    for app in FabHome Fabtrack PretGo FabBoard FabInventory; do
       dir="$base/$app"
       if [[ -d "$dir/.git" ]]; then
         remote="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
@@ -751,7 +756,7 @@ load_env() {
   GIT_REPO_URL="${GIT_REPO_URL:-${DEFAULT_MONOREPO_URL}}"
   GIT_BRANCH="${GIT_BRANCH:-main}"
   INSTALL_DIR="${INSTALL_DIR:-$HOME/fablab-suite}"
-  APPS="${APPS:-FabHome Fabtrack PretGo FabBoard}"
+  APPS="${APPS:-FabHome Fabtrack PretGo FabBoard FabInventory}"
   FABHOME_DATA_PATH="${FABHOME_DATA_PATH:-./data}"
   FABHOME_ICONS_PATH="${FABHOME_ICONS_PATH:-./icons}"
 
@@ -776,14 +781,16 @@ load_env() {
   FABTRACK_PORT="${FABTRACK_PORT:-5555}"
   PRETGO_PORT="${PRETGO_PORT:-5000}"
   FABBOARD_PORT="${FABBOARD_PORT:-5580}"
+  FABINVENTORY_PORT="${FABINVENTORY_PORT:-5590}"
 
   # Compute container-safe inter-app URLs.
   # All app compose files define host.docker.internal:host-gateway.
-  local _srv_host _legacy_fabtrack_url _legacy_pretgo_url _legacy_fabboard_url
+  local _srv_host _legacy_fabtrack_url _legacy_pretgo_url _legacy_fabboard_url _legacy_fabinventory_url
   _srv_host="$(hostname)"
   _legacy_fabtrack_url="http://${_srv_host}:${FABTRACK_PORT:-5555}"
   _legacy_pretgo_url="http://${_srv_host}:${PRETGO_PORT:-5000}"
   _legacy_fabboard_url="http://${_srv_host}:${FABBOARD_PORT:-5580}"
+  _legacy_fabinventory_url="http://${_srv_host}:${FABINVENTORY_PORT:-5590}"
 
   # Auto-migrate legacy defaults (hostname-based) to host-gateway URLs.
   if [[ "${FABTRACK_URL:-}" == "$_legacy_fabtrack_url" ]]; then
@@ -795,10 +802,14 @@ load_env() {
   if [[ "${FABBOARD_URL:-}" == "$_legacy_fabboard_url" ]]; then
     FABBOARD_URL=""
   fi
+  if [[ "${FABINVENTORY_URL:-}" == "$_legacy_fabinventory_url" ]]; then
+    FABINVENTORY_URL=""
+  fi
 
   FABTRACK_URL="${FABTRACK_URL:-http://host.docker.internal:${FABTRACK_PORT:-5555}}"
   PRETGO_URL="${PRETGO_URL:-http://host.docker.internal:${PRETGO_PORT:-5000}}"
   FABBOARD_URL="${FABBOARD_URL:-http://host.docker.internal:${FABBOARD_PORT:-5580}}"
+  FABINVENTORY_URL="${FABINVENTORY_URL:-http://host.docker.internal:${FABINVENTORY_PORT:-5590}}"
 
   # localhost URLs are not reachable from containers; normalize automatically.
   if [[ "$FABTRACK_URL" =~ ^https?://(localhost|127\.0\.0\.1)(:|/|$) ]]; then
@@ -809,6 +820,9 @@ load_env() {
   fi
   if [[ "$FABBOARD_URL" =~ ^https?://(localhost|127\.0\.0\.1)(:|/|$) ]]; then
     FABBOARD_URL="http://host.docker.internal:${FABBOARD_PORT:-5580}"
+  fi
+  if [[ "$FABINVENTORY_URL" =~ ^https?://(localhost|127\.0\.0\.1)(:|/|$) ]]; then
+    FABINVENTORY_URL="http://host.docker.internal:${FABINVENTORY_PORT:-5590}"
   fi
 
   if [[ -z "$FLASK_SECRET_KEY" ]]; then
@@ -825,6 +839,7 @@ load_env() {
   set_env_var "FABTRACK_URL" "$FABTRACK_URL"
   set_env_var "PRETGO_URL" "$PRETGO_URL"
   set_env_var "FABBOARD_URL" "$FABBOARD_URL"
+  set_env_var "FABINVENTORY_URL" "$FABINVENTORY_URL"
 
   if is_placeholder_repo_url "$GIT_REPO_URL"; then
     echo "WARNING: GIT_REPO_URL uses a placeholder owner value."
@@ -917,6 +932,7 @@ run_check_data_safety() {
     "Fabtrack|fabtrack|core-data|/app/data|FABTRACK_DATA_PATH|./docker-data/data"
     "PretGo|pretgo|core-data|/app/data|PRETGO_DATA_PATH|./docker-data/data"
     "FabBoard|fabboard|core-data|/app/data|FABBOARD_DATA_PATH|./docker-data/data"
+    "FabInventory|fabinventory|core-data|/data|FABINVENTORY_DATA_PATH|./docker-data/data"
   )
 
   local risk_count=0
@@ -980,6 +996,7 @@ service_name_for_app() {
     Fabtrack) echo "fabtrack" ;;
     PretGo) echo "pretgo" ;;
     FabBoard) echo "fabboard" ;;
+    FabInventory) echo "fabinventory" ;;
     *)
       echo ""
       ;;
@@ -993,6 +1010,7 @@ port_for_app() {
     Fabtrack) echo "$FABTRACK_PORT" ;;
     PretGo) echo "$PRETGO_PORT" ;;
     FabBoard) echo "$FABBOARD_PORT" ;;
+    FabInventory) echo "$FABINVENTORY_PORT" ;;
     *)
       echo ""
       ;;
@@ -1127,7 +1145,7 @@ print_status() {
 }
 
 autoregister_suite_apps() {
-  # Auto-registers Fabtrack, PretGo and FabBoard in FabHome via its REST API.
+  # Auto-registers Fabtrack, PretGo, FabBoard and FabInventory in FabHome via its REST API.
   # Safe to call multiple times (skips already-registered URLs).
   local fabhome_url="http://localhost:${FABHOME_PORT:-3001}"
   local register_host register_scheme
@@ -1182,7 +1200,8 @@ autoregister_suite_apps() {
   for entry in \
     "Fabtrack|fabtrack|${FABTRACK_URL:-http://host.docker.internal:${FABTRACK_PORT:-5555}}|${FABTRACK_PORT:-5555}" \
     "PretGo|pretgo|${PRETGO_URL:-http://host.docker.internal:${PRETGO_PORT:-5000}}|${PRETGO_PORT:-5000}" \
-    "FabBoard|fabboard|${FABBOARD_URL:-http://host.docker.internal:${FABBOARD_PORT:-5580}}|${FABBOARD_PORT:-5580}"; do
+    "FabBoard|fabboard|${FABBOARD_URL:-http://host.docker.internal:${FABBOARD_PORT:-5580}}|${FABBOARD_PORT:-5580}" \
+    "FabInventory|fabinventory|${FABINVENTORY_URL:-http://host.docker.internal:${FABINVENTORY_PORT:-5590}}|${FABINVENTORY_PORT:-5590}"; do
     app="${entry%%|*}"
     rest="${entry#*|}"
     expected_app_id="${rest%%|*}"

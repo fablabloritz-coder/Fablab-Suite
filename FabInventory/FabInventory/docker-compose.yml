@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  fabinventory:
+    build: .
+    container_name: fabinventory
+    ports:
+      - "5590:5590"
+    volumes:
+      - fabinventory-data:/data
+    environment:
+      - SECRET_KEY=change-me-in-production
+      - DB_PATH=/data/fabinventory.db
+      - UPLOAD_FOLDER=/data/uploads
+      - PORT=5590
+    restart: unless-stopped
+
+volumes:
+  fabinventory-data:
