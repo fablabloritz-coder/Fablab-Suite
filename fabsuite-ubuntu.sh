@@ -577,7 +577,11 @@ is_valid_tcp_port() {
 
 run_suite_preflight() {
   local -a required_apps=(FabHome Fabtrack PretGo FabBoard FabInventory)
-  local -a app_list unknown_apps missing_apps missing_paths invalid_ports
+  local -a app_list=()
+  local -a unknown_apps=()
+  local -a missing_apps=()
+  local -a missing_paths=()
+  local -a invalid_ports=()
   local app port
 
   read -r -a app_list <<< "$APPS"
