@@ -95,9 +95,9 @@ function Ensure-LocalWorkspace {
     if (Test-FabSuiteWorkspace -Path $workspaceRoot) {
         if ($ForceRefresh -and $hasGit -and (Test-Path -Path (Join-Path $workspaceRoot ".git") -PathType Container)) {
             Write-Info "Mise a jour du workspace local: $workspaceRoot"
-            $null = & git -C $workspaceRoot fetch origin $Branch --quiet
+            & git -C $workspaceRoot fetch origin $Branch --quiet *> $null
             if ($LASTEXITCODE -eq 0) {
-                $null = & git -C $workspaceRoot reset --hard --quiet ("origin/" + $Branch)
+                & git -C $workspaceRoot reset --hard --quiet ("origin/" + $Branch) *> $null
             }
             if ($LASTEXITCODE -ne 0) {
                 Write-WarnMsg "Impossible de mettre a jour le workspace local (git). Utilisation de la version existante."
@@ -129,7 +129,7 @@ function Ensure-LocalWorkspace {
         New-Item -ItemType Directory -Force -Path $workspaceParent | Out-Null
     }
 
-    $null = & git clone --branch $Branch --quiet $repoUrl $workspaceRoot
+    & git clone --branch $Branch --quiet $repoUrl $workspaceRoot *> $null
     if ($LASTEXITCODE -ne 0) {
         Write-WarnMsg "Clone du workspace local echoue. Le mode local sera indisponible."
         return ""
