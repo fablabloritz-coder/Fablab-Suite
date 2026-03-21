@@ -652,18 +652,58 @@ normalize_env_file() {
     sed -i 's#OWNER_OR_ORG#fablabloritz-coder#g' "$file"
     echo "Normalized placeholder 'OWNER_OR_ORG' -> 'fablabloritz-coder': $file"
   fi
+
+  # Auto-heal malformed APPS declarations from older helper versions.
+  # Some legacy writes produced unquoted/multi-line APPS blocks that break `source`.
+    if (grep -qE '^APPS=' "$file" && ! grep -qE '^APPS=".*"$' "$file") || \
+      grep -qE '^[[:space:]]*(FabHome|Fabtrack|PretGo|FabBoard|FabInventory)([[:space:]].*)?$' "$file"; then
+    awk '
+      BEGIN { apps_fixed=0 }
+      /^APPS=/ {
+        if (!apps_fixed) {
+          print "APPS=\"FabHome Fabtrack PretGo FabBoard FabInventory\""
+          apps_fixed=1
+        }
+        next
+      }
+      /^[[:space:]]*(FabHome|Fabtrack|PretGo|FabBoard|FabInventory)([[:space:]].*)?$/ {
+        # Drop stray legacy continuation lines from malformed APPS blocks.
+        next
+      }
+      { print }
+      END {
+        if (!apps_fixed) {
+          print "APPS=\"FabHome Fabtrack PretGo FabBoard FabInventory\""
+        }
+      }
+    ' "$file" > "${file}.tmp"
+    mv "${file}.tmp" "$file"
+    echo "Normalized malformed APPS declaration: $file"
+  fi
 }
 
 set_env_var() {
   local key="$1"
   local value="$2"
+  local assignment
   local escaped
-  escaped="${value//&/\\&}"
+
+  if [[ "$value" =~ ^[A-Za-z0-9_./:@%+-]+$ ]]; then
+    assignment="${key}=${value}"
+  else
+    escaped="${value//\\/\\\\}"
+    escaped="${escaped//\"/\\\"}"
+    escaped="${escaped//\$/\\\$}"
+    escaped="${escaped//\`/\\\`}"
+    assignment="${key}=\"${escaped}\""
+  fi
+
+  escaped="${assignment//&/\\&}"
 
   if grep -qE "^${key}=" "$ENV_FILE"; then
-    sed -i "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
+    sed -i "s|^${key}=.*|${escaped}|" "$ENV_FILE"
   else
-    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+    printf '%s\n' "$assignment" >> "$ENV_FILE"
   fi
 }
 
