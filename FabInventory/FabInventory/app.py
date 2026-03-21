@@ -384,6 +384,24 @@ def download_master_script():
     )
 
 
+@app.route("/download/master-launcher")
+def download_master_launcher():
+    script_dir = os.path.join(app.root_path, "static", "downloads")
+    launcher_name = "lancer_inventaire_master.bat"
+    launcher_path = os.path.join(script_dir, launcher_name)
+
+    if not os.path.isfile(launcher_path):
+        flash("Lanceur d'inventaire introuvable sur le serveur", "error")
+        return redirect(url_for("index"))
+
+    return send_from_directory(
+        script_dir,
+        launcher_name,
+        as_attachment=True,
+        download_name="FabInventory-Lancer-Inventaire-Master.bat",
+    )
+
+
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":
