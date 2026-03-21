@@ -274,7 +274,20 @@ else {
 
 $pythonCmd = Resolve-PythonCommand
 
-$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptRoot = $null
+if ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
+    $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+elseif (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    $scriptRoot = $PSScriptRoot
+}
+elseif (-not [string]::IsNullOrWhiteSpace($localWorkspace)) {
+    $scriptRoot = $localWorkspace
+}
+else {
+    $scriptRoot = $cacheRoot
+}
+
 $localGuiPath = Join-Path $scriptRoot "fabsuite_ssh_gui.py"
 $localHelperPath = Join-Path $scriptRoot "fabsuite-ubuntu.sh"
 $localWebPath = Join-Path $scriptRoot "web\index.html"
