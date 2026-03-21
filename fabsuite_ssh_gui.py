@@ -902,12 +902,32 @@ class FabSuiteBackend:
 
     # ─── File upload (local → remote) ───
 
+    def _resolve_local_installer_file(self, filename):
+        """Prefer workspace files over cached GUI files when available."""
+        candidates = []
+
+        ws = os.environ.get(LOCAL_WORKSPACE_ENV, "").strip()
+        if ws:
+            candidates.append(Path(ws) / filename)
+
+        try:
+            candidates.append(Path.cwd() / filename)
+        except Exception:
+            pass
+
+        candidates.append(Path(__file__).resolve().parent / filename)
+
+        for p in candidates:
+            if p.exists() and p.is_file():
+                return p
+
+        return candidates[-1]
+
     def _installer_local_files(self):
-        base_dir = Path(__file__).resolve().parent
         return [
-            base_dir / "fabsuite-ubuntu.sh",
-            base_dir / "fabsuite-ubuntu.env.example",
-            base_dir / "INSTALL_UBUNTU.md",
+            self._resolve_local_installer_file("fabsuite-ubuntu.sh"),
+            self._resolve_local_installer_file("fabsuite-ubuntu.env.example"),
+            self._resolve_local_installer_file("INSTALL_UBUNTU.md"),
         ]
 
     def _upload_installer_files(self, remote_dir):
@@ -934,7 +954,7 @@ class FabSuiteBackend:
         self._exec_remote_simple(f"chmod +x {shlex.quote(remote_dir + '/fabsuite-ubuntu.sh')}")
 
     def _upload_helper_script_only(self, remote_dir):
-        helper = Path(__file__).resolve().parent / "fabsuite-ubuntu.sh"
+        helper = self._resolve_local_installer_file("fabsuite-ubuntu.sh")
         if not helper.exists():
             raise RuntimeError(f"Missing local file: {helper}")
 
@@ -949,34 +969,35 @@ class FabSuiteBackend:
 
         self._exec_remote_simple(f"sed -i 's/\\r$//' {shlex.quote(remote_path)}")
         self._exec_remote_simple(f"chmod +x {shlex.quote(remote_path)}")
+        self._log(f"Helper source local: {helper}")
 
-        def _enforce_remote_apps_list(self, remote_dir):
-                """Force APPS to include FabInventory in remote env file for backward compatibility."""
-                env_path = remote_dir + "/fabsuite-ubuntu.env"
-                cmd = f"""
+    def _enforce_remote_apps_list(self, remote_dir):
+        """Force APPS to include FabInventory in remote env file for backward compatibility."""
+        env_path = remote_dir + "/fabsuite-ubuntu.env"
+        cmd = f"""
 if [ -f {shlex.quote(env_path)} ]; then
-    if grep -q '^APPS=' {shlex.quote(env_path)}; then
-        if grep -q '^APPS=.*FabInventory' {shlex.quote(env_path)}; then
-            echo '__APPS_OK__'
-        else
-            sed -i 's#^APPS=.*#APPS="FabHome Fabtrack PretGo FabBoard FabInventory"#' {shlex.quote(env_path)}
-            echo '__APPS_PATCHED__'
-        fi
+  if grep -q '^APPS=' {shlex.quote(env_path)}; then
+    if grep -q '^APPS=.*FabInventory' {shlex.quote(env_path)}; then
+      echo '__APPS_OK__'
     else
-        printf '\nAPPS="FabHome Fabtrack PretGo FabBoard FabInventory"\n' >> {shlex.quote(env_path)}
-        echo '__APPS_ADDED__'
+      sed -i 's#^APPS=.*#APPS="FabHome Fabtrack PretGo FabBoard FabInventory"#' {shlex.quote(env_path)}
+      echo '__APPS_PATCHED__'
     fi
+  else
+    printf '\nAPPS="FabHome Fabtrack PretGo FabBoard FabInventory"\n' >> {shlex.quote(env_path)}
+    echo '__APPS_ADDED__'
+  fi
 else
-    echo '__APPS_ENV_MISSING__'
+  echo '__APPS_ENV_MISSING__'
 fi
 """
-                out = self._exec_remote_simple(cmd).strip()
-                if "__APPS_PATCHED__" in out:
-                        self._log("Compat: APPS distant corrigé pour inclure FabInventory")
-                elif "__APPS_ADDED__" in out:
-                        self._log("Compat: APPS ajouté dans l'env distant avec FabInventory")
-                elif "__APPS_ENV_MISSING__" in out:
-                        self._log("Compat: env distant absent (normal avant première install)")
+        out = self._exec_remote_simple(cmd).strip()
+        if "__APPS_PATCHED__" in out:
+            self._log("Compat: APPS distant corrigé pour inclure FabInventory")
+        elif "__APPS_ADDED__" in out:
+            self._log("Compat: APPS ajouté dans l'env distant avec FabInventory")
+        elif "__APPS_ENV_MISSING__" in out:
+            self._log("Compat: env distant absent (normal avant première install)")
 
     def _remote_file_exists(self, path):
         out = self._exec_remote_simple(
