@@ -10,6 +10,7 @@ import re
 import time
 import secrets
 import io
+import csv
 import zipfile
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory
@@ -832,6 +833,44 @@ def search_multi_master():
                     "editor": editor,
                     "source": source,
                 })
+
+    export_format = (request.args.get("export") or "").strip().lower()
+    if export_format == "csv" and query:
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=";")
+        writer.writerow([
+            "master_id",
+            "master_name",
+            "master_label",
+            "snapshot_id",
+            "scan_date",
+            "software_name",
+            "software_version",
+            "software_editor",
+            "software_source",
+        ])
+        for row in results:
+            writer.writerow([
+                row.get("master_id", ""),
+                row.get("master_name", ""),
+                row.get("master_label", ""),
+                row.get("snapshot_id", ""),
+                row.get("scan_date", ""),
+                row.get("name", ""),
+                row.get("version", ""),
+                row.get("editor", ""),
+                row.get("source", ""),
+            ])
+
+        csv_bytes = output.getvalue().encode("utf-8-sig")
+        output.close()
+        return app.response_class(
+            csv_bytes,
+            mimetype="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": "attachment; filename=FabInventory-Recherche-Globale.csv"
+            },
+        )
 
     total_results = len(results)
     total_pages = max(1, (total_results + per_page - 1) // per_page)
