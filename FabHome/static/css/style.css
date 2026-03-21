@@ -1324,6 +1324,19 @@ body.edit-mode .group-card {
     font-size: 0.8rem; color: var(--fh-accent);
 }
 
+.suite-widget-badge.suite-widget-badge-text {
+    max-width: 100%;
+}
+
+.suite-widget-badge .suite-wb-text {
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--fh-text-muted);
+    font-weight: 500;
+}
+
 /* Suite admin (settings tab) */
 .suite-app-icon-sm {
     width: 1.8rem; height: 1.8rem; border-radius: 0.4rem;

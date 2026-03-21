@@ -12,6 +12,7 @@ ENV_FILE="${SCRIPT_DIR}/fabsuite-ubuntu.env"
 ACTION=""
 LOG_APP=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
+HELPER_VERSION="2026-03-21-preflight-v1"
 
 usage() {
   cat <<'EOF'
@@ -82,6 +83,8 @@ if [[ "$ACTION" == "help" ]]; then
   usage
   exit 0
 fi
+
+echo "[helper] version=${HELPER_VERSION} action=${ACTION}"
 
 require_cmd() {
   local cmd="$1"
@@ -528,7 +531,7 @@ create_env_from_example() {
 GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git
 GIT_BRANCH=main
 INSTALL_DIR=$HOME/fablab-suite
-APPS="FabHome Fabtrack PretGo FabBoard"
+APPS="FabHome Fabtrack PretGo FabBoard FabInventory"
 TZ=Europe/Paris
 FLASK_SECRET_KEY=
 FABHOME_PORT=3001
@@ -548,6 +551,84 @@ EOF
   normalize_env_file "$ENV_FILE"
 
   echo "Created env file: $ENV_FILE"
+}
+
+ensure_app_in_list() {
+  local list="$1"
+  local app="$2"
+  if [[ " ${list} " == *" ${app} "* ]]; then
+    echo "$list"
+  else
+    echo "${list} ${app}"
+  fi
+}
+
+is_app_in_list() {
+  local list="$1"
+  local app="$2"
+  [[ " ${list} " == *" ${app} "* ]]
+}
+
+is_valid_tcp_port() {
+  local p="$1"
+  [[ "$p" =~ ^[0-9]+$ ]] || return 1
+  (( p >= 1 && p <= 65535 ))
+}
+
+run_suite_preflight() {
+  local -a required_apps=(FabHome Fabtrack PretGo FabBoard FabInventory)
+  local -a app_list unknown_apps missing_apps missing_paths invalid_ports
+  local app port
+
+  read -r -a app_list <<< "$APPS"
+
+  for app in "${app_list[@]}"; do
+    if [[ -z "$(service_name_for_app "$app")" ]]; then
+      unknown_apps+=("$app")
+    fi
+  done
+
+  for app in "${required_apps[@]}"; do
+    if ! is_app_in_list "$APPS" "$app"; then
+      missing_apps+=("$app")
+    fi
+
+    if [[ ! -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]; then
+      missing_paths+=("${INSTALL_DIR}/${app}/docker-compose.yml")
+    fi
+
+    port="$(port_for_app "$app")"
+    if ! is_valid_tcp_port "$port"; then
+      invalid_ports+=("${app}:${port}")
+    fi
+  done
+
+  if [[ ${#unknown_apps[@]} -gt 0 ]]; then
+    echo "[preflight] ERROR: apps inconnues dans APPS: ${unknown_apps[*]}"
+    return 1
+  fi
+
+  if [[ ${#missing_apps[@]} -gt 0 ]]; then
+    echo "[preflight] ERROR: apps requises absentes de APPS: ${missing_apps[*]}"
+    return 1
+  fi
+
+  if [[ ${#invalid_ports[@]} -gt 0 ]]; then
+    echo "[preflight] ERROR: ports invalides: ${invalid_ports[*]}"
+    return 1
+  fi
+
+  if [[ ${#missing_paths[@]} -gt 0 ]]; then
+    echo "[preflight] ERROR: fichiers compose manquants:"
+    local p
+    for p in "${missing_paths[@]}"; do
+      echo "  - $p"
+    done
+    return 1
+  fi
+
+  echo "[preflight] OK: suite cohérente (apps, ports, compose)"
+  return 0
 }
 
 normalize_env_file() {
@@ -757,6 +838,8 @@ load_env() {
   GIT_BRANCH="${GIT_BRANCH:-main}"
   INSTALL_DIR="${INSTALL_DIR:-$HOME/fablab-suite}"
   APPS="${APPS:-FabHome Fabtrack PretGo FabBoard FabInventory}"
+  APPS="$(ensure_app_in_list "$APPS" "FabInventory")"
+  set_env_var "APPS" "$APPS"
   FABHOME_DATA_PATH="${FABHOME_DATA_PATH:-./data}"
   FABHOME_ICONS_PATH="${FABHOME_ICONS_PATH:-./icons}"
 
@@ -1318,6 +1401,8 @@ run_install() {
   echo "[suite] source: $suite_remote"
   echo "[suite] commit: $suite_head"
 
+  run_suite_preflight || { echo "ERROR: preflight failed"; exit 1; }
+
   read -r -a app_list <<< "$APPS"
   for app in "${app_list[@]}"; do
     start_app "$app" || { echo "WARNING: [$app] start failed (port conflict?)"; failed="$failed $app"; }
@@ -1406,6 +1491,8 @@ run_update() {
   echo "[suite] mode: monorepo"
   echo "[suite] source: $suite_remote"
   echo "[suite] commit: $suite_head"
+
+  run_suite_preflight || { echo "ERROR: preflight failed"; exit 1; }
 
   local failed=""
   read -r -a app_list <<< "$APPS"

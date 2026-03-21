@@ -65,7 +65,7 @@ function Test-FabSuiteWorkspace {
         return $false
     }
 
-    foreach ($d in @("FabHome", "Fabtrack", "PretGo", "FabBoard")) {
+    foreach ($d in @("FabHome", "Fabtrack", "PretGo", "FabBoard", "FabInventory")) {
         if (-not (Test-Path -Path (Join-Path $Path $d) -PathType Container)) {
             return $false
         }
@@ -274,12 +274,26 @@ else {
 
 $pythonCmd = Resolve-PythonCommand
 
-Write-Info "Lancement de fabsuite_ssh_gui.py"
-if ($pythonCmd.Count -eq 2) {
-    & $pythonCmd[0] $pythonCmd[1] $guiPath
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$localGuiPath = Join-Path $scriptRoot "fabsuite_ssh_gui.py"
+$localHelperPath = Join-Path $scriptRoot "fabsuite-ubuntu.sh"
+$localWebPath = Join-Path $scriptRoot "web\index.html"
+
+$guiToRun = $guiPath
+if ((Test-Path $localGuiPath -PathType Leaf) -and (Test-Path $localHelperPath -PathType Leaf) -and (Test-Path $localWebPath -PathType Leaf)) {
+    $guiToRun = $localGuiPath
+    Write-Info "GUI locale detectee: $guiToRun"
 }
 else {
-    & $pythonCmd[0] $guiPath
+    Write-Info "GUI en cache utilisee: $guiToRun"
+}
+
+Write-Info "Lancement de fabsuite_ssh_gui.py"
+if ($pythonCmd.Count -eq 2) {
+    & $pythonCmd[0] $pythonCmd[1] $guiToRun
+}
+else {
+    & $pythonCmd[0] $guiToRun
 }
 
 # Fermeture automatique du terminal quand le GUI se ferme

@@ -1753,6 +1753,12 @@
                                 html += `<span class="suite-widget-badge" style="border-left:3px solid ${a.color}">
                                     ${escHtml(meta.label)} <span class="suite-wb-value">${w.value}</span>
                                 </span>`;
+                            } else if (meta.type === 'text') {
+                                const textValue = String(w.content || w.text || '').trim();
+                                if (!textValue) return;
+                                html += `<span class="suite-widget-badge suite-widget-badge-text" style="border-left:3px solid ${a.color}">
+                                    ${escHtml(meta.label || a.name)} <span class="suite-wb-text">${escHtml(textValue)}</span>
+                                </span>`;
                             }
                         });
                     });

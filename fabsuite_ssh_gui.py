@@ -653,7 +653,7 @@ class FabSuiteBackend:
             return False
         if not (path / "docker-compose.yml").is_file():
             return False
-        required_dirs = ("FabHome", "Fabtrack", "PretGo", "FabBoard")
+        required_dirs = ("FabHome", "Fabtrack", "PretGo", "FabBoard", "FabInventory")
         return all((path / d).is_dir() for d in required_dirs)
 
     def _resolve_local_workspace(self) -> str:
@@ -729,7 +729,7 @@ class FabSuiteBackend:
 
     def _cleanup_local_name_conflicts(self):
         """Remove legacy fixed-name containers that would block local compose up."""
-        target_names = ["fabhome", "fabtrack", "pretgo", "fabboard"]
+        target_names = ["fabhome", "fabtrack", "pretgo", "fabboard", "fabinventory"]
         proc = subprocess.run(
             ["docker", "ps", "-a", "--format", "{{.Names}}"],
             text=True,
@@ -950,6 +950,34 @@ class FabSuiteBackend:
         self._exec_remote_simple(f"sed -i 's/\\r$//' {shlex.quote(remote_path)}")
         self._exec_remote_simple(f"chmod +x {shlex.quote(remote_path)}")
 
+        def _enforce_remote_apps_list(self, remote_dir):
+                """Force APPS to include FabInventory in remote env file for backward compatibility."""
+                env_path = remote_dir + "/fabsuite-ubuntu.env"
+                cmd = f"""
+if [ -f {shlex.quote(env_path)} ]; then
+    if grep -q '^APPS=' {shlex.quote(env_path)}; then
+        if grep -q '^APPS=.*FabInventory' {shlex.quote(env_path)}; then
+            echo '__APPS_OK__'
+        else
+            sed -i 's#^APPS=.*#APPS="FabHome Fabtrack PretGo FabBoard FabInventory"#' {shlex.quote(env_path)}
+            echo '__APPS_PATCHED__'
+        fi
+    else
+        printf '\nAPPS="FabHome Fabtrack PretGo FabBoard FabInventory"\n' >> {shlex.quote(env_path)}
+        echo '__APPS_ADDED__'
+    fi
+else
+    echo '__APPS_ENV_MISSING__'
+fi
+"""
+                out = self._exec_remote_simple(cmd).strip()
+                if "__APPS_PATCHED__" in out:
+                        self._log("Compat: APPS distant corrigé pour inclure FabInventory")
+                elif "__APPS_ADDED__" in out:
+                        self._log("Compat: APPS ajouté dans l'env distant avec FabInventory")
+                elif "__APPS_ENV_MISSING__" in out:
+                        self._log("Compat: env distant absent (normal avant première install)")
+
     def _remote_file_exists(self, path):
         out = self._exec_remote_simple(
             f"if [ -f {shlex.quote(path)} ]; then echo 1; else echo 0; fi"
@@ -968,6 +996,9 @@ class FabSuiteBackend:
             self._log("Upload automatique termine")
         else:
             self._upload_helper_script_only(remote_dir)
+
+        # Guard rail: keep remote env APPS list aligned even if remote helper is older.
+        self._enforce_remote_apps_list(remote_dir)
 
         return remote_dir
 
@@ -1042,7 +1073,7 @@ fi
 
 tmp_file=$(mktemp)
 find "$ROOT" -maxdepth {depth} -type d \
-    \\( -iname 'fabhome' -o -iname 'fabtrack' -o -iname 'pretgo' -o -iname 'fabboard' -o -iname 'fabsuite*' -o -iname 'fablab*' \\) -print >> "$tmp_file" 2>/dev/null || true
+    \\( -iname 'fabhome' -o -iname 'fabtrack' -o -iname 'pretgo' -o -iname 'fabboard' -o -iname 'fabinventory' -o -iname 'fabsuite*' -o -iname 'fablab*' \\) -print >> "$tmp_file" 2>/dev/null || true
 
 while IFS= read -r compose_file; do
   dirname "$compose_file"
