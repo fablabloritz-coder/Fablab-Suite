@@ -1,13 +1,46 @@
 # FabInventory - Script inventaire master
-# Genere un rapport HTML avec le bloc JSON requis par FabInventory:
+# Genere un rapport HTML + CSV, avec choix de l'emplacement via une fenetre.
+# Le HTML contient le bloc JSON requis par FabInventory:
 # <script id="inventoryData" type="application/json">{...}</script>
 
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = "Stop"
 
 function Escape-Html {
     param([string]$Text)
     if ($null -eq $Text) { return "" }
     return ($Text -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;')
+}
+
+function Show-Info {
+    param([string]$Message, [string]$Title = "FabInventory")
+    [System.Windows.Forms.MessageBox]::Show($Message, $Title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+}
+
+function Show-Error {
+    param([string]$Message, [string]$Title = "FabInventory - Erreur")
+    [System.Windows.Forms.MessageBox]::Show($Message, $Title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+}
+
+function Select-OutputHtmlPath {
+    param(
+        [string]$DefaultDirectory,
+        [string]$DefaultFileName
+    )
+
+    $dialog = New-Object System.Windows.Forms.SaveFileDialog
+    $dialog.Title = "FabInventory - Choisir ou enregistrer le rapport"
+    $dialog.InitialDirectory = $DefaultDirectory
+    $dialog.FileName = $DefaultFileName
+    $dialog.DefaultExt = "html"
+    $dialog.Filter = "Rapport HTML (*.html)|*.html|Tous les fichiers (*.*)|*.*"
+    $dialog.OverwritePrompt = $true
+
+    $result = $dialog.ShowDialog()
+    if ($result -ne [System.Windows.Forms.DialogResult]::OK -or [string]::IsNullOrWhiteSpace($dialog.FileName)) {
+        return ""
+    }
+
+    return $dialog.FileName
 }
 
 function Get-SoftwareList {
@@ -38,35 +71,47 @@ function Get-SoftwareList {
         Sort-Object -Property n
 }
 
-$pcName = $env:COMPUTERNAME
-$scanDate = Get-Date -Format 'dd/MM/yyyy HH:mm'
-$software = Get-SoftwareList
+try {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
 
-$os = (Get-CimInstance Win32_OperatingSystem).Caption
-$cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
-$ramGo = [math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB), 2)
-$fabricant = (Get-CimInstance Win32_ComputerSystem).Manufacturer
-$numSerie = (Get-CimInstance Win32_BIOS).SerialNumber
-$domaine = (Get-CimInstance Win32_ComputerSystem).Domain
+    $pcName = $env:COMPUTERNAME
+    $scanDate = Get-Date -Format 'dd/MM/yyyy HH:mm'
+    $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 
-$inventoryData = [ordered]@{
-    pcName   = $pcName
-    date     = $scanDate
-    software = $software
-}
+    $software = Get-SoftwareList
 
-$json = $inventoryData | ConvertTo-Json -Depth 6 -Compress
+    $os = (Get-CimInstance Win32_OperatingSystem).Caption
+    $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
+    $ramGo = [math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB), 2)
+    $fabricant = (Get-CimInstance Win32_ComputerSystem).Manufacturer
+    $numSerie = (Get-CimInstance Win32_BIOS).SerialNumber
+    $domaine = (Get-CimInstance Win32_ComputerSystem).Domain
 
-$outDir = Join-Path $PSScriptRoot 'INVENTAIRES'
-if (-not (Test-Path $outDir)) {
-    New-Item -ItemType Directory -Path $outDir | Out-Null
-}
+    $inventoryData = [ordered]@{
+        pcName   = $pcName
+        date     = $scanDate
+        software = $software
+    }
 
-$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$fileName = "${pcName}_${stamp}.html"
-$outPath = Join-Path $outDir $fileName
+    $json = $inventoryData | ConvertTo-Json -Depth 6 -Compress
 
-$html = @"
+    $defaultDir = [Environment]::GetFolderPath('Desktop')
+    if ([string]::IsNullOrWhiteSpace($defaultDir)) {
+        $defaultDir = $PSScriptRoot
+    }
+
+    $defaultFileName = "${pcName}_${stamp}.html"
+    $htmlPath = Select-OutputHtmlPath -DefaultDirectory $defaultDir -DefaultFileName $defaultFileName
+
+    if ([string]::IsNullOrWhiteSpace($htmlPath)) {
+        Show-Info -Title "FabInventory" -Message "Operation annulee: aucun fichier n'a ete enregistre."
+        exit 0
+    }
+
+    $csvPath = [System.IO.Path]::ChangeExtension($htmlPath, ".csv")
+
+    $html = @"
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -103,7 +148,31 @@ code{background:#f0f3f8;padding:2px 6px;border-radius:4px}
 </html>
 "@
 
-Set-Content -Path $outPath -Value $html -Encoding UTF8
+    Set-Content -Path $htmlPath -Value $html -Encoding UTF8
 
-Write-Host "Inventaire genere: $outPath"
-Write-Host "Importez ce fichier HTML dans FabInventory via la page Importer."
+    $software |
+        Select-Object \
+            @{Name='pc_name';Expression={$pcName}},
+            @{Name='scan_date';Expression={$scanDate}},
+            @{Name='name';Expression={$_.n}},
+            @{Name='version';Expression={$_.v}},
+            @{Name='editor';Expression={$_.e}},
+            @{Name='install_date';Expression={$_.d}},
+            @{Name='size_mb';Expression={$_.s}},
+            @{Name='source';Expression={$_.src}} |
+        Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+
+    Show-Info -Title "FabInventory - Terminé" -Message "Fichiers enregistres:`n$htmlPath`n$csvPath"
+    Write-Host "HTML: $htmlPath"
+    Write-Host "CSV : $csvPath"
+}
+catch {
+    $msg = $_.Exception.Message
+    try {
+        Show-Error -Message "Echec generation inventaire:`n$msg"
+    }
+    catch {
+        Write-Error "Echec generation inventaire: $msg"
+    }
+    exit 1
+}
