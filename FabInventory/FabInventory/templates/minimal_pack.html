@@ -30,10 +30,10 @@
                   <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note or '' }}" placeholder="URL officielle, winget/choco, prerequis...">
               </td>
               <td class="d-flex gap-1">
-                  <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-save"></i></button>
+                  <button type="submit" class="btn btn-sm btn-outline-primary">Mettre a jour</button>
                 </form>
                 <form method="post" action="/roadmap/minimal-pack/{{ item.id }}/delete" onsubmit="return confirm('Supprimer ce logiciel du pack minimal ?')">
-                  <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
                 </form>
               </td>
             </tr>

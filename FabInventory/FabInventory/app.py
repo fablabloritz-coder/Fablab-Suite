@@ -769,11 +769,16 @@ def master_roadmap_print(master_id):
         (master_id,),
     ).fetchall()
 
+    compact = (request.args.get("compact", "1") or "1").strip() != "0"
+    show_source = (request.args.get("show_source", "0") or "0").strip() == "1"
+
     return render_template(
         "roadmap_print.html",
         master=master,
         roadmap_items=roadmap_items,
         generated_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        compact=compact,
+        show_source=show_source,
     )
 
 

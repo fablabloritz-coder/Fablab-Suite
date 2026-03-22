@@ -5,30 +5,128 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Checklist {{ master.pc_name }} - Impression</title>
 <style>
-body { font-family: Arial, sans-serif; color: #111; margin: 24px; }
-h1 { margin: 0 0 6px 0; font-size: 24px; }
-.meta { color: #555; margin-bottom: 18px; }
-table { width: 100%; border-collapse: collapse; }
-th, td { border: 1px solid #999; padding: 8px; vertical-align: top; }
-th { background: #f2f2f2; text-align: left; }
-.checkbox { width: 16px; height: 16px; border: 1px solid #000; display: inline-block; }
-.note { min-height: 18px; }
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #111;
+  margin: 10mm;
+  font-size: 11px;
+}
+h1 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  color: #173b7a;
+}
+.meta {
+  color: #555;
+  margin-bottom: 10px;
+}
+.summary {
+  display: inline-block;
+  background: #e8f0ff;
+  color: #163770;
+  border: 1px solid #b8c9ef;
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+th, td {
+  border: 1px solid #8d99ae;
+  padding: 4px 6px;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+th {
+  background: #dbe7ff;
+  color: #0f2f66;
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+}
+tbody tr:nth-child(even) {
+  background: #f9fbff;
+}
+.checkbox {
+  width: 11px;
+  height: 11px;
+  border: 1px solid #000;
+  display: inline-block;
+}
+.note {
+  min-height: 14px;
+}
+.detailed {
+  margin: 14mm;
+  font-size: 12px;
+}
+.detailed h1 {
+  font-size: 24px;
+}
+.detailed th,
+.detailed td {
+  padding: 7px 8px;
+}
+.detailed th {
+  font-size: 11px;
+}
+.detailed .checkbox {
+  width: 13px;
+  height: 13px;
+}
+.detailed .note {
+  min-height: 20px;
+}
+.signatures {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.sign-box {
+  border: 1px solid #8d99ae;
+  min-height: 60px;
+  padding: 8px;
+}
+.sign-label {
+  font-weight: 600;
+  color: #163770;
+  margin-bottom: 8px;
+}
 @media print {
-  body { margin: 10mm; }
+  @page { size: A4 portrait; margin: 8mm; }
+  .detailed { margin: 0; }
+  .detailed-print { display: block; }
+  body {
+    margin: 0;
+  }
 }
 </style>
 </head>
-<body>
+<body class="{% if compact %}compact{% else %}detailed{% endif %}">
   <h1>Checklist d'installation - {{ master.pc_name }}</h1>
   <div class="meta">Genere le {{ generated_at }}</div>
+  <div class="summary">
+    {{ roadmap_items|length }} logiciel(s) a traiter
+  </div>
 
   <table>
     <thead>
       <tr>
-        <th style="width:70px;">Fait</th>
-        <th style="width:32%;">Logiciel</th>
+        <th style="width:56px;">Fait</th>
+        {% if show_source %}
+        <th style="width:31%;">Logiciel</th>
         <th>Note installation / telechargement</th>
-        <th style="width:110px;">Origine</th>
+        <th style="width:90px;">Origine</th>
+        {% else %}
+        <th style="width:38%;">Logiciel</th>
+        <th>Note installation / telechargement</th>
+        {% endif %}
       </tr>
     </thead>
     <tbody>
@@ -38,15 +136,30 @@ th { background: #f2f2f2; text-align: left; }
           <td>{% if item.is_done %}X{% else %}<span class="checkbox"></span>{% endif %}</td>
           <td>{{ item.software_name }}</td>
           <td class="note">{{ item.note or '' }}</td>
+          {% if show_source %}
           <td>{{ item.source }}</td>
+          {% endif %}
         </tr>
         {% endfor %}
       {% else %}
         <tr>
-          <td colspan="4">Aucun element dans la feuille de route.</td>
+          <td colspan="{% if show_source %}4{% else %}3{% endif %}">Aucun element dans la feuille de route.</td>
         </tr>
       {% endif %}
     </tbody>
   </table>
+
+  <div class="signatures">
+    <div class="sign-box">
+      <div class="sign-label">Technicien</div>
+      Nom: ........................................<br>
+      Signature: ..................................
+    </div>
+    <div class="sign-box">
+      <div class="sign-label">Validation</div>
+      Date: .......................................<br>
+      Observations: ...............................
+    </div>
+  </div>
 </body>
 </html>

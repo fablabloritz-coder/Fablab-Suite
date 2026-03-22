@@ -13,7 +13,8 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Feuille de route - {{ master.pc_name }}</h2>
   <div class="d-flex gap-2">
-    <a href="/master/{{ master.id }}/roadmap/print" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer</a>
+    <a href="/master/{{ master.id }}/roadmap/print?compact=1&show_source=0" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer compact</a>
+    <a href="/master/{{ master.id }}/roadmap/print?compact=0&show_source=1" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer detail</a>
     <a href="/master/{{ master.id }}" class="btn btn-outline-success btn-sm"><i class="bi bi-pc-display me-1"></i>Voir master</a>
   </div>
 </div>
@@ -61,10 +62,10 @@
                   <span class="badge {% if item.source == 'minimal' %}bg-primary{% else %}bg-secondary{% endif %}">{{ item.source }}</span>
               </td>
               <td class="d-flex gap-1">
-                  <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-save"></i></button>
+                  <button type="submit" class="btn btn-sm btn-outline-primary">Mettre a jour</button>
                 </form>
                 <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer cet element de la feuille de route ?')">
-                  <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
                 </form>
               </td>
             </tr>
