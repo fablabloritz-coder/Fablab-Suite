@@ -76,19 +76,29 @@
 {% else %}
 
 <div class="row g-3 mb-4">
-  <div class="col-md-3">
+  <div class="col-sm-6 col-md-3">
     <div class="card stat-card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="text-muted small text-uppercase">Masters</div>
-        <div class="display-6 fw-bold text-primary">{{ masters|length }}</div>
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="stat-card-icon stat-card-icon-inv">
+          <i class="bi bi-pc-display-horizontal"></i>
+        </div>
+        <div>
+          <div class="stat-card-value">{{ masters|length }}</div>
+          <div class="stat-card-label">Masters</div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-sm-6 col-md-3">
     <div class="card stat-card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="text-muted small text-uppercase">Total scans</div>
-        <div class="display-6 fw-bold text-primary">{{ masters|sum(attribute='snap_count') }}</div>
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="stat-card-icon stat-card-icon-scan">
+          <i class="bi bi-camera"></i>
+        </div>
+        <div>
+          <div class="stat-card-value">{{ masters|sum(attribute='snap_count') }}</div>
+          <div class="stat-card-label">Total scans</div>
+        </div>
       </div>
     </div>
   </div>
