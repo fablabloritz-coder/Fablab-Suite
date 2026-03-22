@@ -161,6 +161,17 @@ class SearchSortingRouteTests(unittest.TestCase):
             ["Office Charlie", "Office Bravo", "Office Alpha"],
         )
 
+    def test_search_page_contains_autosubmit_js_hooks(self):
+        response = self.client.get("/search")
+        self.assertEqual(response.status_code, 200)
+
+        html = response.get_data(as_text=True)
+        self.assertIn("function autoSubmitIfQueryPresent()", html)
+        self.assertIn("scopeSelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
+        self.assertIn("perPageSelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
+        self.assertIn("sortBySelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
+        self.assertIn("sortDirSelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
+
 
 if __name__ == "__main__":
     unittest.main()
