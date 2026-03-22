@@ -13,7 +13,8 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Checklist de preparation - {{ master.pc_name }}</h2>
   <div class="d-flex gap-2">
-    <a href="/master/{{ master.id }}/roadmap/print" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer</a>
+    <a href="/master/{{ master.id }}/roadmap/print?density=compact" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer compact</a>
+    <a href="/master/{{ master.id }}/roadmap/print?density=ultra" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer-fill me-1"></i>Imprimer ultra</a>
   </div>
 </div>
 
@@ -62,7 +63,7 @@
               <td class="d-flex gap-1">
                   <button type="submit" class="btn btn-sm btn-outline-primary">Mettre a jour</button>
                 </form>
-                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer cet element de la checklist ?')">
+                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer {{ item.software_name }} de la checklist ?')">
                   <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
                 </form>
               </td>

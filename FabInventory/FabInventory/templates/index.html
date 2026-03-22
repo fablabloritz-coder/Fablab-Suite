@@ -4,26 +4,58 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2><i class="bi bi-speedometer2 me-2"></i>Dashboard</h2>
-  <div class="d-flex gap-2">
-    <a href="/roadmaps" class="btn btn-outline-primary">
-      <i class="bi bi-list-check me-1"></i>Listes de preparation
-    </a>
-    <a href="/roadmap/minimal-pack" class="btn btn-outline-primary">
-      <i class="bi bi-box-seam me-1"></i>Pack minimal
-    </a>
-    <a href="/download/master-bundle" class="btn btn-success">
-      <i class="bi bi-file-earmark-zip me-1"></i>Telecharger le pack (.zip)
-    </a>
-    <a href="/download/master-script" class="btn btn-outline-secondary">
-      <i class="bi bi-download me-1"></i>Telecharger le script (.ps1)
-    </a>
-    <a href="/upload" class="btn btn-primary"><i class="bi bi-cloud-upload me-1"></i>Importer un inventaire</a>
-  </div>
+  <a href="/upload" class="btn btn-primary"><i class="bi bi-cloud-upload me-1"></i>Importer un inventaire</a>
 </div>
 
-<div class="alert alert-info py-2">
-  <strong>Clarification:</strong> Les <strong>masters inventories</strong> apparaissent ici apres import de snapshot.
-  Les <strong>listes de preparation</strong> sont gerees dans l'espace "Preparation des masters".
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm dashboard-panel dashboard-panel-inventory h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <h4 class="mb-1"><i class="bi bi-pc-display-horizontal me-2"></i>Masters inventories</h4>
+            <div class="text-muted small">Section alimentee uniquement par les imports de snapshots.</div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap justify-content-end">
+            <a href="/download/master-bundle" class="btn btn-success btn-sm">
+              <i class="bi bi-file-earmark-zip me-1"></i>Pack complet (.zip)
+            </a>
+            <a href="/download/master-launcher" class="btn btn-outline-success btn-sm">
+              <i class="bi bi-windows me-1"></i>Lanceur (.bat)
+            </a>
+            <a href="/download/master-script" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-download me-1"></i>Script (.ps1)
+            </a>
+          </div>
+        </div>
+
+        <p class="text-muted mb-0">
+          Telechargez le pack, lancez le .bat sur un poste master puis importez le HTML produit.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm dashboard-panel dashboard-panel-preparation h-100">
+      <div class="card-body d-flex flex-column">
+        <h4 class="mb-1"><i class="bi bi-list-check me-2"></i>Preparation des masters</h4>
+        <div class="text-muted small mb-3">Espace isole pour les checklists d'installation.</div>
+        <div class="small mb-3">
+          <div><strong>{{ prep_summary.prep_masters if prep_summary else 0 }}</strong> liste(s)</div>
+          <div><strong>{{ prep_summary.prep_items if prep_summary else 0 }}</strong> element(s)</div>
+          <div><strong>{{ prep_summary.prep_pending if prep_summary else 0 }}</strong> a faire</div>
+        </div>
+        <div class="mt-auto d-grid gap-2">
+          <a href="/roadmaps" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-list-check me-1"></i>Ouvrir les listes
+          </a>
+          <a href="/roadmap/minimal-pack" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-box-seam me-1"></i>Gerer le pack minimal
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
@@ -54,12 +86,6 @@
   <h4 class="mt-3 text-muted">Aucun master enregistre</h4>
   <p class="text-muted">Lancez le script d'inventaire sur un PC master, puis importez le fichier HTML ici.</p>
   <div class="d-flex justify-content-center gap-2 mt-2 flex-wrap">
-    <a href="/roadmaps" class="btn btn-outline-primary btn-lg">
-      <i class="bi bi-list-check me-1"></i>Listes de preparation
-    </a>
-    <a href="/roadmap/minimal-pack" class="btn btn-outline-primary btn-lg">
-      <i class="bi bi-box-seam me-1"></i>Pack minimal
-    </a>
     <a href="/download/master-bundle" class="btn btn-success btn-lg">
       <i class="bi bi-file-earmark-zip me-1"></i>Telecharger le pack
     </a>

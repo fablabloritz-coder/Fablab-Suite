@@ -32,7 +32,7 @@
               <td class="d-flex gap-1">
                   <button type="submit" class="btn btn-sm btn-outline-primary">Mettre a jour</button>
                 </form>
-                <form method="post" action="/roadmap/minimal-pack/{{ item.id }}/delete" onsubmit="return confirm('Supprimer ce logiciel du pack minimal ?')">
+                <form method="post" action="/roadmap/minimal-pack/{{ item.id }}/delete" onsubmit="return confirm('Supprimer {{ item.software_name }} du pack minimal ?')">
                   <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
                 </form>
               </td>

@@ -9,6 +9,7 @@ import sqlite3
 import re
 import time
 import secrets
+import base64
 import io
 import csv
 import zipfile
@@ -22,6 +23,13 @@ DB_PATH = os.environ.get("DB_PATH", "/data/fabinventory.db")
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/data/uploads")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+COUNTS_CACHE_TTL_SECONDS = 45
+_COUNTS_CACHE = {"expires_at": 0.0, "value": None}
+
+
+def _perf_logging_enabled():
+    return app.debug or os.environ.get("PERF_LOG", "0") == "1"
 
 
 # ===== DATABASE =====
@@ -86,6 +94,8 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_software_index_snapshot ON software_index(snapshot_id);
     CREATE INDEX IF NOT EXISTS idx_software_index_master ON software_index(master_id);
     CREATE INDEX IF NOT EXISTS idx_software_index_name ON software_index(software_name);
+    CREATE INDEX IF NOT EXISTS idx_software_index_version ON software_index(software_version);
+    CREATE INDEX IF NOT EXISTS idx_software_index_editor ON software_index(software_editor);
     CREATE INDEX IF NOT EXISTS idx_software_index_blob ON software_index(search_blob);
     CREATE INDEX IF NOT EXISTS idx_snapshots_master_created ON snapshots(master_id, created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_snapshots_created ON snapshots(created_at DESC, id DESC);
@@ -116,6 +126,8 @@ def init_db():
     if "workflow_type" not in cols:
         db.execute("ALTER TABLE masters ADD COLUMN workflow_type TEXT DEFAULT 'inventory'")
 
+    db.execute("CREATE INDEX IF NOT EXISTS idx_masters_workflow_pcname ON masters(workflow_type, pc_name)")
+
     db.execute("UPDATE masters SET workflow_type = 'inventory' WHERE workflow_type IS NULL OR workflow_type = ''")
     db.execute(
         """
@@ -132,12 +144,25 @@ def init_db():
 init_db()
 
 
+def _invalidate_counts_cache():
+    _COUNTS_CACHE["expires_at"] = 0.0
+    _COUNTS_CACHE["value"] = None
+
+
 def _suite_counts(db):
+    now = time.time()
+    cached = _COUNTS_CACHE.get("value")
+    if cached is not None and now < float(_COUNTS_CACHE.get("expires_at") or 0):
+        return cached
+
     masters = db.execute(
         "SELECT COUNT(*) AS c FROM masters WHERE workflow_type = 'inventory'"
     ).fetchone()["c"]
     snapshots = db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()["c"]
-    return int(masters), int(snapshots)
+    value = (int(masters), int(snapshots))
+    _COUNTS_CACHE["value"] = value
+    _COUNTS_CACHE["expires_at"] = now + COUNTS_CACHE_TTL_SECONDS
+    return value
 
 
 @app.after_request
@@ -147,6 +172,26 @@ def add_fabsuite_cors_headers(response):
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@app.before_request
+def track_request_start():
+    if _perf_logging_enabled():
+        g._request_start = time.perf_counter()
+
+
+@app.after_request
+def log_request_duration(response):
+    if _perf_logging_enabled() and hasattr(g, "_request_start"):
+        elapsed_ms = (time.perf_counter() - g._request_start) * 1000.0
+        app.logger.info(
+            "perf endpoint=%s method=%s status=%s duration_ms=%.2f",
+            request.path,
+            request.method,
+            response.status_code,
+            elapsed_ms,
+        )
     return response
 
 
@@ -523,7 +568,17 @@ def index():
         WHERE m.workflow_type = 'inventory'
         ORDER BY m.pc_name
     """).fetchall()
-    return render_template("index.html", masters=masters)
+    prep_summary = db.execute(
+        """
+        SELECT
+            COUNT(*) AS prep_masters,
+            (SELECT COUNT(*) FROM roadmap_items) AS prep_items,
+            (SELECT COUNT(*) FROM roadmap_items WHERE is_done = 0) AS prep_pending
+        FROM masters
+        WHERE workflow_type = 'preparation'
+        """
+    ).fetchone()
+    return render_template("index.html", masters=masters, prep_summary=prep_summary)
 
 
 @app.route("/download/master-script")
@@ -646,6 +701,7 @@ def upload():
             ))
             _upsert_snapshot_software_index(db, cur_snap.lastrowid, master_id, software)
             db.commit()
+            _invalidate_counts_cache()
             imported += 1
 
         if imported:
@@ -708,6 +764,7 @@ def master_new():
         _apply_minimal_pack_to_master(db, master_id)
 
     db.commit()
+    _invalidate_counts_cache()
     flash("Liste de preparation creee pour ce master cible", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
 
@@ -806,10 +863,15 @@ def master_roadmap_print(master_id):
         (master_id,),
     ).fetchall()
 
+    density = (request.args.get("density") or "compact").strip().lower()
+    if density not in ("compact", "ultra"):
+        density = "compact"
+
     return render_template(
         "roadmap_print.html",
         master=master,
         roadmap_items=roadmap_items,
+        density=density,
         generated_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
     )
 
@@ -897,6 +959,7 @@ def master_update(master_id):
         )
         _upsert_snapshot_software_index(db, cur_snap.lastrowid, master_id, software)
         db.commit()
+        _invalidate_counts_cache()
 
         try:
             os.remove(pending_path)
@@ -996,6 +1059,7 @@ def master_delete(master_id):
     db.execute("DELETE FROM snapshots WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM masters WHERE id = ?", (master_id,))
     db.commit()
+    _invalidate_counts_cache()
     flash("Master supprime", "success")
     return redirect(url_for("index"))
 
@@ -1187,6 +1251,7 @@ def snapshot_delete(snap_id):
         db.execute("DELETE FROM software_index WHERE snapshot_id = ?", (snap_id,))
         db.execute("DELETE FROM snapshots WHERE id = ?", (snap_id,))
         db.commit()
+        _invalidate_counts_cache()
         flash("Snapshot supprime", "success")
         return redirect(url_for("master_detail", master_id=snap["master_id"]))
     return redirect(url_for("index"))
@@ -1232,6 +1297,12 @@ def search_multi_master():
     if sort_dir not in ("asc", "desc"):
         sort_dir = "asc"
 
+    paging_mode = (request.args.get("paging") or "offset").strip().lower()
+    if paging_mode not in ("offset", "keyset"):
+        paging_mode = "offset"
+
+    cursor_token = (request.args.get("cursor") or "").strip()
+
     # Strict SQL clause mapping prevents injection from query params.
     latest_order_by_map = {
         "master": "m.pc_name {dir}, si.software_name ASC, si.software_version ASC",
@@ -1255,7 +1326,6 @@ def search_multi_master():
 
     _ensure_software_index_ready(db)
 
-    results = []
     total_scanned = 0
 
     if scope == "latest":
@@ -1263,72 +1333,88 @@ def search_multi_master():
     else:
         total_scanned = int(db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()["c"])
 
-    if query:
-        like_term = f"%{query.lower()}%"
-        if scope == "latest":
-            rows = db.execute(
-                f"""
-                SELECT
-                    si.master_id,
-                    m.pc_name,
-                    m.label,
-                    si.snapshot_id,
-                    s.scan_date,
-                    si.software_name,
-                    si.software_version,
-                    si.software_editor,
-                    si.software_source
-                FROM software_index si
-                JOIN snapshots s ON s.id = si.snapshot_id
-                JOIN masters m ON m.id = si.master_id
-                WHERE si.search_blob LIKE ?
-                  AND si.snapshot_id IN (
-                      SELECT id FROM snapshots latest
-                      WHERE latest.master_id = si.master_id
-                      ORDER BY latest.created_at DESC, latest.id DESC
-                      LIMIT 1
-                  )
-                ORDER BY {order_by_clause}
-                """,
-                (like_term,),
-            ).fetchall()
-        else:
-            rows = db.execute(
-                f"""
-                SELECT
-                    si.master_id,
-                    m.pc_name,
-                    m.label,
-                    si.snapshot_id,
-                    s.scan_date,
-                    si.software_name,
-                    si.software_version,
-                    si.software_editor,
-                    si.software_source
-                FROM software_index si
-                JOIN snapshots s ON s.id = si.snapshot_id
-                JOIN masters m ON m.id = si.master_id
-                WHERE si.search_blob LIKE ?
-                ORDER BY {order_by_clause}
-                """,
-                (like_term,),
-            ).fetchall()
+    like_term = f"%{query.lower()}%" if query else None
 
-        for row in rows:
-            results.append({
-                "master_id": row["master_id"],
-                "master_name": row["pc_name"],
-                "master_label": row["label"],
-                "snapshot_id": row["snapshot_id"],
-                "scan_date": row["scan_date"],
-                "name": row["software_name"],
-                "version": row["software_version"],
-                "editor": row["software_editor"],
-                "source": row["software_source"],
-            })
+    latest_join = """
+        JOIN (
+            SELECT s1.id, s1.master_id
+            FROM snapshots s1
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM snapshots s2
+                WHERE s2.master_id = s1.master_id
+                  AND (s2.created_at > s1.created_at OR (s2.created_at = s1.created_at AND s2.id > s1.id))
+            )
+        ) latest ON latest.id = si.snapshot_id AND latest.master_id = si.master_id
+    """
+
+    def _fetch_search_rows(limit=None, offset=None, cursor=None):
+        if not query:
+            return []
+
+        sql = [
+            """
+            SELECT
+                si.master_id,
+                m.pc_name,
+                m.label,
+                si.snapshot_id,
+                s.scan_date,
+                s.created_at AS scan_created_at,
+                si.software_name,
+                si.software_version,
+                si.software_editor,
+                si.software_source,
+                si.id AS row_id
+            FROM software_index si
+            JOIN snapshots s ON s.id = si.snapshot_id
+            JOIN masters m ON m.id = si.master_id
+            """
+        ]
+        params = [like_term]
+
+        if scope == "latest":
+            sql.append(latest_join)
+
+        sql.append("WHERE si.search_blob LIKE ?")
+
+        if cursor:
+            c_value = cursor.get("value")
+            c_row_id = int(cursor.get("row_id") or 0)
+            op = ">" if sort_dir == "asc" else "<"
+
+            key_column_map = {
+                "master": "m.pc_name",
+                "date": "s.created_at",
+                "software": "si.software_name",
+                "version": "si.software_version",
+                "editor": "si.software_editor",
+            }
+            key_column = key_column_map[sort_by]
+            sql.append(
+                f"""
+                AND (
+                    {key_column} {op} ?
+                    OR ({key_column} = ? AND si.id {op} ?)
+                )
+                """
+            )
+            params.extend([c_value, c_value, c_row_id])
+
+        sql.append(f"ORDER BY {order_by_clause}")
+
+        if limit is not None:
+            sql.append("LIMIT ?")
+            params.append(int(limit))
+            if offset is not None and cursor is None:
+                sql.append("OFFSET ?")
+                params.append(int(offset))
+
+        return db.execute("\n".join(sql), tuple(params)).fetchall()
 
     export_format = (request.args.get("export") or "").strip().lower()
     if export_format == "csv" and query:
+        rows = _fetch_search_rows(limit=None, offset=None)
         output = io.StringIO()
         writer = csv.writer(output, delimiter=";")
         writer.writerow([
@@ -1342,17 +1428,17 @@ def search_multi_master():
             "software_editor",
             "software_source",
         ])
-        for row in results:
+        for row in rows:
             writer.writerow([
-                row.get("master_id", ""),
-                row.get("master_name", ""),
-                row.get("master_label", ""),
-                row.get("snapshot_id", ""),
-                row.get("scan_date", ""),
-                row.get("name", ""),
-                row.get("version", ""),
-                row.get("editor", ""),
-                row.get("source", ""),
+                row["master_id"],
+                row["pc_name"],
+                row["label"],
+                row["snapshot_id"],
+                row["scan_date"],
+                row["software_name"],
+                row["software_version"],
+                row["software_editor"],
+                row["software_source"],
             ])
 
         csv_bytes = output.getvalue().encode("utf-8-sig")
@@ -1365,14 +1451,78 @@ def search_multi_master():
             },
         )
 
-    total_results = len(results)
+    total_results = 0
+    if query:
+        if scope == "latest":
+            total_results = int(
+                db.execute(
+                    f"""
+                    SELECT COUNT(*) AS c
+                    FROM software_index si
+                    {latest_join}
+                    WHERE si.search_blob LIKE ?
+                    """,
+                    (like_term,),
+                ).fetchone()["c"]
+            )
+        else:
+            total_results = int(
+                db.execute(
+                    "SELECT COUNT(*) AS c FROM software_index si WHERE si.search_blob LIKE ?",
+                    (like_term,),
+                ).fetchone()["c"]
+            )
+
     total_pages = max(1, (total_results + per_page - 1) // per_page)
     if page > total_pages:
         page = total_pages
 
+    decoded_cursor = None
+    if paging_mode == "keyset" and cursor_token:
+        try:
+            decoded_cursor = json.loads(base64.urlsafe_b64decode(cursor_token.encode("ascii")).decode("utf-8"))
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            decoded_cursor = None
+
     start_idx = (page - 1) * per_page
-    end_idx = start_idx + per_page
-    paged_results = results[start_idx:end_idx]
+    if paging_mode == "keyset":
+        rows = _fetch_search_rows(limit=per_page + 1, cursor=decoded_cursor)
+    else:
+        rows = _fetch_search_rows(limit=per_page, offset=start_idx)
+
+    has_more = False
+    if paging_mode == "keyset" and len(rows) > per_page:
+        has_more = True
+        rows = rows[:per_page]
+
+    next_cursor = ""
+    if paging_mode == "keyset" and has_more and rows:
+        key_map = {
+            "master": rows[-1]["pc_name"],
+            "date": rows[-1]["scan_created_at"],
+            "software": rows[-1]["software_name"],
+            "version": rows[-1]["software_version"],
+            "editor": rows[-1]["software_editor"],
+        }
+        payload = {
+            "value": key_map[sort_by],
+            "row_id": rows[-1]["row_id"],
+        }
+        next_cursor = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+    paged_results = [
+        {
+            "master_id": row["master_id"],
+            "master_name": row["pc_name"],
+            "master_label": row["label"],
+            "snapshot_id": row["snapshot_id"],
+            "scan_date": row["scan_date"],
+            "name": row["software_name"],
+            "version": row["software_version"],
+            "editor": row["software_editor"],
+            "source": row["software_source"],
+        }
+        for row in rows
+    ]
 
     return render_template(
         "search.html",
@@ -1386,6 +1536,8 @@ def search_multi_master():
         page=page,
         per_page=per_page,
         total_pages=total_pages,
+        paging_mode=paging_mode,
+        next_cursor=next_cursor,
     )
 
 

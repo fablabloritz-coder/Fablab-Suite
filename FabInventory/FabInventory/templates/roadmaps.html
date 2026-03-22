@@ -22,7 +22,7 @@
           <th>Master cible</th>
           <th>Label</th>
           <th>Progression</th>
-          <th style="width:220px">Actions</th>
+          <th style="width:320px">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -40,7 +40,8 @@
             </td>
             <td class="d-flex gap-1">
               <a href="/master/{{ m.id }}/roadmap" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil-square"></i> Editer checklist</a>
-              <a href="/master/{{ m.id }}/roadmap/print" class="btn btn-sm btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> Imprimer</a>
+              <a href="/master/{{ m.id }}/roadmap/print?density=compact" class="btn btn-sm btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> Compact</a>
+              <a href="/master/{{ m.id }}/roadmap/print?density=ultra" class="btn btn-sm btn-outline-secondary" target="_blank"><i class="bi bi-printer-fill"></i> Ultra</a>
             </td>
           </tr>
           {% endfor %}

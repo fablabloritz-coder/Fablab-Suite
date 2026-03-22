@@ -71,25 +71,40 @@ tbody tr:nth-child(even) {
 .note {
   min-height: 14px;
 }
-.detailed {
-  font-size: 12px;
+body.ultra {
+  font-size: 9.5px;
 }
-.detailed h1 {
-  font-size: 24px;
+body.ultra .sheet {
+  padding: 6mm;
 }
-.detailed th,
-.detailed td {
-  padding: 7px 8px;
+body.ultra h1 {
+  font-size: 17px;
 }
-.detailed th {
-  font-size: 11px;
+body.ultra .meta,
+body.ultra .summary {
+  margin-bottom: 6px;
 }
-.detailed .checkbox {
-  width: 13px;
-  height: 13px;
+body.ultra th,
+body.ultra td {
+  padding: 2px 4px;
 }
-.detailed .note {
-  min-height: 20px;
+body.ultra th {
+  font-size: 9px;
+}
+body.ultra .checkbox {
+  width: 9px;
+  height: 9px;
+}
+body.ultra .note {
+  min-height: 10px;
+}
+body.ultra .signatures {
+  margin-top: 10px;
+  gap: 8px;
+}
+body.ultra .sign-box {
+  min-height: 42px;
+  padding: 4px;
 }
 .signatures {
   margin-top: 16px;
@@ -125,7 +140,7 @@ tbody tr:nth-child(even) {
 }
 </style>
 </head>
-<body class="compact">
+<body class="{{ density }}">
   <div class="sheet">
   <h1>Checklist d'installation (preparation) - {{ master.pc_name }}</h1>
   <div class="meta">Genere le {{ generated_at }}</div>
