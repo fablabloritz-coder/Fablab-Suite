@@ -73,12 +73,47 @@
     <table class="table table-sm table-hover mb-0">
       <thead>
         <tr>
-          <th>Master</th>
+          <th>
+            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by=master&sort_dir={% if sort_by == 'master' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Master
+              {% if sort_by == 'master' %}
+                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
+              {% endif %}
+            </a>
+          </th>
           <th>Label</th>
-          <th>Scan</th>
-          <th>Logiciel</th>
-          <th>Version</th>
-          <th>Editeur</th>
+          <th>
+            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by=date&sort_dir={% if sort_by == 'date' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Scan
+              {% if sort_by == 'date' %}
+                <i class="bi {% if sort_dir == 'asc' %}bi-sort-down{% else %}bi-sort-up{% endif %} ms-1"></i>
+              {% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by=software&sort_dir={% if sort_by == 'software' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Logiciel
+              {% if sort_by == 'software' %}
+                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
+              {% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by=version&sort_dir={% if sort_by == 'version' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Version
+              {% if sort_by == 'version' %}
+                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
+              {% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by=editor&sort_dir={% if sort_by == 'editor' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Editeur
+              {% if sort_by == 'editor' %}
+                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
+              {% endif %}
+            </a>
+          </th>
           <th>Source</th>
           <th>Action</th>
         </tr>
