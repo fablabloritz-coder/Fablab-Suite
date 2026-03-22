@@ -48,6 +48,11 @@
       <div class="col-md-2">
         <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search me-1"></i>Rechercher</button>
       </div>
+      <div class="col-md-12 d-flex justify-content-end">
+        <button class="btn btn-link btn-sm text-decoration-none px-0" type="button" id="resetSearchPreferences">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Reinitialiser mes preferences
+        </button>
+      </div>
     </form>
   </div>
 </div>
@@ -126,8 +131,16 @@
   const perPageSelect = document.getElementById('perPageSelect');
   const sortBySelect = document.getElementById('sortBySelect');
   const sortDirSelect = document.getElementById('sortDirSelect');
+  const resetButton = document.getElementById('resetSearchPreferences');
   const searchForm = document.getElementById('searchForm');
   if (!scopeSelect || !perPageSelect || !sortBySelect || !sortDirSelect || !searchForm) return;
+
+  const STORAGE_KEYS = [
+    'fabinventory.search.scope',
+    'fabinventory.search.per_page',
+    'fabinventory.search.sort_by',
+    'fabinventory.search.sort_dir'
+  ];
 
   const params = new URLSearchParams(window.location.search);
   const hasScopeInUrl = params.has('scope');
@@ -170,6 +183,24 @@
     localStorage.setItem('fabinventory.search.sort_by', sortBySelect.value);
     localStorage.setItem('fabinventory.search.sort_dir', sortDirSelect.value);
   });
+
+  if (resetButton) {
+    resetButton.addEventListener('click', function () {
+      STORAGE_KEYS.forEach(function (key) {
+        localStorage.removeItem(key);
+      });
+
+      scopeSelect.value = 'latest';
+      perPageSelect.value = '25';
+      sortBySelect.value = 'master';
+      sortDirSelect.value = 'asc';
+
+      const qInput = searchForm.querySelector('input[name="q"]');
+      if (qInput) {
+        qInput.focus();
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}
