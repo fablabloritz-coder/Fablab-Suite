@@ -110,6 +110,22 @@ def init_db():
     );
     CREATE INDEX IF NOT EXISTS idx_roadmap_items_master ON roadmap_items(master_id);
     """)
+
+    # Migration idempotente: separation explicite des masters inventories et des listes de preparation.
+    cols = [row[1] for row in db.execute("PRAGMA table_info(masters)").fetchall()]
+    if "workflow_type" not in cols:
+        db.execute("ALTER TABLE masters ADD COLUMN workflow_type TEXT DEFAULT 'inventory'")
+
+    db.execute("UPDATE masters SET workflow_type = 'inventory' WHERE workflow_type IS NULL OR workflow_type = ''")
+    db.execute(
+        """
+        UPDATE masters
+        SET workflow_type = 'preparation'
+        WHERE id IN (SELECT DISTINCT master_id FROM roadmap_items)
+          AND id NOT IN (SELECT DISTINCT master_id FROM snapshots)
+        """
+    )
+
     db.commit()
     db.close()
 
@@ -117,7 +133,9 @@ init_db()
 
 
 def _suite_counts(db):
-    masters = db.execute("SELECT COUNT(*) AS c FROM masters").fetchone()["c"]
+    masters = db.execute(
+        "SELECT COUNT(*) AS c FROM masters WHERE workflow_type = 'inventory'"
+    ).fetchone()["c"]
     snapshots = db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()["c"]
     return int(masters), int(snapshots)
 
@@ -484,6 +502,13 @@ def _apply_minimal_pack_to_master(db, master_id):
         )
 
 
+def _get_preparation_master(db, master_id):
+    return db.execute(
+        "SELECT * FROM masters WHERE id = ? AND workflow_type = 'preparation'",
+        (master_id,),
+    ).fetchone()
+
+
 # ===== ROUTES =====
 
 @app.route("/")
@@ -494,7 +519,9 @@ def index():
             (SELECT COUNT(*) FROM snapshots WHERE master_id = m.id) as snap_count,
             (SELECT scan_date FROM snapshots WHERE master_id = m.id ORDER BY created_at DESC LIMIT 1) as last_scan,
             (SELECT total_software FROM snapshots WHERE master_id = m.id ORDER BY created_at DESC LIMIT 1) as last_total
-        FROM masters m ORDER BY m.pc_name
+        FROM masters m
+        WHERE m.workflow_type = 'inventory'
+        ORDER BY m.pc_name
     """).fetchall()
     return render_template("index.html", masters=masters)
 
@@ -593,11 +620,17 @@ def upload():
             db = get_db()
 
             # Find or create master
-            master = db.execute("SELECT id FROM masters WHERE pc_name = ?", (pc_name,)).fetchone()
+            master = db.execute(
+                "SELECT id FROM masters WHERE pc_name = ? AND workflow_type = 'inventory'",
+                (pc_name,),
+            ).fetchone()
             if master:
                 master_id = master["id"]
             else:
-                cur = db.execute("INSERT INTO masters (pc_name) VALUES (?)", (pc_name,))
+                cur = db.execute(
+                    "INSERT INTO masters (pc_name, workflow_type) VALUES (?, 'inventory')",
+                    (pc_name,),
+                )
                 master_id = cur.lastrowid
 
             # Create snapshot
@@ -642,7 +675,7 @@ def master_new():
         return render_template("master_new.html", minimal_pack=minimal_pack)
 
     existing = db.execute(
-        "SELECT id FROM masters WHERE lower(pc_name) = lower(?)",
+        "SELECT id FROM masters WHERE lower(pc_name) = lower(?) AND workflow_type = 'preparation'",
         (pc_name,),
     ).fetchone()
     if existing:
@@ -650,7 +683,7 @@ def master_new():
         return render_template("master_new.html", minimal_pack=minimal_pack)
 
     cur = db.execute(
-        "INSERT INTO masters (pc_name, label, notes) VALUES (?, ?, ?)",
+        "INSERT INTO masters (pc_name, label, notes, workflow_type) VALUES (?, ?, ?, 'preparation')",
         (pc_name, label, notes),
     )
     master_id = cur.lastrowid
@@ -691,6 +724,7 @@ def roadmaps_index():
             (SELECT COUNT(*) FROM roadmap_items ri WHERE ri.master_id = m.id) AS roadmap_total,
             (SELECT COUNT(*) FROM roadmap_items ri WHERE ri.master_id = m.id AND ri.is_done = 1) AS roadmap_done
         FROM masters m
+        WHERE m.workflow_type = 'preparation'
         ORDER BY m.pc_name
         """
     ).fetchall()
@@ -700,9 +734,12 @@ def roadmaps_index():
 @app.route("/master/<int:master_id>")
 def master_detail(master_id):
     db = get_db()
-    master = db.execute("SELECT * FROM masters WHERE id = ?", (master_id,)).fetchone()
+    master = db.execute(
+        "SELECT * FROM masters WHERE id = ? AND workflow_type = 'inventory'",
+        (master_id,),
+    ).fetchone()
     if not master:
-        flash("Master introuvable", "error")
+        flash("Master inventorie introuvable", "error")
         return redirect(url_for("index"))
 
     snapshots = db.execute(
@@ -725,10 +762,10 @@ def master_detail(master_id):
 @app.route("/master/<int:master_id>/roadmap")
 def master_roadmap(master_id):
     db = get_db()
-    master = db.execute("SELECT * FROM masters WHERE id = ?", (master_id,)).fetchone()
+    master = _get_preparation_master(db, master_id)
     if not master:
-        flash("Master introuvable", "error")
-        return redirect(url_for("index"))
+        flash("Liste de preparation introuvable", "error")
+        return redirect(url_for("roadmaps_index"))
 
     roadmap_items = db.execute(
         """
@@ -754,10 +791,10 @@ def master_roadmap(master_id):
 @app.route("/master/<int:master_id>/roadmap/print")
 def master_roadmap_print(master_id):
     db = get_db()
-    master = db.execute("SELECT * FROM masters WHERE id = ?", (master_id,)).fetchone()
+    master = _get_preparation_master(db, master_id)
     if not master:
-        flash("Master introuvable", "error")
-        return redirect(url_for("index"))
+        flash("Liste de preparation introuvable", "error")
+        return redirect(url_for("roadmaps_index"))
 
     roadmap_items = db.execute(
         """
@@ -780,9 +817,12 @@ def master_roadmap_print(master_id):
 @app.route("/master/<int:master_id>/update", methods=["GET", "POST"])
 def master_update(master_id):
     db = get_db()
-    master = db.execute("SELECT * FROM masters WHERE id = ?", (master_id,)).fetchone()
+    master = db.execute(
+        "SELECT * FROM masters WHERE id = ? AND workflow_type = 'inventory'",
+        (master_id,),
+    ).fetchone()
     if not master:
-        flash("Master introuvable", "error")
+        flash("Master inventorie introuvable", "error")
         return redirect(url_for("index"))
 
     latest = db.execute(
@@ -931,7 +971,7 @@ def master_edit(master_id):
         return redirect(url_for("master_detail", master_id=master_id))
 
     existing = db.execute(
-        "SELECT id FROM masters WHERE lower(pc_name) = lower(?) AND id != ?",
+        "SELECT id FROM masters WHERE lower(pc_name) = lower(?) AND id != ? AND workflow_type = 'inventory'",
         (pc_name, master_id),
     ).fetchone()
     if existing:
@@ -963,10 +1003,13 @@ def master_delete(master_id):
 @app.route("/master/<int:master_id>/roadmap/add", methods=["POST"])
 def roadmap_add_item(master_id):
     db = get_db()
-    master = db.execute("SELECT id FROM masters WHERE id = ?", (master_id,)).fetchone()
+    master = db.execute(
+        "SELECT id FROM masters WHERE id = ? AND workflow_type = 'preparation'",
+        (master_id,),
+    ).fetchone()
     if not master:
-        flash("Master introuvable", "error")
-        return redirect(url_for("index"))
+        flash("Liste de preparation introuvable", "error")
+        return redirect(url_for("roadmaps_index"))
 
     software_name = request.form.get("software_name", "").strip()
     note = request.form.get("note", "").strip()
@@ -1045,10 +1088,13 @@ def roadmap_delete_item(master_id, item_id):
 @app.route("/master/<int:master_id>/roadmap/apply-minimal-pack", methods=["POST"])
 def roadmap_apply_minimal_pack(master_id):
     db = get_db()
-    master = db.execute("SELECT id FROM masters WHERE id = ?", (master_id,)).fetchone()
+    master = db.execute(
+        "SELECT id FROM masters WHERE id = ? AND workflow_type = 'preparation'",
+        (master_id,),
+    ).fetchone()
     if not master:
-        flash("Master introuvable", "error")
-        return redirect(url_for("index"))
+        flash("Liste de preparation introuvable", "error")
+        return redirect(url_for("roadmaps_index"))
 
     _apply_minimal_pack_to_master(db, master_id)
     db.commit()

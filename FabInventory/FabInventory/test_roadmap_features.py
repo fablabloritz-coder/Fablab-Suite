@@ -88,7 +88,10 @@ class RoadmapFeaturesTests(unittest.TestCase):
     def test_apply_minimal_pack_to_existing_master(self):
         db = sqlite3.connect(os.environ["DB_PATH"])
         cur = db.cursor()
-        cur.execute("INSERT INTO masters (pc_name, label, notes) VALUES (?, ?, ?)", ("MASTER-02", "Salle B", ""))
+        cur.execute(
+            "INSERT INTO masters (pc_name, label, notes, workflow_type) VALUES (?, ?, ?, ?)",
+            ("MASTER-02", "Salle B", "", "preparation"),
+        )
         master_id = cur.lastrowid
 
         cur.execute(
@@ -121,7 +124,10 @@ class RoadmapFeaturesTests(unittest.TestCase):
     def test_roadmap_print_page_renders_html_for_printing(self):
         db = sqlite3.connect(os.environ["DB_PATH"])
         cur = db.cursor()
-        cur.execute("INSERT INTO masters (pc_name, label, notes) VALUES (?, ?, ?)", ("MASTER-PRINT", "Salle C", ""))
+        cur.execute(
+            "INSERT INTO masters (pc_name, label, notes, workflow_type) VALUES (?, ?, ?, ?)",
+            ("MASTER-PRINT", "Salle C", "", "preparation"),
+        )
         master_id = cur.lastrowid
         cur.execute(
             "INSERT INTO roadmap_items (master_id, software_name, note, is_done, source) VALUES (?, ?, ?, ?, ?)",
