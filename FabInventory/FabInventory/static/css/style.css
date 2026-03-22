@@ -7,16 +7,20 @@
 
 .dashboard-panel {
 	border-top: 4px solid transparent;
+	border-left: 4px solid transparent;
+	box-shadow: 0 10px 20px rgba(0, 0, 0, .06) !important;
 }
 
 .dashboard-panel-inventory {
 	border-top-color: var(--inv-accent);
-	background: linear-gradient(160deg, var(--inv-soft) 0%, #ffffff 58%);
+	border-left-color: var(--inv-accent);
+	background: linear-gradient(145deg, #d9f0f5 0%, #ffffff 62%);
 }
 
 .dashboard-panel-preparation {
 	border-top-color: var(--prep-accent);
-	background: linear-gradient(160deg, var(--prep-soft) 0%, #ffffff 58%);
+	border-left-color: var(--prep-accent);
+	background: linear-gradient(145deg, #ddf1e1 0%, #ffffff 62%);
 }
 
 .master-card {
