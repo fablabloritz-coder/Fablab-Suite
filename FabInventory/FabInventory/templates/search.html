@@ -168,6 +168,7 @@
   const sortDirSelect = document.getElementById('sortDirSelect');
   const resetButton = document.getElementById('resetSearchPreferences');
   const searchForm = document.getElementById('searchForm');
+  const queryInput = searchForm ? searchForm.querySelector('input[name="q"]') : null;
   if (!scopeSelect || !perPageSelect || !sortBySelect || !sortDirSelect || !searchForm) return;
 
   const STORAGE_KEYS = [
@@ -219,6 +220,18 @@
     localStorage.setItem('fabinventory.search.sort_dir', sortDirSelect.value);
   });
 
+  function autoSubmitIfQueryPresent() {
+    if (!queryInput || !queryInput.value.trim()) {
+      return;
+    }
+    searchForm.requestSubmit();
+  }
+
+  scopeSelect.addEventListener('change', autoSubmitIfQueryPresent);
+  perPageSelect.addEventListener('change', autoSubmitIfQueryPresent);
+  sortBySelect.addEventListener('change', autoSubmitIfQueryPresent);
+  sortDirSelect.addEventListener('change', autoSubmitIfQueryPresent);
+
   if (resetButton) {
     resetButton.addEventListener('click', function () {
       STORAGE_KEYS.forEach(function (key) {
@@ -230,9 +243,8 @@
       sortBySelect.value = 'master';
       sortDirSelect.value = 'asc';
 
-      const qInput = searchForm.querySelector('input[name="q"]');
-      if (qInput) {
-        qInput.focus();
+      if (queryInput) {
+        queryInput.focus();
       }
     });
   }
