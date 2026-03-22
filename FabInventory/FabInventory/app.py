@@ -675,7 +675,7 @@ def master_new():
         _apply_minimal_pack_to_master(db, master_id)
 
     db.commit()
-    flash("Master cree avec sa feuille de route", "success")
+    flash("Liste de preparation creee pour ce master", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
 
 
@@ -769,16 +769,11 @@ def master_roadmap_print(master_id):
         (master_id,),
     ).fetchall()
 
-    compact = (request.args.get("compact", "1") or "1").strip() != "0"
-    show_source = (request.args.get("show_source", "0") or "0").strip() == "1"
-
     return render_template(
         "roadmap_print.html",
         master=master,
         roadmap_items=roadmap_items,
         generated_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
-        compact=compact,
-        show_source=show_source,
     )
 
 

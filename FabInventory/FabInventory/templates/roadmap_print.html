@@ -125,7 +125,7 @@ tbody tr:nth-child(even) {
 }
 </style>
 </head>
-<body class="{% if compact %}compact{% else %}detailed{% endif %}">
+<body class="compact">
   <div class="sheet">
   <h1>Checklist d'installation - {{ master.pc_name }}</h1>
   <div class="meta">Genere le {{ generated_at }}</div>
@@ -137,14 +137,8 @@ tbody tr:nth-child(even) {
     <thead>
       <tr>
         <th style="width:56px;">Fait</th>
-        {% if show_source %}
-        <th style="width:31%;">Logiciel</th>
-        <th>Note installation / telechargement</th>
-        <th style="width:90px;">Origine</th>
-        {% else %}
         <th style="width:38%;">Logiciel</th>
         <th>Note installation / telechargement</th>
-        {% endif %}
       </tr>
     </thead>
     <tbody>
@@ -154,14 +148,11 @@ tbody tr:nth-child(even) {
           <td>{% if item.is_done %}X{% else %}<span class="checkbox"></span>{% endif %}</td>
           <td>{{ item.software_name }}</td>
           <td class="note">{{ item.note or '' }}</td>
-          {% if show_source %}
-          <td>{{ item.source }}</td>
-          {% endif %}
         </tr>
         {% endfor %}
       {% else %}
         <tr>
-          <td colspan="{% if show_source %}4{% else %}3{% endif %}">Aucun element dans la feuille de route.</td>
+          <td colspan="3">Aucun element dans la feuille de route.</td>
         </tr>
       {% endif %}
     </tbody>
