@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Comparer - FabInventory{% endblock %}
+{% block title %}Comparer — FabInventory{% endblock %}
 {% block content %}
 
 <div class="page-header">
@@ -10,91 +10,247 @@
 <div class="card border-0 shadow-sm">
   <div class="card-body">
     <div class="empty-state">
-      <i class="bi bi-arrow-left-right empty-state-icon"></i>
+      <i class="bi bi-arrow-left-right" style="font-size:3.5rem;color:var(--fi-text-light);display:block;margin-bottom:.75rem"></i>
       <h4>Comparaison indisponible</h4>
-      <p>Il faut au moins 2 masters importes avec des snapshots pour utiliser la comparaison.</p>
-      <a href="/upload" class="btn btn-primary btn-sm">
-        <i class="bi bi-cloud-upload me-1"></i>Importer un inventaire
-      </a>
+      <p>Il faut au moins 2 masters importes avec des snapshots pour utiliser cette fonction.</p>
+      <a href="/upload" class="btn btn-primary btn-sm"><i class="bi bi-cloud-upload me-1"></i>Importer un inventaire</a>
     </div>
   </div>
 </div>
 {% else %}
 
-<!-- Selecteurs -->
-<div class="row g-3 mb-4 align-items-center">
-  <div class="col-md-5">
-    <div class="card border-0 shadow-sm" style="border-top:3px solid var(--prep-border) !important">
-      <div class="card-body">
-        <label class="form-label"><i class="bi bi-pc-display me-1"></i>Master A</label>
-        <select id="selA" class="form-select">
-          <option value="">— Choisir un master —</option>
-          {% for m in masters %}{% if m.latest_snap_id %}
-          <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
-          {% endif %}{% endfor %}
-        </select>
-      </div>
+<!-- ===== Selecteurs ===== -->
+<div class="cmp-selector-row">
+
+  <div class="cmp-selector-card" style="border-top-color: var(--prep-border)">
+    <div class="cmp-selector-label" style="color:var(--prep-accent)">
+      <i class="bi bi-pc-display me-1"></i>MASTER A
     </div>
+    <select id="selA" class="form-select">
+      <option value="">— Choisir un master —</option>
+      {% for m in masters %}{% if m.latest_snap_id %}
+      <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
+      {% endif %}{% endfor %}
+    </select>
   </div>
-  <div class="col-md-2 d-flex align-items-center justify-content-center">
-    <button class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center"
-            style="width:52px;height:52px;font-size:1.2rem"
-            onclick="doCompare()" id="btnCompare" disabled>
-      <i class="bi bi-arrow-left-right"></i>
-    </button>
-  </div>
-  <div class="col-md-5">
-    <div class="card border-0 shadow-sm" style="border-top:3px solid var(--inv-border) !important">
-      <div class="card-body">
-        <label class="form-label"><i class="bi bi-pc-display me-1"></i>Master B</label>
-        <select id="selB" class="form-select">
-          <option value="">— Choisir un master —</option>
-          {% for m in masters %}{% if m.latest_snap_id %}
-          <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
-          {% endif %}{% endfor %}
-        </select>
-      </div>
+
+  <button class="cmp-btn-compare" onclick="doCompare()" id="btnCompare" disabled>
+    <i class="bi bi-arrow-left-right"></i>
+  </button>
+
+  <div class="cmp-selector-card" style="border-top-color: var(--inv-border)">
+    <div class="cmp-selector-label" style="color:var(--inv-accent)">
+      <i class="bi bi-pc-display me-1"></i>MASTER B
     </div>
+    <select id="selB" class="form-select">
+      <option value="">— Choisir un master —</option>
+      {% for m in masters %}{% if m.latest_snap_id %}
+      <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
+      {% endif %}{% endfor %}
+    </select>
   </div>
+
 </div>
 
-<!-- Résultats (masqués initialement) -->
+<!-- ===== Résultats ===== -->
 <div id="result" class="d-none">
 
   <!-- Stat cards -->
   <div class="row g-3 mb-3" id="statsRow"></div>
 
-  <!-- Toolbar filtre -->
-  <div class="toolbar-card mb-0">
-    <i class="bi bi-funnel text-muted" style="font-size:.9rem"></i>
-    <input type="text" id="cmpSearch" class="form-control form-control-sm" style="max-width:280px" placeholder="Filtrer les logiciels..." oninput="filterCmp()">
-    <span class="text-muted small ms-auto" id="cmpCounter" style="font-size:.78rem"></span>
+  <!-- Filtres rapides + recherche -->
+  <div class="cmp-toolbar">
+    <div class="cmp-filters" id="filterBtns">
+      <button class="cmp-filter active" data-filter="all">Tous <span class="cmp-filter-count" id="cnt-all"></span></button>
+      <button class="cmp-filter diff" data-filter="diff"><i class="bi bi-lightning-charge me-1"></i>Différences <span class="cmp-filter-count" id="cnt-diff"></span></button>
+      <button class="cmp-filter version" data-filter="version_diff"><i class="bi bi-arrow-repeat me-1"></i>Versions <span class="cmp-filter-count" id="cnt-version"></span></button>
+      <button class="cmp-filter only-a" data-filter="only_a"><i class="bi bi-plus-circle me-1"></i>Seul A <span class="cmp-filter-count" id="cnt-a"></span></button>
+      <button class="cmp-filter only-b" data-filter="only_b"><i class="bi bi-dash-circle me-1"></i>Seul B <span class="cmp-filter-count" id="cnt-b"></span></button>
+      <button class="cmp-filter common" data-filter="common_same"><i class="bi bi-check2 me-1"></i>Identiques <span class="cmp-filter-count" id="cnt-same"></span></button>
+    </div>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <i class="bi bi-search text-muted" style="font-size:.85rem"></i>
+      <input type="text" id="cmpSearch" class="form-control form-control-sm" style="width:200px" placeholder="Filtrer..." oninput="filterCmp()">
+      <span class="text-muted" style="font-size:.75rem;white-space:nowrap" id="cmpCounter"></span>
+    </div>
   </div>
 
   <!-- Table de comparaison -->
   <div class="card border-0 shadow-sm">
     <div class="table-responsive">
-      <table class="table table-hover table-sm mb-0">
+      <table class="table table-sm mb-0" id="cmpTable">
         <thead>
           <tr>
-            <th>Logiciel</th>
-            <th id="colA">Master A</th>
-            <th id="colB">Master B</th>
-            <th>Statut</th>
+            <th style="width:42%">Logiciel</th>
+            <th id="colA" style="width:22%">Master A</th>
+            <th id="colB" style="width:22%">Master B</th>
+            <th style="width:14%">Statut</th>
           </tr>
         </thead>
         <tbody id="cmpBody"></tbody>
       </table>
     </div>
   </div>
+
 </div>
 {% endif %}
 
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* ===== Sélecteurs ===== */
+.cmp-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.cmp-selector-card {
+  flex: 1;
+  background: #fff;
+  border: 1px solid var(--fi-border);
+  border-top: 3px solid;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: var(--fi-card-shadow);
+}
+
+.cmp-selector-label {
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  margin-bottom: .5rem;
+}
+
+.cmp-btn-compare {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--fi-accent);
+  color: #fff;
+  font-size: 1.15rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s;
+  box-shadow: 0 4px 12px rgba(8,145,178,.35);
+}
+
+.cmp-btn-compare:disabled {
+  background: #e2e8f0;
+  color: var(--fi-text-light);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.cmp-btn-compare:not(:disabled):hover {
+  background: var(--fi-accent-hover);
+  transform: scale(1.08);
+}
+
+/* ===== Toolbar filtres ===== */
+.cmp-toolbar {
+  background: #fff;
+  border: 1px solid var(--fi-border);
+  border-radius: 10px;
+  padding: .65rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  box-shadow: var(--fi-card-shadow);
+  margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+
+.cmp-filters {
+  display: flex;
+  gap: .35rem;
+  flex-wrap: wrap;
+}
+
+.cmp-filter {
+  padding: .28rem .7rem;
+  border-radius: 6px;
+  border: 1px solid var(--fi-border);
+  background: #f8fafc;
+  color: var(--fi-text-muted);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+}
+
+.cmp-filter:hover    { background: #f1f5f9; border-color: #94a3b8; color: var(--fi-text); }
+.cmp-filter.active   { background: var(--fi-nav-bg); border-color: var(--fi-nav-bg); color: #fff; }
+.cmp-filter.diff     {}
+.cmp-filter.diff.active   { background: #92400e; border-color: #92400e; }
+.cmp-filter.version.active { background: #7c3aed; border-color: #7c3aed; }
+.cmp-filter.only-a.active  { background: #166534; border-color: #166534; }
+.cmp-filter.only-b.active  { background: #991b1b; border-color: #991b1b; }
+.cmp-filter.common.active  { background: var(--fi-accent); border-color: var(--fi-accent); }
+
+.cmp-filter-count {
+  background: rgba(255,255,255,.2);
+  border-radius: 99px;
+  padding: .05rem .45rem;
+  font-size: .68rem;
+  font-weight: 700;
+}
+.cmp-filter:not(.active) .cmp-filter-count {
+  background: rgba(0,0,0,.06);
+  color: var(--fi-text-muted);
+}
+
+/* ===== Table rows ===== */
+#cmpTable tbody tr td { transition: background .1s; }
+
+tr.row-only-a { background: #f0fdf4; }
+tr.row-only-a td:first-child { border-left: 3px solid #4ade80; }
+
+tr.row-only-b { background: #fef2f2; }
+tr.row-only-b td:first-child { border-left: 3px solid #f87171; }
+
+tr.row-version-diff { background: #fffbeb; }
+tr.row-version-diff td:first-child { border-left: 3px solid #fbbf24; }
+
+/* Version cells highlighting */
+.ver-a  { font-weight: 600; color: #166534; }
+.ver-b  { font-weight: 600; color: #991b1b; }
+.ver-same { color: var(--fi-text-muted); font-size: .8rem; }
+.ver-absent { color: #d1d5db; font-style: italic; font-size: .8rem; }
+
+/* Status badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .22rem .6rem;
+  border-radius: 99px;
+  font-size: .68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.badge-common  { background: #ecfeff; color: #0891b2; }
+.badge-version { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.badge-only-a  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.badge-only-b  { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+</style>
+
 <script>
-let cmpData = [];
+let cmpData  = [];
+let nameA    = 'Master A';
+let nameB    = 'Master B';
+let activeFilter = 'all';
+
 const selA = document.getElementById('selA');
 const selB = document.getElementById('selB');
 const btn  = document.getElementById('btnCompare');
@@ -108,9 +264,10 @@ function checkReady() {
   btn.disabled = !(selA.value && selB.value && selA.value !== selB.value);
 }
 
+// ===== Comparaison =====
 async function doCompare() {
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:1.1rem;height:1.1rem"></span>';
 
   const res  = await fetch('/api/compare', {
     method: 'POST',
@@ -122,63 +279,135 @@ async function doCompare() {
   btn.innerHTML = '<i class="bi bi-arrow-left-right"></i>';
   btn.disabled  = false;
 
-  cmpData = data.results || [];
-  const s = data.stats || {};
+  if (data.error) return;
 
-  document.getElementById('colA').textContent = s.name_a || 'Master A';
-  document.getElementById('colB').textContent = s.name_b || 'Master B';
+  cmpData = data.results || [];
+  const s  = data.stats  || {};
+  nameA    = s.name_a || 'Master A';
+  nameB    = s.name_b || 'Master B';
+
+  // ---- Calculer les catégories ----
+  const versionDiff = cmpData.filter(r => r.status === 'common' && r.vA !== r.vB && r.vA !== '-' && r.vB !== '-');
+  const onlyA       = cmpData.filter(r => r.status === 'only_a');
+  const onlyB       = cmpData.filter(r => r.status === 'only_b');
+  const commonSame  = cmpData.filter(r => r.status === 'common' && (r.vA === r.vB || r.vA === '-' || r.vB === '-') && r.status !== 'only_a' && r.status !== 'only_b');
+
+  // ---- Stat cards ----
+  document.getElementById('colA').textContent = nameA;
+  document.getElementById('colB').textContent = nameB;
 
   document.getElementById('statsRow').innerHTML =
-    statCard('Commun',              s.common,  '#0891b2', '#ecfeff',  'bi-intersect')  +
-    statCard('Unique ' + s.name_a,  s.only_a,  '#059669', '#ecfdf5',  'bi-box-arrow-in-left') +
-    statCard('Unique ' + s.name_b,  s.only_b,  '#dc2626', '#fef2f2',  'bi-box-arrow-in-right');
+    statCard('Identiques',     commonSame.length,  '#0891b2', '#ecfeff', 'bi-check2-all') +
+    statCard('Versions diff.', versionDiff.length, '#d97706', '#fffbeb', 'bi-arrow-repeat') +
+    statCard('Seul dans ' + nameA, onlyA.length,   '#059669', '#f0fdf4', 'bi-plus-circle') +
+    statCard('Seul dans ' + nameB, onlyB.length,   '#dc2626', '#fef2f2', 'bi-dash-circle');
+
+  // ---- Compteurs filtres ----
+  document.getElementById('cnt-all').textContent     = cmpData.length;
+  document.getElementById('cnt-diff').textContent    = versionDiff.length + onlyA.length + onlyB.length;
+  document.getElementById('cnt-version').textContent = versionDiff.length;
+  document.getElementById('cnt-a').textContent       = onlyA.length;
+  document.getElementById('cnt-b').textContent       = onlyB.length;
+  document.getElementById('cnt-same').textContent    = commonSame.length;
+
+  activeFilter = 'all';
+  document.querySelectorAll('.cmp-filter').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
 
   renderCmp();
   document.getElementById('result').classList.remove('d-none');
 }
 
-function statCard(label, value, color, bg, icon) {
-  return '<div class="col-md-3">' +
-    '<div class="card border-0 shadow-sm" style="border-left:3px solid ' + color + ' !important">' +
-    '<div class="card-body d-flex align-items-center gap-3">' +
-    '<div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;background:' + bg + ';color:' + color + '">' +
-    '<i class="bi ' + icon + '"></i></div>' +
-    '<div><div style="font-size:1.8rem;font-weight:800;line-height:1;letter-spacing:-.04em;color:' + color + '">' + value + '</div>' +
-    '<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-top:.2rem">' + label + '</div></div>' +
-    '</div></div></div>';
-}
-
+// ===== Render =====
 function renderCmp() {
   const q = (document.getElementById('cmpSearch')?.value || '').toLowerCase();
-  let html = '';
-  let count = 0;
+  let html = '', count = 0;
 
   cmpData.forEach(r => {
+    // Catégoriser
+    const isOnlyA       = r.status === 'only_a';
+    const isOnlyB       = r.status === 'only_b';
+    const isVersionDiff = r.status === 'common' && r.vA !== r.vB && r.vA !== '-' && r.vB !== '-';
+    const isCommonSame  = r.status === 'common' && !isVersionDiff;
+    const isDiff        = isOnlyA || isOnlyB || isVersionDiff;
+
+    // Filtre actif
+    if (activeFilter === 'diff'         && !isDiff)        return;
+    if (activeFilter === 'version_diff' && !isVersionDiff) return;
+    if (activeFilter === 'only_a'       && !isOnlyA)       return;
+    if (activeFilter === 'only_b'       && !isOnlyB)       return;
+    if (activeFilter === 'common_same'  && !isCommonSame)  return;
+
+    // Recherche texte
     if (q && !r.name.toLowerCase().includes(q)) return;
     count++;
-    const isCommon = r.status === 'common';
-    const isOnlyA  = r.status === 'only_a';
-    const rowBg    = isCommon ? '' : isOnlyA ? 'background:#f0fdf4' : 'background:#fef2f2';
-    const badge    = isCommon
-      ? '<span class="badge rounded-pill badge-sm" style="background:#ecfeff;color:#0891b2;font-weight:600">Commun</span>'
-      : isOnlyA
-        ? '<span class="badge rounded-pill badge-sm" style="background:#ecfdf5;color:#059669;font-weight:600">Unique A</span>'
-        : '<span class="badge rounded-pill badge-sm" style="background:#fef2f2;color:#dc2626;font-weight:600">Unique B</span>';
-    html += '<tr style="' + rowBg + '">' +
-      '<td class="fw-500" style="font-weight:500">' + esc(r.name) + '</td>' +
-      '<td><small class="text-muted">' + esc(r.vA) + '</small></td>' +
-      '<td><small class="text-muted">' + esc(r.vB) + '</small></td>' +
+
+    // Row class
+    const rowCls = isOnlyA ? 'row-only-a' : isOnlyB ? 'row-only-b' : isVersionDiff ? 'row-version-diff' : '';
+
+    // Cellules version
+    let cellA, cellB;
+    if (isOnlyA) {
+      cellA = '<span class="ver-a">' + esc(r.vA || '—') + '</span>';
+      cellB = '<span class="ver-absent">absent</span>';
+    } else if (isOnlyB) {
+      cellA = '<span class="ver-absent">absent</span>';
+      cellB = '<span class="ver-b">' + esc(r.vB || '—') + '</span>';
+    } else if (isVersionDiff) {
+      cellA = '<span class="ver-a">' + esc(r.vA) + '</span>';
+      cellB = '<span class="ver-b">' + esc(r.vB) + '</span>';
+    } else {
+      const v = r.vA && r.vA !== '-' ? r.vA : (r.vB && r.vB !== '-' ? r.vB : '—');
+      cellA = '<span class="ver-same">' + esc(v) + '</span>';
+      cellB = '<span class="ver-same">' + esc(v) + '</span>';
+    }
+
+    // Badge statut
+    let badge;
+    if (isOnlyA)       badge = '<span class="status-badge badge-only-a"><i class="bi bi-plus-circle"></i>' + esc(nameA) + ' uniquement</span>';
+    else if (isOnlyB)  badge = '<span class="status-badge badge-only-b"><i class="bi bi-dash-circle"></i>' + esc(nameB) + ' uniquement</span>';
+    else if (isVersionDiff) badge = '<span class="status-badge badge-version"><i class="bi bi-arrow-repeat"></i>Versions diff.</span>';
+    else               badge = '<span class="status-badge badge-common"><i class="bi bi-check2"></i>Identique</span>';
+
+    // Nom avec indicateur d'importance
+    const nameCell = '<span style="font-weight:' + (isDiff ? '600' : '400') + '">' + esc(r.name) + '</span>';
+
+    html += '<tr class="' + rowCls + '">' +
+      '<td>' + nameCell + '</td>' +
+      '<td>' + cellA + '</td>' +
+      '<td>' + cellB + '</td>' +
       '<td>' + badge + '</td></tr>';
   });
 
   document.getElementById('cmpBody').innerHTML = html ||
-    '<tr><td colspan="4" class="text-center text-muted py-4"><i class="bi bi-search me-2"></i>Aucun resultat</td></tr>';
+    '<tr><td colspan="4" class="text-center py-4 text-muted"><i class="bi bi-search me-2"></i>Aucun resultat</td></tr>';
 
   const counter = document.getElementById('cmpCounter');
   if (counter) counter.textContent = count + ' logiciel' + (count > 1 ? 's' : '');
 }
 
+// ===== Filtres =====
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.cmp-filter');
+  if (!btn || !btn.dataset.filter) return;
+  activeFilter = btn.dataset.filter;
+  document.querySelectorAll('.cmp-filter').forEach(b => b.classList.toggle('active', b === btn));
+  renderCmp();
+});
+
 function filterCmp() { renderCmp(); }
+
+// ===== Stat card HTML =====
+function statCard(label, value, color, bg, icon) {
+  return '<div class="col-sm-6 col-md-3">' +
+    '<div class="card border-0 shadow-sm" style="border-left:3px solid ' + color + ' !important">' +
+    '<div class="card-body d-flex align-items-center gap-3 py-3">' +
+    '<div style="width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;background:' + bg + ';color:' + color + '">' +
+    '<i class="bi ' + icon + '"></i></div>' +
+    '<div>' +
+    '<div style="font-size:1.7rem;font-weight:800;line-height:1;letter-spacing:-.05em;color:' + color + '">' + value + '</div>' +
+    '<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-top:.2rem">' + label + '</div>' +
+    '</div></div></div></div>';
+}
 
 function esc(s) {
   return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '—';
