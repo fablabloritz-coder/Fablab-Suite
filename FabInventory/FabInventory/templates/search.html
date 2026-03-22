@@ -8,21 +8,21 @@
 
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body">
-    <form method="get" action="/search" class="row g-3 align-items-end">
+    <form method="get" action="/search" class="row g-3 align-items-end" id="searchForm">
       <div class="col-md-7">
         <label class="form-label">Recherche logiciel / version / editeur</label>
         <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Ex: office, firefox, 2024, adobe" required>
       </div>
       <div class="col-md-2">
         <label class="form-label">Perimetre</label>
-        <select class="form-select" name="scope">
+        <select class="form-select" name="scope" id="scopeSelect">
           <option value="latest" {% if scope == 'latest' %}selected{% endif %}>Dernier snapshot par master</option>
           <option value="all" {% if scope == 'all' %}selected{% endif %}>Tous les snapshots</option>
         </select>
       </div>
       <div class="col-md-1">
         <label class="form-label">Par page</label>
-        <select class="form-select" name="per_page">
+        <select class="form-select" name="per_page" id="perPageSelect">
           {% for value in [25, 50, 100, 200] %}
           <option value="{{ value }}" {% if per_page == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
@@ -100,4 +100,47 @@
 {% endif %}
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const scopeSelect = document.getElementById('scopeSelect');
+  const perPageSelect = document.getElementById('perPageSelect');
+  const searchForm = document.getElementById('searchForm');
+  if (!scopeSelect || !perPageSelect || !searchForm) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const hasScopeInUrl = params.has('scope');
+  const hasPerPageInUrl = params.has('per_page');
+
+  // Restore saved preferences only when URL does not force values.
+  if (!hasScopeInUrl) {
+    const savedScope = localStorage.getItem('fabinventory.search.scope');
+    if (savedScope && Array.from(scopeSelect.options).some(o => o.value === savedScope)) {
+      scopeSelect.value = savedScope;
+    }
+  }
+
+  if (!hasPerPageInUrl) {
+    const savedPerPage = localStorage.getItem('fabinventory.search.per_page');
+    if (savedPerPage && Array.from(perPageSelect.options).some(o => o.value === savedPerPage)) {
+      perPageSelect.value = savedPerPage;
+    }
+  }
+
+  // Keep future sort preferences ready even before sort UI is introduced.
+  if (params.has('sort_by')) {
+    localStorage.setItem('fabinventory.search.sort_by', params.get('sort_by') || '');
+  }
+  if (params.has('sort_dir')) {
+    localStorage.setItem('fabinventory.search.sort_dir', params.get('sort_dir') || '');
+  }
+
+  searchForm.addEventListener('submit', function () {
+    localStorage.setItem('fabinventory.search.scope', scopeSelect.value);
+    localStorage.setItem('fabinventory.search.per_page', perPageSelect.value);
+  });
+})();
+</script>
 {% endblock %}

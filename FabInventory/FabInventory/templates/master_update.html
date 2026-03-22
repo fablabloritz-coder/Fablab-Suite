@@ -28,7 +28,7 @@
       </div>
       <div class="col-md-2">
         <label class="form-label">Limite apercu</label>
-        <select class="form-select" name="preview_limit">
+        <select class="form-select" name="preview_limit" id="previewLimitUpload">
           {% for value in [10, 25, 50, 100, 200] %}
           <option value="{{ value }}" {% if preview_limit == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
@@ -93,7 +93,7 @@
       <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
       <input type="hidden" name="preview_only" value="1">
       <label class="small text-muted">Changer:</label>
-      <select class="form-select form-select-sm" style="width:auto" name="preview_limit">
+      <select class="form-select form-select-sm" style="width:auto" name="preview_limit" id="previewLimitPreviewOnly">
         {% for value in [10, 25, 50, 100, 200] %}
         <option value="{{ value }}" {% if preview_limit == value %}selected{% endif %}>{{ value }}</option>
         {% endfor %}
@@ -173,13 +173,86 @@
 {% endif %}
 
 <div class="d-flex gap-2">
-  <form method="post">
+  <form method="post" id="confirmUpdateForm">
     <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
-    <input type="hidden" name="preview_limit" value="{{ preview_limit }}">
+    <input type="hidden" name="preview_limit" value="{{ preview_limit }}" id="previewLimitConfirmHidden">
     <button type="submit" class="btn btn-success"><i class="bi bi-check2-circle me-1"></i>Confirmer la mise a jour</button>
   </form>
   <a href="/master/{{ master.id }}/update" class="btn btn-outline-secondary">Annuler</a>
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const STORAGE_KEY = 'fabinventory.master_update.preview_limit';
+  const params = new URLSearchParams(window.location.search);
+  const hasPreviewInUrl = params.has('preview_limit');
+
+  const uploadSelect = document.getElementById('previewLimitUpload');
+  const previewOnlySelect = document.getElementById('previewLimitPreviewOnly');
+  const confirmHidden = document.getElementById('previewLimitConfirmHidden');
+
+  function isValidOption(select, value) {
+    if (!select || !value) return false;
+    return Array.from(select.options).some(option => option.value === value);
+  }
+
+  function syncConfirmHidden(value) {
+    if (confirmHidden) {
+      confirmHidden.value = value;
+    }
+  }
+
+  if (!hasPreviewInUrl) {
+    const savedValue = localStorage.getItem(STORAGE_KEY);
+    if (savedValue) {
+      if (isValidOption(uploadSelect, savedValue)) {
+        uploadSelect.value = savedValue;
+      }
+      if (isValidOption(previewOnlySelect, savedValue)) {
+        previewOnlySelect.value = savedValue;
+      }
+      syncConfirmHidden(savedValue);
+    }
+  }
+
+  if (uploadSelect) {
+    uploadSelect.addEventListener('change', () => {
+      localStorage.setItem(STORAGE_KEY, uploadSelect.value);
+    });
+
+    const uploadForm = uploadSelect.closest('form');
+    if (uploadForm) {
+      uploadForm.addEventListener('submit', () => {
+        localStorage.setItem(STORAGE_KEY, uploadSelect.value);
+      });
+    }
+  }
+
+  if (previewOnlySelect) {
+    previewOnlySelect.addEventListener('change', () => {
+      localStorage.setItem(STORAGE_KEY, previewOnlySelect.value);
+      syncConfirmHidden(previewOnlySelect.value);
+    });
+
+    const previewOnlyForm = previewOnlySelect.closest('form');
+    if (previewOnlyForm) {
+      previewOnlyForm.addEventListener('submit', () => {
+        localStorage.setItem(STORAGE_KEY, previewOnlySelect.value);
+        syncConfirmHidden(previewOnlySelect.value);
+      });
+    }
+  }
+
+  const confirmForm = document.getElementById('confirmUpdateForm');
+  if (confirmForm && confirmHidden) {
+    confirmForm.addEventListener('submit', () => {
+      localStorage.setItem(STORAGE_KEY, confirmHidden.value);
+    });
+  }
+})();
+</script>
 {% endblock %}
