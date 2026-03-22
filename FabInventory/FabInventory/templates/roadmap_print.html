@@ -8,8 +8,18 @@
 body {
   font-family: "Segoe UI", Arial, sans-serif;
   color: #111;
-  margin: 10mm;
+  margin: 0;
   font-size: 11px;
+  background: #f0f2f5;
+}
+.sheet {
+  width: 194mm;
+  min-height: 278mm;
+  margin: 10mm auto;
+  padding: 8mm;
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.12);
 }
 h1 {
   margin: 0 0 4px 0;
@@ -62,7 +72,6 @@ tbody tr:nth-child(even) {
   min-height: 14px;
 }
 .detailed {
-  margin: 14mm;
   font-size: 12px;
 }
 .detailed h1 {
@@ -100,15 +109,24 @@ tbody tr:nth-child(even) {
 }
 @media print {
   @page { size: A4 portrait; margin: 8mm; }
-  .detailed { margin: 0; }
-  .detailed-print { display: block; }
   body {
     margin: 0;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
   }
 }
 </style>
 </head>
 <body class="{% if compact %}compact{% else %}detailed{% endif %}">
+  <div class="sheet">
   <h1>Checklist d'installation - {{ master.pc_name }}</h1>
   <div class="meta">Genere le {{ generated_at }}</div>
   <div class="summary">
@@ -160,6 +178,7 @@ tbody tr:nth-child(even) {
       Date: .......................................<br>
       Observations: ...............................
     </div>
+  </div>
   </div>
 </body>
 </html>
