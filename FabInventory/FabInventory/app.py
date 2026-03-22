@@ -833,6 +833,8 @@ def search_multi_master():
     db = get_db()
     query = (request.args.get("q") or "").strip()
     scope = (request.args.get("scope") or "latest").strip().lower()
+    sort_by = (request.args.get("sort_by") or "master").strip().lower()
+    sort_dir = (request.args.get("sort_dir") or "asc").strip().lower()
     try:
         page = int(request.args.get("page", 1))
     except (TypeError, ValueError):
@@ -848,6 +850,34 @@ def search_multi_master():
     if scope not in ("latest", "all"):
         scope = "latest"
 
+    allowed_sort_by = {"master", "date", "software", "version", "editor"}
+    if sort_by not in allowed_sort_by:
+        sort_by = "master"
+
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
+
+    # Strict SQL clause mapping prevents injection from query params.
+    latest_order_by_map = {
+        "master": "m.pc_name {dir}, si.software_name ASC, si.software_version ASC",
+        "date": "s.created_at {dir}, s.id {dir}, m.pc_name ASC, si.software_name ASC",
+        "software": "si.software_name {dir}, m.pc_name ASC, si.software_version ASC",
+        "version": "si.software_version {dir}, si.software_name ASC, m.pc_name ASC",
+        "editor": "si.software_editor {dir}, si.software_name ASC, m.pc_name ASC",
+    }
+    all_order_by_map = {
+        "master": "m.pc_name {dir}, s.created_at DESC, s.id DESC, si.software_name ASC",
+        "date": "s.created_at {dir}, s.id {dir}, m.pc_name ASC, si.software_name ASC",
+        "software": "si.software_name {dir}, m.pc_name ASC, s.created_at DESC",
+        "version": "si.software_version {dir}, si.software_name ASC, m.pc_name ASC",
+        "editor": "si.software_editor {dir}, si.software_name ASC, m.pc_name ASC",
+    }
+
+    if scope == "latest":
+        order_by_clause = latest_order_by_map[sort_by].format(dir=sort_dir.upper())
+    else:
+        order_by_clause = all_order_by_map[sort_by].format(dir=sort_dir.upper())
+
     _ensure_software_index_ready(db)
 
     results = []
@@ -862,7 +892,7 @@ def search_multi_master():
         like_term = f"%{query.lower()}%"
         if scope == "latest":
             rows = db.execute(
-                """
+                f"""
                 SELECT
                     si.master_id,
                     m.pc_name,
@@ -883,13 +913,13 @@ def search_multi_master():
                       ORDER BY latest.created_at DESC, latest.id DESC
                       LIMIT 1
                   )
-                ORDER BY m.pc_name, si.software_name, si.software_version
+                ORDER BY {order_by_clause}
                 """,
                 (like_term,),
             ).fetchall()
         else:
             rows = db.execute(
-                """
+                f"""
                 SELECT
                     si.master_id,
                     m.pc_name,
@@ -904,7 +934,7 @@ def search_multi_master():
                 JOIN snapshots s ON s.id = si.snapshot_id
                 JOIN masters m ON m.id = si.master_id
                 WHERE si.search_blob LIKE ?
-                ORDER BY m.pc_name, s.created_at DESC, s.id DESC, si.software_name
+                ORDER BY {order_by_clause}
                 """,
                 (like_term,),
             ).fetchall()
@@ -973,6 +1003,8 @@ def search_multi_master():
         "search.html",
         query=query,
         scope=scope,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         results=paged_results,
         total_scanned=total_scanned,
         total_results=total_results,

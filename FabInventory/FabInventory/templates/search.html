@@ -9,7 +9,7 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body">
     <form method="get" action="/search" class="row g-3 align-items-end" id="searchForm">
-      <div class="col-md-7">
+      <div class="col-md-4">
         <label class="form-label">Recherche logiciel / version / editeur</label>
         <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Ex: office, firefox, 2024, adobe" required>
       </div>
@@ -29,6 +29,23 @@
         </select>
       </div>
       <div class="col-md-2">
+        <label class="form-label">Tri</label>
+        <select class="form-select" name="sort_by" id="sortBySelect">
+          <option value="master" {% if sort_by == 'master' %}selected{% endif %}>Master</option>
+          <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Date scan</option>
+          <option value="software" {% if sort_by == 'software' %}selected{% endif %}>Logiciel</option>
+          <option value="version" {% if sort_by == 'version' %}selected{% endif %}>Version</option>
+          <option value="editor" {% if sort_by == 'editor' %}selected{% endif %}>Editeur</option>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Ordre</label>
+        <select class="form-select" name="sort_dir" id="sortDirSelect">
+          <option value="asc" {% if sort_dir == 'asc' %}selected{% endif %}>A-Z</option>
+          <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>Z-A</option>
+        </select>
+      </div>
+      <div class="col-md-2">
         <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search me-1"></i>Rechercher</button>
       </div>
     </form>
@@ -39,7 +56,7 @@
 <div class="d-flex justify-content-between align-items-center mb-2">
   <div class="text-muted small">{{ total_results }} resultat(s) sur {{ total_scanned }} snapshot(s) analyses.</div>
   <div class="d-flex align-items-center gap-3">
-    <a class="btn btn-outline-success btn-sm" href="/search?q={{ query|urlencode }}&scope={{ scope }}&export=csv">
+    <a class="btn btn-outline-success btn-sm" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&export=csv">
       <i class="bi bi-file-earmark-spreadsheet me-1"></i>Exporter CSV
     </a>
     <div class="text-muted small">Page {{ page }} / {{ total_pages }}</div>
@@ -88,11 +105,11 @@
   <div class="text-muted small">Affichage: {{ results|length }} resultat(s) sur cette page</div>
   <div class="btn-group">
     <a class="btn btn-outline-secondary btn-sm {% if page <= 1 %}disabled{% endif %}"
-       href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&page={{ page - 1 }}">
+       href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page - 1 }}">
       <i class="bi bi-chevron-left"></i> Precedent
     </a>
     <a class="btn btn-outline-secondary btn-sm {% if page >= total_pages %}disabled{% endif %}"
-       href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&page={{ page + 1 }}">
+       href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page + 1 }}">
       Suivant <i class="bi bi-chevron-right"></i>
     </a>
   </div>
@@ -107,12 +124,16 @@
 (function () {
   const scopeSelect = document.getElementById('scopeSelect');
   const perPageSelect = document.getElementById('perPageSelect');
+  const sortBySelect = document.getElementById('sortBySelect');
+  const sortDirSelect = document.getElementById('sortDirSelect');
   const searchForm = document.getElementById('searchForm');
-  if (!scopeSelect || !perPageSelect || !searchForm) return;
+  if (!scopeSelect || !perPageSelect || !sortBySelect || !sortDirSelect || !searchForm) return;
 
   const params = new URLSearchParams(window.location.search);
   const hasScopeInUrl = params.has('scope');
   const hasPerPageInUrl = params.has('per_page');
+  const hasSortByInUrl = params.has('sort_by');
+  const hasSortDirInUrl = params.has('sort_dir');
 
   // Restore saved preferences only when URL does not force values.
   if (!hasScopeInUrl) {
@@ -129,17 +150,25 @@
     }
   }
 
-  // Keep future sort preferences ready even before sort UI is introduced.
-  if (params.has('sort_by')) {
-    localStorage.setItem('fabinventory.search.sort_by', params.get('sort_by') || '');
+  if (!hasSortByInUrl) {
+    const savedSortBy = localStorage.getItem('fabinventory.search.sort_by');
+    if (savedSortBy && Array.from(sortBySelect.options).some(o => o.value === savedSortBy)) {
+      sortBySelect.value = savedSortBy;
+    }
   }
-  if (params.has('sort_dir')) {
-    localStorage.setItem('fabinventory.search.sort_dir', params.get('sort_dir') || '');
+
+  if (!hasSortDirInUrl) {
+    const savedSortDir = localStorage.getItem('fabinventory.search.sort_dir');
+    if (savedSortDir && Array.from(sortDirSelect.options).some(o => o.value === savedSortDir)) {
+      sortDirSelect.value = savedSortDir;
+    }
   }
 
   searchForm.addEventListener('submit', function () {
     localStorage.setItem('fabinventory.search.scope', scopeSelect.value);
     localStorage.setItem('fabinventory.search.per_page', perPageSelect.value);
+    localStorage.setItem('fabinventory.search.sort_by', sortBySelect.value);
+    localStorage.setItem('fabinventory.search.sort_dir', sortDirSelect.value);
   });
 })();
 </script>
