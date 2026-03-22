@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Checklist {{ master.pc_name }} - FabInventory{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+    <li class="breadcrumb-item"><a href="/roadmaps">Listes d'installation</a></li>
+    <li class="breadcrumb-item active">{{ master.pc_name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Feuille de route - {{ master.pc_name }}</h2>
+  <div class="d-flex gap-2">
+    <a href="/master/{{ master.id }}/roadmap/print" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer</a>
+    <a href="/master/{{ master.id }}" class="btn btn-outline-success btn-sm"><i class="bi bi-pc-display me-1"></i>Voir master</a>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Checklist logiciels</h5>
+    <form method="post" action="/master/{{ master.id }}/roadmap/apply-minimal-pack">
+      <button type="submit" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-box-arrow-in-down me-1"></i>Appliquer le pack minimal
+      </button>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:80px">Etat</th>
+            <th>Logiciel</th>
+            <th>Note (telechargement / installation)</th>
+            <th style="width:110px">Origine</th>
+            <th style="width:280px">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if roadmap_items %}
+            {% for item in roadmap_items %}
+            <tr class="{% if item.is_done %}table-success{% endif %}">
+              <td>
+                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/toggle">
+                  <button type="submit" class="btn btn-sm {% if item.is_done %}btn-success{% else %}btn-outline-secondary{% endif %}">
+                    {% if item.is_done %}Fait{% else %}A faire{% endif %}
+                  </button>
+                </form>
+              </td>
+              <td>
+                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/update" class="d-flex gap-2 align-items-center">
+                  <input type="text" name="software_name" class="form-control form-control-sm" value="{{ item.software_name }}" required>
+              </td>
+              <td>
+                  <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note or '' }}" placeholder="Lien, mode silencieux, prerequis...">
+              </td>
+              <td>
+                  <span class="badge {% if item.source == 'minimal' %}bg-primary{% else %}bg-secondary{% endif %}">{{ item.source }}</span>
+              </td>
+              <td class="d-flex gap-1">
+                  <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-save"></i></button>
+                </form>
+                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer cet element de la feuille de route ?')">
+                  <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">Aucun element de checklist pour ce master</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer bg-white">
+    <form method="post" action="/master/{{ master.id }}/roadmap/add" class="row g-2">
+      <div class="col-md-4">
+        <input type="text" name="software_name" class="form-control form-control-sm" placeholder="Ajouter un logiciel" required>
+      </div>
+      <div class="col-md-6">
+        <input type="text" name="note" class="form-control form-control-sm" placeholder="Note: source de telechargement, commande d'installation...">
+      </div>
+      <div class="col-md-2 d-grid">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Ajouter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

@@ -676,7 +676,25 @@ def master_new():
 
     db.commit()
     flash("Master cree avec sa feuille de route", "success")
-    return redirect(url_for("master_detail", master_id=master_id))
+    return redirect(url_for("master_roadmap", master_id=master_id))
+
+
+@app.route("/roadmaps")
+def roadmaps_index():
+    db = get_db()
+    masters = db.execute(
+        """
+        SELECT
+            m.id,
+            m.pc_name,
+            m.label,
+            (SELECT COUNT(*) FROM roadmap_items ri WHERE ri.master_id = m.id) AS roadmap_total,
+            (SELECT COUNT(*) FROM roadmap_items ri WHERE ri.master_id = m.id AND ri.is_done = 1) AS roadmap_done
+        FROM masters m
+        ORDER BY m.pc_name
+        """
+    ).fetchall()
+    return render_template("roadmaps.html", masters=masters)
 
 
 @app.route("/master/<int:master_id>")
@@ -700,6 +718,18 @@ def master_detail(master_id):
     for row in db.execute("SELECT * FROM software_flags WHERE master_id = ?", (master_id,)).fetchall():
         flags[row["software_name"]] = {"important": row["is_important"], "note": row["note"]}
 
+    return render_template("master.html", master=master, snapshots=snapshots,
+                           software=software, flags=flags, latest=latest)
+
+
+@app.route("/master/<int:master_id>/roadmap")
+def master_roadmap(master_id):
+    db = get_db()
+    master = db.execute("SELECT * FROM masters WHERE id = ?", (master_id,)).fetchone()
+    if not master:
+        flash("Master introuvable", "error")
+        return redirect(url_for("index"))
+
     roadmap_items = db.execute(
         """
         SELECT id, software_name, note, is_done, source
@@ -713,9 +743,38 @@ def master_detail(master_id):
         "SELECT id, software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
     ).fetchall()
 
-    return render_template("master.html", master=master, snapshots=snapshots,
-                           software=software, flags=flags, latest=latest,
-                           roadmap_items=roadmap_items, minimal_pack=minimal_pack)
+    return render_template(
+        "roadmap_master.html",
+        master=master,
+        roadmap_items=roadmap_items,
+        minimal_pack=minimal_pack,
+    )
+
+
+@app.route("/master/<int:master_id>/roadmap/print")
+def master_roadmap_print(master_id):
+    db = get_db()
+    master = db.execute("SELECT * FROM masters WHERE id = ?", (master_id,)).fetchone()
+    if not master:
+        flash("Master introuvable", "error")
+        return redirect(url_for("index"))
+
+    roadmap_items = db.execute(
+        """
+        SELECT software_name, note, is_done, source
+        FROM roadmap_items
+        WHERE master_id = ?
+        ORDER BY is_done ASC, software_name ASC
+        """,
+        (master_id,),
+    ).fetchall()
+
+    return render_template(
+        "roadmap_print.html",
+        master=master,
+        roadmap_items=roadmap_items,
+        generated_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
+    )
 
 
 @app.route("/master/<int:master_id>/update", methods=["GET", "POST"])
@@ -913,7 +972,7 @@ def roadmap_add_item(master_id):
     note = request.form.get("note", "").strip()
     if not software_name:
         flash("Le nom du logiciel est obligatoire", "error")
-        return redirect(url_for("master_detail", master_id=master_id))
+        return redirect(url_for("master_roadmap", master_id=master_id))
 
     db.execute(
         """
@@ -924,7 +983,7 @@ def roadmap_add_item(master_id):
     )
     db.commit()
     flash("Element ajoute a la feuille de route", "success")
-    return redirect(url_for("master_detail", master_id=master_id))
+    return redirect(url_for("master_roadmap", master_id=master_id))
 
 
 @app.route("/master/<int:master_id>/roadmap/<int:item_id>/update", methods=["POST"])
@@ -936,13 +995,13 @@ def roadmap_update_item(master_id, item_id):
     ).fetchone()
     if not item:
         flash("Element de feuille de route introuvable", "error")
-        return redirect(url_for("master_detail", master_id=master_id))
+        return redirect(url_for("master_roadmap", master_id=master_id))
 
     software_name = request.form.get("software_name", "").strip()
     note = request.form.get("note", "").strip()
     if not software_name:
         flash("Le nom du logiciel est obligatoire", "error")
-        return redirect(url_for("master_detail", master_id=master_id))
+        return redirect(url_for("master_roadmap", master_id=master_id))
 
     db.execute(
         "UPDATE roadmap_items SET software_name = ?, note = ? WHERE id = ? AND master_id = ?",
@@ -950,7 +1009,7 @@ def roadmap_update_item(master_id, item_id):
     )
     db.commit()
     flash("Element de feuille de route mis a jour", "success")
-    return redirect(url_for("master_detail", master_id=master_id))
+    return redirect(url_for("master_roadmap", master_id=master_id))
 
 
 @app.route("/master/<int:master_id>/roadmap/<int:item_id>/toggle", methods=["POST"])
@@ -962,7 +1021,7 @@ def roadmap_toggle_item(master_id, item_id):
     ).fetchone()
     if not item:
         flash("Element de feuille de route introuvable", "error")
-        return redirect(url_for("master_detail", master_id=master_id))
+        return redirect(url_for("master_roadmap", master_id=master_id))
 
     new_state = 0 if int(item["is_done"] or 0) == 1 else 1
     db.execute(
@@ -971,7 +1030,7 @@ def roadmap_toggle_item(master_id, item_id):
     )
     db.commit()
     flash("Checklist mise a jour", "success")
-    return redirect(url_for("master_detail", master_id=master_id))
+    return redirect(url_for("master_roadmap", master_id=master_id))
 
 
 @app.route("/master/<int:master_id>/roadmap/<int:item_id>/delete", methods=["POST"])
@@ -980,7 +1039,7 @@ def roadmap_delete_item(master_id, item_id):
     db.execute("DELETE FROM roadmap_items WHERE id = ? AND master_id = ?", (item_id, master_id))
     db.commit()
     flash("Element supprime de la feuille de route", "success")
-    return redirect(url_for("master_detail", master_id=master_id))
+    return redirect(url_for("master_roadmap", master_id=master_id))
 
 
 @app.route("/master/<int:master_id>/roadmap/apply-minimal-pack", methods=["POST"])
@@ -994,7 +1053,16 @@ def roadmap_apply_minimal_pack(master_id):
     _apply_minimal_pack_to_master(db, master_id)
     db.commit()
     flash("Pack minimal applique au master", "success")
-    return redirect(url_for("master_detail", master_id=master_id))
+    return redirect(url_for("master_roadmap", master_id=master_id))
+
+
+@app.route("/roadmap/minimal-pack")
+def minimal_pack_page():
+    db = get_db()
+    minimal_pack = db.execute(
+        "SELECT id, software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+    ).fetchall()
+    return render_template("minimal_pack.html", minimal_pack=minimal_pack)
 
 
 @app.route("/roadmap/minimal-pack/add", methods=["POST"])
@@ -1015,8 +1083,8 @@ def minimal_pack_add_item():
         flash("Logiciel ajoute au pack minimal", "success")
 
     if master_id.isdigit():
-        return redirect(url_for("master_detail", master_id=int(master_id)))
-    return redirect(url_for("index"))
+        return redirect(url_for("master_roadmap", master_id=int(master_id)))
+    return redirect(url_for("minimal_pack_page"))
 
 
 @app.route("/roadmap/minimal-pack/<int:item_id>/update", methods=["POST"])
@@ -1037,8 +1105,8 @@ def minimal_pack_update_item(item_id):
         flash("Pack minimal mis a jour", "success")
 
     if master_id.isdigit():
-        return redirect(url_for("master_detail", master_id=int(master_id)))
-    return redirect(url_for("index"))
+        return redirect(url_for("master_roadmap", master_id=int(master_id)))
+    return redirect(url_for("minimal_pack_page"))
 
 
 @app.route("/roadmap/minimal-pack/<int:item_id>/delete", methods=["POST"])
@@ -1050,8 +1118,8 @@ def minimal_pack_delete_item(item_id):
     flash("Logiciel supprime du pack minimal", "success")
 
     if master_id.isdigit():
-        return redirect(url_for("master_detail", master_id=int(master_id)))
-    return redirect(url_for("index"))
+        return redirect(url_for("master_roadmap", master_id=int(master_id)))
+    return redirect(url_for("minimal_pack_page"))
 
 
 @app.route("/snapshot/<int:snap_id>")

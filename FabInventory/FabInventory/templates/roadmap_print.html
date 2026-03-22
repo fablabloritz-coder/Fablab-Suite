@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checklist {{ master.pc_name }} - Impression</title>
+<style>
+body { font-family: Arial, sans-serif; color: #111; margin: 24px; }
+h1 { margin: 0 0 6px 0; font-size: 24px; }
+.meta { color: #555; margin-bottom: 18px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #999; padding: 8px; vertical-align: top; }
+th { background: #f2f2f2; text-align: left; }
+.checkbox { width: 16px; height: 16px; border: 1px solid #000; display: inline-block; }
+.note { min-height: 18px; }
+@media print {
+  body { margin: 10mm; }
+}
+</style>
+</head>
+<body>
+  <h1>Checklist d'installation - {{ master.pc_name }}</h1>
+  <div class="meta">Genere le {{ generated_at }}</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:70px;">Fait</th>
+        <th style="width:32%;">Logiciel</th>
+        <th>Note installation / telechargement</th>
+        <th style="width:110px;">Origine</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if roadmap_items %}
+        {% for item in roadmap_items %}
+        <tr>
+          <td>{% if item.is_done %}X{% else %}<span class="checkbox"></span>{% endif %}</td>
+          <td>{{ item.software_name }}</td>
+          <td class="note">{{ item.note or '' }}</td>
+          <td>{{ item.source }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="4">Aucun element dans la feuille de route.</td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</body>
+</html>

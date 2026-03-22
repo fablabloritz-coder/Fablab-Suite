@@ -64,7 +64,7 @@ class RoadmapFeaturesTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Feuille de route logiciels", response.get_data(as_text=True))
+        self.assertIn("Checklist logiciels", response.get_data(as_text=True))
 
         db = sqlite3.connect(os.environ["DB_PATH"])
         db.row_factory = sqlite3.Row
@@ -117,6 +117,30 @@ class RoadmapFeaturesTests(unittest.TestCase):
         self.assertEqual(items[0]["software_name"], "SumatraPDF")
         self.assertEqual(items[1]["software_name"], "VLC")
         self.assertTrue(all(row["source"] == "minimal" for row in items))
+
+    def test_roadmap_print_page_renders_html_for_printing(self):
+        db = sqlite3.connect(os.environ["DB_PATH"])
+        cur = db.cursor()
+        cur.execute("INSERT INTO masters (pc_name, label, notes) VALUES (?, ?, ?)", ("MASTER-PRINT", "Salle C", ""))
+        master_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO roadmap_items (master_id, software_name, note, is_done, source) VALUES (?, ?, ?, ?, ?)",
+            (master_id, "VLC", "https://www.videolan.org", 0, "minimal"),
+        )
+        db.commit()
+        db.close()
+
+        response = self.client.get(f"/master/{master_id}/roadmap/print")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Checklist d'installation", html)
+        self.assertIn("MASTER-PRINT", html)
+        self.assertIn("VLC", html)
+
+    def test_minimal_pack_page_available(self):
+        response = self.client.get("/roadmap/minimal-pack")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Pack minimal commun", response.get_data(as_text=True))
 
 
 if __name__ == "__main__":
