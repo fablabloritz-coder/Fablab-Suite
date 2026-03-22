@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>Listes de preparation imprimables</h2>
+  <h2 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>Preparation des masters</h2>
   <div class="d-flex gap-2">
     <a href="/master/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Nouvelle liste</a>
     <a href="/roadmap/minimal-pack" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-seam me-1"></i>Modifier pack minimal</a>
@@ -35,13 +35,13 @@
               {% if m.roadmap_total > 0 %}
                 <span class="badge bg-primary">{{ m.roadmap_done }} / {{ m.roadmap_total }}</span>
               {% else %}
-                <span class="text-muted">Aucune liste</span>
+                <span class="text-muted">Aucune checklist</span>
               {% endif %}
             </td>
             <td class="d-flex gap-1">
-              <a href="/master/{{ m.id }}/roadmap" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil-square"></i> Editer</a>
+              <a href="/master/{{ m.id }}/roadmap" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil-square"></i> Editer checklist</a>
               <a href="/master/{{ m.id }}/roadmap/print" class="btn btn-sm btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> Imprimer</a>
-              <a href="/master/{{ m.id }}" class="btn btn-sm btn-outline-success"><i class="bi bi-pc-display"></i> Master inventorie</a>
+              <a href="/master/{{ m.id }}" class="btn btn-sm btn-outline-success"><i class="bi bi-pc-display"></i> Voir master inventorie</a>
             </td>
           </tr>
           {% endfor %}

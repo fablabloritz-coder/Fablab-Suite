@@ -675,7 +675,7 @@ def master_new():
         _apply_minimal_pack_to_master(db, master_id)
 
     db.commit()
-    flash("Liste de preparation creee pour ce master", "success")
+    flash("Liste de preparation creee pour ce master cible", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
 
 
@@ -982,7 +982,7 @@ def roadmap_add_item(master_id):
         (master_id, software_name, note),
     )
     db.commit()
-    flash("Element ajoute a la feuille de route", "success")
+    flash("Element ajoute a la checklist", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
 
 
@@ -994,7 +994,7 @@ def roadmap_update_item(master_id, item_id):
         (item_id, master_id),
     ).fetchone()
     if not item:
-        flash("Element de feuille de route introuvable", "error")
+        flash("Element de checklist introuvable", "error")
         return redirect(url_for("master_roadmap", master_id=master_id))
 
     software_name = request.form.get("software_name", "").strip()
@@ -1008,7 +1008,7 @@ def roadmap_update_item(master_id, item_id):
         (software_name, note, item_id, master_id),
     )
     db.commit()
-    flash("Element de feuille de route mis a jour", "success")
+    flash("Element de checklist mis a jour", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
 
 
@@ -1020,7 +1020,7 @@ def roadmap_toggle_item(master_id, item_id):
         (item_id, master_id),
     ).fetchone()
     if not item:
-        flash("Element de feuille de route introuvable", "error")
+        flash("Element de checklist introuvable", "error")
         return redirect(url_for("master_roadmap", master_id=master_id))
 
     new_state = 0 if int(item["is_done"] or 0) == 1 else 1
@@ -1038,7 +1038,7 @@ def roadmap_delete_item(master_id, item_id):
     db = get_db()
     db.execute("DELETE FROM roadmap_items WHERE id = ? AND master_id = ?", (item_id, master_id))
     db.commit()
-    flash("Element supprime de la feuille de route", "success")
+    flash("Element supprime de la checklist", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
 
 
@@ -1052,7 +1052,7 @@ def roadmap_apply_minimal_pack(master_id):
 
     _apply_minimal_pack_to_master(db, master_id)
     db.commit()
-    flash("Pack minimal applique au master", "success")
+    flash("Pack minimal applique au master cible", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
 
 

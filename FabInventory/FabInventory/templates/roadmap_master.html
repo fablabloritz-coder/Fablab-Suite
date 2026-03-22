@@ -11,7 +11,7 @@
 </nav>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Liste de preparation - {{ master.pc_name }}</h2>
+  <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Checklist de preparation - {{ master.pc_name }}</h2>
   <div class="d-flex gap-2">
     <a href="/master/{{ master.id }}/roadmap/print" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer</a>
     <a href="/master/{{ master.id }}" class="btn btn-outline-success btn-sm"><i class="bi bi-pc-display me-1"></i>Voir master inventorie</a>
@@ -63,14 +63,14 @@
               <td class="d-flex gap-1">
                   <button type="submit" class="btn btn-sm btn-outline-primary">Mettre a jour</button>
                 </form>
-                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer cet element de la feuille de route ?')">
+                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer cet element de la checklist ?')">
                   <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
                 </form>
               </td>
             </tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="5" class="text-center text-muted py-4">Aucun element de checklist pour ce master</td></tr>
+            <tr><td colspan="5" class="text-center text-muted py-4">Aucun element de checklist pour ce master cible</td></tr>
           {% endif %}
         </tbody>
       </table>

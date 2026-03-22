@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Checklist {{ master.pc_name }} - Impression</title>
+<title>Checklist preparation {{ master.pc_name }} - Impression</title>
 <style>
 body {
   font-family: "Segoe UI", Arial, sans-serif;
@@ -127,7 +127,7 @@ tbody tr:nth-child(even) {
 </head>
 <body class="compact">
   <div class="sheet">
-  <h1>Checklist d'installation - {{ master.pc_name }}</h1>
+  <h1>Checklist d'installation (preparation) - {{ master.pc_name }}</h1>
   <div class="meta">Genere le {{ generated_at }}</div>
   <div class="summary">
     {{ roadmap_items|length }} logiciel(s) a traiter
@@ -152,7 +152,7 @@ tbody tr:nth-child(even) {
         {% endfor %}
       {% else %}
         <tr>
-          <td colspan="3">Aucun element dans la feuille de route.</td>
+          <td colspan="3">Aucun element dans la checklist.</td>
         </tr>
       {% endif %}
     </tbody>
