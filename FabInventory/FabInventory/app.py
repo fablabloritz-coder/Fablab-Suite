@@ -87,6 +87,8 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_software_index_master ON software_index(master_id);
     CREATE INDEX IF NOT EXISTS idx_software_index_name ON software_index(software_name);
     CREATE INDEX IF NOT EXISTS idx_software_index_blob ON software_index(search_blob);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_master_created ON snapshots(master_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_created ON snapshots(created_at DESC, id DESC);
     """)
     db.commit()
     db.close()
