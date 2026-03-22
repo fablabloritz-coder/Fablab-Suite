@@ -2,6 +2,8 @@ import os
 import sqlite3
 import tempfile
 import unittest
+import csv
+import io
 from pathlib import Path
 
 
@@ -72,6 +74,40 @@ class SearchSortingRouteTests(unittest.TestCase):
         db.commit()
         db.close()
 
+    def _seed_named_software(self, software_names):
+        db = sqlite3.connect(os.environ["DB_PATH"])
+        cur = db.cursor()
+        cur.execute("INSERT INTO masters (pc_name, label) VALUES (?, ?)", ("PC-CSV", "Export"))
+        master_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO snapshots (master_id, scan_date, software_json, total_software) VALUES (?, ?, ?, ?)",
+            (master_id, "2026-03-22", "[]", len(software_names)),
+        )
+        snapshot_id = cur.lastrowid
+
+        for name in software_names:
+            version = "1.0"
+            editor = "FabSoft"
+            source = "installer"
+            blob = f"{name} {version} {editor} {source}".lower()
+            cur.execute(
+                """
+                INSERT INTO software_index (
+                    snapshot_id,
+                    master_id,
+                    software_name,
+                    software_version,
+                    software_editor,
+                    software_source,
+                    search_blob
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (snapshot_id, master_id, name, version, editor, source, blob),
+            )
+
+        db.commit()
+        db.close()
+
     def test_search_uses_default_sort_when_query_params_invalid(self):
         response = self.client.get(
             "/search?q=office&scope=all&sort_by=drop_table&sort_dir=sideways"
@@ -104,6 +140,26 @@ class SearchSortingRouteTests(unittest.TestCase):
         self.assertIn("page=2", html)
         self.assertIn("sort_by=software", html)
         self.assertIn("sort_dir=desc", html)
+
+    def test_csv_export_respects_sorting_parameters(self):
+        self._seed_named_software(["Office Alpha", "Office Charlie", "Office Bravo"])
+
+        response = self.client.get(
+            "/search?q=office&scope=all&sort_by=software&sort_dir=desc&export=csv"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response.content_type)
+
+        payload = response.data.decode("utf-8-sig")
+        reader = csv.reader(io.StringIO(payload), delimiter=";")
+        rows = list(reader)
+
+        self.assertGreaterEqual(len(rows), 4)
+        software_names = [row[5] for row in rows[1:4]]
+        self.assertEqual(
+            software_names,
+            ["Office Charlie", "Office Bravo", "Office Alpha"],
+        )
 
 
 if __name__ == "__main__":
