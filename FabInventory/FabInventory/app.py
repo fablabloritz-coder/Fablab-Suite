@@ -18,6 +18,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fabinventory-secret-change-me")
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
 
 DB_PATH = os.environ.get("DB_PATH", "/data/fabinventory.db")
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/data/uploads")
@@ -1239,8 +1240,10 @@ def snapshot_detail(snap_id):
     if not snap:
         flash("Snapshot introuvable", "error")
         return redirect(url_for("index"))
-    software = json.loads(snap["software_json"])
-    return render_template("snapshot.html", snap=snap, software=software)
+    software = json.loads(snap["software_json"] or "[]")
+    disks = json.loads(snap["disks_json"] or "[]")
+    network = json.loads(snap["network_json"] or "[]")
+    return render_template("snapshot.html", snap=snap, software=software, disks=disks, network=network)
 
 
 @app.route("/snapshot/<int:snap_id>/delete", methods=["POST"])

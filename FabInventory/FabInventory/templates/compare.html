@@ -2,18 +2,33 @@
 {% block title %}Comparer - FabInventory{% endblock %}
 {% block content %}
 
-<h2 class="mb-4"><i class="bi bi-arrow-left-right me-2"></i>Comparer deux masters</h2>
+<div class="page-header">
+  <h2><i class="bi bi-arrow-left-right"></i>Comparer deux masters</h2>
+</div>
 
 {% if masters|length < 2 %}
-<div class="alert alert-info">Il faut au moins 2 masters importes pour utiliser la comparaison.</div>
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <div class="empty-state">
+      <i class="bi bi-arrow-left-right empty-state-icon"></i>
+      <h4>Comparaison indisponible</h4>
+      <p>Il faut au moins 2 masters importes avec des snapshots pour utiliser la comparaison.</p>
+      <a href="/upload" class="btn btn-primary btn-sm">
+        <i class="bi bi-cloud-upload me-1"></i>Importer un inventaire
+      </a>
+    </div>
+  </div>
+</div>
 {% else %}
-<div class="row g-3 mb-4">
+
+<!-- Selecteurs -->
+<div class="row g-3 mb-4 align-items-center">
   <div class="col-md-5">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm" style="border-top:3px solid var(--prep-border) !important">
       <div class="card-body">
-        <label class="form-label fw-bold"><i class="bi bi-pc-display me-1 text-primary"></i>Master A</label>
+        <label class="form-label"><i class="bi bi-pc-display me-1"></i>Master A</label>
         <select id="selA" class="form-select">
-          <option value="">-- Choisir --</option>
+          <option value="">— Choisir un master —</option>
           {% for m in masters %}{% if m.latest_snap_id %}
           <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
           {% endif %}{% endfor %}
@@ -22,16 +37,18 @@
     </div>
   </div>
   <div class="col-md-2 d-flex align-items-center justify-content-center">
-    <button class="btn btn-primary btn-lg rounded-circle" onclick="doCompare()" id="btnCompare" disabled>
+    <button class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center"
+            style="width:52px;height:52px;font-size:1.2rem"
+            onclick="doCompare()" id="btnCompare" disabled>
       <i class="bi bi-arrow-left-right"></i>
     </button>
   </div>
   <div class="col-md-5">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm" style="border-top:3px solid var(--inv-border) !important">
       <div class="card-body">
-        <label class="form-label fw-bold"><i class="bi bi-pc-display me-1 text-primary"></i>Master B</label>
+        <label class="form-label"><i class="bi bi-pc-display me-1"></i>Master B</label>
         <select id="selB" class="form-select">
-          <option value="">-- Choisir --</option>
+          <option value="">— Choisir un master —</option>
           {% for m in masters %}{% if m.latest_snap_id %}
           <option value="{{ m.latest_snap_id }}">{{ m.pc_name }}{% if m.label %} ({{ m.label }}){% endif %}</option>
           {% endif %}{% endfor %}
@@ -41,17 +58,31 @@
   </div>
 </div>
 
+<!-- Résultats (masqués initialement) -->
 <div id="result" class="d-none">
+
+  <!-- Stat cards -->
   <div class="row g-3 mb-3" id="statsRow"></div>
-  <div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-2">
-      <input type="text" id="cmpSearch" class="form-control form-control-sm" style="max-width:300px" placeholder="Rechercher..." oninput="filterCmp()">
-    </div>
+
+  <!-- Toolbar filtre -->
+  <div class="toolbar-card mb-0">
+    <i class="bi bi-funnel text-muted" style="font-size:.9rem"></i>
+    <input type="text" id="cmpSearch" class="form-control form-control-sm" style="max-width:280px" placeholder="Filtrer les logiciels..." oninput="filterCmp()">
+    <span class="text-muted small ms-auto" id="cmpCounter" style="font-size:.78rem"></span>
   </div>
+
+  <!-- Table de comparaison -->
   <div class="card border-0 shadow-sm">
     <div class="table-responsive">
       <table class="table table-hover table-sm mb-0">
-        <thead><tr><th>Logiciel</th><th id="colA">Master A</th><th id="colB">Master B</th><th>Statut</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Logiciel</th>
+            <th id="colA">Master A</th>
+            <th id="colB">Master B</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
         <tbody id="cmpBody"></tbody>
       </table>
     </div>
@@ -66,48 +97,91 @@
 let cmpData = [];
 const selA = document.getElementById('selA');
 const selB = document.getElementById('selB');
-const btn = document.getElementById('btnCompare');
+const btn  = document.getElementById('btnCompare');
 
 if (selA && selB) {
   selA.addEventListener('change', checkReady);
   selB.addEventListener('change', checkReady);
 }
 
-function checkReady() { btn.disabled = !(selA.value && selB.value && selA.value !== selB.value); }
+function checkReady() {
+  btn.disabled = !(selA.value && selB.value && selA.value !== selB.value);
+}
 
 async function doCompare() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-  const res = await fetch('/api/compare', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({a:selA.value, b:selB.value})});
+
+  const res  = await fetch('/api/compare', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({a: selA.value, b: selB.value})
+  });
   const data = await res.json();
+
   btn.innerHTML = '<i class="bi bi-arrow-left-right"></i>';
-  btn.disabled = false;
+  btn.disabled  = false;
 
-  cmpData = data.results;
-  const s = data.stats;
+  cmpData = data.results || [];
+  const s = data.stats || {};
 
-  document.getElementById('colA').textContent = s.name_a;
-  document.getElementById('colB').textContent = s.name_b;
+  document.getElementById('colA').textContent = s.name_a || 'Master A';
+  document.getElementById('colB').textContent = s.name_b || 'Master B';
+
   document.getElementById('statsRow').innerHTML =
-    '<div class="col-md-3"><div class="card border-0 shadow-sm border-start border-primary border-4"><div class="card-body"><div class="text-muted small">En commun</div><div class="fs-3 fw-bold text-primary">'+s.common+'</div></div></div></div>' +
-    '<div class="col-md-3"><div class="card border-0 shadow-sm border-start border-success border-4"><div class="card-body"><div class="text-muted small">Uniquement dans '+s.name_a+'</div><div class="fs-3 fw-bold text-success">'+s.only_a+'</div></div></div></div>' +
-    '<div class="col-md-3"><div class="card border-0 shadow-sm border-start border-danger border-4"><div class="card-body"><div class="text-muted small">Uniquement dans '+s.name_b+'</div><div class="fs-3 fw-bold text-danger">'+s.only_b+'</div></div></div></div>';
+    statCard('Commun',              s.common,  '#0891b2', '#ecfeff',  'bi-intersect')  +
+    statCard('Unique ' + s.name_a,  s.only_a,  '#059669', '#ecfdf5',  'bi-box-arrow-in-left') +
+    statCard('Unique ' + s.name_b,  s.only_b,  '#dc2626', '#fef2f2',  'bi-box-arrow-in-right');
 
   renderCmp();
   document.getElementById('result').classList.remove('d-none');
 }
 
+function statCard(label, value, color, bg, icon) {
+  return '<div class="col-md-3">' +
+    '<div class="card border-0 shadow-sm" style="border-left:3px solid ' + color + ' !important">' +
+    '<div class="card-body d-flex align-items-center gap-3">' +
+    '<div style="width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;background:' + bg + ';color:' + color + '">' +
+    '<i class="bi ' + icon + '"></i></div>' +
+    '<div><div style="font-size:1.8rem;font-weight:800;line-height:1;letter-spacing:-.04em;color:' + color + '">' + value + '</div>' +
+    '<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-top:.2rem">' + label + '</div></div>' +
+    '</div></div></div>';
+}
+
 function renderCmp() {
   const q = (document.getElementById('cmpSearch')?.value || '').toLowerCase();
   let html = '';
+  let count = 0;
+
   cmpData.forEach(r => {
     if (q && !r.name.toLowerCase().includes(q)) return;
-    const cls = r.status === 'common' ? '' : r.status === 'only_a' ? 'table-success' : 'table-danger';
-    const badge = r.status === 'common' ? '<span class="badge bg-primary">Commun</span>' : r.status === 'only_a' ? '<span class="badge bg-success">Unique A</span>' : '<span class="badge bg-danger">Unique B</span>';
-    html += '<tr class="'+cls+'"><td>'+r.name+'</td><td>'+r.vA+'</td><td>'+r.vB+'</td><td>'+badge+'</td></tr>';
+    count++;
+    const isCommon = r.status === 'common';
+    const isOnlyA  = r.status === 'only_a';
+    const rowBg    = isCommon ? '' : isOnlyA ? 'background:#f0fdf4' : 'background:#fef2f2';
+    const badge    = isCommon
+      ? '<span class="badge rounded-pill badge-sm" style="background:#ecfeff;color:#0891b2;font-weight:600">Commun</span>'
+      : isOnlyA
+        ? '<span class="badge rounded-pill badge-sm" style="background:#ecfdf5;color:#059669;font-weight:600">Unique A</span>'
+        : '<span class="badge rounded-pill badge-sm" style="background:#fef2f2;color:#dc2626;font-weight:600">Unique B</span>';
+    html += '<tr style="' + rowBg + '">' +
+      '<td class="fw-500" style="font-weight:500">' + esc(r.name) + '</td>' +
+      '<td><small class="text-muted">' + esc(r.vA) + '</small></td>' +
+      '<td><small class="text-muted">' + esc(r.vB) + '</small></td>' +
+      '<td>' + badge + '</td></tr>';
   });
-  document.getElementById('cmpBody').innerHTML = html;
+
+  document.getElementById('cmpBody').innerHTML = html ||
+    '<tr><td colspan="4" class="text-center text-muted py-4"><i class="bi bi-search me-2"></i>Aucun resultat</td></tr>';
+
+  const counter = document.getElementById('cmpCounter');
+  if (counter) counter.textContent = count + ' logiciel' + (count > 1 ? 's' : '');
 }
+
 function filterCmp() { renderCmp(); }
+
+function esc(s) {
+  return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '—';
+}
 </script>
 {% endblock %}

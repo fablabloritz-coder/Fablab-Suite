@@ -2,79 +2,79 @@
 {% block title %}Recherche globale - FabInventory{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-search me-2"></i>Recherche globale multi-master</h2>
+<div class="page-header">
+  <h2><i class="bi bi-search"></i>Recherche globale</h2>
 </div>
 
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-body">
-    <form method="get" action="/search" class="row g-3 align-items-end" id="searchForm">
-      <div class="col-md-4">
-        <label class="form-label">Recherche logiciel / version / editeur</label>
-        <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Ex: office, firefox, 2024, adobe" required>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Perimetre</label>
-        <select class="form-select" name="scope" id="scopeSelect">
-          <option value="latest" {% if scope == 'latest' %}selected{% endif %}>Dernier snapshot par master</option>
-          <option value="all" {% if scope == 'all' %}selected{% endif %}>Tous les snapshots</option>
-        </select>
-      </div>
-      <div class="col-md-1">
-        <label class="form-label">Par page</label>
-        <select class="form-select" name="per_page" id="perPageSelect">
-          {% for value in [25, 50, 100, 200] %}
-          <option value="{{ value }}" {% if per_page == value %}selected{% endif %}>{{ value }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Pagination</label>
-        <select class="form-select" name="paging" id="pagingModeSelect">
-          <option value="offset" {% if paging_mode == 'offset' %}selected{% endif %}>Classique</option>
-          <option value="keyset" {% if paging_mode == 'keyset' %}selected{% endif %}>Performance</option>
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label">Tri</label>
+<div class="filter-panel">
+  <form method="get" action="/search" class="row g-3 align-items-end" id="searchForm">
+    <div class="col-md-4">
+      <label class="form-label">Logiciel / version / editeur</label>
+      <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Ex: office, firefox, 2024, adobe" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Perimetre</label>
+      <select class="form-select" name="scope" id="scopeSelect">
+        <option value="latest" {% if scope == 'latest' %}selected{% endif %}>Dernier snapshot / master</option>
+        <option value="all" {% if scope == 'all' %}selected{% endif %}>Tous les snapshots</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label">Par page</label>
+      <select class="form-select" name="per_page" id="perPageSelect">
+        {% for value in [25, 50, 100, 200] %}
+        <option value="{{ value }}" {% if per_page == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Pagination</label>
+      <select class="form-select" name="paging" id="pagingModeSelect">
+        <option value="offset" {% if paging_mode == 'offset' %}selected{% endif %}>Classique</option>
+        <option value="keyset" {% if paging_mode == 'keyset' %}selected{% endif %}>Performance</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Tri</label>
+      <div class="input-group input-group-sm">
         <select class="form-select" name="sort_by" id="sortBySelect">
-          <option value="master" {% if sort_by == 'master' %}selected{% endif %}>Master</option>
-          <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Date scan</option>
+          <option value="master"   {% if sort_by == 'master'   %}selected{% endif %}>Master</option>
+          <option value="date"     {% if sort_by == 'date'     %}selected{% endif %}>Date scan</option>
           <option value="software" {% if sort_by == 'software' %}selected{% endif %}>Logiciel</option>
-          <option value="version" {% if sort_by == 'version' %}selected{% endif %}>Version</option>
-          <option value="editor" {% if sort_by == 'editor' %}selected{% endif %}>Editeur</option>
+          <option value="version"  {% if sort_by == 'version'  %}selected{% endif %}>Version</option>
+          <option value="editor"   {% if sort_by == 'editor'   %}selected{% endif %}>Editeur</option>
         </select>
-      </div>
-      <div class="col-md-1">
-        <label class="form-label">Ordre</label>
-        <select class="form-select" name="sort_dir" id="sortDirSelect">
-          <option value="asc" {% if sort_dir == 'asc' %}selected{% endif %}>A-Z</option>
+        <select class="form-select" name="sort_dir" id="sortDirSelect" style="max-width:70px">
+          <option value="asc"  {% if sort_dir == 'asc'  %}selected{% endif %}>A-Z</option>
           <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>Z-A</option>
         </select>
       </div>
-      <div class="col-md-2">
-        <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search me-1"></i>Rechercher</button>
-      </div>
-      <div class="col-md-12 d-flex justify-content-end">
-        <button class="btn btn-link btn-sm text-decoration-none px-0" type="button" id="resetSearchPreferences">
-          <i class="bi bi-arrow-counterclockwise me-1"></i>Reinitialiser mes preferences
-        </button>
-      </div>
-    </form>
-  </div>
+    </div>
+    <div class="col-md-1">
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search"></i></button>
+    </div>
+    <div class="col-12 d-flex justify-content-end pt-0">
+      <button class="btn btn-link btn-sm text-decoration-none text-muted px-0" type="button" id="resetSearchPreferences" style="font-size:.78rem">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Reinitialiser les preferences
+      </button>
+    </div>
+  </form>
 </div>
 
 {% if query %}
 <div class="d-flex justify-content-between align-items-center mb-2">
-  <div class="text-muted small">{{ total_results }} resultat(s) sur {{ total_scanned }} snapshot(s) analyses.</div>
+  <div class="text-muted small">
+    <strong style="color:var(--fi-text)">{{ total_results }}</strong> resultat(s) sur
+    <strong style="color:var(--fi-text)">{{ total_scanned }}</strong> snapshot(s) analyses.
+  </div>
   <div class="d-flex align-items-center gap-3">
     <a class="btn btn-outline-success btn-sm" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&export=csv">
       <i class="bi bi-file-earmark-spreadsheet me-1"></i>Exporter CSV
     </a>
     {% if paging_mode == 'offset' %}
-    <div class="text-muted small">Page {{ page }} / {{ total_pages }}</div>
+    <span class="text-muted small">Page {{ page }} / {{ total_pages }}</span>
     {% else %}
-    <div class="text-muted small">Mode performance actif</div>
+    <span class="badge rounded-pill" style="background:var(--fi-accent-soft);color:var(--fi-accent);font-size:.72rem;font-weight:600">Mode performance</span>
     {% endif %}
   </div>
 </div>
@@ -85,66 +85,67 @@
       <thead>
         <tr>
           <th>
-            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=master&sort_dir={% if sort_by == 'master' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
-              Master
-              {% if sort_by == 'master' %}
-                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
-              {% endif %}
+            <a class="text-decoration-none" style="color:inherit" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=master&sort_dir={% if sort_by == 'master' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Master {% if sort_by == 'master' %}<i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %}"></i>{% else %}<i class="bi bi-arrow-down-up" style="opacity:.4"></i>{% endif %}
             </a>
           </th>
           <th>Label</th>
           <th>
-            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=date&sort_dir={% if sort_by == 'date' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
-              Scan
-              {% if sort_by == 'date' %}
-                <i class="bi {% if sort_dir == 'asc' %}bi-sort-down{% else %}bi-sort-up{% endif %} ms-1"></i>
-              {% endif %}
+            <a class="text-decoration-none" style="color:inherit" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=date&sort_dir={% if sort_by == 'date' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Scan {% if sort_by == 'date' %}<i class="bi {% if sort_dir == 'asc' %}bi-sort-down{% else %}bi-sort-up{% endif %}"></i>{% else %}<i class="bi bi-arrow-down-up" style="opacity:.4"></i>{% endif %}
             </a>
           </th>
           <th>
-            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=software&sort_dir={% if sort_by == 'software' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
-              Logiciel
-              {% if sort_by == 'software' %}
-                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
-              {% endif %}
+            <a class="text-decoration-none" style="color:inherit" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=software&sort_dir={% if sort_by == 'software' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Logiciel {% if sort_by == 'software' %}<i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %}"></i>{% else %}<i class="bi bi-arrow-down-up" style="opacity:.4"></i>{% endif %}
             </a>
           </th>
           <th>
-            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=version&sort_dir={% if sort_by == 'version' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
-              Version
-              {% if sort_by == 'version' %}
-                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
-              {% endif %}
+            <a class="text-decoration-none" style="color:inherit" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=version&sort_dir={% if sort_by == 'version' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Version {% if sort_by == 'version' %}<i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %}"></i>{% else %}<i class="bi bi-arrow-down-up" style="opacity:.4"></i>{% endif %}
             </a>
           </th>
           <th>
-            <a class="text-decoration-none text-body" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=editor&sort_dir={% if sort_by == 'editor' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
-              Editeur
-              {% if sort_by == 'editor' %}
-                <i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %} ms-1"></i>
-              {% endif %}
+            <a class="text-decoration-none" style="color:inherit" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by=editor&sort_dir={% if sort_by == 'editor' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}">
+              Editeur {% if sort_by == 'editor' %}<i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %}"></i>{% else %}<i class="bi bi-arrow-down-up" style="opacity:.4"></i>{% endif %}
             </a>
           </th>
           <th>Source</th>
-          <th>Action</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% if results %}
           {% for r in results %}
           <tr>
-            <td>{{ r.master_name }}</td>
-            <td>{{ r.master_label or '-' }}</td>
-            <td>{{ r.scan_date }}</td>
+            <td class="fw-semibold">{{ r.master_name }}</td>
+            <td class="text-muted">{{ r.master_label or '—' }}</td>
+            <td class="text-muted"><small>{{ r.scan_date }}</small></td>
             <td>{{ r.name }}</td>
-            <td>{{ r.version or '-' }}</td>
-            <td>{{ r.editor or '-' }}</td>
-            <td>{{ r.source or '-' }}</td>
-            <td><a class="btn btn-outline-primary btn-sm" href="/master/{{ r.master_id }}">Voir master</a></td>
+            <td><small class="text-muted">{{ r.version or '—' }}</small></td>
+            <td><small class="text-muted">{{ r.editor or '—' }}</small></td>
+            <td>
+              <span class="badge badge-sm rounded-pill" style="
+                {% if r.source == 'Registre' %}background:#eff6ff;color:#3b82f6
+                {% elif r.source == 'Utilisateur' %}background:#f0fdf4;color:#16a34a
+                {% elif r.source == 'AppX' %}background:#fdf4ff;color:#9333ea
+                {% else %}background:#fff7ed;color:#f97316{% endif %}">
+                {{ r.source or '—' }}
+              </span>
+            </td>
+            <td><a class="btn btn-outline-secondary btn-sm" href="/master/{{ r.master_id }}"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}
         {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">Aucun resultat</td></tr>
+          <tr>
+            <td colspan="8">
+              <div class="empty-state py-4">
+                <i class="bi bi-search empty-state-icon" style="font-size:2.5rem"></i>
+                <h4 style="font-size:1rem">Aucun resultat</h4>
+                <p>Essayez un autre terme ou elargissez le perimetre de recherche.</p>
+              </div>
+            </td>
+          </tr>
         {% endif %}
       </tbody>
     </table>
@@ -153,15 +154,15 @@
 
 {% if paging_mode == 'offset' and total_pages > 1 %}
 <div class="d-flex justify-content-between align-items-center mt-3">
-  <div class="text-muted small">Affichage: {{ results|length }} resultat(s) sur cette page</div>
-  <div class="btn-group">
+  <div class="text-muted small">{{ results|length }} resultat(s) sur cette page</div>
+  <div class="d-flex gap-2">
     <a class="btn btn-outline-secondary btn-sm {% if page <= 1 %}disabled{% endif %}"
        href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page - 1 }}">
-      <i class="bi bi-chevron-left"></i> Precedent
+      <i class="bi bi-chevron-left me-1"></i>Precedent
     </a>
     <a class="btn btn-outline-secondary btn-sm {% if page >= total_pages %}disabled{% endif %}"
        href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&page={{ page + 1 }}">
-      Suivant <i class="bi bi-chevron-right"></i>
+      Suivant<i class="bi bi-chevron-right ms-1"></i>
     </a>
   </div>
 </div>
@@ -169,14 +170,14 @@
 
 {% if paging_mode == 'keyset' %}
 <div class="d-flex justify-content-between align-items-center mt-3">
-  <div class="text-muted small">Affichage: {{ results|length }} resultat(s) (mode performance)</div>
-  <div class="btn-group">
+  <div class="text-muted small">{{ results|length }} resultat(s) (mode performance)</div>
+  <div class="d-flex gap-2">
     <a class="btn btn-outline-secondary btn-sm" href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}">
-      Debut
+      <i class="bi bi-skip-backward me-1"></i>Debut
     </a>
     <a class="btn btn-outline-secondary btn-sm {% if not next_cursor %}disabled{% endif %}"
        href="/search?q={{ query|urlencode }}&scope={{ scope }}&per_page={{ per_page }}&paging={{ paging_mode }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}&cursor={{ next_cursor|urlencode }}">
-      Suivant <i class="bi bi-chevron-right"></i>
+      Suivant<i class="bi bi-chevron-right ms-1"></i>
     </a>
   </div>
 </div>
@@ -207,46 +208,26 @@
   ];
 
   const params = new URLSearchParams(window.location.search);
-  const hasScopeInUrl = params.has('scope');
-  const hasPerPageInUrl = params.has('per_page');
-  const hasPagingInUrl = params.has('paging');
-  const hasSortByInUrl = params.has('sort_by');
-  const hasSortDirInUrl = params.has('sort_dir');
 
-  // Restore saved preferences only when URL does not force values.
-  if (!hasScopeInUrl) {
-    const savedScope = localStorage.getItem('fabinventory.search.scope');
-    if (savedScope && Array.from(scopeSelect.options).some(o => o.value === savedScope)) {
-      scopeSelect.value = savedScope;
-    }
+  if (!params.has('scope')) {
+    const v = localStorage.getItem('fabinventory.search.scope');
+    if (v && Array.from(scopeSelect.options).some(o => o.value === v)) scopeSelect.value = v;
   }
-
-  if (!hasPerPageInUrl) {
-    const savedPerPage = localStorage.getItem('fabinventory.search.per_page');
-    if (savedPerPage && Array.from(perPageSelect.options).some(o => o.value === savedPerPage)) {
-      perPageSelect.value = savedPerPage;
-    }
+  if (!params.has('per_page')) {
+    const v = localStorage.getItem('fabinventory.search.per_page');
+    if (v && Array.from(perPageSelect.options).some(o => o.value === v)) perPageSelect.value = v;
   }
-
-  if (!hasPagingInUrl) {
-    const savedPaging = localStorage.getItem('fabinventory.search.paging');
-    if (savedPaging && Array.from(pagingModeSelect.options).some(o => o.value === savedPaging)) {
-      pagingModeSelect.value = savedPaging;
-    }
+  if (!params.has('paging')) {
+    const v = localStorage.getItem('fabinventory.search.paging');
+    if (v && Array.from(pagingModeSelect.options).some(o => o.value === v)) pagingModeSelect.value = v;
   }
-
-  if (!hasSortByInUrl) {
-    const savedSortBy = localStorage.getItem('fabinventory.search.sort_by');
-    if (savedSortBy && Array.from(sortBySelect.options).some(o => o.value === savedSortBy)) {
-      sortBySelect.value = savedSortBy;
-    }
+  if (!params.has('sort_by')) {
+    const v = localStorage.getItem('fabinventory.search.sort_by');
+    if (v && Array.from(sortBySelect.options).some(o => o.value === v)) sortBySelect.value = v;
   }
-
-  if (!hasSortDirInUrl) {
-    const savedSortDir = localStorage.getItem('fabinventory.search.sort_dir');
-    if (savedSortDir && Array.from(sortDirSelect.options).some(o => o.value === savedSortDir)) {
-      sortDirSelect.value = savedSortDir;
-    }
+  if (!params.has('sort_dir')) {
+    const v = localStorage.getItem('fabinventory.search.sort_dir');
+    if (v && Array.from(sortDirSelect.options).some(o => o.value === v)) sortDirSelect.value = v;
   }
 
   searchForm.addEventListener('submit', function () {
@@ -257,34 +238,26 @@
     localStorage.setItem('fabinventory.search.sort_dir', sortDirSelect.value);
   });
 
-  function autoSubmitIfQueryPresent() {
-    if (!queryInput || !queryInput.value.trim()) {
-      return;
-    }
+  function autoSubmit() {
+    if (!queryInput || !queryInput.value.trim()) return;
     searchForm.requestSubmit();
   }
 
-  scopeSelect.addEventListener('change', autoSubmitIfQueryPresent);
-  perPageSelect.addEventListener('change', autoSubmitIfQueryPresent);
-  pagingModeSelect.addEventListener('change', autoSubmitIfQueryPresent);
-  sortBySelect.addEventListener('change', autoSubmitIfQueryPresent);
-  sortDirSelect.addEventListener('change', autoSubmitIfQueryPresent);
+  scopeSelect.addEventListener('change', autoSubmit);
+  perPageSelect.addEventListener('change', autoSubmit);
+  pagingModeSelect.addEventListener('change', autoSubmit);
+  sortBySelect.addEventListener('change', autoSubmit);
+  sortDirSelect.addEventListener('change', autoSubmit);
 
   if (resetButton) {
     resetButton.addEventListener('click', function () {
-      STORAGE_KEYS.forEach(function (key) {
-        localStorage.removeItem(key);
-      });
-
+      STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
       scopeSelect.value = 'latest';
       perPageSelect.value = '25';
       pagingModeSelect.value = 'offset';
       sortBySelect.value = 'master';
       sortDirSelect.value = 'asc';
-
-      if (queryInput) {
-        queryInput.focus();
-      }
+      if (queryInput) queryInput.focus();
     });
   }
 })();

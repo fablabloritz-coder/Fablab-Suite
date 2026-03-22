@@ -10,17 +10,28 @@
   </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Checklist de preparation - {{ master.pc_name }}</h2>
-  <div class="d-flex gap-2">
-    <a href="/master/{{ master.id }}/roadmap/print?density=compact" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Imprimer compact</a>
-    <a href="/master/{{ master.id }}/roadmap/print?density=ultra" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer-fill me-1"></i>Imprimer ultra</a>
+<div class="page-header">
+  <div>
+    <h2><i class="bi bi-list-check"></i>{{ master.pc_name }}</h2>
+    {% if master.label %}
+    <div class="text-muted small mt-1"><i class="bi bi-tag me-1"></i>{{ master.label }}</div>
+    {% endif %}
+  </div>
+  <div class="page-header-actions">
+    <a href="/master/{{ master.id }}/roadmap/print?density=compact" target="_blank" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-printer me-1"></i>Compact
+    </a>
+    <a href="/master/{{ master.id }}/roadmap/print?density=ultra" target="_blank" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-printer-fill me-1"></i>Ultra
+    </a>
   </div>
 </div>
 
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
-    <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Checklist logiciels</h5>
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-list-ul me-2"></i>Checklist logiciels
+      <span class="badge ms-2 rounded-pill" style="background:var(--fi-accent-soft);color:var(--fi-accent);font-size:.7rem;font-weight:700">{{ roadmap_items|length }} element(s)</span>
+    </span>
     <form method="post" action="/master/{{ master.id }}/roadmap/apply-minimal-pack">
       <button type="submit" class="btn btn-outline-primary btn-sm">
         <i class="bi bi-box-arrow-in-down me-1"></i>Appliquer le pack minimal
@@ -32,21 +43,25 @@
       <table class="table table-sm align-middle mb-0">
         <thead>
           <tr>
-            <th style="width:80px">Etat</th>
+            <th style="width:90px">Etat</th>
             <th>Logiciel</th>
             <th>Note (telechargement / installation)</th>
-            <th style="width:110px">Origine</th>
-            <th style="width:280px">Actions</th>
+            <th style="width:100px">Origine</th>
+            <th style="width:200px">Actions</th>
           </tr>
         </thead>
         <tbody>
           {% if roadmap_items %}
             {% for item in roadmap_items %}
-            <tr class="{% if item.is_done %}table-success{% endif %}">
+            <tr class="{% if item.is_done %}row-done{% endif %}">
               <td>
                 <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/toggle">
-                  <button type="submit" class="btn btn-sm {% if item.is_done %}btn-success{% else %}btn-outline-secondary{% endif %}">
-                    {% if item.is_done %}Fait{% else %}A faire{% endif %}
+                  <button type="submit" class="{% if item.is_done %}btn-done{% else %}btn-todo{% endif %}">
+                    {% if item.is_done %}
+                    <i class="bi bi-check2 me-1"></i>Fait
+                    {% else %}
+                    <i class="bi bi-circle me-1"></i>A faire
+                    {% endif %}
                   </button>
                 </form>
               </td>
@@ -58,34 +73,54 @@
                   <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note or '' }}" placeholder="Lien, mode silencieux, prerequis...">
               </td>
               <td>
-                  <span class="badge {% if item.source == 'minimal' %}bg-primary{% else %}bg-secondary{% endif %}">{{ item.source }}</span>
+                  <span class="badge rounded-pill" style="{% if item.source == 'minimal' %}background:var(--fi-accent-soft);color:var(--fi-accent){% else %}background:#f1f5f9;color:var(--fi-text-muted){% endif %};font-size:.7rem;font-weight:600">
+                    {{ item.source }}
+                  </span>
               </td>
-              <td class="d-flex gap-1">
-                  <button type="submit" class="btn btn-sm btn-outline-primary">Mettre a jour</button>
-                </form>
-                <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer {{ item.software_name }} de la checklist ?')">
-                  <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
-                </form>
+              <td>
+                  <div class="d-flex gap-1">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                      <i class="bi bi-check2 me-1"></i>Mettre a jour
+                    </button>
+                  </form>
+                  <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer {{ item.software_name }} de la checklist ?')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                  </div>
               </td>
             </tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="5" class="text-center text-muted py-4">Aucun element de checklist pour ce master cible</td></tr>
+            <tr>
+              <td colspan="5">
+                <div class="empty-state py-4">
+                  <i class="bi bi-card-checklist empty-state-icon" style="font-size:2.5rem"></i>
+                  <h4 style="font-size:1rem">Aucun element</h4>
+                  <p>Ajoutez des logiciels ci-dessous ou appliquez le pack minimal.</p>
+                </div>
+              </td>
+            </tr>
           {% endif %}
         </tbody>
       </table>
     </div>
   </div>
-  <div class="card-footer bg-white">
-    <form method="post" action="/master/{{ master.id }}/roadmap/add" class="row g-2">
+  <div class="card-footer">
+    <form method="post" action="/master/{{ master.id }}/roadmap/add" class="row g-2 align-items-end">
       <div class="col-md-4">
-        <input type="text" name="software_name" class="form-control form-control-sm" placeholder="Ajouter un logiciel" required>
+        <label class="form-label">Logiciel</label>
+        <input type="text" name="software_name" class="form-control form-control-sm" placeholder="Ex: Firefox, 7-Zip, Python..." required>
       </div>
       <div class="col-md-6">
-        <input type="text" name="note" class="form-control form-control-sm" placeholder="Note: source de telechargement, commande d'installation...">
+        <label class="form-label">Note</label>
+        <input type="text" name="note" class="form-control form-control-sm" placeholder="Source de telechargement, commande d'installation...">
       </div>
       <div class="col-md-2 d-grid">
-        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Ajouter</button>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-plus-circle me-1"></i>Ajouter
+        </button>
       </div>
     </form>
   </div>

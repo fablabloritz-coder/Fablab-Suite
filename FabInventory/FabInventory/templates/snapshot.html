@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Scan {{ snap.scan_date }} - {{ snap.pc_name }}{% endblock %}
+{% block title %}Scan {{ snap.scan_date }} — {{ snap.pc_name }}{% endblock %}
 {% block content %}
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -10,31 +10,145 @@
   </ol>
 </nav>
 
-<h2 class="mb-4"><i class="bi bi-camera me-2"></i>Scan du {{ snap.scan_date }} &mdash; {{ snap.pc_name }}</h2>
-
-<div class="row g-3 mb-4">
-  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">OS</div><strong>{{ snap.os_info or '-' }}</strong></div></div></div>
-  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">CPU</div><strong>{{ snap.cpu_info or '-' }}</strong></div></div></div>
-  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">RAM</div><strong>{{ snap.ram_go }} Go</strong></div></div></div>
-  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Logiciels</div><strong class="text-primary fs-4">{{ snap.total_software }}</strong></div></div></div>
-</div>
-
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <input type="text" id="searchBox" class="form-control form-control-sm" style="max-width:300px" placeholder="Rechercher..." oninput="filterSnap()">
+<div class="page-header">
+  <div>
+    <h2><i class="bi bi-camera"></i>Scan du {{ snap.scan_date }}</h2>
+    <div class="text-muted small mt-1"><i class="bi bi-pc-display me-1"></i>{{ snap.pc_name }}{% if snap.label %} &mdash; {{ snap.label }}{% endif %}</div>
+  </div>
+  <div class="page-header-actions">
+    <a href="/master/{{ snap.master_id }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Retour au master
+    </a>
+    <form method="post" action="/snapshot/{{ snap.id }}/delete" class="d-inline" onsubmit="return confirm('Supprimer ce scan ? Action irreversible.')">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i>Supprimer</button>
+    </form>
   </div>
 </div>
 
-<div class="card border-0 shadow-sm">
+<!-- Infos système principales -->
+<div class="row g-2 mb-3">
+  <div class="col-sm-6 col-md">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#eff6ff;color:#3b82f6"><i class="bi bi-windows"></i></div>
+      <div>
+        <div class="sys-info-label">OS</div>
+        <div class="sys-info-value">{{ snap.os_info or '—' }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-md">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#fdf4ff;color:#9333ea"><i class="bi bi-cpu"></i></div>
+      <div>
+        <div class="sys-info-label">CPU</div>
+        <div class="sys-info-value">{{ snap.cpu_info or '—' }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#fff7ed;color:#f97316"><i class="bi bi-memory"></i></div>
+      <div>
+        <div class="sys-info-label">RAM</div>
+        <div class="sys-info-value">{{ snap.ram_go | int if snap.ram_go == snap.ram_go | int else snap.ram_go }} Go</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:var(--inv-soft);color:var(--inv-accent)"><i class="bi bi-box-seam"></i></div>
+      <div>
+        <div class="sys-info-label">Logiciels</div>
+        <div class="sys-info-value" style="font-size:1.3rem;font-weight:800;color:var(--inv-accent)">{{ snap.total_software }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Infos système secondaires (fabricant / série / domaine) -->
+{% if snap.fabricant or snap.num_serie or snap.domaine %}
+<div class="row g-2 mb-4">
+  {% if snap.fabricant %}
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#f0fdf4;color:#16a34a"><i class="bi bi-building"></i></div>
+      <div>
+        <div class="sys-info-label">Fabricant</div>
+        <div class="sys-info-value">{{ snap.fabricant }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% if snap.num_serie %}
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#f8fafc;color:var(--fi-text-muted)"><i class="bi bi-upc-scan"></i></div>
+      <div>
+        <div class="sys-info-label">N° de série</div>
+        <div class="sys-info-value" style="font-family:monospace;font-size:.82rem">{{ snap.num_serie }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% if snap.domaine %}
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#eff6ff;color:#6366f1"><i class="bi bi-diagram-3"></i></div>
+      <div>
+        <div class="sys-info-label">Domaine</div>
+        <div class="sys-info-value">{{ snap.domaine }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="mb-4"></div>
+{% endif %}
+
+<!-- Toolbar recherche -->
+<div class="toolbar-card mb-0">
+  <i class="bi bi-funnel text-muted" style="font-size:.9rem"></i>
+  <input type="text" id="searchBox" class="form-control form-control-sm" style="max-width:280px" placeholder="Filtrer les logiciels..." oninput="filterSnap()">
+  <span class="text-muted small ms-auto" id="snapCounter" style="font-size:.78rem"></span>
+</div>
+
+<!-- Table logiciels -->
+<div class="card border-0 shadow-sm mb-4">
   <div class="table-responsive">
     <table class="table table-hover table-sm mb-0" id="snapTable">
-      <thead><tr><th>Nom</th><th>Version</th><th>Editeur</th><th>Date</th><th>Taille</th><th>Source</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Version</th>
+          <th>Editeur</th>
+          <th>Date</th>
+          <th>Taille</th>
+          <th>Source</th>
+        </tr>
+      </thead>
       <tbody>
         {% for s in software %}
         <tr>
-          <td>{{ s.n }}</td><td><small>{{ s.v }}</small></td><td><small>{{ s.e }}</small></td>
-          <td><small>{{ s.d }}</small></td><td><small>{{ s.s if s.s > 0 else '-' }}</small></td>
-          <td><span class="badge {% if s.src == 'Registre' %}bg-primary{% elif s.src == 'AppX' %}bg-purple{% else %}bg-secondary{% endif %} badge-sm">{{ s.src }}</span></td>
+          <td>{{ s.n or '—' }}</td>
+          <td><small class="text-muted">{{ s.v or '—' }}</small></td>
+          <td><small class="text-muted">{{ s.e or '—' }}</small></td>
+          <td><small class="text-muted">{{ s.d or '—' }}</small></td>
+          <td><small class="text-muted">{% if s.s and s.s > 0 %}{{ "%.1f"|format(s.s) }} Mo{% else %}—{% endif %}</small></td>
+          <td>
+            <span class="badge badge-sm rounded-pill"
+              style="{% if s.src == 'Registre' %}background:#eff6ff;color:#3b82f6{% elif s.src == 'AppX' %}background:#fdf4ff;color:#9333ea{% elif s.src == 'Utilisateur' %}background:#f0fdf4;color:#16a34a{% else %}background:#fff7ed;color:#f97316{% endif %}">
+              {{ s.src or '?' }}
+            </span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6">
+            <div class="empty-state py-3">
+              <p class="mb-0">Aucun logiciel dans ce snapshot.</p>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -42,15 +156,79 @@
   </div>
 </div>
 
+<!-- Disques (si données disponibles) -->
+{% if disks %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-hdd me-2"></i>Disques</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Lecteur</th><th>Taille</th><th>Libre</th><th>Utilisation</th></tr></thead>
+      <tbody>
+        {% for d in disks %}
+        <tr>
+          <td class="fw-semibold">{{ d.label or d.name or '?' }}</td>
+          <td>{{ d.size_go or d.size or '—' }} Go</td>
+          <td>{{ d.free_go or d.free or '—' }} Go</td>
+          <td>
+            {% if d.size_go and d.free_go %}
+            {% set pct = ((d.size_go - d.free_go) / d.size_go * 100)|int %}
+            <div class="d-flex align-items-center gap-2">
+              <div style="width:80px;height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden">
+                <div style="width:{{ pct }}%;height:100%;background:{% if pct > 85 %}#ef4444{% elif pct > 65 %}#f97316{% else %}var(--inv-accent){% endif %};border-radius:99px"></div>
+              </div>
+              <small class="text-muted">{{ pct }}%</small>
+            </div>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Réseau (si données disponibles) -->
+{% if network %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-ethernet me-2"></i>Reseau</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Interface</th><th>Adresse MAC</th><th>Adresse IP</th></tr></thead>
+      <tbody>
+        {% for n in network %}
+        <tr>
+          <td class="fw-semibold">{{ n.name or n.interface or '?' }}</td>
+          <td><code style="font-size:.8rem">{{ n.mac or '—' }}</code></td>
+          <td><code style="font-size:.8rem">{{ n.ip or '—' }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
+
 {% block scripts %}
 <script>
+const rows = document.querySelectorAll('#snapTable tbody tr');
+const counter = document.getElementById('snapCounter');
+
+function updateCounter() {
+  const visible = document.querySelectorAll('#snapTable tbody tr:not([style*="display: none"])').length;
+  counter.textContent = visible + ' logiciel' + (visible > 1 ? 's' : '');
+}
+
 function filterSnap() {
   const q = document.getElementById('searchBox').value.toLowerCase();
-  document.querySelectorAll('#snapTable tbody tr').forEach(r => {
+  rows.forEach(r => {
     r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
+  updateCounter();
 }
+
+updateCounter();
 </script>
-<style>.bg-purple{background:#8e44ad;color:#fff}</style>
 {% endblock %}

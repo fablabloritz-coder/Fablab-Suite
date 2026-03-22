@@ -10,15 +10,19 @@
   </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-list-check me-2 text-primary"></i>Creer une liste de preparation</h2>
-  <a href="/" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Retour</a>
+<div class="page-header">
+  <h2><i class="bi bi-clipboard-plus"></i>Creer une liste de preparation</h2>
+  <a href="/roadmaps" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Annuler
+  </a>
 </div>
 
 <form method="post" class="row g-3" id="masterCreateForm">
   <div class="col-lg-6">
     <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-white fw-semibold">Master cible</div>
+      <div class="card-header">
+        <i class="bi bi-pc-display me-2" style="color:var(--fi-accent)"></i>Master cible
+      </div>
       <div class="card-body">
         <div class="mb-3">
           <label class="form-label">Nom du master cible</label>
@@ -26,7 +30,7 @@
         </div>
         <div class="mb-3">
           <label class="form-label">Label</label>
-          <input type="text" name="label" class="form-control" placeholder="Ex: Salle info - CAO/DAO">
+          <input type="text" name="label" class="form-control" placeholder="Ex: Salle info — CAO/DAO">
         </div>
         <div class="mb-0">
           <label class="form-label">Notes generales</label>
@@ -38,12 +42,17 @@
 
   <div class="col-lg-6">
     <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-white fw-semibold">Pack minimal commun</div>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-box-seam me-2" style="color:var(--prep-accent)"></i>Pack minimal commun</span>
+        {% if minimal_pack %}
+        <span class="badge rounded-pill" style="background:var(--prep-soft);color:var(--prep-accent);font-size:.7rem;font-weight:700">{{ minimal_pack|length }} logiciels</span>
+        {% endif %}
+      </div>
       <div class="card-body">
         <div class="form-check form-switch mb-3">
           <input class="form-check-input" type="checkbox" id="useMinimalPack" name="use_minimal_pack" value="1" checked>
-          <label class="form-check-label" for="useMinimalPack">
-            Precharger le pack minimal dans la checklist du master cible
+          <label class="form-check-label" for="useMinimalPack" style="font-size:.875rem">
+            Precharger le pack minimal dans la checklist
           </label>
         </div>
 
@@ -53,21 +62,26 @@
             <thead>
               <tr>
                 <th>Logiciel</th>
-                <th>Note installation / telechargement</th>
+                <th>Note installation</th>
               </tr>
             </thead>
             <tbody>
               {% for item in minimal_pack %}
               <tr>
-                <td>{{ item.software_name }}</td>
-                <td>{{ item.note or '-' }}</td>
+                <td style="font-size:.83rem">{{ item.software_name }}</td>
+                <td class="text-muted" style="font-size:.8rem">{{ item.note or '—' }}</td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
         {% else %}
-        <div class="text-muted small">Aucun logiciel dans le pack minimal pour le moment.</div>
+        <div class="empty-state py-2" style="text-align:left">
+          <p class="mb-1" style="font-size:.85rem">Aucun logiciel dans le pack minimal.</p>
+          <a href="/roadmap/minimal-pack" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-box-seam me-1"></i>Configurer le pack minimal
+          </a>
+        </div>
         {% endif %}
       </div>
     </div>
@@ -75,8 +89,8 @@
 
   <div class="col-12">
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-        <span>Checklist specifique a cette preparation</span>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-check me-2" style="color:var(--fi-accent)"></i>Logiciels specifiques a cette preparation</span>
         <button type="button" class="btn btn-outline-primary btn-sm" id="addRoadmapRowBtn">
           <i class="bi bi-plus-circle me-1"></i>Ajouter une ligne
         </button>
@@ -85,23 +99,24 @@
         <div id="roadmapRows" class="d-flex flex-column gap-2">
           <div class="row g-2 roadmap-row">
             <div class="col-md-4">
-              <input type="text" class="form-control" name="roadmap_software[]" placeholder="Nom logiciel (ex: Blender)">
+              <input type="text" class="form-control" name="roadmap_software[]" placeholder="Nom du logiciel (ex: Blender)">
             </div>
             <div class="col-md-7">
               <input type="text" class="form-control" name="roadmap_note[]" placeholder="Note: lien de telechargement, options d'installation...">
             </div>
             <div class="col-md-1 d-grid">
-              <button type="button" class="btn btn-outline-danger remove-row-btn" title="Supprimer">
+              <button type="button" class="btn btn-outline-danger remove-row-btn" title="Supprimer cette ligne">
                 <i class="bi bi-x-lg"></i>
               </button>
             </div>
           </div>
         </div>
+        <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Les lignes vides sont ignorees a la creation.</p>
       </div>
     </div>
   </div>
 
-  <div class="col-12 d-flex justify-content-end gap-2">
+  <div class="col-12 d-flex justify-content-end gap-2 pb-2">
     <a href="/roadmaps" class="btn btn-outline-secondary">Annuler</a>
     <button type="submit" class="btn btn-primary">
       <i class="bi bi-check2-circle me-1"></i>Creer la liste
@@ -124,9 +139,7 @@
         const row = btn.closest('.roadmap-row');
         if (!row) return;
         if (rowsContainer.querySelectorAll('.roadmap-row').length <= 1) {
-          row.querySelectorAll('input').forEach((input) => {
-            input.value = '';
-          });
+          row.querySelectorAll('input').forEach(i => i.value = '');
           return;
         }
         row.remove();
@@ -138,17 +151,12 @@
     const row = document.createElement('div');
     row.className = 'row g-2 roadmap-row';
     row.innerHTML =
-      '<div class="col-md-4">' +
-        '<input type="text" class="form-control" name="roadmap_software[]" placeholder="Nom logiciel (ex: Blender)">' +
-      '</div>' +
-      '<div class="col-md-7">' +
-        '<input type="text" class="form-control" name="roadmap_note[]" placeholder="Note: lien de telechargement, options d\'installation...">' +
-      '</div>' +
-      '<div class="col-md-1 d-grid">' +
-        '<button type="button" class="btn btn-outline-danger remove-row-btn" title="Supprimer"><i class="bi bi-x-lg"></i></button>' +
-      '</div>';
+      '<div class="col-md-4"><input type="text" class="form-control" name="roadmap_software[]" placeholder="Nom du logiciel (ex: Blender)"></div>' +
+      '<div class="col-md-7"><input type="text" class="form-control" name="roadmap_note[]" placeholder="Note: lien de telechargement, options d\'installation..."></div>' +
+      '<div class="col-md-1 d-grid"><button type="button" class="btn btn-outline-danger remove-row-btn" title="Supprimer cette ligne"><i class="bi bi-x-lg"></i></button></div>';
     rowsContainer.appendChild(row);
     bindRemoveButtons();
+    row.querySelector('input').focus();
   });
 
   bindRemoveButtons();

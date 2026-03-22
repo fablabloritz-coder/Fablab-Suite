@@ -2,9 +2,14 @@
 {% block title %}Pack minimal - FabInventory{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-box-seam me-2"></i>Pack minimal commun</h2>
-  <a href="/roadmaps" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Retour preparation</a>
+<div class="page-header">
+  <div>
+    <h2><i class="bi bi-box-seam"></i>Pack minimal commun</h2>
+    <div class="text-muted small mt-1">Logiciels precharges dans toutes les nouvelles listes de preparation.</div>
+  </div>
+  <a href="/roadmaps" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Retour aux listes
+  </a>
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -15,7 +20,7 @@
           <tr>
             <th>Logiciel</th>
             <th>Note installation / telechargement</th>
-            <th style="width:180px">Actions</th>
+            <th style="width:200px">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -27,34 +32,53 @@
                   <input type="text" name="software_name" class="form-control form-control-sm" value="{{ item.software_name }}" required>
               </td>
               <td>
-                  <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note or '' }}" placeholder="URL officielle, winget/choco, prerequis...">
+                  <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note or '' }}" placeholder="URL officielle, winget, prerequis...">
               </td>
-              <td class="d-flex gap-1">
-                  <button type="submit" class="btn btn-sm btn-outline-primary">Mettre a jour</button>
-                </form>
-                <form method="post" action="/roadmap/minimal-pack/{{ item.id }}/delete" onsubmit="return confirm('Supprimer {{ item.software_name }} du pack minimal ?')">
-                  <button type="submit" class="btn btn-sm btn-outline-danger">Supprimer</button>
-                </form>
+              <td>
+                  <div class="d-flex gap-1">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                      <i class="bi bi-check2 me-1"></i>Mettre a jour
+                    </button>
+                  </form>
+                  <form method="post" action="/roadmap/minimal-pack/{{ item.id }}/delete"
+                        onsubmit="return confirm('Supprimer {{ item.software_name }} du pack minimal ?')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                  </div>
               </td>
             </tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="3" class="text-center text-muted py-4">Pack minimal vide</td></tr>
+            <tr>
+              <td colspan="3">
+                <div class="empty-state py-4">
+                  <i class="bi bi-box-seam empty-state-icon" style="font-size:2.5rem"></i>
+                  <h4 style="font-size:1rem">Pack minimal vide</h4>
+                  <p>Ajoutez les logiciels communs a tous vos masters pour les precharger automatiquement.</p>
+                </div>
+              </td>
+            </tr>
           {% endif %}
         </tbody>
       </table>
     </div>
   </div>
-  <div class="card-footer bg-white">
-    <form method="post" action="/roadmap/minimal-pack/add" class="row g-2">
+  <div class="card-footer">
+    <form method="post" action="/roadmap/minimal-pack/add" class="row g-2 align-items-end">
       <div class="col-md-4">
-        <input type="text" name="software_name" class="form-control form-control-sm" placeholder="Nouveau logiciel commun" required>
+        <label class="form-label">Logiciel</label>
+        <input type="text" name="software_name" class="form-control form-control-sm" placeholder="Ex: Firefox, 7-Zip, VLC..." required>
       </div>
       <div class="col-md-6">
+        <label class="form-label">Note</label>
         <input type="text" name="note" class="form-control form-control-sm" placeholder="URL de telechargement, methode d'installation...">
       </div>
       <div class="col-md-2 d-grid">
-        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Ajouter</button>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-plus-circle me-1"></i>Ajouter
+        </button>
       </div>
     </form>
   </div>

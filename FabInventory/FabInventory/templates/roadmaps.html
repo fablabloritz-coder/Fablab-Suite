@@ -2,16 +2,20 @@
 {% block title %}Listes de preparation - FabInventory{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>Preparation des masters</h2>
-  <div class="d-flex gap-2">
-    <a href="/master/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Nouvelle liste</a>
-    <a href="/roadmap/minimal-pack" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-seam me-1"></i>Modifier pack minimal</a>
+<div class="page-header">
+  <h2><i class="bi bi-clipboard-check"></i>Preparation des masters</h2>
+  <div class="page-header-actions">
+    <a href="/master/new" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-circle me-1"></i>Nouvelle liste
+    </a>
+    <a href="/roadmap/minimal-pack" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-box-seam me-1"></i>Pack minimal
+    </a>
   </div>
 </div>
 
-<div class="alert alert-secondary py-2">
-  Ces listes servent a <strong>preparer l'installation</strong> avant usage reel. Elles sont distinctes des masters inventories par import.
+<div class="info-banner">
+  Ces listes servent a <strong>preparer l'installation</strong> avant usage reel. Elles sont distinctes des masters alimentes par import de snapshots.
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -22,32 +26,60 @@
           <th>Master cible</th>
           <th>Label</th>
           <th>Progression</th>
-          <th style="width:320px">Actions</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% if masters %}
           {% for m in masters %}
           <tr>
-            <td class="fw-semibold">{{ m.pc_name }}</td>
-            <td>{{ m.label or '-' }}</td>
+            <td class="fw-semibold">
+              <i class="bi bi-pc-display me-2" style="color:var(--fi-text-light)"></i>{{ m.pc_name }}
+            </td>
+            <td class="text-muted">{{ m.label or '—' }}</td>
             <td>
               {% if m.roadmap_total > 0 %}
-                <span class="badge bg-primary">{{ m.roadmap_done }} / {{ m.roadmap_total }}</span>
+                {% set pct = (m.roadmap_done / m.roadmap_total * 100)|int %}
+                <div class="roadmap-progress">
+                  <div class="prog-bar-wrap">
+                    <div class="prog-bar-fill" style="width:{{ pct }}%"></div>
+                  </div>
+                  <span class="prog-text">{{ m.roadmap_done }}/{{ m.roadmap_total }}</span>
+                  {% if m.roadmap_done == m.roadmap_total %}
+                  <i class="bi bi-check-circle-fill" style="color:var(--prep-accent);font-size:.85rem"></i>
+                  {% endif %}
+                </div>
               {% else %}
-                <span class="text-muted">Aucune checklist</span>
+                <span class="text-muted small">Aucune checklist</span>
               {% endif %}
             </td>
-            <td class="d-flex gap-1">
-              <a href="/master/{{ m.id }}/roadmap" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil-square"></i> Editer checklist</a>
-              <a href="/master/{{ m.id }}/roadmap/print?density=compact" class="btn btn-sm btn-outline-secondary" target="_blank"><i class="bi bi-printer"></i> Compact</a>
-              <a href="/master/{{ m.id }}/roadmap/print?density=ultra" class="btn btn-sm btn-outline-secondary" target="_blank"><i class="bi bi-printer-fill"></i> Ultra</a>
+            <td>
+              <div class="d-flex gap-1 flex-wrap">
+                <a href="/master/{{ m.id }}/roadmap" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-pencil-square me-1"></i>Editer
+                </a>
+                <a href="/master/{{ m.id }}/roadmap/print?density=compact" class="btn btn-sm btn-outline-secondary" target="_blank">
+                  <i class="bi bi-printer me-1"></i>Compact
+                </a>
+                <a href="/master/{{ m.id }}/roadmap/print?density=ultra" class="btn btn-sm btn-outline-secondary" target="_blank">
+                  <i class="bi bi-printer-fill me-1"></i>Ultra
+                </a>
+              </div>
             </td>
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="4" class="text-center text-muted py-4">Aucune liste de preparation. Creez d'abord une nouvelle liste.</td>
+            <td colspan="4">
+              <div class="empty-state">
+                <i class="bi bi-clipboard empty-state-icon"></i>
+                <h4>Aucune liste de preparation</h4>
+                <p>Creez une nouvelle liste pour commencer a preparer l'installation d'un poste.</p>
+                <a href="/master/new" class="btn btn-primary btn-sm">
+                  <i class="bi bi-plus-circle me-1"></i>Creer une liste
+                </a>
+              </div>
+            </td>
           </tr>
         {% endif %}
       </tbody>

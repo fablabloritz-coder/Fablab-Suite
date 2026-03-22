@@ -2,54 +2,76 @@
 {% block title %}FabInventory - Dashboard{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2><i class="bi bi-speedometer2 me-2"></i>Dashboard</h2>
-  <a href="/upload" class="btn btn-primary"><i class="bi bi-cloud-upload me-1"></i>Importer un inventaire</a>
+<div class="page-header">
+  <h2><i class="bi bi-speedometer2"></i>Dashboard</h2>
+  <a href="/upload" class="btn btn-primary">
+    <i class="bi bi-cloud-upload me-1"></i>Importer un inventaire
+  </a>
 </div>
 
+<!-- Panels -->
 <div class="row g-3 mb-4">
   <div class="col-lg-8">
     <div class="card border-0 shadow-sm dashboard-panel dashboard-panel-inventory h-100">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start mb-3">
-          <div>
-            <h4 class="mb-1"><i class="bi bi-pc-display-horizontal me-2"></i>Masters inventories</h4>
-            <div class="text-muted small">Section alimentee uniquement par les imports de snapshots.</div>
+      <div class="card-body p-4">
+        <div class="d-flex align-items-start gap-3 mb-3">
+          <div class="panel-icon panel-icon-inv">
+            <i class="bi bi-pc-display-horizontal"></i>
           </div>
-          <div class="d-flex gap-2 flex-wrap justify-content-end">
+          <div class="flex-grow-1">
+            <h5 class="mb-0 fw-700" style="font-weight:700;letter-spacing:-.02em">Masters inventories</h5>
+            <div class="text-muted small mt-1">Snapshots importes depuis le script d'inventaire USB.</div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
             <a href="/download/master-bundle" class="btn btn-success btn-sm">
-              <i class="bi bi-file-earmark-zip me-1"></i>Pack complet (.zip)
+              <i class="bi bi-file-earmark-zip me-1"></i>Pack complet
             </a>
             <a href="/download/master-launcher" class="btn btn-outline-success btn-sm">
-              <i class="bi bi-windows me-1"></i>Lanceur (.bat)
+              <i class="bi bi-windows me-1"></i>Lanceur .bat
             </a>
             <a href="/download/master-script" class="btn btn-outline-secondary btn-sm">
-              <i class="bi bi-download me-1"></i>Script (.ps1)
+              <i class="bi bi-filetype-ps me-1"></i>Script .ps1
             </a>
           </div>
         </div>
-
-        <p class="text-muted mb-0">
-          Telechargez le pack, lancez le .bat sur un poste master puis importez le HTML produit.
+        <p class="text-muted small mb-0 ps-1">
+          <i class="bi bi-info-circle me-1"></i>
+          Telechargez le pack, lancez le <code>.bat</code> sur un poste master puis importez le fichier HTML produit.
         </p>
       </div>
     </div>
   </div>
   <div class="col-lg-4">
     <div class="card border-0 shadow-sm dashboard-panel dashboard-panel-preparation h-100">
-      <div class="card-body d-flex flex-column">
-        <h4 class="mb-1"><i class="bi bi-list-check me-2"></i>Preparation des masters</h4>
-        <div class="text-muted small mb-3">Espace isole pour les checklists d'installation.</div>
-        <div class="small mb-3">
-          <div><strong>{{ prep_summary.prep_masters if prep_summary else 0 }}</strong> liste(s)</div>
-          <div><strong>{{ prep_summary.prep_items if prep_summary else 0 }}</strong> element(s)</div>
-          <div><strong>{{ prep_summary.prep_pending if prep_summary else 0 }}</strong> a faire</div>
+      <div class="card-body p-4 d-flex flex-column">
+        <div class="d-flex align-items-start gap-3 mb-3">
+          <div class="panel-icon panel-icon-prep">
+            <i class="bi bi-list-check"></i>
+          </div>
+          <div>
+            <h5 class="mb-0 fw-700" style="font-weight:700;letter-spacing:-.02em">Preparation des masters</h5>
+            <div class="text-muted small mt-1">Checklists d'installation independantes.</div>
+          </div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-4 text-center">
+            <div class="fw-800 fs-4" style="font-weight:800;color:var(--prep-accent)">{{ prep_summary.prep_masters if prep_summary else 0 }}</div>
+            <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fi-text-muted)">Listes</div>
+          </div>
+          <div class="col-4 text-center">
+            <div class="fw-800 fs-4" style="font-weight:800;color:var(--prep-accent)">{{ prep_summary.prep_items if prep_summary else 0 }}</div>
+            <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fi-text-muted)">Elements</div>
+          </div>
+          <div class="col-4 text-center">
+            <div class="fw-800 fs-4" style="font-weight:800;color:var(--prep-accent)">{{ prep_summary.prep_pending if prep_summary else 0 }}</div>
+            <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--fi-text-muted)">A faire</div>
+          </div>
         </div>
         <div class="mt-auto d-grid gap-2">
           <a href="/roadmaps" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-list-check me-1"></i>Ouvrir les listes
           </a>
-          <a href="/roadmap/minimal-pack" class="btn btn-outline-primary btn-sm">
+          <a href="/roadmap/minimal-pack" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-box-seam me-1"></i>Gerer le pack minimal
           </a>
         </div>
@@ -59,22 +81,29 @@
 </div>
 
 {% if not masters %}
-<div class="text-center py-5">
-  <i class="bi bi-inbox display-1 text-muted"></i>
-  <h4 class="mt-3 text-muted">Aucun master enregistre</h4>
-  <p class="text-muted">Lancez le script d'inventaire sur un PC master, puis importez le fichier HTML ici.</p>
-  <div class="d-flex justify-content-center gap-2 mt-2 flex-wrap">
-    <a href="/download/master-bundle" class="btn btn-success btn-lg">
-      <i class="bi bi-file-earmark-zip me-1"></i>Telecharger le pack
-    </a>
-    <a href="/download/master-script" class="btn btn-outline-secondary btn-lg">
-      <i class="bi bi-download me-1"></i>Telecharger le script
-    </a>
-    <a href="/upload" class="btn btn-primary btn-lg"><i class="bi bi-cloud-upload me-1"></i>Importer</a>
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <div class="empty-state">
+      <i class="bi bi-hdd-rack empty-state-icon"></i>
+      <h4>Aucun master enregistre</h4>
+      <p>Lancez le script d'inventaire sur un PC master, puis importez le fichier HTML ici.</p>
+      <div class="d-flex justify-content-center gap-2 flex-wrap">
+        <a href="/download/master-bundle" class="btn btn-success">
+          <i class="bi bi-file-earmark-zip me-1"></i>Telecharger le pack
+        </a>
+        <a href="/download/master-script" class="btn btn-outline-secondary">
+          <i class="bi bi-download me-1"></i>Script .ps1
+        </a>
+        <a href="/upload" class="btn btn-primary">
+          <i class="bi bi-cloud-upload me-1"></i>Importer
+        </a>
+      </div>
+    </div>
   </div>
 </div>
 {% else %}
 
+<!-- Stat cards -->
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-md-3">
     <div class="card stat-card border-0 shadow-sm">
@@ -104,30 +133,43 @@
   </div>
 </div>
 
+<!-- Master grid -->
 <div class="row g-3">
   {% for m in masters %}
   <div class="col-md-6 col-lg-4 col-xl-3">
     <div class="card h-100 border-0 shadow-sm master-card">
-      <div class="card-body">
+      <div class="card-body d-flex flex-column p-3">
         <div class="d-flex justify-content-between align-items-start mb-2">
-          <h5 class="card-title mb-0">
-            <i class="bi bi-pc-display me-1 text-primary"></i>
-            {{ m.pc_name }}
+          <h5 class="card-title mb-0 d-flex align-items-center gap-2">
+            <span class="d-flex align-items-center justify-content-center rounded-2" style="width:30px;height:30px;background:var(--inv-soft);color:var(--inv-accent);font-size:.95rem;flex-shrink:0">
+              <i class="bi bi-pc-display"></i>
+            </span>
+            <span style="word-break:break-all">{{ m.pc_name }}</span>
           </h5>
-          <span class="badge bg-primary rounded-pill">{{ m.snap_count }} scan{{ 's' if m.snap_count > 1 }}</span>
+          <span class="badge rounded-pill ms-1 flex-shrink-0" style="background:var(--inv-soft);color:var(--inv-accent);font-size:.7rem;font-weight:700">{{ m.snap_count }}</span>
         </div>
         {% if m.label %}
-        <p class="text-muted small mb-2"><i class="bi bi-tag me-1"></i>{{ m.label }}</p>
+        <p class="text-muted small mb-2 d-flex align-items-center gap-1">
+          <i class="bi bi-tag" style="color:var(--fi-text-light)"></i>{{ m.label }}
+        </p>
         {% endif %}
-        {% if m.last_scan %}
-        <p class="small mb-1"><i class="bi bi-clock me-1 text-muted"></i>Dernier scan : {{ m.last_scan }}</p>
-        {% endif %}
-        {% if m.last_total %}
-        <p class="small mb-2"><i class="bi bi-box-seam me-1 text-muted"></i>{{ m.last_total }} logiciels</p>
-        {% endif %}
-        <a href="/master/{{ m.id }}" class="btn btn-outline-primary btn-sm w-100">
-          <i class="bi bi-eye me-1"></i>Voir le detail
-        </a>
+        <div class="mt-auto pt-2">
+          {% if m.last_scan %}
+          <div class="d-flex align-items-center gap-1 text-muted small mb-1">
+            <i class="bi bi-clock" style="font-size:.75rem"></i>
+            <span>{{ m.last_scan }}</span>
+          </div>
+          {% endif %}
+          {% if m.last_total %}
+          <div class="d-flex align-items-center gap-1 text-muted small mb-2">
+            <i class="bi bi-box-seam" style="font-size:.75rem"></i>
+            <span>{{ m.last_total }} logiciels</span>
+          </div>
+          {% endif %}
+          <a href="/master/{{ m.id }}" class="btn btn-outline-primary btn-sm w-100">
+            <i class="bi bi-eye me-1"></i>Voir le detail
+          </a>
+        </div>
       </div>
     </div>
   </div>

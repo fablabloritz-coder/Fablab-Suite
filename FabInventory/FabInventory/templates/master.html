@@ -9,16 +9,18 @@
   </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-start mb-4">
+<div class="page-header">
   <div>
-    <h2><i class="bi bi-pc-display me-2 text-primary"></i>{{ master.pc_name }}</h2>
-    {% if master.label %}<p class="text-muted"><i class="bi bi-tag me-1"></i>{{ master.label }}</p>{% endif %}
+    <h2><i class="bi bi-pc-display"></i>{{ master.pc_name }}</h2>
+    {% if master.label %}
+    <div class="text-muted small mt-1"><i class="bi bi-tag me-1"></i>{{ master.label }}</div>
+    {% endif %}
   </div>
-  <div class="d-flex gap-2">
+  <div class="page-header-actions">
     <a class="btn btn-outline-success btn-sm" href="/master/{{ master.id }}/update">
       <i class="bi bi-arrow-repeat me-1"></i>Mettre a jour
     </a>
-    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editModal">
+    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editModal">
       <i class="bi bi-pencil me-1"></i>Modifier
     </button>
     <form method="post" action="/master/{{ master.id }}/delete" onsubmit="return confirm('Supprimer le master {{ master.pc_name }} et tout son historique ? Action irreversible.')">
@@ -28,24 +30,72 @@
 </div>
 
 {% if latest %}
-<!-- System Info -->
-<div class="row g-3 mb-4">
-  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">OS</div><strong>{{ latest.os_info or '-' }}</strong></div></div></div>
-  <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">CPU</div><strong>{{ latest.cpu_info or '-' }}</strong></div></div></div>
-  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">RAM</div><strong>{{ latest.ram_go }} Go</strong></div></div></div>
-  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Logiciels</div><strong class="text-primary fs-4">{{ latest.total_software }}</strong></div></div></div>
-  <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Dernier scan</div><strong>{{ latest.scan_date }}</strong></div></div></div>
+<!-- System info cards -->
+<div class="row g-2 mb-4">
+  <div class="col-sm-6 col-md">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#eff6ff;color:#3b82f6">
+        <i class="bi bi-windows"></i>
+      </div>
+      <div>
+        <div class="sys-info-label">OS</div>
+        <div class="sys-info-value">{{ latest.os_info or '—' }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-md">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#fdf4ff;color:#9333ea">
+        <i class="bi bi-cpu"></i>
+      </div>
+      <div>
+        <div class="sys-info-label">CPU</div>
+        <div class="sys-info-value">{{ latest.cpu_info or '—' }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#fff7ed;color:#f97316">
+        <i class="bi bi-memory"></i>
+      </div>
+      <div>
+        <div class="sys-info-label">RAM</div>
+        <div class="sys-info-value">{{ latest.ram_go }} Go</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:var(--inv-soft);color:var(--inv-accent)">
+        <i class="bi bi-box-seam"></i>
+      </div>
+      <div>
+        <div class="sys-info-label">Logiciels</div>
+        <div class="sys-info-value" style="font-size:1.3rem;font-weight:800;color:var(--inv-accent)">{{ latest.total_software }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-md-auto">
+    <div class="sys-info-card">
+      <div class="sys-info-icon" style="background:#f0fdf4;color:#16a34a">
+        <i class="bi bi-clock-history"></i>
+      </div>
+      <div>
+        <div class="sys-info-label">Dernier scan</div>
+        <div class="sys-info-value">{{ latest.scan_date }}</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Toolbar -->
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2 d-flex gap-2 align-items-center flex-wrap">
-    <input type="text" id="searchBox" class="form-control form-control-sm" style="max-width:300px" placeholder="Rechercher un logiciel..." oninput="filterSw()">
-    <button class="btn btn-sm btn-outline-success" onclick="toggleImportant()" id="btnImportant">
-      <i class="bi bi-star me-1"></i>Importants uniquement
-    </button>
-    <span class="text-muted small ms-auto" id="counter">0 important(s)</span>
-  </div>
+<div class="toolbar-card">
+  <input type="text" id="searchBox" class="form-control form-control-sm" style="max-width:280px" placeholder="Rechercher un logiciel..." oninput="filterSw()">
+  <button class="btn btn-sm btn-outline-secondary" onclick="toggleImportant()" id="btnImportant">
+    <i class="bi bi-star me-1"></i>Importants uniquement
+  </button>
+  <span class="text-muted small ms-auto" id="counter" style="font-size:.78rem"></span>
 </div>
 
 <!-- Software Table -->
@@ -54,7 +104,7 @@
     <table class="table table-hover table-sm mb-0" id="swTable">
       <thead>
         <tr>
-          <th style="width:40px" class="text-center"><i class="bi bi-star-fill text-warning"></i></th>
+          <th style="width:40px" class="text-center"><i class="bi bi-star-fill" style="color:#f59e0b"></i></th>
           <th class="sortable" onclick="sortSw(0)">Nom <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(1)">Version <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(2)">Editeur <i class="bi bi-arrow-down-up small"></i></th>
@@ -72,48 +122,76 @@
 
 <!-- Snapshots History -->
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historique des scans ({{ snapshots|length }})</h5></div>
+  <div class="card-header">
+    <i class="bi bi-clock-history me-2"></i>Historique des scans
+    <span class="badge ms-2 rounded-pill" style="background:var(--fi-accent-soft);color:var(--fi-accent);font-size:.7rem;font-weight:700">{{ snapshots|length }}</span>
+  </div>
   <div class="card-body p-0">
+    {% if snapshots %}
     <table class="table table-hover mb-0">
       <thead><tr><th>Date du scan</th><th>OS</th><th>Logiciels</th><th>Actions</th></tr></thead>
       <tbody>
         {% for s in snapshots %}
         <tr>
-          <td>{{ s.scan_date }}</td>
-          <td><small>{{ s.os_info }}</small></td>
-          <td><span class="badge bg-primary">{{ s.total_software }}</span></td>
+          <td class="fw-500" style="font-weight:500">{{ s.scan_date }}</td>
+          <td><small class="text-muted">{{ s.os_info }}</small></td>
           <td>
-            <a href="/snapshot/{{ s.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
-            <form method="post" action="/snapshot/{{ s.id }}/delete" class="d-inline" onsubmit="return confirm('Supprimer ce scan ?')">
-              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-            </form>
+            <span class="badge rounded-pill" style="background:var(--fi-accent-soft);color:var(--fi-accent);font-size:.75rem;font-weight:700">{{ s.total_software }}</span>
+          </td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="/snapshot/{{ s.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a>
+              <form method="post" action="/snapshot/{{ s.id }}/delete" class="d-inline" onsubmit="return confirm('Supprimer ce scan ?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    {% else %}
+    <div class="empty-state py-3">
+      <p class="mb-0">Aucun snapshot disponible.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 
 {% if master.notes %}
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Notes</h5></div>
-  <div class="card-body"><p>{{ master.notes }}</p></div>
+  <div class="card-header"><i class="bi bi-journal-text me-2"></i>Notes</div>
+  <div class="card-body"><p class="mb-0">{{ master.notes }}</p></div>
 </div>
 {% endif %}
 
 <!-- Edit Modal -->
 <div class="modal fade" id="editModal" tabindex="-1">
   <div class="modal-dialog">
-    <div class="modal-content">
+    <div class="modal-content" style="border-radius:12px;border:1px solid var(--fi-border)">
       <form method="post" action="/master/{{ master.id }}/edit">
-        <div class="modal-header"><h5 class="modal-title">Modifier {{ master.pc_name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-          <div class="mb-3"><label class="form-label">Nom du master</label><input type="text" name="pc_name" class="form-control" value="{{ master.pc_name }}" required></div>
-          <div class="mb-3"><label class="form-label">Label / Description</label><input type="text" name="label" class="form-control" value="{{ master.label }}" placeholder="Ex: Salle Info 1 - SolidWorks"></div>
-          <div class="mb-3"><label class="form-label">Notes</label><textarea name="notes" class="form-control" rows="4" placeholder="Notes libres...">{{ master.notes }}</textarea></div>
+        <div class="modal-header" style="border-bottom:1px solid var(--fi-border)">
+          <h5 class="modal-title fw-600" style="font-weight:600"><i class="bi bi-pencil me-2" style="color:var(--fi-accent)"></i>Modifier {{ master.pc_name }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button><button type="submit" class="btn btn-primary">Enregistrer</button></div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Nom du master</label>
+            <input type="text" name="pc_name" class="form-control" value="{{ master.pc_name }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Label / Description</label>
+            <input type="text" name="label" class="form-control" value="{{ master.label }}" placeholder="Ex: Salle Info 1 - SolidWorks">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea name="notes" class="form-control" rows="4" placeholder="Notes libres...">{{ master.notes }}</textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid var(--fi-border)">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Enregistrer</button>
+        </div>
       </form>
     </div>
   </div>
@@ -157,28 +235,38 @@ function renderSw() {
     const matchFilter = !showImportantOnly || isImp;
     if (!matchSearch || !matchFilter) return;
 
-    const srcBadge = s.src === 'Registre' ? 'bg-primary' : s.src === 'Utilisateur' ? 'bg-info' : s.src === 'AppX' ? 'bg-purple' : 'bg-warning text-dark';
-    const rowClass = isImp ? 'table-success' : '';
-    const sz = s.s > 0 ? s.s.toFixed(1) + ' Mo' : '-';
+    const srcBadge = s.src === 'Registre' ? 'background:#eff6ff;color:#3b82f6' : s.src === 'Utilisateur' ? 'background:#f0fdf4;color:#16a34a' : s.src === 'AppX' ? 'background:#fdf4ff;color:#9333ea' : 'background:#fff7ed;color:#f97316';
+    const sz = s.s > 0 ? s.s.toFixed(1) + ' Mo' : '—';
+    const rowStar = isImp ? 'background:#fefce8' : '';
 
-    html += '<tr class="'+rowClass+'">' +
-      '<td class="text-center"><input type="checkbox" class="form-check-input" '+(isImp?'checked':'')+' onchange="flagSw(\''+key.replace(/'/g,"\\'")+'\',this.checked)"></td>' +
-      '<td>'+esc(s.n)+'</td><td><small>'+esc(s.v)+'</small></td><td><small>'+esc(s.e)+'</small></td><td><small>'+s.d+'</small></td><td><small>'+sz+'</small></td>' +
-      '<td><span class="badge '+srcBadge+' badge-sm">'+s.src+'</span></td>' +
-      '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" value="'+esc(flag.note || '')+'" placeholder="..." onchange="noteSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"></td></tr>';
+    html += '<tr style="'+rowStar+'">' +
+      '<td class="text-center"><input type="checkbox" class="form-check-input" '+(isImp?'checked':'')+' onchange="flagSw(\''+key.replace(/'/g,"\\'")+'\',this.checked)" style="border-color:#f59e0b;accent-color:#f59e0b"></td>' +
+      '<td style="font-weight:'+(isImp?'600':'400')+'">'+esc(s.n)+'</td>' +
+      '<td><small class="text-muted">'+esc(s.v)+'</small></td>' +
+      '<td><small class="text-muted">'+esc(s.e)+'</small></td>' +
+      '<td><small class="text-muted">'+s.d+'</small></td>' +
+      '<td><small class="text-muted">'+sz+'</small></td>' +
+      '<td><span class="badge badge-sm rounded-pill" style="'+srcBadge+';font-size:.68rem;font-weight:600">'+s.src+'</span></td>' +
+      '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" style="font-size:.8rem" value="'+esc(flag.note || '')+'" placeholder="..." onchange="noteSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"></td></tr>';
   });
 
-  tbody.innerHTML = html || '<tr><td colspan="8" class="text-center text-muted py-4">Aucun logiciel trouve</td></tr>';
-  document.getElementById('counter').textContent = impCount + ' important(s)';
+  tbody.innerHTML = html || '<tr><td colspan="8" class="text-center text-muted py-4"><i class="bi bi-search me-2"></i>Aucun logiciel trouve</td></tr>';
+  document.getElementById('counter').textContent = impCount + ' important' + (impCount > 1 ? 's' : '');
 }
 
-function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '-'; }
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '—'; }
 
 function filterSw() { renderSw(); }
 function toggleImportant() {
   showImportantOnly = !showImportantOnly;
-  document.getElementById('btnImportant').classList.toggle('btn-success', showImportantOnly);
-  document.getElementById('btnImportant').classList.toggle('btn-outline-success', !showImportantOnly);
+  const btn = document.getElementById('btnImportant');
+  if (showImportantOnly) {
+    btn.classList.replace('btn-outline-secondary', 'btn-warning');
+    btn.querySelector('i').classList.replace('bi-star', 'bi-star-fill');
+  } else {
+    btn.classList.replace('btn-warning', 'btn-outline-secondary');
+    btn.querySelector('i').classList.replace('bi-star-fill', 'bi-star');
+  }
   renderSw();
 }
 function sortSw(col) {
@@ -204,5 +292,4 @@ function noteSw(name, note) {
 
 renderSw();
 </script>
-<style>.bg-purple{background:#8e44ad;color:#fff}</style>
 {% endblock %}
