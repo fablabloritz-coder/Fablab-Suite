@@ -18,6 +18,11 @@ class SearchSortingRouteTests(unittest.TestCase):
         # Import after env setup so app.py initializes with test DB path.
         import app as fabinventory_app  # pylint: disable=import-outside-toplevel
 
+        fabinventory_app.DB_PATH = os.environ["DB_PATH"]
+        fabinventory_app.UPLOAD_FOLDER = os.environ["UPLOAD_FOLDER"]
+        os.makedirs(fabinventory_app.UPLOAD_FOLDER, exist_ok=True)
+        fabinventory_app.init_db()
+
         cls._module = fabinventory_app
         cls.app = fabinventory_app.app
         cls.app.config.update(TESTING=True)

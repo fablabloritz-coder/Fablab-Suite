@@ -89,6 +89,26 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_software_index_blob ON software_index(search_blob);
     CREATE INDEX IF NOT EXISTS idx_snapshots_master_created ON snapshots(master_id, created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_snapshots_created ON snapshots(created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS roadmap_minimal_pack (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        software_name TEXT NOT NULL UNIQUE,
+        note TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS roadmap_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        master_id INTEGER NOT NULL,
+        software_name TEXT NOT NULL,
+        note TEXT DEFAULT '',
+        is_done INTEGER DEFAULT 0,
+        source TEXT DEFAULT 'custom',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(master_id, software_name),
+        FOREIGN KEY (master_id) REFERENCES masters(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_roadmap_items_master ON roadmap_items(master_id);
     """)
     db.commit()
     db.close()
@@ -450,6 +470,20 @@ def _ensure_software_index_ready(db):
         db.commit()
 
 
+def _apply_minimal_pack_to_master(db, master_id):
+    pack_items = db.execute(
+        "SELECT software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+    ).fetchall()
+    for item in pack_items:
+        db.execute(
+            """
+            INSERT OR IGNORE INTO roadmap_items (master_id, software_name, note, is_done, source)
+            VALUES (?, ?, ?, 0, 'minimal')
+            """,
+            (master_id, item["software_name"], item["note"] or ""),
+        )
+
+
 # ===== ROUTES =====
 
 @app.route("/")
@@ -588,6 +622,63 @@ def upload():
     return render_template("upload.html")
 
 
+@app.route("/master/new", methods=["GET", "POST"])
+def master_new():
+    db = get_db()
+    minimal_pack = db.execute(
+        "SELECT id, software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+    ).fetchall()
+
+    if request.method == "GET":
+        return render_template("master_new.html", minimal_pack=minimal_pack)
+
+    pc_name = request.form.get("pc_name", "").strip()
+    label = request.form.get("label", "").strip()
+    notes = request.form.get("notes", "").strip()
+    use_minimal_pack = request.form.get("use_minimal_pack") == "1"
+
+    if not pc_name:
+        flash("Le nom du master est obligatoire", "error")
+        return render_template("master_new.html", minimal_pack=minimal_pack)
+
+    existing = db.execute(
+        "SELECT id FROM masters WHERE lower(pc_name) = lower(?)",
+        (pc_name,),
+    ).fetchone()
+    if existing:
+        flash("Un master avec ce nom existe deja", "error")
+        return render_template("master_new.html", minimal_pack=minimal_pack)
+
+    cur = db.execute(
+        "INSERT INTO masters (pc_name, label, notes) VALUES (?, ?, ?)",
+        (pc_name, label, notes),
+    )
+    master_id = cur.lastrowid
+
+    custom_items_raw = request.form.getlist("roadmap_software[]")
+    custom_notes_raw = request.form.getlist("roadmap_note[]")
+    max_len = max(len(custom_items_raw), len(custom_notes_raw)) if (custom_items_raw or custom_notes_raw) else 0
+    for idx in range(max_len):
+        sw_name = (custom_items_raw[idx] if idx < len(custom_items_raw) else "").strip()
+        sw_note = (custom_notes_raw[idx] if idx < len(custom_notes_raw) else "").strip()
+        if not sw_name:
+            continue
+        db.execute(
+            """
+            INSERT OR IGNORE INTO roadmap_items (master_id, software_name, note, is_done, source)
+            VALUES (?, ?, ?, 0, 'custom')
+            """,
+            (master_id, sw_name, sw_note),
+        )
+
+    if use_minimal_pack:
+        _apply_minimal_pack_to_master(db, master_id)
+
+    db.commit()
+    flash("Master cree avec sa feuille de route", "success")
+    return redirect(url_for("master_detail", master_id=master_id))
+
+
 @app.route("/master/<int:master_id>")
 def master_detail(master_id):
     db = get_db()
@@ -609,8 +700,22 @@ def master_detail(master_id):
     for row in db.execute("SELECT * FROM software_flags WHERE master_id = ?", (master_id,)).fetchall():
         flags[row["software_name"]] = {"important": row["is_important"], "note": row["note"]}
 
+    roadmap_items = db.execute(
+        """
+        SELECT id, software_name, note, is_done, source
+        FROM roadmap_items
+        WHERE master_id = ?
+        ORDER BY is_done ASC, software_name ASC
+        """,
+        (master_id,),
+    ).fetchall()
+    minimal_pack = db.execute(
+        "SELECT id, software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+    ).fetchall()
+
     return render_template("master.html", master=master, snapshots=snapshots,
-                           software=software, flags=flags, latest=latest)
+                           software=software, flags=flags, latest=latest,
+                           roadmap_items=roadmap_items, minimal_pack=minimal_pack)
 
 
 @app.route("/master/<int:master_id>/update", methods=["GET", "POST"])
@@ -786,12 +891,166 @@ def master_edit(master_id):
 @app.route("/master/<int:master_id>/delete", methods=["POST"])
 def master_delete(master_id):
     db = get_db()
+    db.execute("DELETE FROM roadmap_items WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM software_flags WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM software_index WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM snapshots WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM masters WHERE id = ?", (master_id,))
     db.commit()
     flash("Master supprime", "success")
+    return redirect(url_for("index"))
+
+
+@app.route("/master/<int:master_id>/roadmap/add", methods=["POST"])
+def roadmap_add_item(master_id):
+    db = get_db()
+    master = db.execute("SELECT id FROM masters WHERE id = ?", (master_id,)).fetchone()
+    if not master:
+        flash("Master introuvable", "error")
+        return redirect(url_for("index"))
+
+    software_name = request.form.get("software_name", "").strip()
+    note = request.form.get("note", "").strip()
+    if not software_name:
+        flash("Le nom du logiciel est obligatoire", "error")
+        return redirect(url_for("master_detail", master_id=master_id))
+
+    db.execute(
+        """
+        INSERT OR IGNORE INTO roadmap_items (master_id, software_name, note, is_done, source)
+        VALUES (?, ?, ?, 0, 'custom')
+        """,
+        (master_id, software_name, note),
+    )
+    db.commit()
+    flash("Element ajoute a la feuille de route", "success")
+    return redirect(url_for("master_detail", master_id=master_id))
+
+
+@app.route("/master/<int:master_id>/roadmap/<int:item_id>/update", methods=["POST"])
+def roadmap_update_item(master_id, item_id):
+    db = get_db()
+    item = db.execute(
+        "SELECT id, master_id FROM roadmap_items WHERE id = ? AND master_id = ?",
+        (item_id, master_id),
+    ).fetchone()
+    if not item:
+        flash("Element de feuille de route introuvable", "error")
+        return redirect(url_for("master_detail", master_id=master_id))
+
+    software_name = request.form.get("software_name", "").strip()
+    note = request.form.get("note", "").strip()
+    if not software_name:
+        flash("Le nom du logiciel est obligatoire", "error")
+        return redirect(url_for("master_detail", master_id=master_id))
+
+    db.execute(
+        "UPDATE roadmap_items SET software_name = ?, note = ? WHERE id = ? AND master_id = ?",
+        (software_name, note, item_id, master_id),
+    )
+    db.commit()
+    flash("Element de feuille de route mis a jour", "success")
+    return redirect(url_for("master_detail", master_id=master_id))
+
+
+@app.route("/master/<int:master_id>/roadmap/<int:item_id>/toggle", methods=["POST"])
+def roadmap_toggle_item(master_id, item_id):
+    db = get_db()
+    item = db.execute(
+        "SELECT id, is_done FROM roadmap_items WHERE id = ? AND master_id = ?",
+        (item_id, master_id),
+    ).fetchone()
+    if not item:
+        flash("Element de feuille de route introuvable", "error")
+        return redirect(url_for("master_detail", master_id=master_id))
+
+    new_state = 0 if int(item["is_done"] or 0) == 1 else 1
+    db.execute(
+        "UPDATE roadmap_items SET is_done = ? WHERE id = ? AND master_id = ?",
+        (new_state, item_id, master_id),
+    )
+    db.commit()
+    flash("Checklist mise a jour", "success")
+    return redirect(url_for("master_detail", master_id=master_id))
+
+
+@app.route("/master/<int:master_id>/roadmap/<int:item_id>/delete", methods=["POST"])
+def roadmap_delete_item(master_id, item_id):
+    db = get_db()
+    db.execute("DELETE FROM roadmap_items WHERE id = ? AND master_id = ?", (item_id, master_id))
+    db.commit()
+    flash("Element supprime de la feuille de route", "success")
+    return redirect(url_for("master_detail", master_id=master_id))
+
+
+@app.route("/master/<int:master_id>/roadmap/apply-minimal-pack", methods=["POST"])
+def roadmap_apply_minimal_pack(master_id):
+    db = get_db()
+    master = db.execute("SELECT id FROM masters WHERE id = ?", (master_id,)).fetchone()
+    if not master:
+        flash("Master introuvable", "error")
+        return redirect(url_for("index"))
+
+    _apply_minimal_pack_to_master(db, master_id)
+    db.commit()
+    flash("Pack minimal applique au master", "success")
+    return redirect(url_for("master_detail", master_id=master_id))
+
+
+@app.route("/roadmap/minimal-pack/add", methods=["POST"])
+def minimal_pack_add_item():
+    db = get_db()
+    software_name = request.form.get("software_name", "").strip()
+    note = request.form.get("note", "").strip()
+    master_id = request.form.get("master_id", "").strip()
+
+    if not software_name:
+        flash("Le nom du logiciel du pack minimal est obligatoire", "error")
+    else:
+        db.execute(
+            "INSERT OR IGNORE INTO roadmap_minimal_pack (software_name, note) VALUES (?, ?)",
+            (software_name, note),
+        )
+        db.commit()
+        flash("Logiciel ajoute au pack minimal", "success")
+
+    if master_id.isdigit():
+        return redirect(url_for("master_detail", master_id=int(master_id)))
+    return redirect(url_for("index"))
+
+
+@app.route("/roadmap/minimal-pack/<int:item_id>/update", methods=["POST"])
+def minimal_pack_update_item(item_id):
+    db = get_db()
+    software_name = request.form.get("software_name", "").strip()
+    note = request.form.get("note", "").strip()
+    master_id = request.form.get("master_id", "").strip()
+
+    if not software_name:
+        flash("Le nom du logiciel du pack minimal est obligatoire", "error")
+    else:
+        db.execute(
+            "UPDATE roadmap_minimal_pack SET software_name = ?, note = ? WHERE id = ?",
+            (software_name, note, item_id),
+        )
+        db.commit()
+        flash("Pack minimal mis a jour", "success")
+
+    if master_id.isdigit():
+        return redirect(url_for("master_detail", master_id=int(master_id)))
+    return redirect(url_for("index"))
+
+
+@app.route("/roadmap/minimal-pack/<int:item_id>/delete", methods=["POST"])
+def minimal_pack_delete_item(item_id):
+    db = get_db()
+    master_id = request.form.get("master_id", "").strip()
+    db.execute("DELETE FROM roadmap_minimal_pack WHERE id = ?", (item_id,))
+    db.commit()
+    flash("Logiciel supprime du pack minimal", "success")
+
+    if master_id.isdigit():
+        return redirect(url_for("master_detail", master_id=int(master_id)))
     return redirect(url_for("index"))
 
 
