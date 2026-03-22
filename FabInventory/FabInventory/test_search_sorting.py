@@ -118,6 +118,13 @@ class SearchSortingRouteTests(unittest.TestCase):
         self.assertIn('option value="master" selected', html)
         self.assertIn('option value="asc" selected', html)
 
+    def test_search_uses_latest_scope_when_scope_is_invalid(self):
+        response = self.client.get("/search?q=office&scope=invalid-scope")
+        self.assertEqual(response.status_code, 200)
+
+        html = response.get_data(as_text=True)
+        self.assertIn('option value="latest" selected', html)
+
     def test_search_keeps_valid_sort_parameters(self):
         response = self.client.get(
             "/search?q=office&scope=latest&sort_by=date&sort_dir=desc"
