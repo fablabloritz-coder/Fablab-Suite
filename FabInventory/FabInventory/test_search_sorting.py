@@ -172,6 +172,18 @@ class SearchSortingRouteTests(unittest.TestCase):
         self.assertIn("sortBySelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
         self.assertIn("sortDirSelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
 
+    def test_search_page_contains_reset_preferences_hooks(self):
+        response = self.client.get("/search")
+        self.assertEqual(response.status_code, 200)
+
+        html = response.get_data(as_text=True)
+        self.assertIn('id="resetSearchPreferences"', html)
+        self.assertIn("localStorage.removeItem(key);", html)
+        self.assertIn("'fabinventory.search.scope'", html)
+        self.assertIn("'fabinventory.search.per_page'", html)
+        self.assertIn("'fabinventory.search.sort_by'", html)
+        self.assertIn("'fabinventory.search.sort_dir'", html)
+
 
 if __name__ == "__main__":
     unittest.main()
