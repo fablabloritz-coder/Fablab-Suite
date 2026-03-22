@@ -72,6 +72,21 @@ def init_db():
         UNIQUE(master_id, software_name),
         FOREIGN KEY (master_id) REFERENCES masters(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS software_index (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_id INTEGER NOT NULL,
+        master_id INTEGER NOT NULL,
+        software_name TEXT NOT NULL,
+        software_version TEXT DEFAULT '',
+        software_editor TEXT DEFAULT '',
+        software_source TEXT DEFAULT '',
+        search_blob TEXT DEFAULT '',
+        UNIQUE(snapshot_id, software_name, software_version, software_editor, software_source)
+    );
+    CREATE INDEX IF NOT EXISTS idx_software_index_snapshot ON software_index(snapshot_id);
+    CREATE INDEX IF NOT EXISTS idx_software_index_master ON software_index(master_id);
+    CREATE INDEX IF NOT EXISTS idx_software_index_name ON software_index(software_name);
+    CREATE INDEX IF NOT EXISTS idx_software_index_blob ON software_index(search_blob);
     """)
     db.commit()
     db.close()
@@ -382,6 +397,57 @@ def _cleanup_pending_updates(max_age_seconds=86400):
             continue
 
 
+def _normalize_software_fields(sw):
+    name = str(sw.get("n", "") or "").strip()
+    version = str(sw.get("v", "") or "").strip()
+    editor = str(sw.get("e", "") or "").strip()
+    source = str(sw.get("src", "") or "").strip()
+    return name, version, editor, source
+
+
+def _upsert_snapshot_software_index(db, snapshot_id, master_id, software_list):
+    db.execute("DELETE FROM software_index WHERE snapshot_id = ?", (snapshot_id,))
+
+    rows = []
+    for sw in software_list or []:
+        if not isinstance(sw, dict):
+            continue
+        name, version, editor, source = _normalize_software_fields(sw)
+        if not name:
+            continue
+        search_blob = " ".join([name, version, editor, source]).lower()
+        rows.append((snapshot_id, master_id, name, version, editor, source, search_blob))
+
+    if rows:
+        db.executemany(
+            """
+            INSERT OR IGNORE INTO software_index (
+                snapshot_id, master_id, software_name, software_version, software_editor, software_source, search_blob
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def _rebuild_software_index(db):
+    db.execute("DELETE FROM software_index")
+    snapshots = db.execute("SELECT id, master_id, software_json FROM snapshots").fetchall()
+    for snap in snapshots:
+        try:
+            software_list = json.loads(snap["software_json"] or "[]")
+        except json.JSONDecodeError:
+            software_list = []
+        _upsert_snapshot_software_index(db, snap["id"], snap["master_id"], software_list)
+
+
+def _ensure_software_index_ready(db):
+    snap_count = int(db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()["c"])
+    indexed_snap_count = int(db.execute("SELECT COUNT(DISTINCT snapshot_id) AS c FROM software_index").fetchone()["c"])
+    if snap_count > 0 and indexed_snap_count == 0:
+        _rebuild_software_index(db)
+        db.commit()
+
+
 # ===== ROUTES =====
 
 @app.route("/")
@@ -499,7 +565,7 @@ def upload():
                 master_id = cur.lastrowid
 
             # Create snapshot
-            db.execute("""
+            cur_snap = db.execute("""
                 INSERT INTO snapshots (master_id, scan_date, os_info, cpu_info, ram_go, 
                     fabricant, num_serie, domaine, software_json, total_software)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -509,6 +575,7 @@ def upload():
                 sys_info["domaine"], json.dumps(software, ensure_ascii=False),
                 len(software)
             ))
+            _upsert_snapshot_software_index(db, cur_snap.lastrowid, master_id, software)
             db.commit()
             imported += 1
 
@@ -603,7 +670,7 @@ def master_update(master_id):
                 preview_limit=preview_limit,
             )
 
-        db.execute(
+        cur_snap = db.execute(
             """
             INSERT INTO snapshots (master_id, scan_date, os_info, cpu_info, ram_go,
                 fabricant, num_serie, domaine, software_json, total_software)
@@ -622,6 +689,7 @@ def master_update(master_id):
                 len(software),
             ),
         )
+        _upsert_snapshot_software_index(db, cur_snap.lastrowid, master_id, software)
         db.commit()
 
         try:
@@ -717,6 +785,7 @@ def master_edit(master_id):
 def master_delete(master_id):
     db = get_db()
     db.execute("DELETE FROM software_flags WHERE master_id = ?", (master_id,))
+    db.execute("DELETE FROM software_index WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM snapshots WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM masters WHERE id = ?", (master_id,))
     db.commit()
@@ -740,6 +809,7 @@ def snapshot_delete(snap_id):
     db = get_db()
     snap = db.execute("SELECT master_id FROM snapshots WHERE id = ?", (snap_id,)).fetchone()
     if snap:
+        db.execute("DELETE FROM software_index WHERE snapshot_id = ?", (snap_id,))
         db.execute("DELETE FROM snapshots WHERE id = ?", (snap_id,))
         db.commit()
         flash("Snapshot supprime", "success")
@@ -778,61 +848,79 @@ def search_multi_master():
     if scope not in ("latest", "all"):
         scope = "latest"
 
+    _ensure_software_index_ready(db)
+
     results = []
     total_scanned = 0
 
+    if scope == "latest":
+        total_scanned = int(db.execute("SELECT COUNT(DISTINCT master_id) AS c FROM snapshots").fetchone()["c"])
+    else:
+        total_scanned = int(db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()["c"])
+
     if query:
-        query_lower = query.lower()
+        like_term = f"%{query.lower()}%"
         if scope == "latest":
-            snapshots = db.execute(
+            rows = db.execute(
                 """
-                SELECT s.id, s.master_id, s.scan_date, s.software_json, m.pc_name, m.label
-                FROM snapshots s
-                JOIN masters m ON m.id = s.master_id
-                WHERE s.id IN (
-                    SELECT id FROM snapshots WHERE master_id = m.id ORDER BY created_at DESC, id DESC LIMIT 1
-                )
-                ORDER BY m.pc_name
-                """
+                SELECT
+                    si.master_id,
+                    m.pc_name,
+                    m.label,
+                    si.snapshot_id,
+                    s.scan_date,
+                    si.software_name,
+                    si.software_version,
+                    si.software_editor,
+                    si.software_source
+                FROM software_index si
+                JOIN snapshots s ON s.id = si.snapshot_id
+                JOIN masters m ON m.id = si.master_id
+                WHERE si.search_blob LIKE ?
+                  AND si.snapshot_id IN (
+                      SELECT id FROM snapshots latest
+                      WHERE latest.master_id = si.master_id
+                      ORDER BY latest.created_at DESC, latest.id DESC
+                      LIMIT 1
+                  )
+                ORDER BY m.pc_name, si.software_name, si.software_version
+                """,
+                (like_term,),
             ).fetchall()
         else:
-            snapshots = db.execute(
+            rows = db.execute(
                 """
-                SELECT s.id, s.master_id, s.scan_date, s.software_json, m.pc_name, m.label
-                FROM snapshots s
-                JOIN masters m ON m.id = s.master_id
-                ORDER BY m.pc_name, s.created_at DESC, s.id DESC
-                """
+                SELECT
+                    si.master_id,
+                    m.pc_name,
+                    m.label,
+                    si.snapshot_id,
+                    s.scan_date,
+                    si.software_name,
+                    si.software_version,
+                    si.software_editor,
+                    si.software_source
+                FROM software_index si
+                JOIN snapshots s ON s.id = si.snapshot_id
+                JOIN masters m ON m.id = si.master_id
+                WHERE si.search_blob LIKE ?
+                ORDER BY m.pc_name, s.created_at DESC, s.id DESC, si.software_name
+                """,
+                (like_term,),
             ).fetchall()
 
-        for snap in snapshots:
-            total_scanned += 1
-            try:
-                software_list = json.loads(snap["software_json"] or "[]")
-            except json.JSONDecodeError:
-                software_list = []
-
-            for sw in software_list:
-                name = str(sw.get("n", "") or "")
-                version = str(sw.get("v", "") or "")
-                editor = str(sw.get("e", "") or "")
-                source = str(sw.get("src", "") or "")
-
-                hay = " ".join([name, version, editor, source]).lower()
-                if query_lower not in hay:
-                    continue
-
-                results.append({
-                    "master_id": snap["master_id"],
-                    "master_name": snap["pc_name"],
-                    "master_label": snap["label"],
-                    "snapshot_id": snap["id"],
-                    "scan_date": snap["scan_date"],
-                    "name": name,
-                    "version": version,
-                    "editor": editor,
-                    "source": source,
-                })
+        for row in rows:
+            results.append({
+                "master_id": row["master_id"],
+                "master_name": row["pc_name"],
+                "master_label": row["label"],
+                "snapshot_id": row["snapshot_id"],
+                "scan_date": row["scan_date"],
+                "name": row["software_name"],
+                "version": row["software_version"],
+                "editor": row["software_editor"],
+                "source": row["software_source"],
+            })
 
     export_format = (request.args.get("export") or "").strip().lower()
     if export_format == "csv" and query:
