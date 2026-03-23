@@ -89,6 +89,7 @@ def init_db():
         software_version TEXT DEFAULT '',
         software_editor TEXT DEFAULT '',
         software_source TEXT DEFAULT '',
+        software_category TEXT DEFAULT 'main',
         search_blob TEXT DEFAULT '',
         UNIQUE(snapshot_id, software_name, software_version, software_editor, software_source)
     );
@@ -138,6 +139,12 @@ def init_db():
           AND id NOT IN (SELECT DISTINCT master_id FROM snapshots)
         """
     )
+
+    # Migration: ensure software_category column exists (idempotent)
+    try:
+        db.execute("SELECT software_category FROM software_index LIMIT 1")
+    except sqlite3.OperationalError:
+        db.execute("ALTER TABLE software_index ADD COLUMN software_category TEXT DEFAULT 'main'")
 
     db.commit()
     db.close()
@@ -488,7 +495,11 @@ def _normalize_software_fields(sw):
     version = str(sw.get("v", "") or "").strip()
     editor = str(sw.get("e", "") or "").strip()
     source = str(sw.get("src", "") or "").strip()
-    return name, version, editor, source
+    category = str(sw.get("cat", "main") or "main").strip()
+    # Validate category (security: only allow known values)
+    if category not in ("main", "update", "composant", "doublon"):
+        category = "main"
+    return name, version, editor, source, category
 
 
 def _upsert_snapshot_software_index(db, snapshot_id, master_id, software_list):
@@ -498,18 +509,18 @@ def _upsert_snapshot_software_index(db, snapshot_id, master_id, software_list):
     for sw in software_list or []:
         if not isinstance(sw, dict):
             continue
-        name, version, editor, source = _normalize_software_fields(sw)
+        name, version, editor, source, category = _normalize_software_fields(sw)
         if not name:
             continue
         search_blob = " ".join([name, version, editor, source]).lower()
-        rows.append((snapshot_id, master_id, name, version, editor, source, search_blob))
+        rows.append((snapshot_id, master_id, name, version, editor, source, category, search_blob))
 
     if rows:
         db.executemany(
             """
             INSERT OR IGNORE INTO software_index (
-                snapshot_id, master_id, software_name, software_version, software_editor, software_source, search_blob
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                snapshot_id, master_id, software_name, software_version, software_editor, software_source, software_category, search_blob
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -523,6 +534,10 @@ def _rebuild_software_index(db):
             software_list = json.loads(snap["software_json"] or "[]")
         except json.JSONDecodeError:
             software_list = []
+        # Ensure all software objects have category field (backward compatibility)
+        for sw in software_list:
+            if isinstance(sw, dict) and "cat" not in sw:
+                sw["cat"] = "main"
         _upsert_snapshot_software_index(db, snap["id"], snap["master_id"], software_list)
 
 

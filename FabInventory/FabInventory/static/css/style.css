@@ -549,6 +549,60 @@ tr.row-done td:first-child {
   padding: 3.5rem 1rem;
 }
 
+/* ============================================
+   Category filtering
+   ============================================ */
+.btn-lightcategory {
+  background: transparent;
+  border: 2px solid var(--fi-border);
+  color: var(--fi-text);
+  transition: all .2s ease;
+  font-weight: 500;
+  font-size: .8rem;
+}
+
+.btn-lightcategory:hover {
+  border-color: var(--fi-accent);
+  color: var(--fi-accent);
+}
+
+.btn-lightcategory.active {
+  background: var(--fi-accent);
+  border-color: var(--fi-accent);
+  color: white;
+}
+
+/* Category badge styles */
+.badge-category {
+  display: inline-block;
+  padding: .35rem .65rem;
+  border-radius: 6px;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+
+.badge-category-main {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.badge-category-update {
+  background: #fed7aa;
+  color: #b45309;
+}
+
+.badge-category-composant {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge-category-doublon {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .empty-state-icon {
   font-size: 4rem;
   color: var(--fi-text-light);

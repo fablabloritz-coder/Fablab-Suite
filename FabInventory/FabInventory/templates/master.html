@@ -95,6 +95,20 @@
   <button class="btn btn-sm btn-outline-secondary" onclick="toggleImportant()" id="btnImportant">
     <i class="bi bi-star me-1"></i>Importants uniquement
   </button>
+  <div class="d-flex gap-2 ms-3" id="categoryFilters">
+    <button class="btn btn-sm btn-lightcategory" id="btn-cat-main" onclick="toggleCategory('main')" title="Afficher les applications principales">
+      <i class="bi bi-check-circle me-1"></i><span>Principaux</span>
+    </button>
+    <button class="btn btn-sm btn-lightcategory" id="btn-cat-update" onclick="toggleCategory('update')" title="Afficher les mises à jour">
+      <i class="bi bi-patch-plus me-1"></i><span>Updates</span>
+    </button>
+    <button class="btn btn-sm btn-lightcategory" id="btn-cat-composant" onclick="toggleCategory('composant')" title="Afficher les composants système">
+      <i class="bi bi-package me-1"></i><span>Composants</span>
+    </button>
+    <button class="btn btn-sm btn-lightcategory" id="btn-cat-doublon" onclick="toggleCategory('doublon')" title="Afficher les doublons">
+      <i class="bi bi-arrow-repeat me-1"></i><span>Doublons</span>
+    </button>
+  </div>
   <span class="text-muted small ms-auto" id="counter" style="font-size:.78rem"></span>
 </div>
 
@@ -110,7 +124,7 @@
           <th class="sortable" onclick="sortSw(2)">Editeur <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(3)">Date <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(4)">Taille <i class="bi bi-arrow-down-up small"></i></th>
-          <th>Source</th>
+          <th colspan="2">Source &amp; Catégorie</th>
           <th style="min-width:160px">Note</th>
         </tr>
       </thead>
@@ -206,6 +220,7 @@ const SW = {{ software|tojson }};
 const FLAGS = {{ flags|tojson }};
 let showImportantOnly = false;
 let sortCol = -1, sortAsc = true;
+let categoryFilters = { main: true, update: false, composant: false, doublon: false };
 
 function renderSw() {
   const tbody = document.getElementById('swBody');
@@ -233,9 +248,13 @@ function renderSw() {
 
     const matchSearch = !q || JSON.stringify(s).toLowerCase().includes(q);
     const matchFilter = !showImportantOnly || isImp;
-    if (!matchSearch || !matchFilter) return;
+    const swCategory = s.cat || 'main';
+    const matchCategory = categoryFilters[swCategory] === true;
+    
+    if (!matchSearch || !matchFilter || !matchCategory) return;
 
     const srcBadge = s.src === 'Registre' ? 'background:#eff6ff;color:#3b82f6' : s.src === 'Utilisateur' ? 'background:#f0fdf4;color:#16a34a' : s.src === 'AppX' ? 'background:#fdf4ff;color:#9333ea' : 'background:#fff7ed;color:#f97316';
+    const categoryBadgeClass = 'badge-category badge-category-' + swCategory;
     const sz = s.s > 0 ? s.s.toFixed(1) + ' Mo' : '—';
     const rowStar = isImp ? 'background:#fefce8' : '';
 
@@ -246,7 +265,10 @@ function renderSw() {
       '<td><small class="text-muted">'+esc(s.e)+'</small></td>' +
       '<td><small class="text-muted">'+s.d+'</small></td>' +
       '<td><small class="text-muted">'+sz+'</small></td>' +
-      '<td><span class="badge badge-sm rounded-pill" style="'+srcBadge+';font-size:.68rem;font-weight:600">'+s.src+'</span></td>' +
+      '<td>' +
+        '<span class="badge badge-sm rounded-pill" style="'+srcBadge+';font-size:.68rem;font-weight:600;margin-right:.4rem">'+s.src+'</span>' +
+        '<span class="'+categoryBadgeClass+'">'+swCategory+'</span>' +
+      '</td>' +
       '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" style="font-size:.8rem" value="'+esc(flag.note || '')+'" placeholder="..." onchange="noteSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"></td></tr>';
   });
 
@@ -269,6 +291,18 @@ function toggleImportant() {
   }
   renderSw();
 }
+
+function toggleCategory(cat) {
+  categoryFilters[cat] = !categoryFilters[cat];
+  const btn = document.getElementById('btn-cat-' + cat);
+  if (categoryFilters[cat]) {
+    btn.classList.add('active');
+  } else {
+    btn.classList.remove('active');
+  }
+  renderSw();
+}
+
 function sortSw(col) {
   if (sortCol === col) sortAsc = !sortAsc;
   else { sortCol = col; sortAsc = true; }
@@ -290,6 +324,12 @@ function noteSw(name, note) {
   fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note})});
 }
 
+// Initialize category buttons
+function initCategoryButtons() {
+  document.getElementById('btn-cat-main').classList.add('active');
+}
+
 renderSw();
+initCategoryButtons();
 </script>
 {% endblock %}
