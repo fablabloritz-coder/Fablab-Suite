@@ -307,6 +307,34 @@ def fabsuite_options(subpath):
     return ("", 204)
 
 
+@app.route("/api/category-stats")
+def api_category_stats():
+    """Return category distribution statistics for dashboard"""
+    db = get_db()
+    stats = db.execute("""
+        SELECT 
+            software_category,
+            COUNT(*) as count
+        FROM software_index
+        GROUP BY software_category
+        ORDER BY count DESC
+    """).fetchall()
+    
+    result = {}
+    total = 0
+    for row in stats:
+        cat = row["software_category"] or "main"
+        count = row["count"]
+        result[cat] = count
+        total += count
+    
+    return jsonify({
+        "categories": result,
+        "total": total,
+        "percentage": {cat: round(100 * count / total, 1) for cat, count in result.items()} if total > 0 else {}
+    })
+
+
 # ===== PARSER =====
 def parse_inventory_html(html_content):
     """Extract inventory data from HTML file with embedded JSON."""

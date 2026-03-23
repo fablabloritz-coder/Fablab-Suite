@@ -132,6 +132,103 @@
     </div>
   </div>
 </div>
+<!-- Category distribution widget -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3 d-flex align-items-center gap-2">
+          <i class="bi bi-pie-chart" style="color:var(--inv-accent)"></i>
+          Distribution des categories
+        </h5>
+        <div style="position:relative;height:200px">
+          <canvas id="categoryChart"></canvas>
+        </div>
+        <div id="categoryLegend" class="mt-3" style="display:flex;flex-wrap:wrap;gap:10px;font-size:0.85rem"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Statistiques</h5>
+        <div id="categoryStats" style="display:grid;grid-template-columns:repeat(2,1fr);gap:15px">
+          <div style="padding:12px;background:rgba(59,130,246,0.1);border-radius:6px;border-left:3px solid #3b82f6">
+            <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;font-weight:600">Principaux</div>
+            <div style="font-size:1.5rem;font-weight:700;color:#3b82f6" id="stat-main">0</div>
+          </div>
+          <div style="padding:12px;background:rgba(249,115,22,0.1);border-radius:6px;border-left:3px solid #f97316">
+            <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;font-weight:600">Updates</div>
+            <div style="font-size:1.5rem;font-weight:700;color:#f97316" id="stat-update">0</div>
+          </div>
+          <div style="padding:12px;background:rgba(107,114,128,0.1);border-radius:6px;border-left:3px solid #6b7280">
+            <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;font-weight:600">Composants</div>
+            <div style="font-size:1.5rem;font-weight:700;color:#6b7280" id="stat-composant">0</div>
+          </div>
+          <div style="padding:12px;background:rgba(239,68,68,0.1);border-radius:6px;border-left:3px solid #ef4444">
+            <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;font-weight:600">Doublons</div>
+            <div style="font-size:1.5rem;font-weight:700;color:#ef4444" id="stat-doublon">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  async function initCategoryChart() {
+    try {
+      const response = await fetch('/api/category-stats');
+      const data = await response.json();
+      
+      if (!data.categories || Object.keys(data.categories).length === 0) {
+        document.getElementById('categoryChart').parentElement.innerHTML = '<p class="text-muted text-center py-4">Aucune donnee de categorie</p>';
+        return;
+      }
+      
+      const categories = data.categories;
+      const colors = { main: '#3b82f6', update: '#f97316', composant: '#6b7280', doublon: '#ef4444' };
+      const labels = Object.keys(categories);
+      const values = Object.values(categories);
+      const bgColors = labels.map(l => colors[l] || '#999');
+      
+      const ctx = document.getElementById('categoryChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels.map(l => {
+            const names = { main: 'Principaux', update: 'Updates', composant: 'Composants', doublon: 'Doublons' };
+            return names[l] || l;
+          }),
+          datasets: [{
+            data: values,
+            backgroundColor: bgColors,
+            borderColor: '#fff',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+      
+      // Update stats cards
+      document.getElementById('stat-main').textContent = categories['main'] || 0;
+      document.getElementById('stat-update').textContent = categories['update'] || 0;
+      document.getElementById('stat-composant').textContent = categories['composant'] || 0;
+      document.getElementById('stat-doublon').textContent = categories['doublon'] || 0;
+      
+    } catch (error) {
+      console.error('Failed to load category stats:', error);
+    }
+  }
+  initCategoryChart();
+</script>
 
 <!-- Master grid -->
 <div class="row g-3">
