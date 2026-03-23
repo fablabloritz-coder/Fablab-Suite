@@ -1,0 +1,434 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Inventaire LO-0-L002-01 - 23/03/2026 16:58</title>
+<style>
+:root{--pri:#1b4f72;--sec:#2e86c1;--acc:#1e8449;--bg:#f5f7fa;--card:#fff;--border:#ecf0f1;--txt:#2c3e50;--gray:#7f8c8d;--warn:#e67e22;--appx:#8e44ad;--dir:#e67e22}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Calibri,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);padding:20px}
+.header{background:var(--pri);color:#fff;padding:20px 25px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:22px}.header p{font-size:13px;opacity:.8}
+.toolbar{background:var(--card);border-radius:8px;padding:12px 18px;margin-bottom:15px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 2px 4px rgba(0,0,0,.06)}
+.toolbar input[type=text]{flex:1;min-width:200px;padding:8px 12px;border:2px solid var(--border);border-radius:6px;font-size:14px}
+.toolbar input:focus{outline:none;border-color:var(--sec)}
+.btn{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s}
+.btn-pri{background:var(--pri);color:#fff}.btn-pri:hover{background:#154360}
+.btn-acc{background:var(--acc);color:#fff}.btn-acc:hover{background:#196f3d}
+.btn-warn{background:var(--warn);color:#fff}.btn-warn:hover{background:#d35400}
+.btn-out{background:transparent;border:2px solid var(--pri);color:var(--pri)}.btn-out:hover{background:var(--pri);color:#fff}
+.btn-sm{padding:4px 10px;font-size:12px}
+.stats{display:flex;gap:12px;margin-bottom:15px;flex-wrap:wrap}
+.stat{background:var(--card);border-radius:8px;padding:12px 16px;flex:1;min-width:130px;box-shadow:0 2px 4px rgba(0,0,0,.06);border-left:4px solid var(--sec)}
+.stat .label{font-size:11px;color:var(--gray);text-transform:uppercase}.stat .value{font-size:20px;font-weight:700;color:var(--pri)}
+.section{background:var(--card);border-radius:8px;padding:18px;margin-bottom:15px;box-shadow:0 2px 4px rgba(0,0,0,.06)}
+.section h2{font-size:16px;color:var(--pri);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #ebf5fb;cursor:pointer;user-select:none}
+.section h2::after{content:' \u25BC';font-size:11px;color:var(--gray)}
+.section.collapsed h2::after{content:' \u25B6'}
+.section.collapsed .section-body{display:none}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--pri);color:#fff;padding:9px 10px;text-align:left;font-weight:600;position:sticky;top:0;cursor:pointer;user-select:none;white-space:nowrap}
+th:hover{background:#154360}
+th .arrow{font-size:10px;margin-left:4px;opacity:.5}
+th .arrow.active{opacity:1}
+td{padding:7px 10px;border-bottom:1px solid var(--border)}
+tr:nth-child(even){background:#f8f9fa}
+tr:hover{background:#ebf5fb}
+tr.checked-row{background:#d5f5e3!important}
+.cb-cell{width:35px;text-align:center}
+.cb-cell input{width:16px;height:16px;cursor:pointer}
+.note-cell{min-width:150px}
+.note-cell input{width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:transparent}
+.note-cell input:focus{border-color:var(--sec);background:#fff;outline:none}
+.src-reg{color:var(--pri)}.src-user{color:var(--sec)}.src-appx{color:var(--appx)}.src-dir{color:var(--dir)}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.info-item{display:flex;gap:8px;padding:4px 0}.info-item .label{font-weight:600;color:var(--pri);min-width:110px}
+.drop-zone{border:3px dashed var(--border);border-radius:8px;padding:30px;text-align:center;color:var(--gray);transition:.3s;margin-bottom:15px}
+.drop-zone.over{border-color:var(--sec);background:#ebf5fb;color:var(--pri)}
+.drop-zone p{font-size:14px}.drop-zone .icon{font-size:36px;margin-bottom:8px}
+.diff-added{background:#d5f5e3!important}.diff-missing{background:#fadbd8!important}.diff-same{background:#fff}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:6px}
+.badge-green{background:#d5f5e3;color:var(--acc)}.badge-red{background:#fadbd8;color:#c0392b}.badge-blue{background:#d6eaf8;color:var(--pri)}
+.footer{text-align:center;color:var(--gray);font-size:12px;margin-top:20px;padding-top:12px;border-top:1px solid var(--border)}
+.tab-bar{display:flex;gap:0;margin-bottom:15px}.tab-bar .tab{padding:10px 20px;cursor:pointer;border:2px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;background:var(--bg);font-weight:600;color:var(--gray)}
+.tab-bar .tab.active{background:var(--card);color:var(--pri);border-color:var(--pri);border-bottom:2px solid var(--card);margin-bottom:-2px;position:relative;z-index:1}
+.tab-content{border:2px solid var(--pri);border-radius:0 8px 8px 8px;padding:18px;background:var(--card);margin-bottom:15px}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.counter-bar{background:var(--card);border-radius:8px;padding:10px 18px;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,.06)}
+@media print{.toolbar,.tab-bar,.drop-zone,.btn,.note-cell,.cb-cell,#searchBox,.counter-bar,.no-print{display:none!important}body{padding:5px}
+.header{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+tr.hide-print{display:none!important}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div><h1>LO-0-L002-01</h1><p>Inventaire du 23/03/2026 16:58</p></div>
+  <div style="text-align:right"><div style="font-size:28px;font-weight:700">342</div><div style="font-size:12px;opacity:.7">logiciels</div></div>
+</div>
+
+<!-- TABS -->
+<div class="tab-bar no-print">
+  <div class="tab active" onclick="switchTab('inventory')">Inventaire</div>
+  <div class="tab" onclick="switchTab('compare')">Comparaison</div>
+</div>
+
+<!-- ==================== TAB INVENTAIRE ==================== -->
+<div class="tab-content">
+<div id="tab-inventory" class="tab-panel active">
+
+<div class="toolbar no-print">
+  <input type="text" id="searchBox" placeholder="Rechercher un logiciel..." oninput="filterTable()">
+  <button class="btn btn-acc" onclick="toggleCheckedOnly()">Importants uniquement</button>
+  <button class="btn btn-pri" onclick="window.print()">Imprimer / PDF</button>
+  <button class="btn btn-out" onclick="uncheckAll()">Tout decocher</button>
+</div>
+
+<div class="counter-bar no-print">
+  <span>Logiciels importants coches : <strong id="checkedCount">0</strong> / 342</span>
+  <span id="filterStatus" style="color:var(--gray);font-size:13px"></span>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="label">Principaux</div><div class="value">245</div></div>
+  <div class="stat"><div class="label">Updates masques</div><div class="value">22</div></div>
+  <div class="stat"><div class="label">Composants masques</div><div class="value">59</div></div>
+  <div class="stat"><div class="label">Doublons retires</div><div class="value">16</div></div>
+  <div class="stat"><div class="label">RAM</div><div class="value">15.9 Go</div></div>
+</div>
+
+<div class="section">
+  <h2 onclick="toggleSection(this)">Informations systeme</h2>
+  <div class="section-body">
+    <div class="info-grid">
+      <div class="info-item"><span class="label">Nom</span><span>LO-0-L002-01</span></div>
+      <div class="info-item"><span class="label">OS</span><span>Microsoft Windows 11 Professionnel Éducation 10.0.26200</span></div>
+      <div class="info-item"><span class="label">CPU</span><span>Intel(R) Core(TM) i5-9500 CPU @ 3.00GHz (6 coeurs)</span></div>
+      <div class="info-item"><span class="label">RAM</span><span>15.9 Go</span></div>
+      <div class="info-item"><span class="label">Fabricant</span><span>LENOVO 10SQS0QX00</span></div>
+      <div class="info-item"><span class="label">N serie</span><span>S4QE6961</span></div>
+      <div class="info-item"><span class="label">Domaine</span><span>WORKGROUP</span></div>
+      <div class="info-item"><span class="label">Utilisateur</span><span>Administrateur</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2 onclick="toggleSection(this)">Disques</h2>
+  <div class="section-body">
+    <table><tr><th>Lettre</th><th>Taille</th><th>Libre</th><th>Utilise</th></tr><tr><td>C:</td><td>237.5 Go</td><td>53.5 Go</td><td>184 Go</td></tr></table>
+  </div>
+</div>
+
+<div class="section">
+  <h2 onclick="toggleSection(this)">Reseau</h2>
+  <div class="section-body">
+    <table><tr><th>Carte</th><th>IP</th><th>MAC</th><th>DHCP</th></tr><tr><td>Intel(R) Ethernet Connection (7) I219-V</td><td>172.17.3.32</td><td>6C:4B:90:EE:EB:40</td><td>Oui</td></tr></table>
+  </div>
+</div>
+
+<div class="section">
+  <h2 onclick="toggleSection(this)">Logiciels (342)</h2>
+  <div class="section-body">
+    <div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:13px;color:var(--gray);margin-right:4px">Afficher :</span>
+      <button onclick="toggleCat('main')" id="btn-main" class="btn btn-sm" style="background:#d6eaf8;color:#1b4f72;border:2px solid #1b4f72;font-weight:600">Principaux (245)</button>
+      <button onclick="toggleCat('update')" id="btn-update" class="btn btn-sm" style="background:transparent;color:#e67e22;border:2px solid #e67e22;font-weight:600;opacity:.5">Updates (22)</button>
+      <button onclick="toggleCat('composant')" id="btn-composant" class="btn btn-sm" style="background:transparent;color:#7f8c8d;border:2px solid #7f8c8d;font-weight:600;opacity:.5">Composants (59)</button>
+      <button onclick="toggleCat('doublon')" id="btn-doublon" class="btn btn-sm" style="background:transparent;color:#c0392b;border:2px solid #c0392b;font-weight:600;opacity:.5">Doublons (16)</button>
+    </div>
+    <table id="softTable">
+      <thead><tr>
+        <th class="cb-cell no-print"><input type="checkbox" id="checkAll" onchange="toggleAll(this)" title="Tout cocher"></th>
+        <th onclick="sortTable(1)">Nom <span class="arrow" id="arrow1">&#9650;</span></th>
+        <th onclick="sortTable(2)">Version <span class="arrow" id="arrow2"></span></th>
+        <th onclick="sortTable(3)">Editeur <span class="arrow" id="arrow3"></span></th>
+        <th onclick="sortTable(4)">Date <span class="arrow" id="arrow4"></span></th>
+        <th onclick="sortTable(5)">Taille (Mo) <span class="arrow" id="arrow5"></span></th>
+        <th onclick="sortTable(6)">Source <span class="arrow" id="arrow6"></span></th>
+        <th class="note-cell no-print">Notes</th>
+      </tr></thead>
+      <tbody id="softBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2 onclick="toggleSection(this)">Services automatiques (94)</h2>
+  <div class="section-body">
+    <table><tr><th>Nom</th><th>Nom court</th></tr><tr><td>Alimentation</td><td>Power</td></tr><tr><td>Appel de procédure distante (RPC)</td><td>RpcSs</td></tr><tr><td>Assistance IP</td><td>iphlpsvc</td></tr><tr><td>Audio Windows</td><td>Audiosrv</td></tr><tr><td>Autodesk Access Service Host</td><td>Autodesk Access Service Host</td></tr><tr><td>Autodesk CER Service</td><td>Autodesk CER Service</td></tr><tr><td>Autodesk Desktop Licensing Service</td><td>AdskLicensingService</td></tr><tr><td>Automation License Manager Service</td><td>almservice</td></tr><tr><td>Centre de sécurité</td><td>wscsvc</td></tr><tr><td>Client de stratégie de groupe</td><td>gpsvc</td></tr><tr><td>Client de suivi de lien distribué</td><td>TrkWks</td></tr><tr><td>Client DHCP</td><td>Dhcp</td></tr><tr><td>Client DNS</td><td>Dnscache</td></tr><tr><td>CmWebAdmin</td><td>CmWebAdmin.exe</td></tr><tr><td>CodeMeter Runtime Server</td><td>CodeMeter.exe</td></tr><tr><td>CODESYS Gateway V3 Version 3.5.17.30</td><td>CODESYS Gateway V3</td></tr><tr><td>CODESYS ServiceControl Version 3.5.17.30</td><td>CODESYS ServiceControl</td></tr><tr><td>Consommation des données</td><td>DusmSvc</td></tr><tr><td>CoreMessaging</td><td>CoreMessagingRegistrar</td></tr><tr><td>Détection matériel noyau</td><td>ShellHWDetection</td></tr><tr><td>Expériences des utilisateurs connectés et télémétrie</td><td>DiagTrack</td></tr><tr><td>FlexNet Licensing Service 64</td><td>FlexNet Licensing Service 64</td></tr><tr><td>FOGService</td><td>FOGService</td></tr><tr><td>FTZ Licenses Server</td><td>FTZlssvc</td></tr><tr><td>Générateur de points de terminaison du service Audio Windows</td><td>AudioEndpointBuilder</td></tr><tr><td>Gestionnaire de comptes de sécurité</td><td>SamSs</td></tr><tr><td>Gestionnaire de session locale</td><td>LSM</td></tr><tr><td>Gestionnaire des connexions Windows</td><td>Wcmsvc</td></tr><tr><td>Gestionnaire des utilisateurs</td><td>UserManager</td></tr><tr><td>Infrastructure de gestion Windows</td><td>Winmgmt</td></tr><tr><td>Intégrité de Windows et expériences optimisées</td><td>whesvc</td></tr><tr><td>Intel(R) Dynamic Application Loader Host Interface Service</td><td>jhi_service</td></tr><tr><td>Intel(R) Management and Security Application Local Management Service</td><td>LMS</td></tr><tr><td>Intel(R) Storage Middleware Service</td><td>RstMwService</td></tr><tr><td>Journal d’événements Windows</td><td>EventLog</td></tr><tr><td>Lanceur de processus serveur DCOM</td><td>DcomLaunch</td></tr><tr><td>Mappeur de point de terminaison RPC</td><td>RpcEptMapper</td></tr><tr><td>Microsoft Defender Service de base</td><td>MDCoreSvc</td></tr><tr><td>Moteur de filtrage de base</td><td>BFE</td></tr><tr><td>NVIDIA Display Container LS</td><td>NVDisplay.ContainerLocalSystem</td></tr><tr><td>NVIDIA Telemetry Container</td><td>NvTelemetryContainer</td></tr><tr><td>NVIDIA WMI Provider</td><td>NVWMI</td></tr><tr><td>ONLYOFFICE Update Service</td><td>ONLYOFFICE Update Service</td></tr><tr><td>Optimisation de livraison</td><td>DoSvc</td></tr><tr><td>Pare-feu Windows Defender</td><td>mpssvc</td></tr><tr><td>Planificateur de tâches</td><td>Schedule</td></tr><tr><td>Realtek Audio Universal Service</td><td>RtkAudioUniversalService</td></tr><tr><td>S7DOS Help Service</td><td>s7oiehsx64</td></tr><tr><td>Schneider Electric FUS</td><td>Schneider Electric FUS</td></tr><tr><td>Schneider Electric SUT Service</td><td>Schneider Electric SUT Service</td></tr><tr><td>Sentinel Keys Server</td><td>SentinelKeysServer</td></tr><tr><td>Sentinel Protection Server</td><td>SentinelProtectionServer</td></tr><tr><td>Serveur</td><td>LanmanServer</td></tr><tr><td>Service antivirus Microsoft Defender</td><td>WinDefend</td></tr><tr><td>Service Broker des événements système</td><td>SystemEventsBroker</td></tr><tr><td>Service d’Appraisal inventaire et compatibilité</td><td>InventorySvc</td></tr><tr><td>Service d’infrastructure des tâches en arrière-plan</td><td>BrokerInfrastructure</td></tr><tr><td>Service d’utilisateur Web Threat Defense_7764d9</td><td>webthreatdefusersvc_7764d9</td></tr><tr><td>Service de cache de police Windows</td><td>FontCache</td></tr><tr><td>Service de déploiement AppX (AppXSVC)</td><td>AppXSvc</td></tr><tr><td>Service de gestion des entrées de texte</td><td>TextInputManagementService</td></tr><tr><td>Service de l’Assistant Compatibilité des programmes</td><td>PcaSvc</td></tr><tr><td>Service de notification d’événements système</td><td>SENS</td></tr><tr><td>Service de plateforme des appareils connectés</td><td>CDPSvc</td></tr><tr><td>Service de profil utilisateur</td><td>ProfSvc</td></tr><tr><td>Service de stockage</td><td>StorSvc</td></tr><tr><td>Service de stratégie d'affichage</td><td>DispBrokerDesktopSvc</td></tr><tr><td>Service de stratégie de diagnostic</td><td>DPS</td></tr><tr><td>Service du système de notifications Push Windows</td><td>WpnService</td></tr><tr><td>Service Gestionnaire d’accès aux fonctionnalités</td><td>camsvc</td></tr><tr><td>Service Interface du magasin réseau</td><td>nsi</td></tr><tr><td>Service Orchestrator pour les mises à jour</td><td>UsoSvc</td></tr><tr><td>Service pour utilisateur de plateforme d’appareils connectés_7764d9</td><td>CDPUserSvc_7764d9</td></tr><tr><td>Service State Repository (StateRepository)</td><td>StateRepository</td></tr><tr><td>Service utilisateur de notifications Push Windows_7764d9</td><td>WpnUserService_7764d9</td></tr><tr><td>Service utilisateur du Presse-papiers_7764d9</td><td>cbdhsvc_7764d9</td></tr><tr><td>Services de chiffrement</td><td>CryptSvc</td></tr><tr><td>SIMATIC PnDiscovery Service</td><td>SIMATIC PnDiscovery Service</td></tr><tr><td>SIMATIC Trace Service</td><td>S7TraceServiceX</td></tr><tr><td>Spouleur d’impression</td><td>Spooler</td></tr><tr><td>SQL Server (WINCCPLUSMIG2014)</td><td>MSSQL$WINCCPLUSMIG2014</td></tr><tr><td>SQL Server Browser</td><td>SQLBrowser</td></tr><tr><td>SQL Server VSS Writer</td><td>SQLWriter</td></tr><tr><td>Station de travail</td><td>LanmanWorkstation</td></tr><tr><td>SysMain</td><td>SysMain</td></tr><tr><td>Système d’événement COM+</td><td>EventSystem</td></tr><tr><td>Thèmes</td><td>Themes</td></tr><tr><td>TraceConceptX</td><td>TraceConceptX</td></tr><tr><td>UMC Secure Communication</td><td>umscsvc</td></tr><tr><td>WAGO Device Communication Service</td><td>WAGO Device Communication Service</td></tr><tr><td>WAGO Legacy Communication Service</td><td>WAGO Legacy Communication Service</td></tr><tr><td>WAGO Solution Builder</td><td>WAGO Solution Builder</td></tr><tr><td>WAGO Solution Builder PostgreSQL</td><td>WAGO Solution Builder PostgreSQL</td></tr><tr><td>Windows Search</td><td>WSearch</td></tr></table>
+  </div>
+</div>
+
+</div><!-- /tab-inventory -->
+
+<!-- ==================== TAB COMPARAISON ==================== -->
+<div id="tab-compare" class="tab-panel">
+
+<div class="drop-zone" id="dropZone">
+  <div class="icon">&#128196; &#8644; &#128196;</div>
+  <p>Glissez un autre fichier d'inventaire HTML ici pour comparer</p>
+  <p style="font-size:12px;margin-top:5px">(ou cliquez pour parcourir)</p>
+  <input type="file" id="fileInput" accept=".html" style="display:none" onchange="handleFile(this.files[0])">
+</div>
+
+<div id="compareResult" style="display:none">
+  <div class="stats" id="compareStats"></div>
+  <div class="section">
+    <h2>Resultat de la comparaison</h2>
+    <div class="section-body">
+      <div style="margin-bottom:10px;font-size:13px">
+        <span class="badge badge-green">Present ici, absent dans l'autre</span>
+        <span class="badge badge-red">Absent ici, present dans l'autre</span>
+        <span class="badge badge-blue">Present dans les deux</span>
+      </div>
+      <table id="compareTable">
+        <thead><tr><th>Logiciel</th><th>Version (ce master)</th><th>Version (autre master)</th><th>Statut</th></tr></thead>
+        <tbody id="compareBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /tab-compare -->
+</div><!-- /tab-content -->
+
+<div class="footer">Inventaire v3 - LO-0-L002-01 - 23/03/2026 16:58</div>
+
+<!-- EMBEDDED DATA FOR COMPARISON -->
+<script id="inventoryData" type="application/json">{"pcName":"LO-0-L002-01","date":"23/03/2026 16:58","software":[{"n":".AdskAppManager","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"7-Zip 26.00 (x64)","v":"26.00","e":"Igor Pavlov","d":"-","s":5.6,"src":"Registre","cat":"main"},{"n":"ACAD Private","v":"25.1.60.0","e":"Autodesk","d":"23/03/2026","s":0.3,"src":"Registre","cat":"main"},{"n":"ACADE Private","v":"23.0.61.0","e":"Autodesk","d":"23/03/2026","s":0.3,"src":"Registre","cat":"main"},{"n":"ACCA - PriMus-DCF v.BIM 2(e) - FR - x86 - (52.0.5.26680)","v":"52.0.5.26680","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA - Solarius-PV v.usBIM(d) - FR - x64 - (18.0.5.32680)","v":"18.0.5.32680","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - ACCA_BIMPlatforms  v.123 - x86 - (1.1.24.32235)","v":"1.1.24.32235","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - ACCABrowser v.1.10m - x64 - (1.0.16.32363)","v":"1.0.16.32363","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - ACCABrowser v.1.10m - x86 - (1.0.16.32362)","v":"1.0.16.32362","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - ACCAPreviewHandler v.5.00f - x86 - (5.0.6.24119)","v":"5.0.6.24119","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - DrawingsX 21.11.0 v.21.11.0 - x64 - (2111.0.1.25646)","v":"2111.0.1.25646","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - Fonts  v.2.00d - x86 - (2.0.3.15260)","v":"2.0.3.15260","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - Microsoft .NET Framework 4.7.2 v.4.7.2 - x86 - (4.70.2.29453)","v":"4.70.2.29453","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"composant"},{"n":"ACCA Common - Microsoft Visual C++ 2005 Redistributable Package v.2005 - x86 - (2005.0.2.15346)","v":"2005.0.2.15346","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"composant"},{"n":"ACCA Common - Microsoft Visual C++ 2008 Redistributable Package v.2008 - x86 - (2008.0.2.15352)","v":"2008.0.2.15352","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"composant"},{"n":"ACCA Common - Microsoft Visual C++ 2010 Redistributable Package v.2010(a) - x86 - (2010.0.2.15258)","v":"2010.0.2.15258","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"composant"},{"n":"ACCA Common - Microsoft Visual C++ 2012 Redistributable (x86) v.2012 - x86 - (2012.0.2.15250)","v":"2012.0.2.15250","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"composant"},{"n":"ACCA Common - Microsoft Visual C++ 2013 Redistributable Package v.2013a (12.0.40660) - x86 - (2013.0.3.15241)","v":"2013.0.3.15241","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"composant"},{"n":"ACCA Common - Microsoft Visual C++ 2015-2019 Redistributable Package v.2015-2019 - x86 - (2019.0.1.25463)","v":"2019.0.1.25463","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"composant"},{"n":"ACCA Common - SignTool v.2.00g - x86 - (2.0.8.19502)","v":"2.0.8.19502","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ACCA Common - TeighaX 4.3.1 (x32_x64) v.4.3.1(b) - x86 - (431.0.2.15439)","v":"431.0.2.15439","e":"ACCA software S.p.A.","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"ActivityInsights","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Adlm","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"AdpIPMClient","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"AdskLicensingAgent","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"AlpiUpdate","v":"7.0.0.20","e":"I.G.E. SAS","d":"09/03/2026","s":50.2,"src":"Registre","cat":"main"},{"n":"Applications recommandées Autodesk","v":"3.6.0","e":"Autodesk","d":"23/03/2026","s":19,"src":"Registre","cat":"main"},{"n":"AppUp.IntelOptaneMemoryandStorageManagement","v":"18.1.1042.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Arduino IDE 2.3.8","v":"2.3.8","e":"Arduino SA","d":"-","s":527.5,"src":"Registre","cat":"main"},{"n":"AutoCAD 2023","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"AutoCAD 2026 - Français (French)","v":"25.1.60.0","e":"Autodesk","d":"23/03/2026","s":13.2,"src":"Registre","cat":"doublon"},{"n":"AutoCAD Electrical 2023","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"AutoCAD Electrical 2026 - Français (French)","v":"23.0.61.0","e":"Autodesk","d":"23/03/2026","s":876.3,"src":"Registre","cat":"doublon"},{"n":"AutoCAD Electrical 2026 CA Language Pack - Français (French)","v":"23.0.61.0","e":"Autodesk","d":"23/03/2026","s":0.6,"src":"Registre","cat":"update"},{"n":"AutoCAD Electrical 2026 Content CA Language Pack - Français (French)","v":"23.0.61.0","e":"Autodesk","d":"23/03/2026","s":663.2,"src":"Registre","cat":"update"},{"n":"AutoCAD Electrical 2026 Content Pack CA","v":"23.0.61.0","e":"Autodesk","d":"23/03/2026","s":5.7,"src":"Registre","cat":"main"},{"n":"AutoCAD Electrical 2026.0.1 Update","v":"23.0.83.0","e":"Autodesk, Inc.","d":"23/03/2026","s":79.6,"src":"Registre","cat":"update"},{"n":"AutoCAD Open in Desktop","v":"1.0.28.0","e":"Autodesk","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"AutoCAD-OpenInDesktop","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Autodesk Access","v":"2.21.0.559","e":"Autodesk, Inc.","d":"23/03/2026","s":69.7,"src":"Registre","cat":"main"},{"n":"Autodesk AdSSO","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Autodesk Advanced Material Library Base Resolution Image Library 2023","v":"21.0.1.1","e":"Autodesk","d":"06/03/2026","s":24.6,"src":"Registre","cat":"update"},{"n":"Autodesk Advanced Material Library Low Resolution Image Library 2023","v":"21.0.1.1","e":"Autodesk","d":"06/03/2026","s":65.2,"src":"Registre","cat":"update"},{"n":"Autodesk Advanced Material Library Medium Resolution Image Library 2023","v":"21.0.1.1","e":"Autodesk","d":"06/03/2026","s":1531.8,"src":"Registre","cat":"update"},{"n":"Autodesk App Manager","v":"3.6.0","e":"Autodesk","d":"23/03/2026","s":5.9,"src":"Registre","cat":"main"},{"n":"Autodesk AutoCAD 2026 - Français (French)","v":"25.1.164.0","e":"Autodesk, Inc.","d":"23/03/2026","s":5515.1,"src":"Registre","cat":"main"},{"n":"Autodesk AutoCAD 2026.1.1 Update","v":"25.1.164.0","e":"Autodesk, Inc.","d":"23/03/2026","s":2263.1,"src":"Registre","cat":"update"},{"n":"Autodesk AutoCAD Electrical 2026 - Français (French)","v":"23.0.83.0","e":"Autodesk, Inc.","d":"23/03/2026","s":7885.2,"src":"Registre","cat":"main"},{"n":"Autodesk AutoCAD Performance Feedback Tool 1.3.12","v":"1.3.12.0","e":"Autodesk","d":"06/03/2026","s":7.3,"src":"Registre","cat":"main"},{"n":"Autodesk Carbon Insights for Revit 2023","v":"23.1.80.30","e":"Autodesk","d":"06/03/2026","s":2,"src":"Registre","cat":"main"},{"n":"Autodesk Carbon Insights for Revit 2026","v":"26.4.0.32","e":"Autodesk","d":"23/03/2026","s":1.7,"src":"Registre","cat":"main"},{"n":"Autodesk CER","v":"7.2.4.927","e":"Autodesk Inc.","d":"23/03/2026","s":51.8,"src":"Registre","cat":"main"},{"n":"Autodesk Collaboration","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Autodesk Genuine Service","v":"7.6.0.229","e":"Autodesk","d":"06/03/2026","s":329.1,"src":"Registre","cat":"composant"},{"n":"Autodesk Interoperability Engine Manager","v":"1.3.2.2","e":"Autodesk, Inc.","d":"06/03/2026","s":25.7,"src":"Registre","cat":"main"},{"n":"Autodesk Material Library 2023","v":"21.0.1.1","e":"Autodesk","d":"06/03/2026","s":212.7,"src":"Registre","cat":"update"},{"n":"Autodesk Material Library Base Resolution Image Library 2023","v":"21.0.1.1","e":"Autodesk","d":"06/03/2026","s":71.5,"src":"Registre","cat":"update"},{"n":"Autodesk Material Library Low Resolution Image Library 2023","v":"21.0.1.1","e":"Autodesk","d":"06/03/2026","s":245.2,"src":"Registre","cat":"update"},{"n":"Autodesk Material Library Medium Resolution Image Library 2023","v":"21.0.1.1","e":"Autodesk","d":"06/03/2026","s":715.8,"src":"Registre","cat":"update"},{"n":"Autodesk Revit 2026","v":"26.4.0.32","e":"Autodesk, Inc.","d":"23/03/2026","s":15621.1,"src":"Registre","cat":"doublon"},{"n":"Autodesk Revit Add-Ins Manager 2026","v":"26.0.4.409","e":"Autodesk","d":"23/03/2026","s":2.9,"src":"Registre","cat":"main"},{"n":"Autodesk Revit Product Feedback 2026","v":"26.4.0.32","e":"Autodesk","d":"23/03/2026","s":2.6,"src":"Registre","cat":"main"},{"n":"Autodesk Revit Unit Schemas 2023","v":"23.1.80.30","e":"Autodesk, Inc.","d":"06/03/2026","s":117.1,"src":"Registre","cat":"main"},{"n":"Autodesk Serial Number Activation Support Component","v":"1.0.0.32","e":"Autodesk, Inc.","d":"23/03/2026","s":30.9,"src":"Registre","cat":"main"},{"n":"Autodesk Single Sign On Component","v":"14.1.3.1803","e":"Autodesk","d":"06/03/2026","s":225.3,"src":"Registre","cat":"composant"},{"n":"Autodesk Steel Connections Core Content for Revit 2026","v":"26.0.4.409","e":"Autodesk","d":"23/03/2026","s":36.2,"src":"Registre","cat":"main"},{"n":"Automation Software Updater","v":"02.04.0000","e":"Siemens AG","d":"20/03/2026","s":9,"src":"Registre","cat":"main"},{"n":"Batch Print for Autodesk Revit 2026","v":"26.0.4.409","e":"Autodesk","d":"23/03/2026","s":3.3,"src":"Registre","cat":"main"},{"n":"Caneco BOX Module 2.1","v":"2.01.0007","e":"ALPI","d":"09/03/2026","s":119.2,"src":"Registre","cat":"main"},{"n":"Caneco BT 2025 Application files","v":"5.15.0.42","e":"I.G.E. SAS","d":"09/03/2026","s":831.4,"src":"Registre","cat":"main"},{"n":"Caneco BT 2025 Country pack FR","v":"5.15.0.12","e":"I.G.E. SAS","d":"09/03/2026","s":6135.6,"src":"Registre","cat":"main"},{"n":"Caneco Dessin 4.4","v":"4.4.5010","e":"I.G.E. SA","d":"09/03/2026","s":10.4,"src":"Registre","cat":"main"},{"n":"Caneco HT 2025","v":"3.5.0.4","e":"I.G.E. SAS","d":"09/03/2026","s":392.5,"src":"Registre","cat":"main"},{"n":"Carbon Insights for Revit 2023","v":"23.1.80.30","e":"Autodesk, Inc.","d":"06/03/2026","s":2,"src":"Registre","cat":"doublon"},{"n":"CodeMeter Runtime Kit v7.21a","v":"7.21.4611.501","e":"WIBU-SYSTEMS AG","d":"06/03/2026","s":77.3,"src":"Registre","cat":"main"},{"n":"CODESYS 3.5.17.30","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"CODESYS 64 3.5.17.30","v":"3.5.17.300","e":"CODESYS GmbH","d":"06/03/2026","s":2535.8,"src":"Registre","cat":"main"},{"n":"CODESYS Installer","v":"1.2.0.682","e":"CODESYS GmbH","d":"06/03/2026","s":42.9,"src":"Registre","cat":"main"},{"n":"CXM DTM","v":"1.00.0003","e":"Schneider Electric","d":"06/03/2026","s":6.6,"src":"Registre","cat":"main"},{"n":"DIAL Communication Framework","v":"3.0.397.0","e":"DIAL GmbH","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"DIAL Data Dispatcher","v":"2.0.24.0","e":"DIAL GmbH","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"DIAL GmbH","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"DIALux evo (x64)","v":"5.13.2.5","e":"DIAL GmbH","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"DisplayDriverAnalyzer","v":"391.35","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"dotnet","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"DrawingsX 21.11  (x64)","v":"21.11.0","e":"Open Design Alliance","d":"06/03/2026","s":77.7,"src":"Registre","cat":"main"},{"n":"EcoStruxure Power Design - Ecodial FR V5.00","v":"5.00","e":"Schneider Electric","d":"09/03/2026","s":263.7,"src":"Registre","cat":"main"},{"n":"Enregistrement Autodesk sur le Web et au format mobile","v":"3.1.8","e":"Autodesk","d":"23/03/2026","s":33.7,"src":"Registre","cat":"main"},{"n":"EPANET 2.0 Fr","v":"","e":"","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"Epanet2_Fr","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"eTransmit for Autodesk Revit 2026","v":"26.0.4.409","e":"Autodesk","d":"23/03/2026","s":4.3,"src":"Registre","cat":"main"},{"n":"Ets3PlugIn","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"FOG Service","v":"0.13.0","e":"FOG","d":"12/03/2026","s":5,"src":"Registre","cat":"main"},{"n":"FormIt Converter for Revit 2026","v":"26.4.0.32","e":"Autodesk","d":"23/03/2026","s":11.1,"src":"Registre","cat":"main"},{"n":"FTZ Schem 14","v":"14.02.200221","e":"FTZ","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"GanttProject","v":"3.3.3316","e":"BarD Software s.r.o.","d":"-","s":185.5,"src":"Registre","cat":"main"},{"n":"GDR 5223 pour SQL Server 2014 (Ko4505217)","v":"12.2.5223.6","e":"Microsoft Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"Generative Design For Revit","v":"26.5.6.0","e":"Autodesk","d":"23/03/2026","s":356.9,"src":"Registre","cat":"main"},{"n":"Genuine Autodesk Service","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Google Chrome","v":"145.0.7632.162","e":"Google LLC","d":"10/03/2026","s":136.3,"src":"Registre","cat":"main"},{"n":"GPLGS","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Identity Services","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Internet Explorer","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"KNX ETS5 Compatibility Components V5.5.0","v":"5.5.0.0","e":"KNX Association cvba","d":"10/03/2026","s":9.2,"src":"Registre","cat":"main"},{"n":"KNX ETS5 v5.0.5","v":"5.0.1217.9763","e":"KNX Association cvba","d":"09/03/2026","s":170.8,"src":"Registre","cat":"main"},{"n":"KNX ETS5 v5.7.7","v":"5.7.1428.39779","e":"KNX Association cvba","d":"10/03/2026","s":469.1,"src":"Registre","cat":"main"},{"n":"LegrandPDFWriter","v":"","e":"","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"Logs","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"M580 Master DTM","v":"2.9.3","e":"Schneider Electric","d":"06/03/2026","s":103.9,"src":"Registre","cat":"main"},{"n":"MATLAB R2025b","v":"25.2","e":"MathWorks","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"Microsoft .NET 7.0.10 - Windows Server Hosting","v":"7.0.10.23364","e":"Microsoft Corporation","d":"-","s":138.1,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Core Host - 3.1.10 (x64)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":0.4,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Core Host - 3.1.10 (x86)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":0.3,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Core Host FX Resolver - 3.1.10 (x64)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":0.6,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Core Host FX Resolver - 3.1.10 (x86)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":0.4,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Core Runtime - 3.1.10 (x64)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":65.5,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Core Runtime - 3.1.10 (x86)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":58.3,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Host - 7.0.10 (x64)","v":"56.43.64668","e":"Microsoft Corporation","d":"06/03/2026","s":0.2,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Host - 7.0.10 (x86)","v":"56.43.64668","e":"Microsoft Corporation","d":"06/03/2026","s":0.5,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Host - 8.0.25 (x64)","v":"64.100.48707","e":"Microsoft Corporation","d":"11/03/2026","s":0.5,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Host FX Resolver - 7.0.10 (x64)","v":"56.43.64668","e":"Microsoft Corporation","d":"06/03/2026","s":0.4,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Host FX Resolver - 7.0.10 (x86)","v":"56.43.64668","e":"Microsoft Corporation","d":"06/03/2026","s":0.3,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Host FX Resolver - 8.0.21 (x64)","v":"64.84.40925","e":"Microsoft Corporation","d":"23/03/2026","s":0.3,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Host FX Resolver - 8.0.25 (x64)","v":"64.100.48707","e":"Microsoft Corporation","d":"11/03/2026","s":0.3,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Runtime - 7.0.10 (x64)","v":"56.43.64668","e":"Microsoft Corporation","d":"06/03/2026","s":69.2,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Runtime - 7.0.10 (x86)","v":"7.0.10.32713","e":"Microsoft Corporation","d":"-","s":88.8,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Runtime - 8.0.21 (x64)","v":"64.84.40925","e":"Microsoft Corporation","d":"23/03/2026","s":70.2,"src":"Registre","cat":"composant"},{"n":"Microsoft .NET Runtime - 8.0.25 (x64)","v":"64.100.48707","e":"Microsoft Corporation","d":"11/03/2026","s":70.2,"src":"Registre","cat":"composant"},{"n":"Microsoft Access database engine 2016 (English)","v":"16.0.5044.1000","e":"Microsoft Corporation","d":"11/03/2026","s":716.3,"src":"Registre","cat":"main"},{"n":"Microsoft ASP.NET Core 3.1.10 - Shared Framework","v":"3.1.10.20520","e":"Microsoft Corporation","d":"-","s":26,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 3.1.10 Shared Framework (x64)","v":"3.1.10.20520","e":"Microsoft Corporation","d":"06/03/2026","s":19,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 7.0.10 - Shared Framework (x64)","v":"7.0.10.23364","e":"Microsoft Corporation","d":"-","s":33.8,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 7.0.10 - Shared Framework (x86)","v":"7.0.10.23364","e":"Microsoft Corporation","d":"-","s":31,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 7.0.10 Hosting Bundle Options","v":"7.0.10.23364","e":"Microsoft Corporation","d":"06/03/2026","s":0,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 7.0.10 Shared Framework (x64)","v":"7.0.10.23364","e":"Microsoft Corporation","d":"06/03/2026","s":25,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 7.0.10 Shared Framework (x86)","v":"7.0.10.23364","e":"Microsoft Corporation","d":"06/03/2026","s":23,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 8.0.21 - Shared Framework (x64)","v":"8.0.21.25475","e":"Microsoft Corporation","d":"-","s":37,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 8.0.21 Shared Framework (x64)","v":"8.0.21.25475","e":"Microsoft Corporation","d":"23/03/2026","s":27.4,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 8.0.25 - Shared Framework (x64)","v":"8.0.25.26112","e":"Microsoft Corporation","d":"-","s":37.1,"src":"Registre","cat":"composant"},{"n":"Microsoft ASP.NET Core 8.0.25 Shared Framework (x64)","v":"8.0.25.26112","e":"Microsoft Corporation","d":"11/03/2026","s":27.4,"src":"Registre","cat":"composant"},{"n":"Microsoft Edge","v":"146.0.3856.72","e":"Microsoft Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"doublon"},{"n":"Microsoft Edge WebView2 Runtime","v":"146.0.3856.72","e":"Microsoft Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"composant"},{"n":"Microsoft ODBC Driver 11 for SQL Server","v":"12.2.5223.6","e":"Microsoft Corporation","d":"23/03/2026","s":4.6,"src":"Registre","cat":"main"},{"n":"Microsoft Primary Interoperability Assemblies 2005","v":"8.0.50727.42","e":"Microsoft Corporation","d":"20/03/2026","s":16.2,"src":"Registre","cat":"main"},{"n":"Microsoft SQL Server 2008 Setup Support Files ","v":"10.3.5500.0","e":"Microsoft Corporation","d":"20/03/2026","s":28.2,"src":"Registre","cat":"main"},{"n":"Microsoft SQL Server 2012 Native Client ","v":"11.4.7001.0","e":"Microsoft Corporation","d":"20/03/2026","s":7.2,"src":"Registre","cat":"main"},{"n":"Microsoft SQL Server 2014","v":"","e":"","d":"-","s":0,"src":"Registre","cat":"doublon"},{"n":"Microsoft SQL Server 2014 Express LocalDB ","v":"12.3.6024.0","e":"Microsoft Corporation","d":"06/03/2026","s":231.8,"src":"Registre","cat":"main"},{"n":"Microsoft SQL Server 2014 RsFx Driver","v":"12.2.5223.6","e":"Microsoft Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"Microsoft SQL Server 2014 Setup (English)","v":"12.2.5223.6","e":"Microsoft Corporation","d":"23/03/2026","s":172.2,"src":"Registre","cat":"main"},{"n":"Microsoft SQL Server 2014 Transact-SQL ScriptDom ","v":"12.2.5000.0","e":"Microsoft Corporation","d":"20/03/2026","s":6.2,"src":"Registre","cat":"main"},{"n":"Microsoft SQL Server 2019 LocalDB ","v":"15.0.2000.5","e":"Microsoft Corporation","d":"23/03/2026","s":258.6,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2005 Redistributable","v":"8.0.61001","e":"Microsoft Corporation","d":"06/03/2026","s":4.8,"src":"Registre","cat":"doublon"},{"n":"Microsoft Visual C++ 2005 Redistributable (x64)","v":"8.0.56336","e":"Microsoft Corporation","d":"06/03/2026","s":7.1,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2008 Redistributable - x64 9.0.30729","v":"9.0.30729","e":"Microsoft Corporation","d":"06/03/2026","s":12.5,"src":"Registre","cat":"doublon"},{"n":"Microsoft Visual C++ 2008 Redistributable - x64 9.0.30729.4148","v":"9.0.30729.4148","e":"Microsoft Corporation","d":"06/03/2026","s":13.2,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2008 Redistributable - x64 9.0.30729.6161","v":"9.0.30729.6161","e":"Microsoft Corporation","d":"09/03/2026","s":13.2,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2008 Redistributable - x86 9.0.30729.4148","v":"9.0.30729.4148","e":"Microsoft Corporation","d":"06/03/2026","s":9.5,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2008 Redistributable - x86 9.0.30729.6161","v":"9.0.30729.6161","e":"Microsoft Corporation","d":"06/03/2026","s":10.2,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219","v":"10.0.40219","e":"Microsoft Corporation","d":"09/03/2026","s":15.2,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219","v":"10.0.40219","e":"Microsoft Corporation","d":"20/03/2026","s":13.7,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2012 Redistributable (x64) - 11.0.61030","v":"11.0.61030.0","e":"Microsoft Corporation","d":"-","s":20.5,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2012 Redistributable (x86) - 11.0.61030","v":"11.0.61030.0","e":"Microsoft Corporation","d":"-","s":17.4,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2012 x64 Additional Runtime - 11.0.61030","v":"11.0.61030","e":"Microsoft Corporation","d":"06/03/2026","s":12,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2012 x64 Minimum Runtime - 11.0.61030","v":"11.0.61030","e":"Microsoft Corporation","d":"06/03/2026","s":2,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2012 x86 Additional Runtime - 11.0.61030","v":"11.0.61030","e":"Microsoft Corporation","d":"06/03/2026","s":9.7,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2012 x86 Minimum Runtime - 11.0.61030","v":"11.0.61030","e":"Microsoft Corporation","d":"06/03/2026","s":1.7,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40660","v":"12.0.40660.0","e":"Microsoft Corporation","d":"-","s":20.6,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40660","v":"12.0.40660.0","e":"Microsoft Corporation","d":"-","s":17.2,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40660","v":"12.0.40660","e":"Microsoft Corporation","d":"06/03/2026","s":11.5,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40660","v":"12.0.40660","e":"Microsoft Corporation","d":"06/03/2026","s":2.5,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2013 x86 Additional Runtime - 12.0.40660","v":"12.0.40660","e":"Microsoft Corporation","d":"06/03/2026","s":9.2,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2013 x86 Minimum Runtime - 12.0.40660","v":"12.0.40660","e":"Microsoft Corporation","d":"06/03/2026","s":2,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2022 X64 Additional Runtime - 14.50.35719","v":"14.50.35719","e":"Microsoft Corporation","d":"23/03/2026","s":11.6,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.50.35719","v":"14.50.35719","e":"Microsoft Corporation","d":"23/03/2026","s":2.3,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2022 X86 Additional Runtime - 14.50.35719","v":"14.50.35719","e":"Microsoft Corporation","d":"23/03/2026","s":10.1,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ 2022 X86 Minimum Runtime - 14.50.35719","v":"14.50.35719","e":"Microsoft Corporation","d":"23/03/2026","s":2,"src":"Registre","cat":"main"},{"n":"Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719","v":"14.50.35719.0","e":"Microsoft Corporation","d":"-","s":20.7,"src":"Registre","cat":"composant"},{"n":"Microsoft Visual C++ v14 Redistributable (x86) - 14.50.35719","v":"14.50.35719.0","e":"Microsoft Corporation","d":"-","s":18.2,"src":"Registre","cat":"composant"},{"n":"Microsoft VSS Writer for SQL Server 2014","v":"12.2.5000.0","e":"Microsoft Corporation","d":"23/03/2026","s":3.5,"src":"Registre","cat":"main"},{"n":"Microsoft Windows Desktop Runtime - 3.1.10 (x64)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":83.8,"src":"Registre","cat":"main"},{"n":"Microsoft Windows Desktop Runtime - 3.1.10 (x86)","v":"24.104.29419","e":"Microsoft Corporation","d":"06/03/2026","s":77.8,"src":"Registre","cat":"main"},{"n":"Microsoft Windows Desktop Runtime - 8.0.21 (x64)","v":"64.84.40919","e":"Microsoft Corporation","d":"23/03/2026","s":89.9,"src":"Registre","cat":"main"},{"n":"Microsoft Windows Desktop Runtime - 8.0.25 (x64)","v":"64.100.48707","e":"Microsoft Corporation","d":"11/03/2026","s":89.8,"src":"Registre","cat":"main"},{"n":"Microsoft.ApplicationCompatibilityEnhancements","v":"1.2511.9.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.AV1VideoExtension","v":"2.0.7.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.AVCEncoderVideoExtension","v":"1.1.23.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.DesktopAppInstaller","v":"1.28.219.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.Edge.GameAssist","v":"1.0.3590.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.GetHelp","v":"10.2409.33293.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.HEIFImageExtension","v":"1.2.29.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.HEVCVideoExtension","v":"2.4.43.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.LanguageExperiencePackfr-FR","v":"26100.153.253.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.MicrosoftEdge.Stable","v":"145.0.3800.82","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.MPEG2VideoExtension","v":"1.2.13.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.Paint","v":"11.2601.401.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.RawImageExtension","v":"2.5.7.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.ScreenSketch","v":"11.2601.0.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.SecHealthUI","v":"1000.29510.1001.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.StorePurchaseApp","v":"22512.1401.1.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.VP9VideoExtensions","v":"1.2.12.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.WebMediaExtensions","v":"2.1.20.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.WebpImageExtension","v":"1.2.14.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.WidgetsPlatformRuntime","v":"1.6.14.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.Winget.Source","v":"2026.312.1141.11","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Microsoft.ZuneMusic","v":"11.2601.11.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"MicrosoftCorporationII.WinAppRuntime.Main.1.8","v":"8000.770.947.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"MicrosoftWindows.Client.WebExperience","v":"526.1202.40.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"ModifiableWindowsApps","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"MSBuild","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"NCM GPRS 64","v":"01.02.0000","e":"Siemens AG","d":"20/03/2026","s":0.3,"src":"Registre","cat":"main"},{"n":"NREL","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"NVIDIA Ansel","v":"391.35","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Corporation","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"NVIDIA Display Container","v":"1.2","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"doublon"},{"n":"NVIDIA Display Container LS","v":"1.2","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Display Session Container","v":"1.2","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Display Watchdog Plugin","v":"1.2","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Install Application","v":"2.1002.291.0","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA nView 148.92","v":"148.92","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Optimus Update 31.1.10.0","v":"31.1.10.0","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"update"},{"n":"NVIDIA Pilote 3D Vision 391.35","v":"391.35","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Pilote audio HD : 1.3.36.6","v":"1.3.36.6","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Pilote du contrôleur 3D Vision 390.41","v":"390.41","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Pilote graphique 391.35","v":"391.35","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Stereoscopic 3D Driver","v":"7.17.13.7500","e":"NVIDIA Corporation","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Telemetry Client","v":"8.0.16.0","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Telemetry Container","v":"8.0.16.0","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"NVIDIA Update Core","v":"31.1.10.0","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"update"},{"n":"NVIDIA WMI 2.31.0","v":"2.31.0","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"ODIS","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"ONLYOFFICE 9.3.1 (x64)","v":"9.3.1.8","e":"Ascensio System SIA","d":"12/03/2026","s":1596.5,"src":"Registre","cat":"main"},{"n":"OPC .NET API 2.00 Redistributables (x86) 101.0","v":"2.00.10200","e":"OPC Foundation","d":"20/03/2026","s":1.4,"src":"Registre","cat":"composant"},{"n":"OPC .NET API 2.00 Redistributables 106.0","v":"2.01.10600","e":"OPC Foundation","d":"20/03/2026","s":1.7,"src":"Registre","cat":"composant"},{"n":"OPC Core Components Redistributable (x64) 106.0","v":"3.00.10600","e":"OPC Foundation","d":"20/03/2026","s":5.3,"src":"Registre","cat":"composant"},{"n":"OPC Core Components Redistributable (x86) 101.2","v":"3.00.10102","e":"OPC Foundation","d":"20/03/2026","s":1.2,"src":"Registre","cat":"composant"},{"n":"OPC Foundation","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"composant"},{"n":"Open Design Alliance","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"OpenModelica1.26.3-64bit","v":"1.26.3-64bit","e":"Open Source Modelica Consortium (OSMC) and LinkÃ¶ping University (LiU).","d":"-","s":0,"src":"Utilisateur","cat":"main"},{"n":"OpenStudio CLI For Revit 2026","v":"1.2.4","e":"NREL","d":"23/03/2026","s":367.1,"src":"Registre","cat":"main"},{"n":"Panneau de configuration NVIDIA 391.35","v":"391.35","e":"NVIDIA Corporation","d":"23/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"Personal Accelerator for Revit","v":"24.4.40.0","e":"Autodesk","d":"23/03/2026","s":19,"src":"Registre","cat":"main"},{"n":"PME Generic DTM","v":"1.0.46.0","e":"Schneider Electric","d":"06/03/2026","s":17.8,"src":"Registre","cat":"main"},{"n":"Powersim","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"Prosyst","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"PSIM 2020a_Demo version 2020a","v":"2020a","e":"Powersim, Inc.","d":"06/03/2026","s":394.8,"src":"Utilisateur","cat":"main"},{"n":"PSIM 9.3.4 Demo Version","v":"9.3.4","e":"Powersim","d":"06/03/2026","s":101.9,"src":"Registre","cat":"main"},{"n":"PSx Ethernet RIO DTM","v":"2.9.0","e":"Schneider Electric","d":"06/03/2026","s":175.8,"src":"Registre","cat":"main"},{"n":"Python 3.14.3","v":"3.14-64","e":"Python Software Foundation","d":"06/03/2026","s":123,"src":"Utilisateur","cat":"main"},{"n":"PythonSoftwareFoundation.PythonManager","v":"25.2.240.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"QElectroTech (remove only)","v":"","e":"","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"RealtekSemiconductorCorp.RealtekAudioControl","v":"1.1.137.0","e":"","d":"-","s":0,"src":"AppX","cat":"main"},{"n":"Revit 2026","v":"26.0.4.409","e":"Autodesk","d":"23/03/2026","s":1.8,"src":"Registre","cat":"doublon"},{"n":"REX Framework","v":"23.0.1.4951","e":"Autodesk, Inc.","d":"06/03/2026","s":15.1,"src":"Registre","cat":"main"},{"n":"RSA COM","v":"26.0.0.11886","e":"Autodesk, Inc.","d":"23/03/2026","s":7.4,"src":"Registre","cat":"doublon"},{"n":"RSA CommonData","v":"26.0.0.11862","e":"Autodesk, Inc.","d":"23/03/2026","s":134.7,"src":"Registre","cat":"main"},{"n":"RSA RoReinf","v":"26.0.0.11877","e":"Autodesk, Inc.","d":"23/03/2026","s":21.6,"src":"Registre","cat":"main"},{"n":"SafeNet Sentinel","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"SAM 2025.4.16","v":"","e":"National Renewable Energy Laboratory","d":"06/03/2026","s":472.9,"src":"Registre","cat":"main"},{"n":"Schneider Electric Mx80 HART Gateway DTM Library","v":"1.1.5","e":"Schneider Electric","d":"06/03/2026","s":0,"src":"Registre","cat":"main"},{"n":"Schneider Electric Software Update","v":"3.0.12","e":"Schneider Electric","d":"09/03/2026","s":34.3,"src":"Registre","cat":"update"},{"n":"scilab-2026.0.0 (64-bit)","v":"2026.0.0","e":"Dassault Systèmes","d":"06/03/2026","s":986.2,"src":"Registre","cat":"main"},{"n":"SeCon","v":"02.05.0101","e":"Siemens AG","d":"20/03/2026","s":10.7,"src":"Registre","cat":"main"},{"n":"Sentinel Protection Installer 7.7.1","v":"7.7.1","e":"SafeNet, Inc.","d":"10/03/2026","s":4.4,"src":"Registre","cat":"main"},{"n":"Service Pack 2 for SQL Server 2014 (KB3171021)","v":"12.2.5000.0","e":"Microsoft Corporation","d":"20/03/2026","s":0,"src":"Registre","cat":"update"},{"n":"Siemens Automation License Manager","v":"06.00.0100","e":"Siemens AG","d":"20/03/2026","s":83.2,"src":"Registre","cat":"main"},{"n":"Siemens Automation License Manager V6.0 + SP1","v":"06.00.0100","e":"Siemens AG","d":"-","s":83.2,"src":"Registre","cat":"update"},{"n":"SIEMENS OPC","v":"03.09.0800","e":"Siemens AG","d":"20/03/2026","s":4.4,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1","v":"V15.1","e":"Siemens AG","d":"-","s":6031.6,"src":"Registre","cat":"doublon"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Hardware Support Base Package 0  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Hardware Support Base Package 02  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Hardware Support Base Package 03  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Hardware Support Base Package 04  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Hardware Support Base Package WCF-01  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - HM All Editions Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":852.4,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - HM NoBasic Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":413.8,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Multiuser Client Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":4.7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Openness SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":31.7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - SIMATIC S7-PLCSIM  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":676.4,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Simatic Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":71.8,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Simatic Single SetupPackage 32 Bit  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":0.2,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - STEP 7 Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":710.8,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Support Base Package TO-01  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":20.8,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - Support Base Package TO-02  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":7,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - TIACOMPCHECK Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":0.4,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - WinCC Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":588.4,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - WinCC Single SetupPackage 32 Bit  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":7.4,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - WinCC Transfer Current All Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":1001.6,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - WinCC Transfer Current CAP Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":1132.8,"src":"Registre","cat":"main"},{"n":"Siemens Totally Integrated Automation Portal V15.1 - WinCC Transfer Mandatory Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":561.2,"src":"Registre","cat":"main"},{"n":"SIMATIC Device Drivers","v":"09.02.0100","e":"Siemens AG","d":"20/03/2026","s":165.4,"src":"Registre","cat":"doublon"},{"n":"SIMATIC Device Drivers WoW","v":"29.02.0100","e":"Siemens AG","d":"20/03/2026","s":32.6,"src":"Registre","cat":"main"},{"n":"SIMATIC Event Database","v":"05.06.0100","e":"Siemens AG","d":"20/03/2026","s":3.7,"src":"Registre","cat":"main"},{"n":"SIMATIC HMI License Manager Panel Plugin (x64)","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":9.6,"src":"Registre","cat":"main"},{"n":"SIMATIC HMI Symbol Library","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":16.8,"src":"Registre","cat":"main"},{"n":"SIMATIC HMI Touch Input","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":2.5,"src":"Registre","cat":"main"},{"n":"SIMATIC NCM FWL 64","v":"05.06.0003","e":"Siemens AG","d":"20/03/2026","s":0.1,"src":"Registre","cat":"main"},{"n":"SIMATIC PLCSIM 64","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":0.3,"src":"Registre","cat":"main"},{"n":"SIMATIC Prosave","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":14,"src":"Registre","cat":"doublon"},{"n":"SIMATIC Prosave V15.1","v":"15.01.0000","e":"Siemens AG","d":"-","s":14,"src":"Registre","cat":"main"},{"n":"SIMATIC S7-PLCSIM","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":353.8,"src":"Registre","cat":"doublon"},{"n":"SIMATIC S7-PLCSIM V15.1","v":"V15.1","e":"Siemens AG","d":"-","s":1017.6,"src":"Registre","cat":"main"},{"n":"SIMATIC S7-PLCSIM V5.4 + SP8    ","v":"05.04.0801","e":"Siemens AG","d":"-","s":23.7,"src":"Registre","cat":"update"},{"n":"SIMATIC WinCC Runtime Advanced Driver (x64)","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":1.8,"src":"Registre","cat":"main"},{"n":"SIMATIC WinCC Runtime Advanced V15.1","v":"V15.1","e":"Siemens AG","d":"-","s":108.5,"src":"Registre","cat":"main"},{"n":"SQL Server 2014 Common Files","v":"12.2.5000.0","e":"Microsoft Corporation","d":"20/03/2026","s":0.5,"src":"Registre","cat":"main"},{"n":"SQL Server 2014 Database Engine Services","v":"12.2.5000.0","e":"Microsoft Corporation","d":"20/03/2026","s":62.3,"src":"Registre","cat":"main"},{"n":"SQL Server 2014 Database Engine Shared","v":"12.2.5000.0","e":"Microsoft Corporation","d":"23/03/2026","s":72.7,"src":"Registre","cat":"main"},{"n":"SQL Server Browser for SQL Server 2014","v":"12.2.5000.0","e":"Microsoft Corporation","d":"23/03/2026","s":9.8,"src":"Registre","cat":"main"},{"n":"Sql Server Customer Experience Improvement Program","v":"12.2.5000.0","e":"Microsoft Corporation","d":"20/03/2026","s":0.5,"src":"Registre","cat":"main"},{"n":"Steel Connections Content for Revit 2026","v":"26.0.4.409","e":"Autodesk","d":"23/03/2026","s":841,"src":"Registre","cat":"main"},{"n":"SumatraPDF","v":"3.5.2","e":"Krzysztof Kowalczyk","d":"10/03/2026","s":22.3,"src":"Registre","cat":"main"},{"n":"TeighaX 4.3.1","v":"4.3.1","e":"Open Design Alliance","d":"06/03/2026","s":69.3,"src":"Registre","cat":"doublon"},{"n":"TeighaX 4.3.1  (x64)","v":"4.3.1","e":"Open Design Alliance","d":"06/03/2026","s":68.7,"src":"Registre","cat":"main"},{"n":"TIA Administrator","v":"V1.0","e":"Siemens AG","d":"-","s":164.5,"src":"Registre","cat":"main"},{"n":"TIA Administrator -  TIA Administrator  V1.0 SP1","v":"01.00.0100","e":"Siemens AG","d":"20/03/2026","s":124.8,"src":"Registre","cat":"update"},{"n":"TIA Administrator - AWB Licensing Module  V1.0 + SP1","v":"01.00.0100","e":"Siemens AG","d":"20/03/2026","s":4.9,"src":"Registre","cat":"update"},{"n":"TIA Administrator - AWB Software Management  V1.0 + SP1","v":"01.00.0100","e":"Siemens AG","d":"20/03/2026","s":50.9,"src":"Registre","cat":"update"},{"n":"TIA Administrator - TIA UMC Agent Configurator Module  V1.0 + SP1","v":"01.00.0100","e":"Siemens AG","d":"20/03/2026","s":0.1,"src":"Registre","cat":"update"},{"n":"TIA Portal Multiuser Server V15.1","v":"V15.1","e":"Siemens AG","d":"-","s":19.4,"src":"Registre","cat":"main"},{"n":"TIA Portal Multiuser Server V15.1 -  TIA Portal Multiuser Server Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":19.6,"src":"Registre","cat":"main"},{"n":"Totally Integrated Automation Portal V15.1 -  TIA Portal Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":353.5,"src":"Registre","cat":"main"},{"n":"Unity Pro","v":"13.0.18099","e":"Schneider Electric","d":"06/03/2026","s":2172.4,"src":"Registre","cat":"main"},{"n":"Unity Pro Ethernet Configuration Tool","v":"3.9.0","e":"Schneider Electric","d":"06/03/2026","s":185.1,"src":"Registre","cat":"main"},{"n":"Unity Pro PlantStruxure DTM Library","v":"3.9.3","e":"Schneider Electric","d":"06/03/2026","s":464.9,"src":"Registre","cat":"main"},{"n":"User Geospatial Coordinate Systems","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"User Management Component","v":"01.09.01.03","e":"Siemens AG","d":"-","s":341.8,"src":"Registre","cat":"main"},{"n":"User Management Component -  UserManagementComponentx64  01.9 + SP1","v":"01.09.01.03","e":"Siemens AG","d":"20/03/2026","s":343.8,"src":"Registre","cat":"update"},{"n":"VideoLAN","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"VLC media player","v":"3.0.23","e":"VideoLAN","d":"-","s":0,"src":"Registre","cat":"main"},{"n":"Vulkan Run Time Libraries 1.0.65.1","v":"1.0.65.1","e":"LunarG, Inc.","d":"-","s":1.7,"src":"Registre","cat":"composant"},{"n":"VulkanRT","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"composant"},{"n":"WAGO Software","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"WAGO Solution Builder","v":"2.0.6","e":"WAGO GmbH & Co. KG","d":"06/03/2026","s":594.1,"src":"Registre","cat":"main"},{"n":"Web Services","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"WIBU-SYSTEMS","v":"(dossier)","e":"-","d":"-","s":0,"src":"Dossier","cat":"main"},{"n":"WinCC Runtime Advanced Simulator","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":5.8,"src":"Registre","cat":"main"},{"n":"WinCC Runtime Advanced V15.1 -  SIMATIC WinCC Runtime Advanced  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":109.7,"src":"Registre","cat":"main"},{"n":"WinCC Runtime Advanced V15.1 - HMIRTM Tagging Package 01 Single SetupPackage  V15.1","v":"15.01.0000","e":"Siemens AG","d":"20/03/2026","s":5.8,"src":"Registre","cat":"main"},{"n":"Worksharing Monitor for Autodesk Revit 2026","v":"26.0.4.409","e":"Autodesk","d":"23/03/2026","s":12.9,"src":"Registre","cat":"main"},{"n":"WPTx64","v":"10.1.19041.1","e":"Microsoft","d":"23/03/2026","s":47.2,"src":"Registre","cat":"main"},{"n":"XLPRO3 v3.9.23","v":"3.9.23","e":"Legrand","d":"23/03/2026","s":0,"src":"Registre","cat":"main"}]}</script>
+
+<script>
+// ===== DATA & STATE =====
+const PC_NAME = "LO-0-L002-01";
+const STORAGE_KEY = "inv_" + PC_NAME;
+let showCheckedOnly = false;
+let currentSort = {col:1, asc:true};
+let visibleCats = {main:true, update:false, composant:false, doublon:false};
+let softData = JSON.parse(document.getElementById('inventoryData').textContent).software;
+
+// ===== INIT =====
+window.addEventListener('DOMContentLoaded', function() {
+  renderTable();
+  loadState();
+  updateCounter();
+  initDropZone();
+});
+
+// ===== RENDER SOFTWARE TABLE =====
+function renderTable() {
+  const tbody = document.getElementById('softBody');
+  let html = '';
+  for (let i = 0; i < softData.length; i++) {
+    const s = softData[i];
+    const srcClass = s.src === 'Registre' ? 'src-reg' : s.src === 'Utilisateur' ? 'src-user' : s.src === 'AppX' ? 'src-appx' : 'src-dir';
+    const sizeStr = s.s > 0 ? s.s.toFixed(1) : '-';
+    const cat = s.cat || 'main';
+    const catBadge = cat === 'update' ? ' <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:#fdebd0;color:#e67e22">update</span>' :
+                     cat === 'composant' ? ' <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:#f2f3f4;color:#7f8c8d">composant</span>' :
+                     cat === 'doublon' ? ' <span style="font-size:10px;padding:1px 6px;border-radius:3px;background:#fadbd8;color:#c0392b">doublon</span>' : '';
+    const rowOpacity = cat !== 'main' ? ' style="opacity:.65"' : '';
+    html += '<tr id="row'+i+'" data-idx="'+i+'"'+rowOpacity+'>' +
+      '<td class="cb-cell no-print"><input type="checkbox" onchange="onCheck('+i+')" id="cb'+i+'"></td>' +
+      '<td>'+esc(s.n)+catBadge+'</td><td>'+esc(s.v)+'</td><td>'+esc(s.e)+'</td><td>'+s.d+'</td><td>'+sizeStr+'</td>' +
+      '<td class="'+srcClass+'">'+s.src+'</td>' +
+      '<td class="note-cell no-print"><input type="text" placeholder="Note..." onchange="onNote('+i+',this.value)" id="note'+i+'"></td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function esc(s) { if(!s) return '-'; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ===== CHECKBOX & NOTES =====
+function onCheck(i) {
+  const row = document.getElementById('row'+i);
+  const cb = document.getElementById('cb'+i);
+  row.classList.toggle('checked-row', cb.checked);
+  if (!cb.checked && showCheckedOnly) row.style.display = 'none';
+  saveState();
+  updateCounter();
+}
+
+function onNote(i, val) { saveState(); }
+
+function toggleAll(master) {
+  for (let i = 0; i < softData.length; i++) {
+    const cb = document.getElementById('cb'+i);
+    const row = document.getElementById('row'+i);
+    if (row.style.display !== 'none' || master.checked) {
+      cb.checked = master.checked;
+      row.classList.toggle('checked-row', master.checked);
+    }
+  }
+  saveState(); updateCounter();
+}
+
+function uncheckAll() {
+  for (let i = 0; i < softData.length; i++) {
+    document.getElementById('cb'+i).checked = false;
+    document.getElementById('row'+i).classList.remove('checked-row');
+  }
+  showCheckedOnly = false;
+  document.getElementById('filterStatus').textContent = '';
+  filterTable();
+  saveState(); updateCounter();
+}
+
+function updateCounter() {
+  let count = 0;
+  for (let i = 0; i < softData.length; i++) { if (document.getElementById('cb'+i).checked) count++; }
+  document.getElementById('checkedCount').textContent = count;
+}
+
+// ===== SAVE / LOAD STATE (localStorage) =====
+function saveState() {
+  const state = {};
+  for (let i = 0; i < softData.length; i++) {
+    const cb = document.getElementById('cb'+i).checked;
+    const note = document.getElementById('note'+i).value;
+    if (cb || note) state[softData[i].n] = {c:cb, t:note};
+  }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    for (let i = 0; i < softData.length; i++) {
+      const s = state[softData[i].n];
+      if (s) {
+        if (s.c) { document.getElementById('cb'+i).checked = true; document.getElementById('row'+i).classList.add('checked-row'); }
+        if (s.t) document.getElementById('note'+i).value = s.t;
+      }
+    }
+  } catch(e) {}
+}
+
+// ===== SEARCH & FILTER =====
+function filterTable() {
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  const rows = document.getElementById('softBody').rows;
+  for (let i = 0; i < rows.length; i++) {
+    const idx = parseInt(rows[i].dataset.idx);
+    const cb = document.getElementById('cb'+idx);
+    const cat = softData[idx].cat || 'main';
+    const matchSearch = !q || rows[i].textContent.toLowerCase().includes(q);
+    const matchChecked = !showCheckedOnly || cb.checked;
+    const matchCat = visibleCats[cat] === true;
+    const show = matchSearch && matchChecked && matchCat;
+    rows[i].style.display = show ? '' : 'none';
+    rows[i].classList.toggle('hide-print', !show);
+  }
+}
+
+function toggleCat(cat) {
+  visibleCats[cat] = !visibleCats[cat];
+  const btn = document.getElementById('btn-'+cat);
+  if (btn) {
+    btn.style.opacity = visibleCats[cat] ? '1' : '.5';
+    btn.style.background = visibleCats[cat] ? (cat==='main'?'#d6eaf8':cat==='update'?'#fdebd0':cat==='composant'?'#f2f3f4':'#fadbd8') : 'transparent';
+  }
+  filterTable();
+}
+
+function toggleCheckedOnly() {
+  showCheckedOnly = !showCheckedOnly;
+  document.getElementById('filterStatus').textContent = showCheckedOnly ? 'Filtre : importants uniquement' : '';
+  filterTable();
+}
+
+// ===== SORT =====
+function sortTable(col) {
+  if (currentSort.col === col) { currentSort.asc = !currentSort.asc; }
+  else { currentSort.col = col; currentSort.asc = true; }
+  // Update arrows
+  for (let c = 1; c <= 6; c++) {
+    const a = document.getElementById('arrow'+c);
+    if (c === col) { a.innerHTML = currentSort.asc ? '&#9650;' : '&#9660;'; a.classList.add('active'); }
+    else { a.innerHTML = ''; a.classList.remove('active'); }
+  }
+  const tbody = document.getElementById('softBody');
+  const rowsArr = Array.from(tbody.rows);
+  rowsArr.sort(function(a,b) {
+    let va = a.cells[col].textContent.trim();
+    let vb = b.cells[col].textContent.trim();
+    if (col === 5) { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; return currentSort.asc ? va-vb : vb-va; }
+    va = va.toLowerCase(); vb = vb.toLowerCase();
+    if (va < vb) return currentSort.asc ? -1 : 1;
+    if (va > vb) return currentSort.asc ? 1 : -1;
+    return 0;
+  });
+  rowsArr.forEach(function(r) { tbody.appendChild(r); });
+}
+
+// ===== COLLAPSIBLE SECTIONS =====
+function toggleSection(h2) { h2.parentElement.classList.toggle('collapsed'); }
+
+// ===== TABS =====
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(function(t,i) { t.classList.toggle('active', (tab==='inventory'?i===0:i===1)); });
+  document.getElementById('tab-inventory').classList.toggle('active', tab==='inventory');
+  document.getElementById('tab-compare').classList.toggle('active', tab!=='inventory');
+}
+
+// ===== COMPARISON =====
+function initDropZone() {
+  const dz = document.getElementById('dropZone');
+  const fi = document.getElementById('fileInput');
+  dz.addEventListener('click', function() { fi.click(); });
+  dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', function() { dz.classList.remove('over'); });
+  dz.addEventListener('drop', function(e) { e.preventDefault(); dz.classList.remove('over'); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+}
+
+function handleFile(file) {
+  if (!file || !file.name.endsWith('.html')) { alert('Veuillez glisser un fichier HTML d\'inventaire'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(e.target.result, 'text/html');
+      const dataEl = doc.getElementById('inventoryData');
+      if (!dataEl) { alert('Ce fichier ne contient pas de donnees d\'inventaire v3'); return; }
+      const otherData = JSON.parse(dataEl.textContent);
+      doCompare(otherData);
+    } catch(err) { alert('Erreur de lecture : '+err.message); }
+  };
+  reader.readAsText(file);
+}
+
+function doCompare(other) {
+  const myMap = {}; softData.forEach(function(s) { myMap[s.n.toLowerCase()] = s; });
+  const otherMap = {}; other.software.forEach(function(s) { otherMap[s.n.toLowerCase()] = s; });
+  const allKeys = new Set([...Object.keys(myMap), ...Object.keys(otherMap)]);
+  let rows = [];
+  let added=0, missing=0, common=0;
+  allKeys.forEach(function(k) {
+    const mine = myMap[k]; const theirs = otherMap[k];
+    if (mine && theirs) { common++; rows.push({n:mine.n, vMe:mine.v, vOther:theirs.v, status:'commun', cls:'diff-same'}); }
+    else if (mine && !theirs) { added++; rows.push({n:mine.n, vMe:mine.v, vOther:'-', status:'uniquement ici', cls:'diff-added'}); }
+    else { missing++; rows.push({n:theirs.n, vMe:'-', vOther:theirs.v, status:'manquant ici', cls:'diff-missing'}); }
+  });
+  rows.sort(function(a,b) { return a.n.toLowerCase().localeCompare(b.n.toLowerCase()); });
+
+  document.getElementById('compareStats').innerHTML =
+    '<div class="stat" style="border-left-color:var(--acc)"><div class="label">Uniquement ici</div><div class="value" style="color:var(--acc)">'+added+'</div></div>' +
+    '<div class="stat" style="border-left-color:#c0392b"><div class="label">Manquants ici</div><div class="value" style="color:#c0392b">'+missing+'</div></div>' +
+    '<div class="stat" style="border-left-color:var(--sec)"><div class="label">En commun</div><div class="value">'+common+'</div></div>' +
+    '<div class="stat"><div class="label">Compare avec</div><div class="value" style="font-size:14px">'+other.pcName+'</div></div>';
+
+  let tbody = '';
+  rows.forEach(function(r) {
+    const badge = r.status==='commun'?'badge-blue':r.status==='uniquement ici'?'badge-green':'badge-red';
+    tbody += '<tr class="'+r.cls+'"><td>'+esc(r.n)+'</td><td>'+esc(r.vMe)+'</td><td>'+esc(r.vOther)+'</td><td><span class="badge '+badge+'">'+r.status+'</span></td></tr>';
+  });
+  document.getElementById('compareBody').innerHTML = tbody;
+  document.getElementById('compareResult').style.display = 'block';
+  document.getElementById('dropZone').innerHTML = '<div class="icon">&#9989;</div><p>Comparaison avec <strong>'+other.pcName+'</strong> ('+other.date+')</p><p style="font-size:12px;margin-top:5px">Glissez un autre fichier pour une nouvelle comparaison</p>';
+}
+</script>
+</body>
+</html>

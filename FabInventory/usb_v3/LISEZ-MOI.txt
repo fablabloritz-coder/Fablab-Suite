@@ -1,0 +1,46 @@
+======================================================
+  INVENTAIRE DE MASTER v3 - MODE D'EMPLOI
+======================================================
+
+UTILISATION :
+  1. Copier le contenu sur une cle USB
+  2. Clic droit sur LANCER_INVENTAIRE.bat > Executer en tant qu'administrateur
+  3. Ouvrir le fichier HTML genere dans un navigateur (Chrome/Edge/Firefox)
+
+FONCTIONNALITES DU RAPPORT HTML :
+
+  TRI PAR COLONNES
+    Cliquer sur n'importe quel en-tete de colonne pour trier
+    (nom, version, editeur, date, taille, source).
+    Cliquer a nouveau pour inverser l'ordre.
+
+  CASES A COCHER (LOGICIELS IMPORTANTS)
+    Cocher les logiciels qui comptent vraiment.
+    Le compteur en haut se met a jour en temps reel.
+    Les coches sont SAUVEGARDEES automatiquement
+    (meme si vous fermez et rouvrez le fichier dans le meme navigateur).
+
+  FILTRAGE
+    Barre de recherche pour chercher un logiciel.
+    Bouton "Importants uniquement" pour n'afficher que les coches.
+
+  NOTES PERSONNELLES
+    Colonne "Notes" pour ajouter un commentaire sur chaque logiciel
+    (ex: "licence salle 204", "version imposee par le prof de CAO").
+    Les notes sont sauvegardees avec les coches.
+
+  IMPRESSION / EXPORT PDF
+    Bouton "Imprimer / PDF" : seuls les logiciels visibles
+    sont imprimes (si vous filtrez avant, seule la selection s'imprime).
+    Les cases a cocher et notes ne s'impriment pas.
+
+  COMPARAISON ENTRE DEUX MASTERS
+    Onglet "Comparaison" en haut.
+    Glissez un autre fichier HTML d'inventaire dans la zone.
+    Le rapport montre :
+      - Vert : logiciels presents ICI mais absents dans l'autre
+      - Rouge : logiciels absents ICI mais presents dans l'autre
+      - Bleu : logiciels en commun (avec comparaison de version)
+
+  SECTIONS REPLIABLES
+    Cliquer sur le titre d'une section pour la replier/deplier.

@@ -831,6 +831,70 @@ def master_detail(master_id):
     return render_template("master.html", master=master, snapshots=snapshots,
                            software=software, flags=flags, latest=latest)
 
+@app.route("/master/<int:master_id>/export")
+def master_export(master_id):
+    """Export master software list as CSV with categories"""
+    db = get_db()
+    master = db.execute(
+        "SELECT * FROM masters WHERE id = ? AND workflow_type = 'inventory'",
+        (master_id,),
+    ).fetchone()
+    if not master:
+        flash("Master introuvable", "error")
+        return redirect(url_for("index"))
+
+    # Query software_index for this master with categories
+    rows = db.execute("""
+        SELECT 
+            si.software_name,
+            si.software_version,
+            si.software_editor,
+            si.software_source,
+            si.software_category,
+            sf.is_important,
+            sf.note,
+            s.created_at as scan_date
+        FROM software_index si
+        LEFT JOIN software_flags sf ON sf.master_id = ? AND sf.software_name = si.software_name
+        LEFT JOIN snapshots s ON s.id = si.snapshot_id
+        WHERE si.master_id = ?
+        ORDER BY si.software_name ASC
+    """, (master_id, master_id)).fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow([
+        "software_name",
+        "software_version",
+        "software_editor",
+        "software_source",
+        "software_category",
+        "is_important",
+        "note",
+        "scan_date",
+    ])
+    
+    for row in rows:
+        writer.writerow([
+            row["software_name"],
+            row["software_version"],
+            row["software_editor"],
+            row["software_source"],
+            row["software_category"],
+            "yes" if row["is_important"] else "no",
+            row["note"] or "",
+            row["scan_date"] or "",
+        ])
+
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    output.close()
+    return app.response_class(
+        csv_bytes,
+        mimetype="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=FabInventory-{master['pc_name']}.csv"
+        },
+    )
 
 @app.route("/master/<int:master_id>/roadmap")
 def master_roadmap(master_id):
@@ -1445,6 +1509,7 @@ def search_multi_master():
             "software_version",
             "software_editor",
             "software_source",
+            "software_category",
         ])
         for row in rows:
             writer.writerow([
@@ -1457,6 +1522,7 @@ def search_multi_master():
                 row["software_version"],
                 row["software_editor"],
                 row["software_source"],
+                row["software_category"],
             ])
 
         csv_bytes = output.getvalue().encode("utf-8-sig")
