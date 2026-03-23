@@ -30,6 +30,7 @@ class V3CategoryIntegrationTests(unittest.TestCase):
         """Initialize test database."""
         self.app = app
         self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
         self.ctx = self.app.app_context()
         self.ctx.push()
         init_db()
@@ -57,7 +58,21 @@ class V3CategoryIntegrationTests(unittest.TestCase):
         # Test validation against invalid categories
         sw = {"n": "Bad", "v": "1.0", "e": "X", "src": "Registre", "cat": "invalid_cat"}
         name, version, editor, source, category = _normalize_software_fields(sw)
-        self.assertEqual(category, "main")  # Should fallback to main
+        self.assertEqual(category, "main")  # Should fallback to inferred/main
+
+        # Test alternate category keys from third-party snapshot generators
+        sw = {"n": "SDK Tool", "v": "1.0", "e": "Vendor", "src": "Registre", "category": "composant"}
+        name, version, editor, source, category = _normalize_software_fields(sw)
+        self.assertEqual(category, "composant")
+
+        # Test heuristic inference when no explicit category exists
+        sw = {"n": "Windows Cumulative Update KB5030211", "v": "1.0", "e": "Microsoft", "src": "Registre"}
+        name, version, editor, source, category = _normalize_software_fields(sw)
+        self.assertEqual(category, "update")
+
+        sw = {"n": "Microsoft Visual C++ 2015-2022 Redistributable", "v": "14.0", "e": "Microsoft", "src": "Registre"}
+        name, version, editor, source, category = _normalize_software_fields(sw)
+        self.assertEqual(category, "composant")
 
     def test_software_stored_with_category(self):
         """Test that software is stored in DB with category column."""
@@ -182,6 +197,41 @@ class V3CategoryIntegrationTests(unittest.TestCase):
         self.assertEqual(stats["update"], 3)
         self.assertEqual(stats["composant"], 2)
         self.assertEqual(stats["doublon"], 0)
+
+    def test_admin_reindex_software_recomputes_categories(self):
+        """Admin reindex should recompute categories for existing snapshots."""
+        db = get_db()
+
+        master_id = 4
+        snapshot_id = 4
+        db.execute(
+            "INSERT INTO masters (id, pc_name) VALUES (?, ?)",
+            (master_id, "REINDEX-PC"),
+        )
+
+        # Legacy payload: no cat field, should be inferred during reindex.
+        legacy_software = [
+            {"n": "Windows Cumulative Update KB5030211", "v": "1.0", "e": "Microsoft", "src": "Registre"},
+            {"n": "Microsoft Visual C++ 2015-2022 Redistributable", "v": "14.0", "e": "Microsoft", "src": "Registre"},
+        ]
+
+        db.execute(
+            "INSERT INTO snapshots (id, master_id, scan_date, software_json, total_software) VALUES (?, ?, ?, ?, ?)",
+            (snapshot_id, master_id, "2026-03-23", json.dumps(legacy_software), len(legacy_software)),
+        )
+        db.commit()
+
+        response = self.client.post("/admin/reindex-software", follow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+
+        rows = db.execute(
+            "SELECT software_name, software_category FROM software_index WHERE snapshot_id = ? ORDER BY software_name",
+            (snapshot_id,),
+        ).fetchall()
+
+        by_name = {row["software_name"]: row["software_category"] for row in rows}
+        self.assertEqual(by_name["Windows Cumulative Update KB5030211"], "update")
+        self.assertEqual(by_name["Microsoft Visual C++ 2015-2022 Redistributable"], "composant")
 
 
 if __name__ == "__main__":

@@ -85,6 +85,30 @@ function Get-WindowsReleaseLabel {
     return ""
 }
 
+function Get-SoftwareCategory {
+    param(
+        [string]$Name,
+        [string]$Editor
+    )
+
+    $nameLower = (($Name | Out-String).Trim()).ToLowerInvariant()
+    $editorLower = (($Editor | Out-String).Trim()).ToLowerInvariant()
+
+    if ($nameLower -match '\b(kb\d{4,}|update|hotfix|patch|cumulative|service\s*pack|security\s*update)\b') {
+        return 'update'
+    }
+
+    if ($nameLower -match '\b(runtime|redistributable|framework|sdk|driver|component|plugin|library|module|webview2)\b') {
+        return 'composant'
+    }
+
+    if ($editorLower -match '\b(microsoft|intel|nvidia|amd)\b' -and $nameLower -match '\b(driver|runtime|framework|redistributable)\b') {
+        return 'composant'
+    }
+
+    return 'main'
+}
+
 function Get-SoftwareList {
     $items = @()
     $paths = @(
@@ -95,13 +119,17 @@ function Get-SoftwareList {
 
     foreach ($path in $paths) {
         $apps = Get-ItemProperty $path | Where-Object { $_.DisplayName } | ForEach-Object {
+            $name = ($_.DisplayName | Out-String).Trim()
+            $version = ($_.DisplayVersion | Out-String).Trim()
+            $editor = ($_.Publisher | Out-String).Trim()
             [PSCustomObject]@{
-                n   = ($_.DisplayName | Out-String).Trim()
-                v   = ($_.DisplayVersion | Out-String).Trim()
-                e   = ($_.Publisher | Out-String).Trim()
+                n   = $name
+                v   = $version
+                e   = $editor
                 d   = ($_.InstallDate | Out-String).Trim()
                 s   = 0
                 src = 'Registre'
+                cat = (Get-SoftwareCategory -Name $name -Editor $editor)
             }
         }
         if ($apps) { $items += $apps }

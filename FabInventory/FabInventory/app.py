@@ -393,6 +393,16 @@ def api_software_list():
     })
 
 
+@app.route("/admin/reindex-software", methods=["POST"])
+def admin_reindex_software():
+    """Rebuild software index to recompute categories for existing snapshots."""
+    db = get_db()
+    _rebuild_software_index(db)
+    db.commit()
+    flash("Index logiciels reconstruit: categories recalculees", "success")
+    return redirect(url_for("index"))
+
+
 # ===== PARSER =====
 def parse_inventory_html(html_content):
     """Extract inventory data from HTML file with embedded JSON."""
@@ -581,10 +591,30 @@ def _normalize_software_fields(sw):
     version = str(sw.get("v", "") or "").strip()
     editor = str(sw.get("e", "") or "").strip()
     source = str(sw.get("src", "") or "").strip()
-    category = str(sw.get("cat", "main") or "main").strip()
-    # Validate category (security: only allow known values)
-    if category not in ("main", "update", "composant", "doublon"):
-        category = "main"
+    # Prefer explicit category when provided by snapshot generator, then fallback to heuristics.
+    raw_category = str(
+        sw.get("cat")
+        or sw.get("category")
+        or sw.get("categorie")
+        or ""
+    ).strip().lower()
+
+    if raw_category in ("main", "update", "composant", "doublon"):
+        category = raw_category
+    else:
+        name_l = name.lower()
+        editor_l = editor.lower()
+
+        # Common update packages (Windows KB, cumulative/security updates, patches, service packs).
+        if re.search(r"\b(kb\d{4,}|update|hotfix|patch|cumulative|service\s*pack|security\s*update)\b", name_l):
+            category = "update"
+        # Runtime/framework/component packages often bundled as dependencies.
+        elif re.search(r"\b(runtime|redistributable|framework|sdk|driver|component|plugin|library|module|webview2)\b", name_l) or \
+             re.search(r"\b(microsoft|intel|nvidia|amd)\b", editor_l) and re.search(r"\b(driver|runtime|framework|redistributable)\b", name_l):
+            category = "composant"
+        else:
+            category = "main"
+
     return name, version, editor, source, category
 
 
@@ -620,10 +650,6 @@ def _rebuild_software_index(db):
             software_list = json.loads(snap["software_json"] or "[]")
         except json.JSONDecodeError:
             software_list = []
-        # Ensure all software objects have category field (backward compatibility)
-        for sw in software_list:
-            if isinstance(sw, dict) and "cat" not in sw:
-                sw["cat"] = "main"
         _upsert_snapshot_software_index(db, snap["id"], snap["master_id"], software_list)
 
 
