@@ -334,6 +334,64 @@ def api_category_stats():
         "percentage": {cat: round(100 * count / total, 1) for cat, count in result.items()} if total > 0 else {}
     })
 
+@app.route("/api/software")
+def api_software_list():
+    """List software with optional category and master filters"""
+    category = request.args.get("category", "").strip().lower()
+    master_id = request.args.get("master_id")
+    limit = request.args.get("limit", 100, type=int)
+    offset = request.args.get("offset", 0, type=int)
+
+    # Validate category if provided
+    if category and category not in ["main", "update", "composant", "doublon"]:
+        return jsonify({"error": "Invalid category"}), 400
+
+    db = get_db()
+
+    # Build query
+    sql = "SELECT software_name, software_version, software_editor, software_source, software_category, master_id FROM software_index WHERE 1=1"
+    params = []
+
+    if category:
+        sql += " AND software_category = ?"
+        params.append(category)
+
+    if master_id:
+        sql += " AND master_id = ?"
+        params.append(master_id)
+
+    sql += " ORDER BY software_name ASC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    rows = db.execute(sql, params).fetchall()
+
+    # Count total (without limit/offset)
+    count_sql = "SELECT COUNT(*) as cnt FROM software_index WHERE 1=1"
+    count_params = []
+    if category:
+        count_sql += " AND software_category = ?"
+        count_params.append(category)
+    if master_id:
+        count_sql += " AND master_id = ?"
+        count_params.append(master_id)
+
+    total = db.execute(count_sql, count_params).fetchone()["cnt"]
+
+    return jsonify({
+        "software": [{
+            "name": row["software_name"],
+            "version": row["software_version"],
+            "editor": row["software_editor"],
+            "source": row["software_source"],
+            "category": row["software_category"],
+            "master_id": row["master_id"]
+        } for row in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "returned": len(rows)
+    })
+
 
 # ===== PARSER =====
 def parse_inventory_html(html_content):
