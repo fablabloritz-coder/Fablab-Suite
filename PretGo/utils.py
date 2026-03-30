@@ -252,6 +252,92 @@ def _format_depassement_texte(heures_dep):
     return f'{int(jours)} jour(s)'
 
 
+def _render_email_template(template, **variables):
+    """Remplace les variables {nom}, {prenom}, etc. dans le template.
+    
+    Variables disponibles:
+    - nom, prenom, objets, date_emprunt, depassement
+    """
+    result = template
+    for key, value in variables.items():
+        result = result.replace('{' + key + '}', str(value or ''))
+    return result
+
+
+def generer_preview_email(conn):
+    """Génère un aperçu de l'email avec des valeurs de test.
+    
+    Retourne un dict {subject, body}
+    """
+    from_email = (get_setting('rappel_email_from', '', conn=conn) or '').strip()
+    subject_tpl = (get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel', conn=conn) or '').strip()
+    template_body = get_setting('rappel_email_template', '', conn=conn) or ''
+    
+    if not template_body:
+        template_body = (
+            "Bonjour {nom} {prenom},\n\n"
+            "Ceci est un rappel de restitution de matériel PretGo.\n\n"
+            "Objet(s): {objets}\n"
+            "Date d'emprunt: {date_emprunt}\n"
+            "Dépassement: {depassement}\n\n"
+            "Merci de procéder au retour du matériel dès que possible.\n\n"
+            "Message automatique PretGo."
+        )
+    
+    # Valeurs de test
+    body = _render_email_template(
+        template_body,
+        nom='Dupont',
+        prenom='Jean',
+        objets='Scie à métaux + Équerre de précision',
+        date_emprunt=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        depassement='2j3h'
+    )
+    
+    return {
+        'subject': subject_tpl or '[PretGo] Rappel de retour de matériel',
+        'body': body,
+        'from': from_email,
+    }
+
+
+def tester_connexion_smtp(conn):
+    """Teste la connexion SMTP avec les paramètres actuels.
+    
+    Retourne un dict {success, message}
+    """
+    smtp_host = (get_setting('rappel_email_smtp_host', '', conn=conn) or '').strip()
+    smtp_port = int(get_setting('rappel_email_smtp_port', '587', conn=conn) or '587')
+    smtp_user = (get_setting('rappel_email_smtp_user', '', conn=conn) or '').strip()
+    smtp_password = get_setting('rappel_email_smtp_password', '', conn=conn) or ''
+    use_tls = get_setting('rappel_email_use_tls', '1', conn=conn) == '1'
+    use_ssl = get_setting('rappel_email_use_ssl', '0', conn=conn) == '1'
+    
+    if not smtp_host:
+        return {'success': False, 'message': 'Hôte SMTP manquant'}
+    
+    try:
+        smtp_cls = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+        if use_ssl:
+            server = smtp_cls(smtp_host, smtp_port, context=ssl.create_default_context(), timeout=10)
+        else:
+            server = smtp_cls(smtp_host, smtp_port, timeout=10)
+            if use_tls:
+                server.starttls(context=ssl.create_default_context())
+        
+        if smtp_user:
+            server.login(smtp_user, smtp_password)
+        
+        server.quit()
+        return {'success': True, 'message': 'Connexion SMTP réussie ✓'}
+    except smtplib.SMTPAuthenticationError:
+        return {'success': False, 'message': 'Erreur d\'authentification SMTP (utilisateur/mot de passe)'}
+    except smtplib.SMTPException as e:
+        return {'success': False, 'message': f'Erreur SMTP : {str(e)[:100]}'}
+    except Exception as e:
+        return {'success': False, 'message': f'Erreur de connexion : {str(e)[:100]}'}
+
+
 def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
     """Envoie les rappels email pour les prêts en alerte.
 
@@ -376,18 +462,17 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
         if smtp_user:
             server.login(smtp_user, smtp_password)
 
+        template_body = get_setting('rappel_email_template', '', conn=conn) or ''
         for pret, email_dest, heures_dep in a_envoyer:
-            fullname = f"{pret['prenom']} {pret['nom']}".strip()
             dep_texte = _format_depassement_texte(heures_dep)
             subject = subject_tpl
-            body = (
-                f"Bonjour {fullname},\n\n"
-                f"Ceci est un rappel de restitution de matériel PretGo.\n\n"
-                f"Objet(s): {pret['descriptif_objets']}\n"
-                f"Date d'emprunt: {pret['date_emprunt']}\n"
-                f"Dépassement: {dep_texte}\n\n"
-                "Merci de procéder au retour du matériel dès que possible.\n\n"
-                "Message automatique PretGo."
+            body = _render_email_template(
+                template_body,
+                nom=pret['nom'],
+                prenom=pret['prenom'],
+                objets=pret['descriptif_objets'],
+                date_emprunt=pret['date_emprunt'],
+                depassement=dep_texte
             )
 
             msg = EmailMessage()

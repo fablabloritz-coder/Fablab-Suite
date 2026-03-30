@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATABASE_PATH, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR, RECOVERY_CODE_PATH
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp
 from datetime import datetime, timedelta
 import csv
 import io
@@ -487,6 +487,7 @@ def admin_reglages():
             set_setting('rappel_email_from', request.form.get('rappel_email_from', '').strip())
             set_setting('rappel_email_reply_to', request.form.get('rappel_email_reply_to', '').strip())
             set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
+            set_setting('rappel_email_template', request.form.get('rappel_email_template', '').strip() or '')
 
             cooldown = request.form.get('rappel_email_cooldown_heures', '24').strip()
             try:
@@ -564,7 +565,8 @@ def admin_reglages():
                            rappel_email_from=get_setting('rappel_email_from', ''),
                            rappel_email_reply_to=get_setting('rappel_email_reply_to', ''),
                            rappel_email_subject=get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel'),
-                           rappel_email_cooldown_heures=get_setting('rappel_email_cooldown_heures', '24'))
+                           rappel_email_cooldown_heures=get_setting('rappel_email_cooldown_heures', '24'),
+                           rappel_email_template=get_setting('rappel_email_template', ''))
 
 
 
@@ -1488,4 +1490,47 @@ def reordonner_champs():
     conn.commit()
     return jsonify({'success': True})
 
+
+# ============================================================
+# ÉTAPE 2 — Aperçu et test email
+# ============================================================
+
+@bp.route('/api/admin/email-preview', methods=['GET'])
+@admin_required
+def api_email_preview():
+    """Génère un aperçu de l'email de rappel.
+    
+    GET /api/admin/email-preview → {subject, body, from}
+    """
+    conn = get_app_db()
+    preview = generer_preview_email(conn)
+    return jsonify(preview)
+
+
+@bp.route('/api/admin/email-actions', methods=['POST'])
+@admin_required
+def api_email_actions():
+    """Actions email : test SMTP, sauvegarder template, etc.
+    
+    POST /api/admin/email-actions?action=test_smtp
+    POST /api/admin/email-actions?action=save_template
+    """
+    action = request.args.get('action', '').strip()
+    
+    if action == 'test_smtp':
+        conn = get_app_db()
+        result = tester_connexion_smtp(conn)
+        return jsonify(result)
+    
+    elif action == 'save_template':
+        data = request.get_json()
+        template = data.get('template', '').strip()
+        if not template:
+            return jsonify({'success': False, 'message': 'Template vide'}), 400
+        
+        set_setting('rappel_email_template', template)
+        return jsonify({'success': True, 'message': 'Template d\'email enregistré'})
+    
+    else:
+        return jsonify({'success': False, 'message': 'Action inconnue'}), 400
 

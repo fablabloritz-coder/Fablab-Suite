@@ -417,6 +417,16 @@
                                        value="{{ rappel_email_subject }}">
                             </div>
 
+                            <div class="col-12">
+                                <label class="form-label fw-bold">Template d'email</label>
+                                <textarea name="rappel_email_template" class="form-control" rows="6" placeholder="Variables disponibles: {nom}, {prenom}, {objets}, {date_emprunt}, {depassement}">{{ rappel_email_template }}</textarea>
+                                <small class="text-muted d-block mt-2">
+                                    <strong>Variables disponibles :</strong>
+                                    <code>{nom}</code>, <code>{prenom}</code>, <code>{objets}</code>, 
+                                    <code>{date_emprunt}</code>, <code>{depassement}</code>
+                                </small>
+                            </div>
+
                             <div class="col-12 d-flex gap-4 flex-wrap">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="rappel_email_use_tls"
@@ -431,9 +441,15 @@
                             </div>
                         </div>
 
-                        <div class="mt-4">
+                        <div class="mt-4 d-flex gap-2 flex-wrap">
                             <button type="submit" class="btn btn-primary btn-lg">
                                 <i class="bi bi-save"></i> Enregistrer les paramètres email
+                            </button>
+                            <button type="button" class="btn btn-info btn-lg" id="btn-preview-email" onclick="previsualiserEmail()">
+                                <i class="bi bi-envelope-open"></i> Prévisualiser l'email
+                            </button>
+                            <button type="button" class="btn btn-success btn-lg" id="btn-test-smtp" onclick="testerSMTP()">
+                                <i class="bi bi-cloud-check"></i> Tester SMTP
                             </button>
                         </div>
                     </form>
@@ -444,8 +460,91 @@
 </div>
 
 <!-- ════════════════════════════════════════════════════════
-     SECTION 4 : IMPRESSION D'ÉTIQUETTES
+     MODALE : APERÇU EMAIL
      ════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="modalPreviewEmail" tabindex="-1" aria-labelledby="modalPreviewEmailLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title" id="modalPreviewEmailLabel">
+                    <i class="bi bi-envelope-open"></i> Aperçu de l'email
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="text-muted small"><strong>De:</strong></label>
+                    <div class="bg-light p-2 rounded" id="previewFrom"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small"><strong>Sujet:</strong></label>
+                    <div class="bg-light p-2 rounded" id="previewSubject"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small"><strong>Corps du message:</strong></label>
+                    <div class="bg-white border p-3 rounded" id="previewBody" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.9em;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     SCRIPTS : EMAIL PREVIEW & SMTP TEST
+     ════════════════════════════════════════════════════════ -->
+<script>
+function previsualiserEmail() {
+    const btn = document.getElementById('btn-preview-email');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Chargement...';
+    
+    fetch('{{ url_for("admin.api_email_preview") }}')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('previewFrom').textContent = data.from || '(non configuré)';
+            document.getElementById('previewSubject').textContent = data.subject || '(sujet vide)';
+            document.getElementById('previewBody').textContent = data.body || '(corps vide)';
+            
+            const modal = new bootstrap.Modal(document.getElementById('modalPreviewEmail'));
+            modal.show();
+        })
+        .catch(err => {
+            alert('Erreur lors de la génération du preview: ' + err.message);
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        });
+}
+
+function testerSMTP() {
+    const btn = document.getElementById('btn-test-smtp');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Test en cours...';
+    
+    fetch('{{ url_for("admin.api_email_actions") }}?action=test_smtp', {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            const icon = data.success ? '✓' : '✗';
+            const className = data.success ? 'alert-success' : 'alert-danger';
+            alert(icon + ' ' + data.message);
+        })
+        .catch(err => {
+            alert('Erreur lors du test SMTP: ' + err.message);
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        });
+}
+</script>
+
+<!-- ══  SECTION 4 : IMPRESSION D'ÉTIQUETTES  ══ -->
 <div id="section-etiquettes">
     <h4 class="mb-3"><i class="bi bi-printer-fill text-info"></i> Impression d'étiquettes</h4>
     <div class="card border-0 shadow-sm">

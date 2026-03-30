@@ -323,6 +323,15 @@ def init_db():
         'rappel_email_reply_to': '',
         'rappel_email_subject': '[PretGo] Rappel de retour de matériel',
         'rappel_email_cooldown_heures': '24',
+        'rappel_email_template': (
+            "Bonjour {nom} {prenom},\n\n"
+            "Ceci est un rappel de restitution de matériel PretGo.\n\n"
+            "Objet(s): {objets}\n"
+            "Date d'emprunt: {date_emprunt}\n"
+            "Dépassement: {depassement}\n\n"
+            "Merci de procéder au retour du matériel dès que possible.\n\n"
+            "Message automatique PretGo."
+        ),
     }
     for cle, valeur in parametres_defaut.items():
         try:
