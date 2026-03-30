@@ -6,10 +6,13 @@ from flask import g, redirect, url_for, flash, session, request, Response
 from database import get_db, get_setting, set_setting, DATABASE_PATH, BACKUP_DIR, DOCUMENTS_DIR, RECOVERY_CODE_PATH
 from datetime import datetime, timedelta
 from functools import wraps
+from email.message import EmailMessage
 import logging
 import os
 import secrets
 import shutil
+import smtplib
+import ssl
 import threading
 import time as _time
 import zipfile
@@ -235,6 +238,195 @@ def calcul_depassement_heures(date_emprunt_str, duree_heures, duree_jours,
         return False, 0
     except Exception:
         return False, 0
+
+
+def _format_depassement_texte(heures_dep):
+    """Retourne un libellé lisible du dépassement."""
+    if heures_dep is None:
+        return ''
+    if heures_dep < 24:
+        h = int(heures_dep)
+        m = int((heures_dep % 1) * 60)
+        return f'{h}h{m:02d}'
+    jours = heures_dep / 24
+    return f'{int(jours)} jour(s)'
+
+
+def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
+    """Envoie les rappels email pour les prêts en alerte.
+
+    Retourne un dict stats:
+    {total_alertes, eligibles, envoyes, echecs, ignores_sans_email, ignores_cooldown}
+    """
+    now_dt = now or datetime.now()
+    now_str = now_dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    # Réglages email
+    email_active = get_setting('rappel_email_active', '0', conn=conn) == '1'
+    smtp_host = (get_setting('rappel_email_smtp_host', '', conn=conn) or '').strip()
+    smtp_port = int(get_setting('rappel_email_smtp_port', '587', conn=conn) or '587')
+    smtp_user = (get_setting('rappel_email_smtp_user', '', conn=conn) or '').strip()
+    smtp_password = get_setting('rappel_email_smtp_password', '', conn=conn) or ''
+    use_tls = get_setting('rappel_email_use_tls', '1', conn=conn) == '1'
+    use_ssl = get_setting('rappel_email_use_ssl', '0', conn=conn) == '1'
+    from_email = (get_setting('rappel_email_from', '', conn=conn) or '').strip()
+    reply_to = (get_setting('rappel_email_reply_to', '', conn=conn) or '').strip()
+    subject_tpl = (get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel', conn=conn) or '').strip()
+    cooldown_h = float(get_setting('rappel_email_cooldown_heures', '24', conn=conn) or '24')
+
+    if not email_active:
+        return {
+            'total_alertes': 0,
+            'eligibles': 0,
+            'envoyes': 0,
+            'echecs': 0,
+            'ignores_sans_email': 0,
+            'ignores_cooldown': 0,
+            'error': 'Rappels email désactivés dans les réglages.'
+        }
+
+    if not smtp_host or not from_email:
+        return {
+            'total_alertes': 0,
+            'eligibles': 0,
+            'envoyes': 0,
+            'echecs': 0,
+            'ignores_sans_email': 0,
+            'ignores_cooldown': 0,
+            'error': 'Configuration SMTP incomplète (hôte ou expéditeur manquant).'
+        }
+
+    # Charger les prêts actifs + email
+    prets_actifs = conn.execute('''
+        SELECT p.id, p.personne_id, p.descriptif_objets, p.date_emprunt,
+               p.duree_pret_jours, p.duree_pret_heures, p.date_retour_prevue,
+               pe.nom, pe.prenom, pe.email
+        FROM prets p
+        JOIN personnes pe ON p.personne_id = pe.id
+        WHERE p.retour_confirme = 0
+        ORDER BY p.date_emprunt ASC
+    ''').fetchall()
+
+    duree_def = float(get_setting('duree_alerte_defaut', '7', conn=conn) or '7')
+    unite_def = get_setting('duree_alerte_unite', 'jours', conn=conn)
+    heure_fin = get_setting('heure_fin_journee', '17:45', conn=conn)
+
+    stats = {
+        'total_alertes': 0,
+        'eligibles': 0,
+        'envoyes': 0,
+        'echecs': 0,
+        'ignores_sans_email': 0,
+        'ignores_cooldown': 0,
+    }
+
+    a_envoyer = []
+    for pret in prets_actifs:
+        depasse, heures_dep = calcul_depassement_heures(
+            pret['date_emprunt'], pret['duree_pret_heures'], pret['duree_pret_jours'],
+            _duree_defaut=duree_def, _unite_defaut=unite_def,
+            date_retour_prevue=pret['date_retour_prevue'], _heure_fin=heure_fin
+        )
+        if not depasse:
+            continue
+
+        stats['total_alertes'] += 1
+
+        email_dest = (pret['email'] or '').strip()
+        if not email_dest:
+            stats['ignores_sans_email'] += 1
+            continue
+
+        last_sent = conn.execute(
+            """
+            SELECT sent_at FROM rappels_email_log
+            WHERE pret_id = ? AND status = 'sent'
+            ORDER BY sent_at DESC LIMIT 1
+            """,
+            (pret['id'],)
+        ).fetchone()
+        if last_sent and last_sent['sent_at']:
+            try:
+                dt_last = datetime.strptime(last_sent['sent_at'], '%Y-%m-%d %H:%M:%S')
+                if (now_dt - dt_last).total_seconds() < cooldown_h * 3600:
+                    stats['ignores_cooldown'] += 1
+                    continue
+            except Exception:
+                pass
+
+        stats['eligibles'] += 1
+        a_envoyer.append((pret, email_dest, heures_dep))
+
+    if not a_envoyer:
+        return stats
+
+    smtp_cls = smtp_factory
+    if smtp_cls is None:
+        smtp_cls = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+
+    server = None
+    try:
+        if use_ssl:
+            server = smtp_cls(smtp_host, smtp_port, context=ssl.create_default_context(), timeout=10)
+        else:
+            server = smtp_cls(smtp_host, smtp_port, timeout=10)
+            if use_tls:
+                server.starttls(context=ssl.create_default_context())
+
+        if smtp_user:
+            server.login(smtp_user, smtp_password)
+
+        for pret, email_dest, heures_dep in a_envoyer:
+            fullname = f"{pret['prenom']} {pret['nom']}".strip()
+            dep_texte = _format_depassement_texte(heures_dep)
+            subject = subject_tpl
+            body = (
+                f"Bonjour {fullname},\n\n"
+                f"Ceci est un rappel de restitution de matériel PretGo.\n\n"
+                f"Objet(s): {pret['descriptif_objets']}\n"
+                f"Date d'emprunt: {pret['date_emprunt']}\n"
+                f"Dépassement: {dep_texte}\n\n"
+                "Merci de procéder au retour du matériel dès que possible.\n\n"
+                "Message automatique PretGo."
+            )
+
+            msg = EmailMessage()
+            msg['Subject'] = subject
+            msg['From'] = from_email
+            msg['To'] = email_dest
+            if reply_to:
+                msg['Reply-To'] = reply_to
+            msg.set_content(body)
+
+            try:
+                server.send_message(msg)
+                conn.execute(
+                    """
+                    INSERT INTO rappels_email_log
+                    (pret_id, personne_id, email, sent_at, status, error_message, depassement_heures)
+                    VALUES (?, ?, ?, ?, 'sent', '', ?)
+                    """,
+                    (pret['id'], pret['personne_id'], email_dest, now_str, float(heures_dep or 0))
+                )
+                stats['envoyes'] += 1
+            except Exception as e:
+                conn.execute(
+                    """
+                    INSERT INTO rappels_email_log
+                    (pret_id, personne_id, email, sent_at, status, error_message, depassement_heures)
+                    VALUES (?, ?, ?, ?, 'failed', ?, ?)
+                    """,
+                    (pret['id'], pret['personne_id'], email_dest, now_str, str(e)[:500], float(heures_dep or 0))
+                )
+                stats['echecs'] += 1
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+    return stats
 
 
 # ============================================================

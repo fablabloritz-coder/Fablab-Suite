@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATABASE_PATH, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR, RECOVERY_CODE_PATH
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email
 from datetime import datetime, timedelta
 import csv
 import io
@@ -473,6 +473,44 @@ def admin_reglages():
                 set_setting('backup_auto_erreur', f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} — {message}')
                 flash(f'Erreur lors de la sauvegarde : {message}', 'danger')
 
+        elif action == 'email_rappels_settings':
+            set_setting('rappel_email_active', '1' if request.form.get('rappel_email_active') else '0')
+            set_setting('rappel_email_smtp_host', request.form.get('rappel_email_smtp_host', '').strip())
+            set_setting('rappel_email_smtp_port', request.form.get('rappel_email_smtp_port', '587').strip() or '587')
+            set_setting('rappel_email_smtp_user', request.form.get('rappel_email_smtp_user', '').strip())
+            # Ne jamais écraser le mot de passe si le champ est vide
+            smtp_password = request.form.get('rappel_email_smtp_password', '')
+            if smtp_password:
+                set_setting('rappel_email_smtp_password', smtp_password)
+            set_setting('rappel_email_use_tls', '1' if request.form.get('rappel_email_use_tls') else '0')
+            set_setting('rappel_email_use_ssl', '1' if request.form.get('rappel_email_use_ssl') else '0')
+            set_setting('rappel_email_from', request.form.get('rappel_email_from', '').strip())
+            set_setting('rappel_email_reply_to', request.form.get('rappel_email_reply_to', '').strip())
+            set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
+
+            cooldown = request.form.get('rappel_email_cooldown_heures', '24').strip()
+            try:
+                cooldown_val = float(cooldown)
+                if cooldown_val < 0:
+                    cooldown_val = 0
+                set_setting('rappel_email_cooldown_heures', str(cooldown_val))
+                flash('Paramètres email des rappels enregistrés.', 'success')
+            except ValueError:
+                flash('Cooldown invalide. Valeur numérique attendue.', 'danger')
+
+        elif action == 'email_rappels_send_now':
+            conn = get_app_db()
+            stats = envoyer_rappels_alertes_email(conn)
+            conn.commit()
+            if stats.get('error'):
+                flash(stats['error'], 'danger')
+            else:
+                flash(
+                    f"Rappels envoyés: {stats['envoyes']} | échecs: {stats['echecs']} | "
+                    f"sans email: {stats['ignores_sans_email']} | cooldown: {stats['ignores_cooldown']}",
+                    'success' if stats['echecs'] == 0 else 'warning'
+                )
+
         return redirect(url_for('admin.admin_reglages'))
 
     duree_defaut = get_setting('duree_alerte_defaut', '7')
@@ -516,7 +554,17 @@ def admin_reglages():
                            backup_auto_nombre_max=get_setting('backup_auto_nombre_max', '5'),
                            backup_auto_chemin=get_setting('backup_auto_chemin', ''),
                            backup_auto_derniere=get_setting('backup_auto_derniere', ''),
-                           backup_auto_erreur=get_setting('backup_auto_erreur', ''))
+                           backup_auto_erreur=get_setting('backup_auto_erreur', ''),
+                           rappel_email_active=get_setting('rappel_email_active', '0'),
+                           rappel_email_smtp_host=get_setting('rappel_email_smtp_host', ''),
+                           rappel_email_smtp_port=get_setting('rappel_email_smtp_port', '587'),
+                           rappel_email_smtp_user=get_setting('rappel_email_smtp_user', ''),
+                           rappel_email_use_tls=get_setting('rappel_email_use_tls', '1'),
+                           rappel_email_use_ssl=get_setting('rappel_email_use_ssl', '0'),
+                           rappel_email_from=get_setting('rappel_email_from', ''),
+                           rappel_email_reply_to=get_setting('rappel_email_reply_to', ''),
+                           rappel_email_subject=get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel'),
+                           rappel_email_cooldown_heures=get_setting('rappel_email_cooldown_heures', '24'))
 
 
 

@@ -165,6 +165,19 @@ def init_db():
             valeur TEXT DEFAULT '',
             FOREIGN KEY (champ_id) REFERENCES champs_personnalises(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS rappels_email_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pret_id INTEGER NOT NULL,
+            personne_id INTEGER NOT NULL,
+            email TEXT NOT NULL,
+            sent_at DATETIME NOT NULL,
+            status TEXT NOT NULL DEFAULT 'sent',
+            error_message TEXT DEFAULT '',
+            depassement_heures REAL DEFAULT 0,
+            FOREIGN KEY (pret_id) REFERENCES prets(id) ON DELETE CASCADE,
+            FOREIGN KEY (personne_id) REFERENCES personnes(id) ON DELETE CASCADE
+        );
     ''')
 
     # ── Migrations colonnes prets ──
@@ -205,6 +218,8 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_pret_materiels_materiel_id ON pret_materiels(materiel_id);
         CREATE INDEX IF NOT EXISTS idx_valeurs_champs_champ_id ON valeurs_champs_personnalises(champ_id);
         CREATE INDEX IF NOT EXISTS idx_valeurs_champs_entite_id ON valeurs_champs_personnalises(entite_id);
+        CREATE INDEX IF NOT EXISTS idx_rappels_email_pret_sent_at ON rappels_email_log(pret_id, sent_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_rappels_email_status ON rappels_email_log(status);
     ''')
 
     # ── Migration colonne prefixe_inventaire pour catégories matériel ──
@@ -296,6 +311,18 @@ def init_db():
         'theme_couleur_navbar': '#1a56db',
         'theme_logo': '',
         'theme_nom_application': 'PretGo',
+        # ── Rappels email de matériel non rendu ──
+        'rappel_email_active': '0',
+        'rappel_email_smtp_host': '',
+        'rappel_email_smtp_port': '587',
+        'rappel_email_smtp_user': '',
+        'rappel_email_smtp_password': '',
+        'rappel_email_use_tls': '1',
+        'rappel_email_use_ssl': '0',
+        'rappel_email_from': '',
+        'rappel_email_reply_to': '',
+        'rappel_email_subject': '[PretGo] Rappel de retour de matériel',
+        'rappel_email_cooldown_heures': '24',
     }
     for cle, valeur in parametres_defaut.items():
         try:

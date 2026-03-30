@@ -19,6 +19,7 @@
             <a href="#section-apparence" class="btn btn-outline-primary btn-sm"><i class="bi bi-palette"></i> Apparence</a>
             <a href="#section-scanner" class="btn btn-outline-primary btn-sm"><i class="bi bi-upc-scan"></i> Scanner</a>
             <a href="#section-durees" class="btn btn-outline-primary btn-sm"><i class="bi bi-clock"></i> Durées</a>
+            <a href="#section-rappels-email" class="btn btn-outline-primary btn-sm"><i class="bi bi-envelope"></i> Rappels email</a>
             <a href="#section-etiquettes" class="btn btn-outline-primary btn-sm"><i class="bi bi-printer"></i> Étiquettes</a>
             <a href="#section-securite" class="btn btn-outline-primary btn-sm"><i class="bi bi-shield-lock"></i> Sécurité</a>
             <a href="#section-sauvegarde" class="btn btn-outline-primary btn-sm"><i class="bi bi-hdd"></i> Sauvegarde</a>
@@ -333,6 +334,108 @@
                         <button type="submit" class="btn btn-primary btn-lg">
                             <i class="bi bi-check-lg"></i> Enregistrer
                         </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1" id="section-rappels-email">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h5 class="mb-0">
+                        <i class="bi bi-envelope-at-fill text-primary"></i>
+                        Rappels email des prêts non rendus
+                    </h5>
+                    <form method="POST" action="{{ url_for('admin.admin_reglages') }}" class="m-0">
+                        <input type="hidden" name="action" value="email_rappels_send_now">
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-send"></i> Envoyer maintenant les rappels
+                        </button>
+                    </form>
+                </div>
+                <div class="card-body p-4">
+                    <p class="text-muted small mb-3">
+                        Envoie un email aux personnes ayant un prêt en dépassement (section Alertes),
+                        avec anti-spam par délai minimum entre deux rappels d'un même prêt.
+                    </p>
+
+                    <form method="POST" action="{{ url_for('admin.admin_reglages') }}">
+                        <input type="hidden" name="action" value="email_rappels_settings">
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   id="rappel_email_active" name="rappel_email_active"
+                                   {{ 'checked' if rappel_email_active == '1' }}>
+                            <label class="form-check-label fw-bold" for="rappel_email_active">
+                                Activer les rappels email
+                            </label>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">Serveur SMTP</label>
+                                <input type="text" name="rappel_email_smtp_host" class="form-control"
+                                       value="{{ rappel_email_smtp_host }}" placeholder="smtp.exemple.fr">
+                            </div>
+                            <div class="col-12 col-md-2">
+                                <label class="form-label fw-bold">Port</label>
+                                <input type="number" min="1" max="65535" name="rappel_email_smtp_port" class="form-control"
+                                       value="{{ rappel_email_smtp_port }}">
+                            </div>
+                            <div class="col-12 col-md-3">
+                                <label class="form-label fw-bold">Utilisateur SMTP</label>
+                                <input type="text" name="rappel_email_smtp_user" class="form-control"
+                                       value="{{ rappel_email_smtp_user }}" placeholder="compte@domaine.fr">
+                            </div>
+                            <div class="col-12 col-md-3">
+                                <label class="form-label fw-bold">Mot de passe SMTP</label>
+                                <input type="password" name="rappel_email_smtp_password" class="form-control"
+                                       value="" placeholder="Laisser vide pour conserver">
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">Email expéditeur</label>
+                                <input type="email" name="rappel_email_from" class="form-control"
+                                       value="{{ rappel_email_from }}" placeholder="pretgo@domaine.fr">
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">Reply-To (optionnel)</label>
+                                <input type="email" name="rappel_email_reply_to" class="form-control"
+                                       value="{{ rappel_email_reply_to }}" placeholder="support@domaine.fr">
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">Cooldown (heures)</label>
+                                <input type="number" min="0" step="0.5" name="rappel_email_cooldown_heures" class="form-control"
+                                       value="{{ rappel_email_cooldown_heures }}">
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold">Sujet</label>
+                                <input type="text" name="rappel_email_subject" class="form-control"
+                                       value="{{ rappel_email_subject }}">
+                            </div>
+
+                            <div class="col-12 d-flex gap-4 flex-wrap">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="rappel_email_use_tls"
+                                           name="rappel_email_use_tls" {{ 'checked' if rappel_email_use_tls == '1' }}>
+                                    <label class="form-check-label" for="rappel_email_use_tls">STARTTLS</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="rappel_email_use_ssl"
+                                           name="rappel_email_use_ssl" {{ 'checked' if rappel_email_use_ssl == '1' }}>
+                                    <label class="form-check-label" for="rappel_email_use_ssl">SSL/TLS direct</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-save"></i> Enregistrer les paramètres email
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
