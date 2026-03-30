@@ -426,8 +426,18 @@
                                 <label class="form-label fw-bold">Template d'email</label>
                                 <textarea name="rappel_email_template" class="form-control" rows="6" placeholder="Variables disponibles: {nom}, {prenom}, {objets}, {date_emprunt}, {depassement}">{{ rappel_email_template }}</textarea>
                                 <small class="text-muted d-block mt-2">
-                                    <strong>Variables disponibles :</strong>
+                                    <strong>Variables disponibles (retard) :</strong>
                                     <code>{nom}</code>, <code>{prenom}</code>, <code>{objets}</code>, 
+                                    <code>{date_emprunt}</code>, <code>{depassement}</code>, <code>{type_rappel}</code>
+                                </small>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold">Template d'email (retour prévu sous 24h)</label>
+                                <textarea name="rappel_email_template_retour_24h" class="form-control" rows="6" placeholder="Variables disponibles: {nom}, {prenom}, {objets}, {date_emprunt}, {depassement}">{{ rappel_email_template_retour_24h }}</textarea>
+                                <small class="text-muted d-block mt-2">
+                                    <strong>Variables disponibles (retour 24h) :</strong>
+                                    <code>{nom}</code>, <code>{prenom}</code>, <code>{objets}</code>,
                                     <code>{date_emprunt}</code>, <code>{depassement}</code>, <code>{type_rappel}</code>
                                 </small>
                             </div>

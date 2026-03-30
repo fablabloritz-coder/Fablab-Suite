@@ -679,9 +679,11 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
     if not a_envoyer:
         return stats
 
-    template_body = get_setting('rappel_email_template', '', conn=conn) or ''
-    if not template_body:
-        template_body = (
+    template_overdue = get_setting('rappel_email_template', '', conn=conn) or ''
+    template_upcoming_24h = get_setting('rappel_email_template_retour_24h', '', conn=conn) or ''
+
+    if not template_overdue:
+        template_overdue = (
             "Bonjour {nom} {prenom},\n\n"
             "Ceci est un rappel de restitution de matériel PretGo.\n\n"
             "Objet(s): {objets}\n"
@@ -690,6 +692,18 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
             "Détail: {depassement}\n"
             "Tentative: {tentative_numero}/{tentative_total}\n\n"
             "Merci de procéder au retour du matériel dès que possible.\n\n"
+            "Message automatique PretGo."
+        )
+
+    if not template_upcoming_24h:
+        template_upcoming_24h = (
+            "Bonjour {nom} {prenom},\n\n"
+            "Votre prêt PretGo arrive bientôt à échéance.\n\n"
+            "Objet(s): {objets}\n"
+            "Date d'emprunt: {date_emprunt}\n"
+            "Retour prévu: {depassement}\n"
+            "Tentative: {tentative_numero}/{tentative_total}\n\n"
+            "Merci d'anticiper le retour dans les délais prévus.\n\n"
             "Message automatique PretGo."
         )
 
@@ -713,12 +727,14 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
             if c['reminder_kind'] == 'upcoming_24h':
                 type_rappel = 'Retour prévu sous 24h'
                 dep_texte = f"Retour prévu dans {c['delta_label']}"
+                active_template = template_upcoming_24h
             else:
                 type_rappel = 'Prêt en retard'
                 dep_texte = _format_depassement_texte(c['delta_heures'])
+                active_template = template_overdue
 
             body = _render_email_template(
-                template_body,
+                active_template,
                 nom=c['nom'],
                 prenom=c['prenom'],
                 objets=c['descriptif_objets'],

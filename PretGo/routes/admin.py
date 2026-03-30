@@ -494,6 +494,7 @@ def admin_reglages():
             set_setting('rappel_email_reply_to', request.form.get('rappel_email_reply_to', '').strip())
             set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
             set_setting('rappel_email_template', request.form.get('rappel_email_template', '').strip() or '')
+            set_setting('rappel_email_template_retour_24h', request.form.get('rappel_email_template_retour_24h', '').strip() or '')
             set_setting('rappel_email_inclure_retour_24h', '1' if request.form.get('rappel_email_inclure_retour_24h') else '0')
 
             cooldown = request.form.get('rappel_email_cooldown_heures', '24').strip()
@@ -595,6 +596,7 @@ def admin_reglages():
                            rappel_email_subject=get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel'),
                            rappel_email_cooldown_heures=get_setting('rappel_email_cooldown_heures', '24'),
                            rappel_email_template=get_setting('rappel_email_template', ''),
+                           rappel_email_template_retour_24h=get_setting('rappel_email_template_retour_24h', ''),
                            rappel_email_inclure_retour_24h=get_setting('rappel_email_inclure_retour_24h', '1'),
                            rappel_email_scheduler_enabled=get_setting('rappel_email_scheduler_enabled', '0'),
                            rappel_email_scheduler_heure=get_setting('rappel_email_scheduler_heure', '09'),

@@ -340,6 +340,16 @@ def init_db():
             "Merci de procéder au retour du matériel dès que possible.\n\n"
             "Message automatique PretGo."
         ),
+        'rappel_email_template_retour_24h': (
+            "Bonjour {nom} {prenom},\n\n"
+            "Votre prêt PretGo arrive bientôt à échéance.\n\n"
+            "Objet(s): {objets}\n"
+            "Date d'emprunt: {date_emprunt}\n"
+            "Retour prévu: {depassement}\n"
+            "Tentative: {tentative_numero}/{tentative_total}\n\n"
+            "Merci d'anticiper le retour dans les délais prévus.\n\n"
+            "Message automatique PretGo."
+        ),
         # ── Scheduler automatique des rappels ──
         'rappel_email_scheduler_enabled': '0',
         'rappel_email_scheduler_heure': '09',
