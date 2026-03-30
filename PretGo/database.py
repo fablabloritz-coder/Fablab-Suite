@@ -328,10 +328,16 @@ def init_db():
             "Ceci est un rappel de restitution de matériel PretGo.\n\n"
             "Objet(s): {objets}\n"
             "Date d'emprunt: {date_emprunt}\n"
-            "Dépassement: {depassement}\n\n"
+            "Dépassement: {depassement}\n"
+            "Tentative: {tentative_numero}/{tentative_total}\n\n"
             "Merci de procéder au retour du matériel dès que possible.\n\n"
             "Message automatique PretGo."
         ),
+        # ── Scheduler automatique des rappels ──
+        'rappel_email_scheduler_enabled': '0',
+        'rappel_email_scheduler_heure': '09',
+        'rappel_email_scheduler_minute': '00',
+        'rappel_email_scheduler_jours': 'mon,tue,wed,thu,fri',
     }
     for cle, valeur in parametres_defaut.items():
         try:

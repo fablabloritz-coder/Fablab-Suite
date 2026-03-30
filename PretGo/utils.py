@@ -306,6 +306,35 @@ def obtenir_statistiques_rappels_email(conn):
     return stats
 
 
+def compter_tentatives_pret(conn, pret_id):
+    """Compte les tentatives d'envoi pour un prêt donné.
+    
+    Retourne (tentative_numero, total_tentatives)
+    - tentative_numero : 1-indexed (1, 2, 3...)
+    - total_tentatives : total des envois (sent + failed)
+    """
+    row = conn.execute('''
+        SELECT COUNT(*) as total FROM rappels_email_log
+        WHERE pret_id = ?
+    ''', (pret_id,)).fetchone()
+    total = row['total'] or 0
+    tentative_numero = total + 1
+    return tentative_numero, total
+
+
+def verifier_max_tentatives_atteint(conn, pret_id, max_tentatives=3):
+    """Vérifie si le nombre max de tentatives est atteint pour un prêt.
+    
+    Retourne True si le nombre total de tentatives >= max_tentatives
+    """
+    row = conn.execute('''
+        SELECT COUNT(*) as total FROM rappels_email_log
+        WHERE pret_id = ?
+    ''', (pret_id,)).fetchone()
+    total = row['total'] or 0
+    return total >= max_tentatives
+
+
 def _render_email_template(template, **variables):
     """Remplace les variables {nom}, {prenom}, etc. dans le template.
     
@@ -345,7 +374,9 @@ def generer_preview_email(conn):
         prenom='Jean',
         objets='Scie à métaux + Équerre de précision',
         date_emprunt=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        depassement='2j3h'
+        depassement='2j3h',
+        tentative_numero='2',
+        tentative_total='3'
     )
     
     return {
@@ -523,6 +554,7 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
         template_body = get_setting('rappel_email_template', '', conn=conn) or ''
         for pret, email_dest, heures_dep in a_envoyer:
             dep_texte = _format_depassement_texte(heures_dep)
+            tentative_numero, tentative_total = compter_tentatives_pret(conn, pret['id'])
             subject = subject_tpl
             body = _render_email_template(
                 template_body,
@@ -530,7 +562,9 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
                 prenom=pret['prenom'],
                 objets=pret['descriptif_objets'],
                 date_emprunt=pret['date_emprunt'],
-                depassement=dep_texte
+                depassement=dep_texte,
+                tentative_numero=str(tentative_numero),
+                tentative_total=str(tentative_total)
             )
 
             msg = EmailMessage()

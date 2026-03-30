@@ -107,6 +107,7 @@
                                 <th>Email</th>
                                 <th>Prêt ID</th>
                                 <th>Dépassement</th>
+                                <th>Tentative</th>
                                 <th>Statut</th>
                                 <th>Détails</th>
                             </tr>
@@ -126,6 +127,11 @@
                                                 {{ (log.depassement_heures / 24) | int }}j
                                             </span>
                                         {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-secondary">
+                                            {{ log.tentative_numero }}/{{ log.tentative_total }}
+                                        </span>
                                     </td>
                                     <td>
                                         {% if log.status == 'sent' %}

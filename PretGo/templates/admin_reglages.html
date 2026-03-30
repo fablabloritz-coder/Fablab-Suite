@@ -456,6 +456,55 @@
                     </form>
                 </div>
             </div>
+
+            <!-- ════ SOUS-SECTION : SCHEDULER AUTOMATIQUE ════ -->
+            <div class="card border-0 shadow-sm mt-4">
+                <div class="card-header bg-light py-3 px-4">
+                    <h6 class="mb-0"><i class="bi bi-clock-history"></i> Scheduler automatique</h6>
+                </div>
+                <div class="card-body p-4">
+                    <p class="text-muted small mb-3">
+                        Envoie automatiquement les rappels selon une planification quotidienne.
+                    </p>
+                    <form method="POST" action="{{ url_for('admin.admin_reglages') }}">
+                        <input type="hidden" name="action" value="email_scheduler_settings">
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   id="rappel_email_scheduler_enabled" name="rappel_email_scheduler_enabled"
+                                   {{ 'checked' if rappel_email_scheduler_enabled == '1' }}>
+                            <label class="form-check-label fw-bold" for="rappel_email_scheduler_enabled">
+                                Activer l'envoi automatique
+                            </label>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold">Heure</label>
+                                <input type="number" min="0" max="23" name="rappel_email_scheduler_heure"
+                                       class="form-control" value="{{ rappel_email_scheduler_heure }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold">Minute</label>
+                                <input type="number" min="0" max="59" step="15" name="rappel_email_scheduler_minute"
+                                       class="form-control" value="{{ rappel_email_scheduler_minute }}">
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label fw-bold">Jours (cron format)</label>
+                                <input type="text" name="rappel_email_scheduler_jours" class="form-control"
+                                       value="{{ rappel_email_scheduler_jours }}" 
+                                       placeholder="mon,tue,wed,thu,fri"
+                                       title="Format cron : mon,tue,wed,thu,fri ou * pour tous les jours">
+                                <small class="text-muted">Format : mon, tue, wed, thu, fri, sat, sun ou * (tous)</small>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Enregistrer scheduler
+                        </button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 </div>

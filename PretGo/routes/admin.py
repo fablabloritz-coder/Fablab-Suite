@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
-from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for, current_app
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATABASE_PATH, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR, RECOVERY_CODE_PATH
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, csv_response
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response
 from datetime import datetime, timedelta
 import csv
 import io
@@ -518,6 +518,16 @@ def admin_reglages():
                     'success' if stats['echecs'] == 0 else 'warning'
                 )
 
+        elif action == 'email_scheduler_settings':
+            from scheduler import email_scheduler
+            set_setting('rappel_email_scheduler_enabled', '1' if request.form.get('rappel_email_scheduler_enabled') else '0')
+            set_setting('rappel_email_scheduler_heure', request.form.get('rappel_email_scheduler_heure', '09').strip() or '09')
+            set_setting('rappel_email_scheduler_minute', request.form.get('rappel_email_scheduler_minute', '00').strip() or '00')
+            set_setting('rappel_email_scheduler_jours', request.form.get('rappel_email_scheduler_jours', 'mon,tue,wed,thu,fri').strip() or 'mon,tue,wed,thu,fri')
+            flash('Scheduler des rappels email enregistré. Redémarrage automatique.', 'success')
+            # Redémarrer le scheduler pour prendre en compte les changements
+            email_scheduler.restart(current_app)
+
         return redirect(url_for('admin.admin_reglages'))
 
     duree_defaut = get_setting('duree_alerte_defaut', '7')
@@ -572,7 +582,11 @@ def admin_reglages():
                            rappel_email_reply_to=get_setting('rappel_email_reply_to', ''),
                            rappel_email_subject=get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel'),
                            rappel_email_cooldown_heures=get_setting('rappel_email_cooldown_heures', '24'),
-                           rappel_email_template=get_setting('rappel_email_template', ''))
+                           rappel_email_template=get_setting('rappel_email_template', ''),
+                           rappel_email_scheduler_enabled=get_setting('rappel_email_scheduler_enabled', '0'),
+                           rappel_email_scheduler_heure=get_setting('rappel_email_scheduler_heure', '09'),
+                           rappel_email_scheduler_minute=get_setting('rappel_email_scheduler_minute', '00'),
+                           rappel_email_scheduler_jours=get_setting('rappel_email_scheduler_jours', 'mon,tue,wed,thu,fri'))
 
 
 
@@ -1586,7 +1600,7 @@ def historique_rappels():
     query += ' ORDER BY sent_at DESC LIMIT ? OFFSET ?'
     logs = conn.execute(query, params + [par_page, offset]).fetchall()
     
-    # Enrichir avec noms des personnes
+    # Enrichir avec noms des personnes et compteur tentatives
     logs_enrichis = []
     for log in logs:
         if log['personne_id']:
@@ -1595,6 +1609,10 @@ def historique_rappels():
             nom = f"{pers['prenom']} {pers['nom']}" if pers else '(supprimée)'
         else:
             nom = '(inconnue)'
+        
+        # Compter total tentatives pour ce prêt
+        tentative_numero, tentative_total = compter_tentatives_pret(conn, log['pret_id'])
+        
         logs_enrichis.append({
             'id': log['id'],
             'pret_id': log['pret_id'],
@@ -1605,6 +1623,8 @@ def historique_rappels():
             'status': log['status'],
             'error_message': log['error_message'],
             'depassement_heures': log['depassement_heures'],
+            'tentative_numero': tentative_numero,
+            'tentative_total': tentative_total,
         })
     
     return render_template('admin_historique_rappels.html',

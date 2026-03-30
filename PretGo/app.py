@@ -12,6 +12,7 @@ from database import init_db, DATA_DIR
 from utils import get_app_db, register_filters, register_context_processors, check_and_run_backup
 from fabsuite_core.security import load_secret_key
 from routes import register_blueprints
+from scheduler import email_scheduler
 import os
 import secrets
 
@@ -116,6 +117,9 @@ def _close_db(exception):
 register_filters(app)
 register_context_processors(app)
 register_blueprints(app)
+
+# ── Démarrer le scheduler des rappels email automatiques ──
+email_scheduler.start(app)
 
 
 # ============================================================
