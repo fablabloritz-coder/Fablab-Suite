@@ -78,6 +78,8 @@ def init_db():
         software_name TEXT NOT NULL,
         is_important INTEGER DEFAULT 0,
         note TEXT DEFAULT '',
+        is_licensed INTEGER DEFAULT 0,
+        license_type TEXT DEFAULT '',
         UNIQUE(master_id, software_name),
         FOREIGN KEY (master_id) REFERENCES masters(id) ON DELETE CASCADE
     );
@@ -105,7 +107,11 @@ def init_db():
     CREATE TABLE IF NOT EXISTS roadmap_minimal_pack (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         software_name TEXT NOT NULL UNIQUE,
+        install_url TEXT DEFAULT '',
+        note_text TEXT DEFAULT '',
         note TEXT DEFAULT '',
+        is_licensed INTEGER DEFAULT 0,
+        license_type TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -113,7 +119,11 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         master_id INTEGER NOT NULL,
         software_name TEXT NOT NULL,
+        install_url TEXT DEFAULT '',
+        note_text TEXT DEFAULT '',
         note TEXT DEFAULT '',
+        is_licensed INTEGER DEFAULT 0,
+        license_type TEXT DEFAULT '',
         is_done INTEGER DEFAULT 0,
         source TEXT DEFAULT 'custom',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -145,6 +155,39 @@ def init_db():
         db.execute("SELECT software_category FROM software_index LIMIT 1")
     except sqlite3.OperationalError:
         db.execute("ALTER TABLE software_index ADD COLUMN software_category TEXT DEFAULT 'main'")
+
+    # Migration idempotente: metadonnees licence sur software_flags.
+    sflag_cols = [row[1] for row in db.execute("PRAGMA table_info(software_flags)").fetchall()]
+    if "is_licensed" not in sflag_cols:
+        db.execute("ALTER TABLE software_flags ADD COLUMN is_licensed INTEGER DEFAULT 0")
+    if "license_type" not in sflag_cols:
+        db.execute("ALTER TABLE software_flags ADD COLUMN license_type TEXT DEFAULT ''")
+
+    # Migration idempotente: pack minimal URL + note separee + licence.
+    mp_cols = [row[1] for row in db.execute("PRAGMA table_info(roadmap_minimal_pack)").fetchall()]
+    if "install_url" not in mp_cols:
+        db.execute("ALTER TABLE roadmap_minimal_pack ADD COLUMN install_url TEXT DEFAULT ''")
+    if "note_text" not in mp_cols:
+        db.execute("ALTER TABLE roadmap_minimal_pack ADD COLUMN note_text TEXT DEFAULT ''")
+    if "is_licensed" not in mp_cols:
+        db.execute("ALTER TABLE roadmap_minimal_pack ADD COLUMN is_licensed INTEGER DEFAULT 0")
+    if "license_type" not in mp_cols:
+        db.execute("ALTER TABLE roadmap_minimal_pack ADD COLUMN license_type TEXT DEFAULT ''")
+
+    # Migration idempotente: checklist master URL + note separee + licence.
+    ri_cols = [row[1] for row in db.execute("PRAGMA table_info(roadmap_items)").fetchall()]
+    if "install_url" not in ri_cols:
+        db.execute("ALTER TABLE roadmap_items ADD COLUMN install_url TEXT DEFAULT ''")
+    if "note_text" not in ri_cols:
+        db.execute("ALTER TABLE roadmap_items ADD COLUMN note_text TEXT DEFAULT ''")
+    if "is_licensed" not in ri_cols:
+        db.execute("ALTER TABLE roadmap_items ADD COLUMN is_licensed INTEGER DEFAULT 0")
+    if "license_type" not in ri_cols:
+        db.execute("ALTER TABLE roadmap_items ADD COLUMN license_type TEXT DEFAULT ''")
+
+    # Backfill: si l'ancien champ note etait utilise, on le copie dans note_text.
+    db.execute("UPDATE roadmap_minimal_pack SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
+    db.execute("UPDATE roadmap_items SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
 
     db.commit()
     db.close()
@@ -663,15 +706,29 @@ def _ensure_software_index_ready(db):
 
 def _apply_minimal_pack_to_master(db, master_id):
     pack_items = db.execute(
-        "SELECT software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+        """
+        SELECT software_name, install_url, note_text, note, is_licensed, license_type
+        FROM roadmap_minimal_pack
+        ORDER BY software_name
+        """
     ).fetchall()
     for item in pack_items:
+        note_text = item["note_text"] or item["note"] or ""
         db.execute(
             """
-            INSERT OR IGNORE INTO roadmap_items (master_id, software_name, note, is_done, source)
-            VALUES (?, ?, ?, 0, 'minimal')
+            INSERT OR IGNORE INTO roadmap_items
+            (master_id, software_name, install_url, note_text, note, is_licensed, license_type, is_done, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'minimal')
             """,
-            (master_id, item["software_name"], item["note"] or ""),
+            (
+                master_id,
+                item["software_name"],
+                item["install_url"] or "",
+                note_text,
+                note_text,
+                int(item["is_licensed"] or 0),
+                item["license_type"] or "",
+            ),
         )
 
 
@@ -843,7 +900,11 @@ def upload():
 def master_new():
     db = get_db()
     minimal_pack = db.execute(
-        "SELECT id, software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+        """
+        SELECT id, software_name, install_url, note_text, note, is_licensed, license_type
+        FROM roadmap_minimal_pack
+        ORDER BY software_name
+        """
     ).fetchall()
 
     if request.method == "GET":
@@ -873,19 +934,32 @@ def master_new():
     master_id = cur.lastrowid
 
     custom_items_raw = request.form.getlist("roadmap_software[]")
+    custom_urls_raw = request.form.getlist("roadmap_install_url[]")
     custom_notes_raw = request.form.getlist("roadmap_note[]")
-    max_len = max(len(custom_items_raw), len(custom_notes_raw)) if (custom_items_raw or custom_notes_raw) else 0
+    custom_licensed_raw = request.form.getlist("roadmap_is_licensed[]")
+    custom_license_type_raw = request.form.getlist("roadmap_license_type[]")
+    max_len = max(
+        len(custom_items_raw),
+        len(custom_urls_raw),
+        len(custom_notes_raw),
+        len(custom_licensed_raw),
+        len(custom_license_type_raw),
+    ) if (custom_items_raw or custom_urls_raw or custom_notes_raw or custom_licensed_raw or custom_license_type_raw) else 0
     for idx in range(max_len):
         sw_name = (custom_items_raw[idx] if idx < len(custom_items_raw) else "").strip()
+        sw_url = (custom_urls_raw[idx] if idx < len(custom_urls_raw) else "").strip()
         sw_note = (custom_notes_raw[idx] if idx < len(custom_notes_raw) else "").strip()
+        sw_licensed = (custom_licensed_raw[idx] if idx < len(custom_licensed_raw) else "0").strip() == "1"
+        sw_license_type = (custom_license_type_raw[idx] if idx < len(custom_license_type_raw) else "").strip()
         if not sw_name:
             continue
         db.execute(
             """
-            INSERT OR IGNORE INTO roadmap_items (master_id, software_name, note, is_done, source)
-            VALUES (?, ?, ?, 0, 'custom')
+            INSERT OR IGNORE INTO roadmap_items
+            (master_id, software_name, install_url, note_text, note, is_licensed, license_type, is_done, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'custom')
             """,
-            (master_id, sw_name, sw_note),
+            (master_id, sw_name, sw_url, sw_note, sw_note, 1 if sw_licensed else 0, sw_license_type),
         )
 
     if use_minimal_pack:
@@ -938,7 +1012,12 @@ def master_detail(master_id):
     # Get flags
     flags = {}
     for row in db.execute("SELECT * FROM software_flags WHERE master_id = ?", (master_id,)).fetchall():
-        flags[row["software_name"]] = {"important": row["is_important"], "note": row["note"]}
+        flags[row["software_name"]] = {
+            "important": row["is_important"],
+            "note": row["note"],
+            "is_licensed": row["is_licensed"],
+            "license_type": row["license_type"],
+        }
 
     return render_template("master.html", master=master, snapshots=snapshots,
                            software=software, flags=flags, latest=latest)
@@ -1018,7 +1097,7 @@ def master_roadmap(master_id):
 
     roadmap_items = db.execute(
         """
-        SELECT id, software_name, note, is_done, source
+        SELECT id, software_name, install_url, note_text, note, is_licensed, license_type, is_done, source
         FROM roadmap_items
         WHERE master_id = ?
         ORDER BY is_done ASC, software_name ASC
@@ -1026,7 +1105,11 @@ def master_roadmap(master_id):
         (master_id,),
     ).fetchall()
     minimal_pack = db.execute(
-        "SELECT id, software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+        """
+        SELECT id, software_name, install_url, note_text, note, is_licensed, license_type
+        FROM roadmap_minimal_pack
+        ORDER BY software_name
+        """
     ).fetchall()
 
     return render_template(
@@ -1047,7 +1130,7 @@ def master_roadmap_print(master_id):
 
     roadmap_items = db.execute(
         """
-        SELECT software_name, note, is_done, source
+        SELECT software_name, install_url, note_text, note, is_licensed, license_type, is_done, source
         FROM roadmap_items
         WHERE master_id = ?
         ORDER BY is_done ASC, software_name ASC
@@ -1268,17 +1351,21 @@ def roadmap_add_item(master_id):
         return redirect(url_for("roadmaps_index"))
 
     software_name = request.form.get("software_name", "").strip()
-    note = request.form.get("note", "").strip()
+    install_url = request.form.get("install_url", "").strip()
+    note_text = request.form.get("note", "").strip()
+    is_licensed = 1 if request.form.get("is_licensed", "0").strip() == "1" else 0
+    license_type = request.form.get("license_type", "").strip()
     if not software_name:
         flash("Le nom du logiciel est obligatoire", "error")
         return redirect(url_for("master_roadmap", master_id=master_id))
 
     db.execute(
         """
-        INSERT OR IGNORE INTO roadmap_items (master_id, software_name, note, is_done, source)
-        VALUES (?, ?, ?, 0, 'custom')
+        INSERT OR IGNORE INTO roadmap_items
+        (master_id, software_name, install_url, note_text, note, is_licensed, license_type, is_done, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'custom')
         """,
-        (master_id, software_name, note),
+        (master_id, software_name, install_url, note_text, note_text, is_licensed, license_type),
     )
     db.commit()
     flash("Element ajoute a la checklist", "success")
@@ -1297,14 +1384,21 @@ def roadmap_update_item(master_id, item_id):
         return redirect(url_for("master_roadmap", master_id=master_id))
 
     software_name = request.form.get("software_name", "").strip()
-    note = request.form.get("note", "").strip()
+    install_url = request.form.get("install_url", "").strip()
+    note_text = request.form.get("note", "").strip()
+    is_licensed = 1 if request.form.get("is_licensed", "0").strip() == "1" else 0
+    license_type = request.form.get("license_type", "").strip()
     if not software_name:
         flash("Le nom du logiciel est obligatoire", "error")
         return redirect(url_for("master_roadmap", master_id=master_id))
 
     db.execute(
-        "UPDATE roadmap_items SET software_name = ?, note = ? WHERE id = ? AND master_id = ?",
-        (software_name, note, item_id, master_id),
+        """
+        UPDATE roadmap_items
+        SET software_name = ?, install_url = ?, note_text = ?, note = ?, is_licensed = ?, license_type = ?
+        WHERE id = ? AND master_id = ?
+        """,
+        (software_name, install_url, note_text, note_text, is_licensed, license_type, item_id, master_id),
     )
     db.commit()
     flash("Element de checklist mis a jour", "success")
@@ -1362,7 +1456,11 @@ def roadmap_apply_minimal_pack(master_id):
 def minimal_pack_page():
     db = get_db()
     minimal_pack = db.execute(
-        "SELECT id, software_name, note FROM roadmap_minimal_pack ORDER BY software_name"
+        """
+        SELECT id, software_name, install_url, note_text, note, is_licensed, license_type
+        FROM roadmap_minimal_pack
+        ORDER BY software_name
+        """
     ).fetchall()
     return render_template("minimal_pack.html", minimal_pack=minimal_pack)
 
@@ -1371,15 +1469,22 @@ def minimal_pack_page():
 def minimal_pack_add_item():
     db = get_db()
     software_name = request.form.get("software_name", "").strip()
-    note = request.form.get("note", "").strip()
+    install_url = request.form.get("install_url", "").strip()
+    note_text = request.form.get("note_text", "").strip()
+    is_licensed = 1 if request.form.get("is_licensed", "0").strip() == "1" else 0
+    license_type = request.form.get("license_type", "").strip()
     master_id = request.form.get("master_id", "").strip()
 
     if not software_name:
         flash("Le nom du logiciel du pack minimal est obligatoire", "error")
     else:
         db.execute(
-            "INSERT OR IGNORE INTO roadmap_minimal_pack (software_name, note) VALUES (?, ?)",
-            (software_name, note),
+            """
+            INSERT OR IGNORE INTO roadmap_minimal_pack
+            (software_name, install_url, note_text, note, is_licensed, license_type)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (software_name, install_url, note_text, note_text, is_licensed, license_type),
         )
         db.commit()
         flash("Logiciel ajoute au pack minimal", "success")
@@ -1393,15 +1498,22 @@ def minimal_pack_add_item():
 def minimal_pack_update_item(item_id):
     db = get_db()
     software_name = request.form.get("software_name", "").strip()
-    note = request.form.get("note", "").strip()
+    install_url = request.form.get("install_url", "").strip()
+    note_text = request.form.get("note_text", "").strip()
+    is_licensed = 1 if request.form.get("is_licensed", "0").strip() == "1" else 0
+    license_type = request.form.get("license_type", "").strip()
     master_id = request.form.get("master_id", "").strip()
 
     if not software_name:
         flash("Le nom du logiciel du pack minimal est obligatoire", "error")
     else:
         db.execute(
-            "UPDATE roadmap_minimal_pack SET software_name = ?, note = ? WHERE id = ?",
-            (software_name, note, item_id),
+            """
+            UPDATE roadmap_minimal_pack
+            SET software_name = ?, install_url = ?, note_text = ?, note = ?, is_licensed = ?, license_type = ?
+            WHERE id = ?
+            """,
+            (software_name, install_url, note_text, note_text, is_licensed, license_type, item_id),
         )
         db.commit()
         flash("Pack minimal mis a jour", "success")
@@ -1782,13 +1894,16 @@ def api_flag():
     sw_name = data.get("name")
     important = data.get("important", 0)
     note = data.get("note", "")
+    is_licensed = 1 if int(data.get("is_licensed", 0) or 0) == 1 else 0
+    license_type = data.get("license_type", "")
 
     db = get_db()
     db.execute("""
-        INSERT INTO software_flags (master_id, software_name, is_important, note)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(master_id, software_name) DO UPDATE SET is_important=?, note=?
-    """, (master_id, sw_name, important, note, important, note))
+        INSERT INTO software_flags (master_id, software_name, is_important, note, is_licensed, license_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(master_id, software_name)
+        DO UPDATE SET is_important=?, note=?, is_licensed=?, license_type=?
+    """, (master_id, sw_name, important, note, is_licensed, license_type, important, note, is_licensed, license_type))
     db.commit()
     return jsonify({"ok": True})
 

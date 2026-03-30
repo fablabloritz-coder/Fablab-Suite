@@ -25,6 +25,12 @@
             <div class="col-md-6">
                 <label class="form-label"><i class="bi bi-tag me-1"></i> Intitulé du projet (optionnel)</label>
                 <input type="text" id="projet_nom" class="form-control" placeholder="Ex: Maquette pont, TP semaine 12...">
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="projet_personnel">
+                    <label class="form-check-label" for="projet_personnel">
+                        Projet personnel
+                    </label>
+                </div>
             </div>
         </div>
         <div class="row g-3">
@@ -124,24 +130,6 @@ function onReferenceDataLoaded() {
     setDefaultDate();
     addAction();           // start with one empty action
     loadRecent();
-
-    // calculateur surface pré-remplissage
-    const calcSurface = sessionStorage.getItem('fabtrack_calc_surface');
-    if (calcSurface) {
-        sessionStorage.removeItem('fabtrack_calc_surface');
-        const data = JSON.parse(calcSurface);
-        // will be applied to first action after it renders
-        setTimeout(() => {
-            const first = document.querySelector('[data-action-id]');
-            if (first) {
-                const aid = first.dataset.actionId;
-                if (data.longueur_mm) qs(aid, '.f-longueur').value = data.longueur_mm;
-                if (data.largeur_mm) qs(aid, '.f-largeur').value = data.largeur_mm;
-                calcActionSurface(aid);
-            }
-            showToast('Surface pré-remplie depuis le calculateur', 'info');
-        }, 100);
-    }
 }
 
 function setDefaultDate() {
@@ -458,7 +446,8 @@ function buildActionHTML(aid) {
                     </div>
                     <div class="col-md-4">
                         <label class="form-label"><i class="bi bi-calculator me-1"></i> Surface</label>
-                        <input type="text" class="form-control f-surface" readonly placeholder="Auto" style="background:var(--ft-bg);">
+                        <input type="number" class="form-control f-surface" step="0.0001" min="0" placeholder="Auto ou manuel"
+                               oninput="normalizeSurfaceInput(this)">
                     </div>
                 </div>
             </div>
@@ -659,7 +648,26 @@ function calcActionSurface(aid) {
     const f = UNIT_TO_MM[actionUnits[aid]] || 1;
     const s = (l * f * w * f) / 1e6;
     const el = qs(aid, '.f-surface');
-    if (el) el.value = s > 0 ? `${s.toFixed(4)} m²` : '';
+    if (el) el.value = s > 0 ? s.toFixed(4) : '';
+}
+
+function normalizeSurfaceInput(inputEl) {
+    if (!inputEl) return;
+    const raw = String(inputEl.value || '').replace(',', '.').trim();
+    if (raw === '') return;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n < 0) {
+        inputEl.value = '';
+        return;
+    }
+    inputEl.value = n;
+}
+
+function parseSurfaceValue(raw) {
+    const text = String(raw || '').replace(',', '.').trim();
+    if (!text) return null;
+    const n = parseFloat(text);
+    return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 /* ---------- Add referent on the fly ---------- */
@@ -721,6 +729,7 @@ async function doSubmit(andNew) {
             poids_grammes: parseFloat(card.querySelector('.f-poids')?.value) || null,
             longueur_mm: rawL ? rawL * factor : null,
             largeur_mm: rawW ? rawW * factor : null,
+            surface_m2: parseSurfaceValue(card.querySelector('.f-surface')?.value),
             nb_feuilles: parseInt(card.querySelector('.f-nb-feuilles')?.value) || null,
             format_papier: card.querySelector('.f-format-papier')?.value || null,
             impression_couleur: card.querySelector('.f-impression-couleur')?.value || '',
@@ -745,6 +754,7 @@ async function doSubmit(andNew) {
         classe_id: parseInt(document.getElementById('classe_id').value) || null,
         referent_id: parseInt(document.getElementById('referent_id').value) || null,
         projet_nom: document.getElementById('projet_nom').value || '',
+        projet_personnel: document.getElementById('projet_personnel').checked ? 1 : 0,
         actions: actions
     };
 
@@ -783,6 +793,7 @@ function resetActions() {
 function resetForm() {
     document.getElementById('date_saisie').value = '';
     document.getElementById('projet_nom').value = '';
+    document.getElementById('projet_personnel').checked = false;
     document.getElementById('classe_search').value = '';
     document.getElementById('referent_search').value = '';
     document.getElementById('classe_id').value = '';
@@ -811,7 +822,10 @@ async function loadRecent() {
         tbody.innerHTML = result.data.map(row => `
             <tr>
                 <td>${formatDate(row.date_saisie)}</td>
-                <td>${row.projet_nom ? `<span class="text-muted small">${row.projet_nom}</span>` : '<span class="text-muted">—</span>'}</td>
+                <td>
+                    ${row.projet_nom ? `<span class="text-muted small">${row.projet_nom}</span>` : '<span class="text-muted">—</span>'}
+                    ${row.projet_personnel ? '<span class="badge rounded-pill text-bg-warning ms-1">Perso</span>' : ''}
+                </td>
                 <td>${getBadgeHTML(row.type_activite_nom, row.badge_class)}</td>
                 <td>${row.machine_nom || '<span class="text-muted">—</span>'}</td>
                 <td>${getMaterialImg(row.materiau_nom)}${row.materiau_nom || '<span class="text-muted">—</span>'}</td>

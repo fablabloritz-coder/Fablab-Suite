@@ -128,6 +128,8 @@
           <th class="sortable" onclick="sortSw(3)">Date <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(4)">Taille <i class="bi bi-arrow-down-up small"></i></th>
           <th colspan="2">Source &amp; Catégorie</th>
+          <th style="width:90px">Licence</th>
+          <th style="min-width:170px">Type licence</th>
           <th style="min-width:160px">Note</th>
         </tr>
       </thead>
@@ -245,7 +247,7 @@ function renderSw() {
 
   rows.forEach(s => {
     const key = s.n;
-    const flag = FLAGS[key] || {important:0, note:''};
+    const flag = FLAGS[key] || {important:0, note:'', is_licensed:0, license_type:''};
     const isImp = flag.important == 1;
     if (isImp) impCount++;
 
@@ -272,10 +274,12 @@ function renderSw() {
         '<span class="badge badge-sm rounded-pill" style="'+srcBadge+';font-size:.68rem;font-weight:600;margin-right:.4rem">'+s.src+'</span>' +
         '<span class="'+categoryBadgeClass+'">'+swCategory+'</span>' +
       '</td>' +
+      '<td><select class="form-select form-select-sm" onchange="licenseFlagSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"><option value="0" '+(flag.is_licensed==1?'':'selected')+'>Non</option><option value="1" '+(flag.is_licensed==1?'selected':'')+'>Oui</option></select></td>' +
+      '<td><select class="form-select form-select-sm" onchange="licenseTypeSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"><option value="" '+(!flag.license_type?'selected':'')+'>—</option><option value="reseau" '+(flag.license_type==='reseau'?'selected':'')+'>Reseau</option><option value="fichier_local" '+(flag.license_type==='fichier_local'?'selected':'')+'>Fichier local</option><option value="numero_serie_contrat" '+(flag.license_type==='numero_serie_contrat'?'selected':'')+'>Numero serie / contrat</option><option value="mot_de_passe" '+(flag.license_type==='mot_de_passe'?'selected':'')+'>Mot de passe</option></select></td>' +
       '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" style="font-size:.8rem" value="'+esc(flag.note || '')+'" placeholder="..." onchange="noteSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"></td></tr>';
   });
 
-  tbody.innerHTML = html || '<tr><td colspan="8" class="text-center text-muted py-4"><i class="bi bi-search me-2"></i>Aucun logiciel trouve</td></tr>';
+  tbody.innerHTML = html || '<tr><td colspan="11" class="text-center text-muted py-4"><i class="bi bi-search me-2"></i>Aucun logiciel trouve</td></tr>';
   document.getElementById('counter').textContent = impCount + ' important' + (impCount > 1 ? 's' : '');
 }
 
@@ -313,18 +317,35 @@ function sortSw(col) {
 }
 
 function flagSw(name, checked) {
-  const flag = FLAGS[name] || {important:0, note:''};
+  const flag = FLAGS[name] || {important:0, note:'', is_licensed:0, license_type:''};
   flag.important = checked ? 1 : 0;
   FLAGS[name] = flag;
-  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note})});
+  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note, is_licensed:flag.is_licensed, license_type:flag.license_type})});
   renderSw();
 }
 
 function noteSw(name, note) {
-  const flag = FLAGS[name] || {important:0, note:''};
+  const flag = FLAGS[name] || {important:0, note:'', is_licensed:0, license_type:''};
   flag.note = note;
   FLAGS[name] = flag;
-  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note})});
+  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note, is_licensed:flag.is_licensed, license_type:flag.license_type})});
+}
+
+function licenseFlagSw(name, isLicensedValue) {
+  const flag = FLAGS[name] || {important:0, note:'', is_licensed:0, license_type:''};
+  flag.is_licensed = parseInt(isLicensedValue || '0', 10) ? 1 : 0;
+  if (!flag.is_licensed) flag.license_type = '';
+  FLAGS[name] = flag;
+  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note, is_licensed:flag.is_licensed, license_type:flag.license_type})});
+  renderSw();
+}
+
+function licenseTypeSw(name, licenseType) {
+  const flag = FLAGS[name] || {important:0, note:'', is_licensed:0, license_type:''};
+  flag.license_type = licenseType || '';
+  if (flag.license_type) flag.is_licensed = 1;
+  FLAGS[name] = flag;
+  fetch('/api/flag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({master_id:MASTER_ID, name:name, important:flag.important, note:flag.note, is_licensed:flag.is_licensed, license_type:flag.license_type})});
 }
 
 // Initialize category buttons

@@ -152,8 +152,10 @@ body.ultra .sign-box {
     <thead>
       <tr>
         <th style="width:56px;">Fait</th>
-        <th style="width:38%;">Logiciel</th>
-        <th>Note installation / telechargement</th>
+        <th style="width:30%;">Logiciel</th>
+        <th style="width:26%;">Source installation (URL)</th>
+        <th style="width:16%;">Licence</th>
+        <th>Note technique</th>
       </tr>
     </thead>
     <tbody>
@@ -162,12 +164,20 @@ body.ultra .sign-box {
         <tr>
           <td>{% if item.is_done %}X{% else %}<span class="checkbox"></span>{% endif %}</td>
           <td>{{ item.software_name }}</td>
-          <td class="note">{{ item.note or '' }}</td>
+          <td class="note">{{ item.install_url or '' }}</td>
+          <td>
+            {% if item.is_licensed %}
+              Oui{% if item.license_type %} ({{ item.license_type|replace('_', ' ') }}){% endif %}
+            {% else %}
+              Non
+            {% endif %}
+          </td>
+          <td class="note">{{ item.note_text or item.note or '' }}</td>
         </tr>
         {% endfor %}
       {% else %}
         <tr>
-          <td colspan="3">Aucun element dans la checklist.</td>
+          <td colspan="5">Aucun element dans la checklist.</td>
         </tr>
       {% endif %}
     </tbody>

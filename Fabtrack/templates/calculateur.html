@@ -113,9 +113,6 @@
                     <button class="btn btn-primary flex-fill" onclick="copierResultat()">
                         <i class="bi bi-clipboard"></i> Copier
                     </button>
-                    <button class="btn btn-success flex-fill" onclick="utiliserDansSaisie()">
-                        <i class="bi bi-box-arrow-in-right"></i> Utiliser dans la saisie
-                    </button>
                     <button class="btn btn-outline-secondary" onclick="resetCalc()">
                         <i class="bi bi-arrow-counterclockwise"></i>
                     </button>
@@ -275,23 +272,6 @@ function fillPreset(l, w) {
 function copierResultat() {
     const val = document.getElementById('calcResult').textContent.replace(',', '.');
     navigator.clipboard.writeText(val).then(() => showToast('Résultat copié !', 'info'));
-}
-
-function utiliserDansSaisie() {
-    const surface = parseFloat(document.getElementById('calcResult').textContent.replace(',', '.'));
-    if (surface <= 0) { showToast('Calculez d\'abord une surface', 'error'); return; }
-
-    // Store in sessionStorage and redirect
-    let longueur_mm = 0, largeur_mm = 0;
-    if (currentShape === 'rectangle') {
-        const f = currentUnit === 'mm' ? 1 : currentUnit === 'cm' ? 10 : 1000;
-        longueur_mm = (parseFloat(document.getElementById('calcLongueur').value) || 0) * f;
-        largeur_mm = (parseFloat(document.getElementById('calcLargeur').value) || 0) * f;
-    }
-    sessionStorage.setItem('fabtrack_calc_surface', JSON.stringify({
-        longueur_mm: longueur_mm, largeur_mm: largeur_mm, surface: surface
-    }));
-    window.location.href = '/';
 }
 
 function resetCalc() {

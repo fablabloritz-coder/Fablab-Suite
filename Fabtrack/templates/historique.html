@@ -154,7 +154,10 @@ async function loadHistorique(page) {
                 <td>${getMaterialImg(row.materiau_nom)}${escHtml(row.materiau_nom) || '<span class="text-muted">—</span>'}</td>
                 <td>${escHtml(row.classe_nom) || '<span class="text-muted">—</span>'}</td>
                 <td>${escHtml(row.referent_nom) || '<span class="text-muted">—</span>'}</td>
-                <td>${row.projet_nom ? `<span class="text-muted small">${escHtml(row.projet_nom)}</span>` : '<span class="text-muted">—</span>'}</td>
+                <td>
+                    ${row.projet_nom ? `<span class="text-muted small">${escHtml(row.projet_nom)}</span>` : '<span class="text-muted">—</span>'}
+                    ${row.projet_personnel ? '<span class="badge rounded-pill text-bg-warning ms-1">Perso</span>' : ''}
+                </td>
                 <td><small>${getDetailsText(row)}</small></td>
                 <td><small class="text-muted">${escHtml(row.commentaire) || '—'}</small></td>
                 <td>

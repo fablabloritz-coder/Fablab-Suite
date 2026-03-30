@@ -22,6 +22,15 @@ def _normalize_unit(unit):
     return (unit or '').strip().lower().replace(' ', '')
 
 
+def _to_bool_int(value):
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, (int, float)):
+        return 1 if int(value) != 0 else 0
+    text = str(value or '').strip().lower()
+    return 1 if text in ('1', 'true', 'oui', 'yes', 'on') else 0
+
+
 def _surface_from_action(action):
     surface = _to_float(action.get('surface_m2'))
     if surface is not None:
@@ -197,8 +206,8 @@ def api_create_consommation():
                 poids_grammes, longueur_mm, largeur_mm, surface_m2, epaisseur,
                 nb_feuilles, format_papier,
                 nb_feuilles_plastique, type_feuille, commentaire,
-                impression_couleur, projet_nom
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                impression_couleur, projet_nom, projet_personnel
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ''', (
             data.get('date_saisie', datetime.now().strftime('%Y-%m-%d %H:%M')),
             data.get('preparateur_id'), data.get('type_activite_id'),
@@ -216,6 +225,7 @@ def api_create_consommation():
             data.get('type_feuille') or None, data.get('commentaire',''),
             data.get('impression_couleur',''),
             data.get('projet_nom',''),
+            _to_bool_int(data.get('projet_personnel', 0)),
         ))
 
         # Synchronisation stock non bloquante (on autorise les stocks négatifs).
@@ -247,6 +257,7 @@ def api_create_consommation_batch():
         'classe_id': data.get('classe_id'),
         'referent_id': data.get('referent_id'),
         'projet_nom': data.get('projet_nom', ''),
+        'projet_personnel': _to_bool_int(data.get('projet_personnel', 0)),
     }
 
     db = get_db()
@@ -275,8 +286,8 @@ def api_create_consommation_batch():
                     poids_grammes, longueur_mm, largeur_mm, surface_m2, epaisseur,
                     nb_feuilles, format_papier,
                     nb_feuilles_plastique, type_feuille, commentaire,
-                    impression_couleur, projet_nom
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    impression_couleur, projet_nom, projet_personnel
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ''', (
                 common['date_saisie'], common['preparateur_id'],
                 action.get('type_activite_id'), action.get('machine_id') or None,
@@ -291,7 +302,7 @@ def api_create_consommation_batch():
                 action.get('nb_feuilles') or None, action.get('format_papier') or None,
                 action.get('nb_feuilles_plastique') or None,
                 action.get('type_feuille') or None, action.get('commentaire', ''),
-                action.get('impression_couleur', ''), common['projet_nom'],
+                action.get('impression_couleur', ''), common['projet_nom'], common['projet_personnel'],
             ))
             conso_id = cur.lastrowid
             ids.append(conso_id)
@@ -350,6 +361,7 @@ def api_update_consommation(id):
                 nb_feuilles_plastique=?, type_feuille=?, commentaire=?,
                 impression_couleur=?,
                 projet_nom=?,
+                projet_personnel=?,
                 updated_at=datetime('now','localtime')
             WHERE id=?
         ''', (
@@ -367,7 +379,9 @@ def api_update_consommation(id):
             data.get('nb_feuilles_plastique') or None,
             data.get('type_feuille') or None, data.get('commentaire',''),
             data.get('impression_couleur',''),
-            data.get('projet_nom',''), id,
+            data.get('projet_nom',''),
+            _to_bool_int(data.get('projet_personnel', 0)),
+            id,
         ))
         db.commit(); return jsonify({'success':True})
     except Exception as e:
@@ -576,7 +590,7 @@ def api_export_csv():
                    COALESCE(mat.nom, c.nom_materiau) as materiau,
                    c.poids_grammes,c.surface_m2,c.longueur_mm,c.largeur_mm,
                    c.epaisseur,c.nb_feuilles,c.format_papier,c.impression_couleur,
-                   c.nb_feuilles_plastique,c.type_feuille,c.projet_nom,c.commentaire
+                     c.nb_feuilles_plastique,c.type_feuille,c.projet_nom,c.projet_personnel,c.commentaire
             FROM consommations c
             LEFT JOIN preparateurs p ON c.preparateur_id=p.id
             LEFT JOIN types_activite t ON c.type_activite_id=t.id
@@ -593,7 +607,7 @@ def api_export_csv():
         wr.writerow(['Date','Préparateur','Type activité','Machine','Classe',
                       'Référent','Catégorie réf.','Matériau',
                       'Poids (g)','Surface (m²)','Longueur (mm)','Largeur (mm)',
-                      'Épaisseur','Nb feuilles','Format papier','Impression couleur',
+                      'Épaisseur','Nb feuilles','Format papier','Impression couleur','Projet personnel',
                       'Nb feuilles plastique','Type feuille','Projet','Commentaire'])
         for row in rows:
             wr.writerow([row[k] or '' for k in row.keys()])

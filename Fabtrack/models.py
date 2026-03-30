@@ -131,6 +131,7 @@ def init_db():
         commentaire TEXT DEFAULT '',
         impression_couleur TEXT DEFAULT '',
         projet_nom TEXT DEFAULT '',
+        projet_personnel INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
@@ -343,6 +344,8 @@ def _migrate_db(c):
         c.execute("ALTER TABLE consommations ADD COLUMN impression_couleur TEXT DEFAULT ''")
     if 'projet_nom' not in ccols:
         c.execute("ALTER TABLE consommations ADD COLUMN projet_nom TEXT DEFAULT ''")
+    if 'projet_personnel' not in ccols:
+        c.execute("ALTER TABLE consommations ADD COLUMN projet_personnel INTEGER DEFAULT 0")
 
     # Colonnes dénormalisées pour résilience aux suppressions
     for col in ('nom_preparateur','nom_type_activite','nom_machine','nom_classe','nom_referent','nom_materiau'):

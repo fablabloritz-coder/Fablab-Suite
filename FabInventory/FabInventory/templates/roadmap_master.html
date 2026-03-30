@@ -45,7 +45,10 @@
           <tr>
             <th style="width:90px">Etat</th>
             <th>Logiciel</th>
-            <th>Note (telechargement / installation)</th>
+            <th>Source installation (URL)</th>
+            <th>Note technique</th>
+            <th style="width:100px">Licence</th>
+            <th style="width:170px">Type licence</th>
             <th style="width:100px">Origine</th>
             <th style="width:200px">Actions</th>
           </tr>
@@ -70,7 +73,25 @@
                   <input type="text" name="software_name" class="form-control form-control-sm" value="{{ item.software_name }}" required>
               </td>
               <td>
-                  <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note or '' }}" placeholder="Lien, mode silencieux, prerequis...">
+                  <input type="url" name="install_url" class="form-control form-control-sm" value="{{ item.install_url or '' }}" placeholder="https://...">
+                </td>
+                <td>
+                  <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note_text or item.note or '' }}" placeholder="Mode silencieux, prerequis, post-install...">
+                </td>
+                <td>
+                  <select name="is_licensed" class="form-select form-select-sm">
+                  <option value="0" {% if not item.is_licensed %}selected{% endif %}>Non</option>
+                  <option value="1" {% if item.is_licensed %}selected{% endif %}>Oui</option>
+                  </select>
+                </td>
+                <td>
+                  <select name="license_type" class="form-select form-select-sm">
+                  <option value="" {% if not item.license_type %}selected{% endif %}>—</option>
+                  <option value="reseau" {% if item.license_type == 'reseau' %}selected{% endif %}>Reseau</option>
+                  <option value="fichier_local" {% if item.license_type == 'fichier_local' %}selected{% endif %}>Fichier local</option>
+                  <option value="numero_serie_contrat" {% if item.license_type == 'numero_serie_contrat' %}selected{% endif %}>Numero serie / contrat</option>
+                  <option value="mot_de_passe" {% if item.license_type == 'mot_de_passe' %}selected{% endif %}>Mot de passe</option>
+                  </select>
               </td>
               <td>
                   <span class="badge rounded-pill" style="{% if item.source == 'minimal' %}background:var(--fi-accent-soft);color:var(--fi-accent){% else %}background:#f1f5f9;color:var(--fi-text-muted){% endif %};font-size:.7rem;font-weight:600">
@@ -94,7 +115,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="5">
+              <td colspan="8">
                 <div class="empty-state py-4">
                   <i class="bi bi-card-checklist empty-state-icon" style="font-size:2.5rem"></i>
                   <h4 style="font-size:1rem">Aucun element</h4>
@@ -113,9 +134,30 @@
         <label class="form-label">Logiciel</label>
         <input type="text" name="software_name" class="form-control form-control-sm" placeholder="Ex: Firefox, 7-Zip, Python..." required>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-3">
+        <label class="form-label">URL source</label>
+        <input type="url" name="install_url" class="form-control form-control-sm" placeholder="https://...">
+      </div>
+      <div class="col-md-2">
         <label class="form-label">Note</label>
-        <input type="text" name="note" class="form-control form-control-sm" placeholder="Source de telechargement, commande d'installation...">
+        <input type="text" name="note" class="form-control form-control-sm" placeholder="Infos...">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Licence</label>
+        <select name="is_licensed" class="form-select form-select-sm">
+          <option value="0" selected>Non</option>
+          <option value="1">Oui</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Type</label>
+        <select name="license_type" class="form-select form-select-sm">
+          <option value="" selected>—</option>
+          <option value="reseau">Reseau</option>
+          <option value="fichier_local">Fichier local</option>
+          <option value="numero_serie_contrat">Numero serie / contrat</option>
+          <option value="mot_de_passe">Mot de passe</option>
+        </select>
       </div>
       <div class="col-md-2 d-grid">
         <button type="submit" class="btn btn-primary btn-sm">
