@@ -338,6 +338,8 @@ def init_db():
         'rappel_email_scheduler_heure': '09',
         'rappel_email_scheduler_minute': '00',
         'rappel_email_scheduler_jours': 'mon,tue,wed,thu,fri',
+        # ── Limite de tentatives ──
+        'rappel_email_max_tentatives': '3',
     }
     for cle, valeur in parametres_defaut.items():
         try:

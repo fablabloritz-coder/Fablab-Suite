@@ -138,6 +138,8 @@
                                             <span class="badge bg-success">✓ Envoyé</span>
                                         {% elif log.status == 'failed' %}
                                             <span class="badge bg-danger">✗ Erreur</span>
+                                        {% elif log.status == 'blocked' %}
+                                            <span class="badge bg-warning text-dark">⊗ Bloqué</span>
                                         {% else %}
                                             <span class="badge bg-secondary">{{ log.status }}</span>
                                         {% endif %}

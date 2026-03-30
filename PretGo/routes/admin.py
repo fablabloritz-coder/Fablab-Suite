@@ -528,6 +528,15 @@ def admin_reglages():
             # Redémarrer le scheduler pour prendre en compte les changements
             email_scheduler.restart(current_app)
 
+        elif action == 'email_max_tentatives_settings':
+            max_tentatives = request.form.get('rappel_email_max_tentatives', '3').strip() or '3'
+            try:
+                int(max_tentatives)  # Vérifier que c'est un nombre valide
+                set_setting('rappel_email_max_tentatives', max_tentatives)
+                flash('Limite de tentatives enregistrée.', 'success')
+            except ValueError:
+                flash('Erreur : la limite doit être un nombre entier.', 'danger')
+
         return redirect(url_for('admin.admin_reglages'))
 
     duree_defaut = get_setting('duree_alerte_defaut', '7')
@@ -586,7 +595,8 @@ def admin_reglages():
                            rappel_email_scheduler_enabled=get_setting('rappel_email_scheduler_enabled', '0'),
                            rappel_email_scheduler_heure=get_setting('rappel_email_scheduler_heure', '09'),
                            rappel_email_scheduler_minute=get_setting('rappel_email_scheduler_minute', '00'),
-                           rappel_email_scheduler_jours=get_setting('rappel_email_scheduler_jours', 'mon,tue,wed,thu,fri'))
+                           rappel_email_scheduler_jours=get_setting('rappel_email_scheduler_jours', 'mon,tue,wed,thu,fri'),
+                           rappel_email_max_tentatives=get_setting('rappel_email_max_tentatives', '3'))
 
 
 

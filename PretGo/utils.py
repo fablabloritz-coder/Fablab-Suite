@@ -493,6 +493,7 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
         'echecs': 0,
         'ignores_sans_email': 0,
         'ignores_cooldown': 0,
+        'bloques': 0,
     }
 
     a_envoyer = []
@@ -552,9 +553,26 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
             server.login(smtp_user, smtp_password)
 
         template_body = get_setting('rappel_email_template', '', conn=conn) or ''
+        max_tentatives = int(get_setting('rappel_email_max_tentatives', '3', conn=conn) or '3')
+        
         for pret, email_dest, heures_dep in a_envoyer:
             dep_texte = _format_depassement_texte(heures_dep)
             tentative_numero, tentative_total = compter_tentatives_pret(conn, pret['id'])
+            
+            # Vérifier si le max de tentatives est atteint
+            if tentative_numero >= max_tentatives:
+                conn.execute(
+                    """
+                    INSERT INTO rappels_email_log
+                    (pret_id, personne_id, email, sent_at, status, error_message, depassement_heures)
+                    VALUES (?, ?, ?, ?, 'blocked', ?, ?)
+                    """,
+                    (pret['id'], pret['personne_id'], email_dest, now_str, 
+                     f'Maximum de tentatives atteint ({max_tentatives})', float(heures_dep or 0))
+                )
+                stats['bloques'] += 1
+                continue
+            
             subject = subject_tpl
             body = _render_email_template(
                 template_body,

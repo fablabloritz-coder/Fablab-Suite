@@ -505,6 +505,34 @@
                     </form>
                 </div>
             </div>
+
+            <!-- ════ SOUS-SECTION : LIMITE DE TENTATIVES ════ -->
+            <div class="card border-0 shadow-sm mt-4">
+                <div class="card-header bg-light py-3 px-4">
+                    <h6 class="mb-0"><i class="bi bi-shield-check"></i> Limite de tentatives</h6>
+                </div>
+                <div class="card-body p-4">
+                    <p class="text-muted small mb-3">
+                        Nombre maximum de rappels à envoyer avant de bloquer un prêt.
+                    </p>
+                    <form method="POST" action="{{ url_for('admin.admin_reglages') }}">
+                        <input type="hidden" name="action" value="email_max_tentatives_settings">
+
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Max tentatives</label>
+                                <input type="number" min="1" max="100" name="rappel_email_max_tentatives"
+                                       class="form-control" value="{{ rappel_email_max_tentatives }}">
+                                <small class="text-muted">Défaut : 3</small>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary mt-3">
+                            <i class="bi bi-save"></i> Enregistrer limite
+                        </button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 </div>
