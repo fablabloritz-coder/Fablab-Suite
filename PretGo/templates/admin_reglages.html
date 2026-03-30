@@ -496,14 +496,38 @@
      SCRIPTS : EMAIL PREVIEW & SMTP TEST
      ════════════════════════════════════════════════════════ -->
 <script>
+const emailCsrfToken = '{{ csrf_token() }}';
+
+async function fetchJsonOrThrow(url, options = {}) {
+    const headers = Object.assign({}, options.headers || {}, {
+        'X-CSRF-Token': emailCsrfToken
+    });
+    const response = await fetch(url, Object.assign({}, options, {
+        credentials: 'same-origin',
+        headers
+    }));
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const raw = await response.text();
+        if (response.status === 403) {
+            throw new Error('Session expirée ou jeton CSRF invalide. Rechargez la page puis réessayez.');
+        }
+        throw new Error(`Réponse serveur inattendue (${response.status}).`);
+    }
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || data.error || `Erreur HTTP ${response.status}`);
+    }
+    return data;
+}
+
 function previsualiserEmail() {
     const btn = document.getElementById('btn-preview-email');
     const originalText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Chargement...';
     
-    fetch('{{ url_for("admin.api_email_preview") }}')
-        .then(r => r.json())
+    fetchJsonOrThrow('{{ url_for("admin.api_email_preview") }}')
         .then(data => {
             document.getElementById('previewFrom').textContent = data.from || '(non configuré)';
             document.getElementById('previewSubject').textContent = data.subject || '(sujet vide)';
@@ -527,11 +551,9 @@ function testerSMTP() {
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Test en cours...';
     
-    fetch('{{ url_for("admin.api_email_actions") }}?action=test_smtp', {method: 'POST'})
-        .then(r => r.json())
+    fetchJsonOrThrow('{{ url_for("admin.api_email_actions") }}?action=test_smtp', {method: 'POST'})
         .then(data => {
             const icon = data.success ? '✓' : '✗';
-            const className = data.success ? 'alert-success' : 'alert-danger';
             alert(icon + ' ' + data.message);
         })
         .catch(err => {
@@ -542,6 +564,23 @@ function testerSMTP() {
             btn.innerHTML = originalText;
         });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const tlsCheckbox = document.getElementById('rappel_email_use_tls');
+    const sslCheckbox = document.getElementById('rappel_email_use_ssl');
+    if (tlsCheckbox && sslCheckbox) {
+        tlsCheckbox.addEventListener('change', function() {
+            if (tlsCheckbox.checked) {
+                sslCheckbox.checked = false;
+            }
+        });
+        sslCheckbox.addEventListener('change', function() {
+            if (sslCheckbox.checked) {
+                tlsCheckbox.checked = false;
+            }
+        });
+    }
+});
 </script>
 
 <!-- ══  SECTION 4 : IMPRESSION D'ÉTIQUETTES  ══ -->

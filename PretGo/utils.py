@@ -312,6 +312,8 @@ def tester_connexion_smtp(conn):
     smtp_password = get_setting('rappel_email_smtp_password', '', conn=conn) or ''
     use_tls = get_setting('rappel_email_use_tls', '1', conn=conn) == '1'
     use_ssl = get_setting('rappel_email_use_ssl', '0', conn=conn) == '1'
+    if use_tls and use_ssl:
+        use_tls = False
     
     if not smtp_host:
         return {'success': False, 'message': 'Hôte SMTP manquant'}
@@ -355,6 +357,8 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
     smtp_password = get_setting('rappel_email_smtp_password', '', conn=conn) or ''
     use_tls = get_setting('rappel_email_use_tls', '1', conn=conn) == '1'
     use_ssl = get_setting('rappel_email_use_ssl', '0', conn=conn) == '1'
+    if use_tls and use_ssl:
+        use_tls = False
     from_email = (get_setting('rappel_email_from', '', conn=conn) or '').strip()
     reply_to = (get_setting('rappel_email_reply_to', '', conn=conn) or '').strip()
     subject_tpl = (get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel', conn=conn) or '').strip()

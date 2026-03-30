@@ -482,8 +482,14 @@ def admin_reglages():
             smtp_password = request.form.get('rappel_email_smtp_password', '')
             if smtp_password:
                 set_setting('rappel_email_smtp_password', smtp_password)
-            set_setting('rappel_email_use_tls', '1' if request.form.get('rappel_email_use_tls') else '0')
-            set_setting('rappel_email_use_ssl', '1' if request.form.get('rappel_email_use_ssl') else '0')
+            use_tls = bool(request.form.get('rappel_email_use_tls'))
+            use_ssl = bool(request.form.get('rappel_email_use_ssl'))
+            if use_tls and use_ssl:
+                # Protocoles incompatibles: on conserve SSL/TLS direct.
+                use_tls = False
+                flash('STARTTLS et SSL/TLS direct sont incompatibles. SSL/TLS direct a été conservé.', 'warning')
+            set_setting('rappel_email_use_tls', '1' if use_tls else '0')
+            set_setting('rappel_email_use_ssl', '1' if use_ssl else '0')
             set_setting('rappel_email_from', request.form.get('rappel_email_from', '').strip())
             set_setting('rappel_email_reply_to', request.form.get('rappel_email_reply_to', '').strip())
             set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
