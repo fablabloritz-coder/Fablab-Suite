@@ -490,12 +490,58 @@ def admin_reglages():
                 flash('STARTTLS et SSL/TLS direct sont incompatibles. SSL/TLS direct a été conservé.', 'warning')
             set_setting('rappel_email_use_tls', '1' if use_tls else '0')
             set_setting('rappel_email_use_ssl', '1' if use_ssl else '0')
+            set_setting('rappel_email_html_active', '1' if request.form.get('rappel_email_html_active') else '0')
             set_setting('rappel_email_from', request.form.get('rappel_email_from', '').strip())
             set_setting('rappel_email_reply_to', request.form.get('rappel_email_reply_to', '').strip())
             set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
             set_setting('rappel_email_template', request.form.get('rappel_email_template', '').strip() or '')
             set_setting('rappel_email_template_retour_24h', request.form.get('rappel_email_template_retour_24h', '').strip() or '')
             set_setting('rappel_email_inclure_retour_24h', '1' if request.form.get('rappel_email_inclure_retour_24h') else '0')
+
+            # Signature image optionnelle (sécurité: formats limités + taille max)
+            signature_rel = get_setting('rappel_email_signature_image', '') or ''
+            signature_abs = os.path.join(DATA_DIR, signature_rel) if signature_rel else ''
+            if request.form.get('rappel_email_signature_remove'):
+                try:
+                    if signature_abs and os.path.exists(signature_abs):
+                        os.remove(signature_abs)
+                except Exception:
+                    pass
+                set_setting('rappel_email_signature_image', '')
+                flash('Signature email supprimée.', 'success')
+
+            signature_file = request.files.get('rappel_email_signature_file')
+            if signature_file and (signature_file.filename or '').strip():
+                ext = os.path.splitext(signature_file.filename.lower())[1]
+                allowed_ext = {'.png', '.jpg', '.jpeg', '.webp'}
+                if ext not in allowed_ext:
+                    flash('Signature refusée: format autorisé = png, jpg, jpeg, webp.', 'danger')
+                else:
+                    raw = signature_file.read()
+                    max_size = 15 * 1024
+                    if not raw:
+                        flash('Signature refusée: fichier vide.', 'danger')
+                    elif len(raw) > max_size:
+                        flash('Signature refusée: taille maximale 15 Ko.', 'danger')
+                    else:
+                        sig_dir = os.path.join(DATA_DIR, 'email_signatures')
+                        os.makedirs(sig_dir, exist_ok=True)
+                        # Nettoyer les anciens fichiers de signature pour éviter les doublons
+                        for old_ext in ('.png', '.jpg', '.jpeg', '.webp'):
+                            old_path = os.path.join(sig_dir, f'rappel_signature{old_ext}')
+                            if os.path.exists(old_path):
+                                try:
+                                    os.remove(old_path)
+                                except Exception:
+                                    pass
+
+                        filename = f'rappel_signature{ext}'
+                        save_path = os.path.join(sig_dir, filename)
+                        with open(save_path, 'wb') as f:
+                            f.write(raw)
+
+                        set_setting('rappel_email_signature_image', f'email_signatures/{filename}')
+                        flash('Signature email enregistrée (inline, taille légère).', 'success')
 
             cooldown = request.form.get('rappel_email_cooldown_heures', '24').strip()
             try:
@@ -591,12 +637,14 @@ def admin_reglages():
                            rappel_email_smtp_user=get_setting('rappel_email_smtp_user', ''),
                            rappel_email_use_tls=get_setting('rappel_email_use_tls', '1'),
                            rappel_email_use_ssl=get_setting('rappel_email_use_ssl', '0'),
+                           rappel_email_html_active=get_setting('rappel_email_html_active', '1'),
                            rappel_email_from=get_setting('rappel_email_from', ''),
                            rappel_email_reply_to=get_setting('rappel_email_reply_to', ''),
                            rappel_email_subject=get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel'),
                            rappel_email_cooldown_heures=get_setting('rappel_email_cooldown_heures', '24'),
                            rappel_email_template=get_setting('rappel_email_template', ''),
                            rappel_email_template_retour_24h=get_setting('rappel_email_template_retour_24h', ''),
+                           rappel_email_signature_image=get_setting('rappel_email_signature_image', ''),
                            rappel_email_inclure_retour_24h=get_setting('rappel_email_inclure_retour_24h', '1'),
                            rappel_email_scheduler_enabled=get_setting('rappel_email_scheduler_enabled', '0'),
                            rappel_email_scheduler_heure=get_setting('rappel_email_scheduler_heure', '09'),
@@ -1626,7 +1674,10 @@ def api_email_preview():
     GET /api/admin/email-preview → {subject, body, from}
     """
     conn = get_app_db()
-    preview = generer_preview_email(conn)
+    reminder_kind = (request.args.get('kind', 'overdue') or 'overdue').strip()
+    if reminder_kind not in ('overdue', 'upcoming_24h'):
+        reminder_kind = 'overdue'
+    preview = generer_preview_email(conn, reminder_kind=reminder_kind)
     return jsonify(preview)
 
 

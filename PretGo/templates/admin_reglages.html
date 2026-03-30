@@ -54,7 +54,7 @@
                     </form>
                 </div>
                 <div class="card-body p-4">
-                    <form method="POST" action="{{ url_for('admin.admin_reglages') }}">
+                    <form method="POST" action="{{ url_for('admin.admin_reglages') }}" enctype="multipart/form-data">
                         <input type="hidden" name="action" value="theme">
 
                         <!-- Mode sombre -->
@@ -458,6 +458,26 @@
                                            name="rappel_email_inclure_retour_24h" {{ 'checked' if rappel_email_inclure_retour_24h == '1' }}>
                                     <label class="form-check-label" for="rappel_email_inclure_retour_24h">Inclure les retours prévus sous 24h</label>
                                 </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="rappel_email_html_active"
+                                           name="rappel_email_html_active" {{ 'checked' if rappel_email_html_active == '1' }}>
+                                    <label class="form-check-label" for="rappel_email_html_active">Activer version HTML (fallback texte automatique)</label>
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-md-8">
+                                <label class="form-label fw-bold">Signature image (optionnelle, inline)</label>
+                                <input type="file" name="rappel_email_signature_file" class="form-control" accept=".png,.jpg,.jpeg,.webp">
+                                <small class="text-muted d-block mt-1">Formats: png/jpg/jpeg/webp - Taille max: 15 Ko.</small>
+                                {% if rappel_email_signature_image %}
+                                <small class="text-success d-block mt-1">Signature active: {{ rappel_email_signature_image }}</small>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 col-md-4 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="rappel_email_signature_remove" name="rappel_email_signature_remove">
+                                    <label class="form-check-label" for="rappel_email_signature_remove">Supprimer la signature actuelle</label>
+                                </div>
                             </div>
                         </div>
 
@@ -465,8 +485,11 @@
                             <button type="submit" class="btn btn-primary btn-lg">
                                 <i class="bi bi-save"></i> Enregistrer les paramètres email
                             </button>
-                            <button type="button" class="btn btn-info btn-lg" id="btn-preview-email" onclick="previsualiserEmail()">
-                                <i class="bi bi-envelope-open"></i> Prévisualiser l'email
+                            <button type="button" class="btn btn-info btn-lg" id="btn-preview-email-overdue" onclick="previsualiserEmail('overdue')">
+                                <i class="bi bi-envelope-open"></i> Prévisualiser (retard)
+                            </button>
+                            <button type="button" class="btn btn-info btn-lg" id="btn-preview-email-24h" onclick="previsualiserEmail('upcoming_24h')">
+                                <i class="bi bi-envelope-open-heart"></i> Prévisualiser (retour &lt;24h)
                             </button>
                             <button type="button" class="btn btn-success btn-lg" id="btn-test-smtp" onclick="testerSMTP()">
                                 <i class="bi bi-cloud-check"></i> Tester SMTP
@@ -578,8 +601,13 @@
                     <div class="bg-light p-2 rounded" id="previewSubject"></div>
                 </div>
                 <div class="mb-3">
-                    <label class="text-muted small"><strong>Corps du message:</strong></label>
-                    <div class="bg-white border p-3 rounded" id="previewBody" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.9em;"></div>
+                    <label class="text-muted small"><strong>Corps (texte brut):</strong></label>
+                    <div class="bg-white border p-3 rounded" id="previewBody" style="max-height: 220px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; font-size: 0.9em;"></div>
+                </div>
+                <div class="mb-3" id="previewHtmlWrapper" style="display:none;">
+                    <label class="text-muted small"><strong>Rendu HTML (indicatif):</strong></label>
+                    <div class="bg-white border p-3 rounded" id="previewHtml" style="max-height: 260px; overflow-y: auto;"></div>
+                    <small class="text-muted">Le rendu réel peut varier selon les clients mail.</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -618,17 +646,32 @@ async function fetchJsonOrThrow(url, options = {}) {
     return data;
 }
 
-function previsualiserEmail() {
-    const btn = document.getElementById('btn-preview-email');
+function previsualiserEmail(kind = 'overdue') {
+    const btnId = kind === 'upcoming_24h' ? 'btn-preview-email-24h' : 'btn-preview-email-overdue';
+    const btn = document.getElementById(btnId);
     const originalText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Chargement...';
-    
-    fetchJsonOrThrow('{{ url_for("admin.api_email_preview") }}')
+
+    const qs = new URLSearchParams({kind});
+    fetchJsonOrThrow('{{ url_for("admin.api_email_preview") }}?' + qs.toString())
         .then(data => {
+            const title = document.getElementById('modalPreviewEmailLabel');
+            title.innerHTML = data.preview_kind === 'upcoming_24h'
+                ? '<i class="bi bi-envelope-open-heart"></i> Aperçu email - retour sous 24h'
+                : '<i class="bi bi-envelope-open"></i> Aperçu email - prêt en retard';
             document.getElementById('previewFrom').textContent = data.from || '(non configuré)';
             document.getElementById('previewSubject').textContent = data.subject || '(sujet vide)';
             document.getElementById('previewBody').textContent = data.body || '(corps vide)';
+            const htmlWrapper = document.getElementById('previewHtmlWrapper');
+            const htmlContainer = document.getElementById('previewHtml');
+            if (data.html_active && data.html_body) {
+                htmlContainer.innerHTML = data.html_body;
+                htmlWrapper.style.display = 'block';
+            } else {
+                htmlContainer.innerHTML = '';
+                htmlWrapper.style.display = 'none';
+            }
             
             const modal = new bootstrap.Modal(document.getElementById('modalPreviewEmail'));
             modal.show();

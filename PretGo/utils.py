@@ -7,6 +7,8 @@ from database import get_db, get_setting, set_setting, DATABASE_PATH, BACKUP_DIR
 from datetime import datetime, timedelta
 from functools import wraps
 from email.message import EmailMessage
+from html import escape as html_escape
+import base64
 import logging
 import os
 import secrets
@@ -27,6 +29,7 @@ _log = logging.getLogger(__name__)
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads', 'materiel')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+EMAIL_SIGNATURE_MAX_BYTES = 15 * 1024
 
 
 # ============================================================
@@ -347,25 +350,104 @@ def _render_email_template(template, **variables):
     return result
 
 
-def generer_preview_email(conn):
+def _render_html_email(text_body, signature_cid=None, signature_src=None):
+    """Construit un HTML simple, robuste et compatible à partir du texte."""
+    safe_body = html_escape(text_body or '').replace('\n', '<br>')
+    signature_html = ''
+    if signature_src:
+        signature_html = (
+            '<div style="margin-top:12px;">'
+            f'<img src="{signature_src}" alt="Signature" style="max-width:280px;height:auto;opacity:0.92;">'
+            '</div>'
+        )
+    elif signature_cid:
+        signature_html = (
+            '<div style="margin-top:12px;">'
+            f'<img src="cid:{signature_cid}" alt="Signature" style="max-width:280px;height:auto;opacity:0.92;">'
+            '</div>'
+        )
+    return (
+        '<!DOCTYPE html><html><body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;line-height:1.5;">'
+        f'<div>{safe_body}</div>'
+        f'{signature_html}'
+        '</body></html>'
+    )
+
+
+def _get_signature_image_info(conn):
+    """Retourne (bytes, subtype, cid) de la signature si valide, sinon (None, None, None)."""
+    rel_path = (get_setting('rappel_email_signature_image', '', conn=conn) or '').strip()
+    if not rel_path:
+        return None, None, None
+
+    data_dir = os.path.dirname(DATABASE_PATH)
+    abs_path = os.path.normpath(os.path.join(data_dir, rel_path))
+    if not abs_path.startswith(os.path.normpath(data_dir)):
+        return None, None, None
+    if not os.path.exists(abs_path):
+        return None, None, None
+
+    try:
+        with open(abs_path, 'rb') as f:
+            raw = f.read()
+    except Exception:
+        return None, None, None
+
+    if not raw or len(raw) > EMAIL_SIGNATURE_MAX_BYTES:
+        return None, None, None
+
+    ext = os.path.splitext(abs_path)[1].lower()
+    subtype = {
+        '.png': 'png',
+        '.jpg': 'jpeg',
+        '.jpeg': 'jpeg',
+        '.webp': 'webp',
+    }.get(ext)
+    if not subtype:
+        return None, None, None
+
+    return raw, subtype, 'pretgo-signature'
+
+
+def generer_preview_email(conn, reminder_kind='overdue'):
     """Génère un aperçu de l'email avec des valeurs de test.
     
     Retourne un dict {subject, body}
     """
+    if reminder_kind not in ('overdue', 'upcoming_24h'):
+        reminder_kind = 'overdue'
+
     from_email = (get_setting('rappel_email_from', '', conn=conn) or '').strip()
     subject_tpl = (get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel', conn=conn) or '').strip()
-    template_body = get_setting('rappel_email_template', '', conn=conn) or ''
-    
-    if not template_body:
-        template_body = (
-            "Bonjour {nom} {prenom},\n\n"
-            "Ceci est un rappel de restitution de matériel PretGo.\n\n"
-            "Objet(s): {objets}\n"
-            "Date d'emprunt: {date_emprunt}\n"
-            "Dépassement: {depassement}\n\n"
-            "Merci de procéder au retour du matériel dès que possible.\n\n"
-            "Message automatique PretGo."
-        )
+    if reminder_kind == 'upcoming_24h':
+        template_body = get_setting('rappel_email_template_retour_24h', '', conn=conn) or ''
+        if not template_body:
+            template_body = (
+                "Bonjour {nom} {prenom},\n\n"
+                "Votre prêt PretGo arrive bientôt à échéance.\n\n"
+                "Objet(s): {objets}\n"
+                "Date d'emprunt: {date_emprunt}\n"
+                "Retour prévu: {depassement}\n"
+                "Tentative: {tentative_numero}/{tentative_total}\n\n"
+                "Merci d'anticiper le retour dans les délais prévus.\n\n"
+                "Message automatique PretGo."
+            )
+        depassement_preview = 'dans 12h'
+        type_rappel_preview = 'Retour prévu sous 24h'
+    else:
+        template_body = get_setting('rappel_email_template', '', conn=conn) or ''
+        if not template_body:
+            template_body = (
+                "Bonjour {nom} {prenom},\n\n"
+                "Ceci est un rappel de restitution de matériel PretGo.\n\n"
+                "Objet(s): {objets}\n"
+                "Date d'emprunt: {date_emprunt}\n"
+                "Dépassement: {depassement}\n\n"
+                "Merci de procéder au retour du matériel dès que possible.\n\n"
+                "Message automatique PretGo."
+            )
+        depassement_preview = '2j3h'
+        type_rappel_preview = 'Prêt en retard'
     
     # Valeurs de test
     body = _render_email_template(
@@ -374,14 +456,28 @@ def generer_preview_email(conn):
         prenom='Jean',
         objets='Scie à métaux + Équerre de précision',
         date_emprunt=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        depassement='2j3h',
+        depassement=depassement_preview,
+        type_rappel=type_rappel_preview,
         tentative_numero='2',
         tentative_total='3'
     )
+
+    html_active = get_setting('rappel_email_html_active', '1', conn=conn) == '1'
+    html_body = ''
+    if html_active:
+        signature_raw, signature_subtype, _signature_cid = _get_signature_image_info(conn)
+        signature_src = None
+        if signature_raw and signature_subtype:
+            encoded = base64.b64encode(signature_raw).decode('ascii')
+            signature_src = f'data:image/{signature_subtype};base64,{encoded}'
+        html_body = _render_html_email(body, signature_src=signature_src)
     
     return {
         'subject': subject_tpl or '[PretGo] Rappel de retour de matériel',
         'body': body,
+        'html_body': html_body,
+        'html_active': html_active,
+        'preview_kind': reminder_kind,
         'from': from_email,
     }
 
@@ -679,6 +775,9 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
     if not a_envoyer:
         return stats
 
+    html_active = get_setting('rappel_email_html_active', '1', conn=conn) == '1'
+    signature_raw, signature_subtype, signature_cid = _get_signature_image_info(conn)
+
     template_overdue = get_setting('rappel_email_template', '', conn=conn) or ''
     template_upcoming_24h = get_setting('rappel_email_template_retour_24h', '', conn=conn) or ''
 
@@ -752,6 +851,21 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
             if reply_to:
                 msg['Reply-To'] = reply_to
             msg.set_content(body)
+
+            if html_active:
+                html_body = _render_html_email(body, signature_cid=signature_cid if signature_raw else None)
+                msg.add_alternative(html_body, subtype='html')
+                if signature_raw:
+                    try:
+                        msg.get_payload()[-1].add_related(
+                            signature_raw,
+                            maintype='image',
+                            subtype=signature_subtype,
+                            cid=f'<{signature_cid}>'
+                        )
+                    except Exception:
+                        # En cas d'échec inline image, on garde le fallback texte+HTML sans image.
+                        pass
 
             try:
                 server.send_message(msg)

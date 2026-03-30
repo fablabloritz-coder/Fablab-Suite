@@ -330,6 +330,8 @@ def init_db():
         'rappel_email_reply_to': '',
         'rappel_email_subject': '[PretGo] Rappel de retour de matériel',
         'rappel_email_cooldown_heures': '24',
+        'rappel_email_html_active': '1',
+        'rappel_email_signature_image': '',
         'rappel_email_template': (
             "Bonjour {nom} {prenom},\n\n"
             "Ceci est un rappel de restitution de matériel PretGo.\n\n"
