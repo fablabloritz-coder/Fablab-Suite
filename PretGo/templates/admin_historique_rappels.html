@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Historique des rappels email — Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="mb-1"><i class="bi bi-envelope-heart"></i> Historique des rappels email</h2>
+            <p class="text-muted">Suivi des envois de rappels pour les prêts en dépassement</p>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         STATISTIQUES
+         ════════════════════════════════════════════════════════ -->
+    <div class="row mb-4 g-3">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-primary text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-white-50 small">Total envoyés</h5>
+                    <h2 class="card-text">{{ stats.sent }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-danger text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-white-50 small">Erreurs</h5>
+                    <h2 class="card-text">{{ stats.failed }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-secondary text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-white-50 small">Total tentatives</h5>
+                    <h2 class="card-text">{{ stats.total }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-info text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-white-50 small">Dernier envoi</h5>
+                    <p class="card-text small mb-0">
+                        {% if stats.last_send_at %}
+                            {{ stats.last_send_at | format_date }}
+                        {% else %}
+                            Aucun
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         FILTRES & EXPORT
+         ════════════════════════════════════════════════════════ -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light py-3 px-4">
+            <h5 class="mb-0"><i class="bi bi-funnel"></i> Filtres & Actions</h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="GET" action="{{ url_for('admin.historique_rappels') }}" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Statut</label>
+                    <select name="statut" class="form-select">
+                        <option value="tous" {% if filtre_statut == 'tous' %}selected{% endif %}>Tous</option>
+                        <option value="sent" {% if filtre_statut == 'sent' %}selected{% endif %}>✓ Envoyé</option>
+                        <option value="failed" {% if filtre_statut == 'failed' %}selected{% endif %}>✗ Erreur</option>
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label fw-bold">Rechercher (email, nom, prénom)</label>
+                    <input type="text" name="personne" class="form-control" 
+                           value="{{ filtre_personne }}" placeholder="Dupont, Jean, test@exemple.com...">
+                </div>
+                <div class="col-12 d-flex gap-2 flex-wrap">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Filtrer
+                    </button>
+                    <button type="reset" class="btn btn-secondary" onclick="window.location='{{ url_for('admin.historique_rappels') }}'">
+                        <i class="bi bi-arrow-counterclockwise"></i> Réinitialiser
+                    </button>
+                    <a href="{{ url_for('admin.api_rappels_export', statut=filtre_statut) }}" class="btn btn-success">
+                        <i class="bi bi-download"></i> Exporter CSV
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════
+         TABLEAU HISTORIQUE
+         ════════════════════════════════════════════════════════ -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            {% if logs %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light fw-bold">
+                            <tr>
+                                <th>Date</th>
+                                <th>Personne</th>
+                                <th>Email</th>
+                                <th>Prêt ID</th>
+                                <th>Dépassement</th>
+                                <th>Statut</th>
+                                <th>Détails</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                                <tr class="{{ 'table-danger' if log.status == 'failed' else '' }}">
+                                    <td class="small">{{ log.sent_at | format_date }}</td>
+                                    <td>
+                                        <strong>{{ log.nom_personne }}</strong>
+                                    </td>
+                                    <td class="small text-monospace">{{ log.email }}</td>
+                                    <td><code>#{{ log.pret_id }}</code></td>
+                                    <td>
+                                        {% if log.depassement_heures %}
+                                            <span class="badge bg-warning text-dark">
+                                                {{ (log.depassement_heures / 24) | int }}j
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.status == 'sent' %}
+                                            <span class="badge bg-success">✓ Envoyé</span>
+                                        {% elif log.status == 'failed' %}
+                                            <span class="badge bg-danger">✗ Erreur</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ log.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.error_message %}
+                                            <button class="btn btn-sm btn-outline-danger" 
+                                                    data-bs-toggle="tooltip" 
+                                                    title="{{ log.error_message }}">
+                                                <i class="bi bi-exclamation-triangle"></i>
+                                            </button>
+                                        {% else %}
+                                            <span class="text-muted small">—</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- ════ PAGINATION ════ -->
+                {% if total_pages > 1 %}
+                    <nav aria-label="Pagination" class="p-3 border-top">
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if page > 1 %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin.historique_rappels', page=1, statut=filtre_statut, personne=filtre_personne) }}">
+                                        « Première
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin.historique_rappels', page=page-1, statut=filtre_statut, personne=filtre_personne) }}">
+                                        ‹ Précédente
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            <li class="page-item disabled">
+                                <span class="page-link">Page {{ page }} / {{ total_pages }}</span>
+                            </li>
+
+                            {% if page < total_pages %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin.historique_rappels', page=page+1, statut=filtre_statut, personne=filtre_personne) }}">
+                                        Suivante ›
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('admin.historique_rappels', page=total_pages, statut=filtre_statut, personne=filtre_personne) }}">
+                                        Dernière »
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+            {% else %}
+                <div class="p-4 text-center text-muted">
+                    <i class="bi bi-inbox" style="font-size: 3rem; opacity: 0.3;"></i>
+                    <p class="mt-3">Aucun rappel email trouvé avec les critères sélectionnés.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Info: Total trouvé -->
+    <p class="text-muted small mt-3 text-center">
+        Total: <strong>{{ total }}</strong> entrée(s) | Page {{ page }}/{{ total_pages }}
+    </p>
+
+</div>
+
+<script>
+// Activer les tooltips Bootstrap
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+{% endblock %}

@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATABASE_PATH, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR, RECOVERY_CODE_PATH
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, csv_response
 from datetime import datetime, timedelta
 import csv
 import io
@@ -1540,3 +1540,130 @@ def api_email_actions():
     else:
         return jsonify({'success': False, 'message': 'Action inconnue'}), 400
 
+
+# ============================================================
+# ÉTAPE 2b — Historique rappels email + Export
+# ============================================================
+
+@bp.route('/admin/historique-rappels', methods=['GET'])
+@admin_required
+def historique_rappels():
+    """Affiche l'historique des rappels email envoyés."""
+    conn = get_app_db()
+    
+    # Statistiques globales
+    stats = obtenir_statistiques_rappels_email(conn)
+    
+    # Filtrage par page
+    page = request.args.get('page', 1, type=int)
+    filtre_statut = request.args.get('statut', 'tous').strip()
+    filtre_personne = request.args.get('personne', '').strip()
+    par_page = 50
+    
+    # Requête paginée
+    query = 'SELECT * FROM rappels_email_log WHERE 1=1'
+    count_query = 'SELECT COUNT(*) FROM rappels_email_log WHERE 1=1'
+    params = []
+    
+    if filtre_statut != 'tous':
+        query += ' AND status = ?'
+        count_query += ' AND status = ?'
+        params.append(filtre_statut)
+    
+    if filtre_personne:
+        query += ' AND (email LIKE ? OR personne_id IN (SELECT id FROM personnes WHERE nom LIKE ? OR prenom LIKE ?))'
+        count_query += ' AND (email LIKE ? OR personne_id IN (SELECT id FROM personnes WHERE nom LIKE ? OR prenom LIKE ?))'
+        like_term = f'%{filtre_personne}%'
+        params.extend([like_term, like_term, like_term])
+    
+    # Compter total
+    total = conn.execute(count_query, params).fetchone()[0]
+    total_pages = max(1, (total + par_page - 1) // par_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * par_page
+    
+    # Récupérer les données
+    query += ' ORDER BY sent_at DESC LIMIT ? OFFSET ?'
+    logs = conn.execute(query, params + [par_page, offset]).fetchall()
+    
+    # Enrichir avec noms des personnes
+    logs_enrichis = []
+    for log in logs:
+        if log['personne_id']:
+            pers = conn.execute('SELECT nom, prenom FROM personnes WHERE id = ?', 
+                              (log['personne_id'],)).fetchone()
+            nom = f"{pers['prenom']} {pers['nom']}" if pers else '(supprimée)'
+        else:
+            nom = '(inconnue)'
+        logs_enrichis.append({
+            'id': log['id'],
+            'pret_id': log['pret_id'],
+            'personne_id': log['personne_id'],
+            'nom_personne': nom,
+            'email': log['email'],
+            'sent_at': log['sent_at'],
+            'status': log['status'],
+            'error_message': log['error_message'],
+            'depassement_heures': log['depassement_heures'],
+        })
+    
+    return render_template('admin_historique_rappels.html',
+                           logs=logs_enrichis,
+                           stats=stats,
+                           total=total,
+                           total_pages=total_pages,
+                           page=page,
+                           filtre_statut=filtre_statut,
+                           filtre_personne=filtre_personne)
+
+
+@bp.route('/api/admin/rappels-export', methods=['GET'])
+@admin_required
+def api_rappels_export():
+    """Exporte l'historique des rappels en CSV."""
+    conn = get_app_db()
+    
+    filtre_statut = request.args.get('statut', 'tous').strip()
+    
+    query = '''
+        SELECT r.id, r.pret_id, r.personne_id, r.email, 
+               p.nom, p.prenom,
+               r.sent_at, r.status, r.error_message, r.depassement_heures
+        FROM rappels_email_log r
+        LEFT JOIN personnes p ON r.personne_id = p.id
+        WHERE 1=1
+    '''
+    params = []
+    
+    if filtre_statut != 'tous':
+        query += ' AND r.status = ?'
+        params.append(filtre_statut)
+    
+    query += ' ORDER BY r.sent_at DESC'
+    logs = conn.execute(query, params).fetchall()
+    
+    # Générer CSV
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+    
+    # Headers
+    writer.writerow([
+        'ID Rappel', 'ID Prêt', 'Nom', 'Prénom', 'Email', 
+        'Date d\'envoi', 'Statut', 'Message d\'erreur', 'Dépassement (h)'
+    ])
+    
+    # Données
+    for log in logs:
+        writer.writerow([
+            log['id'],
+            log['pret_id'],
+            log['nom'] or '',
+            log['prenom'] or '',
+            log['email'],
+            log['sent_at'] or '',
+            log['status'],
+            log['error_message'] or '',
+            log['depassement_heures'] or '',
+        ])
+    
+    return csv_response(output, 'rappels_email')

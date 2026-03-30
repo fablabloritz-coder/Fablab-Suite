@@ -252,6 +252,60 @@ def _format_depassement_texte(heures_dep):
     return f'{int(jours)} jour(s)'
 
 
+def valider_email(email):
+    """Valide un format d'email basique (regex simple).
+    
+    Retourne True si le format semble valide, False sinon.
+    """
+    import re
+    if not email or not isinstance(email, str):
+        return False
+    email = email.strip()
+    # Regex simple : non-stricte mais pratique
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return bool(re.match(pattern, email))
+
+
+def obtenir_statistiques_rappels_email(conn):
+    """Retourne les statistiques d'envoi des rappels email.
+    
+    Retourne un dict {total, sent, failed, ignored, last_send_at}
+    """
+    stats = {
+        'total': 0,
+        'sent': 0,
+        'failed': 0,
+        'ignored': 0,
+        'last_send_at': None,
+    }
+    
+    # Total envois/échecs
+    row = conn.execute('''
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+        FROM rappels_email_log
+    ''').fetchone()
+    
+    if row:
+        stats['total'] = row['total'] or 0
+        stats['sent'] = row['sent'] or 0
+        stats['failed'] = row['failed'] or 0
+        stats['ignored'] = 0  # Pas tracké dans la table pour l'instant
+    
+    # Dernier envoi
+    row = conn.execute('''
+        SELECT sent_at FROM rappels_email_log
+        WHERE status = 'sent'
+        ORDER BY sent_at DESC LIMIT 1
+    ''').fetchone()
+    if row and row['sent_at']:
+        stats['last_send_at'] = row['sent_at']
+    
+    return stats
+
+
 def _render_email_template(template, **variables):
     """Remplace les variables {nom}, {prenom}, etc. dans le template.
     
