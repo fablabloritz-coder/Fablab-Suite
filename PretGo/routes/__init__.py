@@ -80,7 +80,7 @@ def _widget_equipment_status():
 
 
 def _get_notifications():
-    """Notifications : prêts en retard."""
+    """Notifications : prêts en retard + alertes email en erreur."""
     conn = get_app_db()
     prets = conn.execute('''
         SELECT p.id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
@@ -112,6 +112,29 @@ def _get_notifications():
                 created_at=p['date_emprunt'],
                 link=f"/pret/{p['id']}"
             ))
+    
+    # Ajouter alertes email en erreur
+    email_active = get_setting('rappel_email_active', '0') == '1'
+    if email_active:
+        failed_emails = conn.execute('''
+            SELECT DISTINCT pret_id, email, COUNT(*) as count
+            FROM rappels_email_log
+            WHERE status = 'failed'
+            GROUP BY pret_id
+            ORDER BY MAX(sent_at) DESC
+            LIMIT 5
+        ''').fetchall()
+        
+        for email_log in failed_emails:
+            notifs.append(notification(
+                id=f"email-failed-{email_log['pret_id']}",
+                type="error",
+                title=f"Erreur d'envoi email vers {email_log['email']}",
+                message=f"{email_log['count']} tentative(s) échouée(s) pour prêt #{email_log['pret_id']}",
+                created_at=None,
+                link=f"/admin/historique-rappels"
+            ))
+    
     return notifs
 
 
@@ -147,7 +170,7 @@ def register_blueprints(app):
         name="PretGo",
         version="1.0.0",
         description="Gestion des prêts de matériel pour établissements",
-        capabilities=["loans", "inventory"],
+        capabilities=["loans", "inventory", "notifications"],
         icon="bi-box-arrow-right",
         color="#0d6efd",
         widgets=[
