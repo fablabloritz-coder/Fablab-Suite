@@ -425,12 +425,159 @@ def tester_connexion_smtp(conn):
         return {'success': False, 'message': f'Erreur de connexion : {str(e)[:100]}'}
 
 
-def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
-    """Envoie les rappels email pour les prêts en alerte.
+def _calculer_retour_theorique_datetime(date_emprunt_str, duree_heures, duree_jours,
+                                        date_retour_prevue=None, _duree_defaut=None,
+                                        _unite_defaut=None, _heure_fin='17:45'):
+    """Calcule la date de retour théorique d'un prêt (datetime) ou None."""
+    try:
+        dt = datetime.strptime(date_emprunt_str, '%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return None
 
-    Retourne un dict stats:
-    {total_alertes, eligibles, envoyes, echecs, ignores_sans_email, ignores_cooldown}
-    """
+    if date_retour_prevue:
+        try:
+            h_fin, m_fin = (int(x) for x in str(_heure_fin or '17:45').split(':'))
+            return datetime.strptime(date_retour_prevue, '%Y-%m-%d').replace(hour=h_fin, minute=m_fin, second=0)
+        except Exception:
+            return None
+
+    if duree_heures is not None:
+        try:
+            return dt + timedelta(hours=float(duree_heures))
+        except Exception:
+            return None
+    if duree_jours is not None:
+        try:
+            return dt + timedelta(days=float(duree_jours))
+        except Exception:
+            return None
+
+    duree_defaut = float(_duree_defaut if _duree_defaut is not None else 7)
+    unite_defaut = _unite_defaut if _unite_defaut is not None else 'jours'
+    if unite_defaut == 'heures':
+        return dt + timedelta(hours=duree_defaut)
+    return dt + timedelta(days=duree_defaut)
+
+
+def lister_prets_pour_rappel_mail(conn, now=None, pret_ids=None, inclure_retour_24h=None):
+    """Liste les prêts candidats à un rappel mail (retard + retour dans les 24h)."""
+    now_dt = now or datetime.now()
+    include_24h = inclure_retour_24h
+    if include_24h is None:
+        include_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+
+    ids_filtre = None
+    if pret_ids is not None:
+        ids_filtre = {int(pid) for pid in pret_ids if str(pid).isdigit()}
+        if not ids_filtre:
+            return []
+
+    prets = conn.execute('''
+        SELECT p.id, p.personne_id, p.descriptif_objets, p.date_emprunt,
+               p.duree_pret_jours, p.duree_pret_heures, p.date_retour_prevue,
+               pe.nom, pe.prenom, pe.email
+        FROM prets p
+        JOIN personnes pe ON p.personne_id = pe.id
+        WHERE p.retour_confirme = 0
+        ORDER BY p.date_emprunt ASC
+    ''').fetchall()
+
+    duree_def = float(get_setting('duree_alerte_defaut', '7', conn=conn) or '7')
+    unite_def = get_setting('duree_alerte_unite', 'jours', conn=conn)
+    heure_fin = get_setting('heure_fin_journee', '17:45', conn=conn)
+    cooldown_h = float(get_setting('rappel_email_cooldown_heures', '24', conn=conn) or '24')
+    max_tentatives = int(get_setting('rappel_email_max_tentatives', '3', conn=conn) or '3')
+
+    result = []
+    for pret in prets:
+        if ids_filtre is not None and pret['id'] not in ids_filtre:
+            continue
+
+        retour_theorique = _calculer_retour_theorique_datetime(
+            pret['date_emprunt'], pret['duree_pret_heures'], pret['duree_pret_jours'],
+            date_retour_prevue=pret['date_retour_prevue'], _duree_defaut=duree_def,
+            _unite_defaut=unite_def, _heure_fin=heure_fin
+        )
+        if not retour_theorique:
+            continue
+
+        delta_h = (now_dt - retour_theorique).total_seconds() / 3600.0
+        if delta_h > 0:
+            reminder_kind = 'overdue'
+            reminder_label = 'En retard'
+        elif include_24h and -24 <= delta_h < 0:
+            reminder_kind = 'upcoming_24h'
+            reminder_label = 'Retour < 24h'
+        else:
+            continue
+
+        email_dest = (pret['email'] or '').strip()
+        tentative_numero, tentative_total = compter_tentatives_pret(conn, pret['id'])
+        max_atteint = tentative_total >= max_tentatives
+
+        last_sent = conn.execute(
+            """
+            SELECT sent_at FROM rappels_email_log
+            WHERE pret_id = ? AND status = 'sent'
+            ORDER BY sent_at DESC LIMIT 1
+            """,
+            (pret['id'],)
+        ).fetchone()
+        cooldown_ok = True
+        cooldown_restant_h = 0.0
+        if last_sent and last_sent['sent_at']:
+            try:
+                dt_last = datetime.strptime(last_sent['sent_at'], '%Y-%m-%d %H:%M:%S')
+                elapsed_h = (now_dt - dt_last).total_seconds() / 3600.0
+                if elapsed_h < cooldown_h:
+                    cooldown_ok = False
+                    cooldown_restant_h = max(0.0, cooldown_h - elapsed_h)
+            except Exception:
+                pass
+
+        email_ok = bool(email_dest) and valider_email(email_dest)
+        can_send = email_ok and cooldown_ok and (not max_atteint)
+
+        if reminder_kind == 'overdue':
+            delta_label = _format_depassement_texte(delta_h)
+        else:
+            reste_h = abs(delta_h)
+            delta_label = f"{int(reste_h)}h" if reste_h < 24 else f"{int(reste_h // 24)}j"
+
+        result.append({
+            'pret_id': pret['id'],
+            'personne_id': pret['personne_id'],
+            'nom': pret['nom'],
+            'prenom': pret['prenom'],
+            'email': email_dest,
+            'descriptif_objets': pret['descriptif_objets'],
+            'date_emprunt': pret['date_emprunt'],
+            'retour_theorique': retour_theorique,
+            'reminder_kind': reminder_kind,
+            'reminder_label': reminder_label,
+            'delta_heures': delta_h,
+            'delta_label': delta_label,
+            'tentative_numero': tentative_numero,
+            'tentative_total': tentative_total,
+            'cooldown_ok': cooldown_ok,
+            'cooldown_restant_h': cooldown_restant_h,
+            'max_atteint': max_atteint,
+            'email_ok': email_ok,
+            'can_send': can_send,
+        })
+
+    # Tri: retards d'abord (plus anciens en premier), puis retours <24h (plus urgents d'abord)
+    def _sort_key(item):
+        if item['reminder_kind'] == 'overdue':
+            return (0, -item['delta_heures'])
+        return (1, abs(item['delta_heures']))
+
+    result.sort(key=_sort_key)
+    return result
+
+
+def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=None, inclure_retour_24h=None):
+    """Envoie des rappels email (retards + retours dans 24h)."""
     now_dt = now or datetime.now()
     now_str = now_dt.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -447,44 +594,7 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
     from_email = (get_setting('rappel_email_from', '', conn=conn) or '').strip()
     reply_to = (get_setting('rappel_email_reply_to', '', conn=conn) or '').strip()
     subject_tpl = (get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel', conn=conn) or '').strip()
-    cooldown_h = float(get_setting('rappel_email_cooldown_heures', '24', conn=conn) or '24')
-
-    if not email_active:
-        return {
-            'total_alertes': 0,
-            'eligibles': 0,
-            'envoyes': 0,
-            'echecs': 0,
-            'ignores_sans_email': 0,
-            'ignores_cooldown': 0,
-            'error': 'Rappels email désactivés dans les réglages.'
-        }
-
-    if not smtp_host or not from_email:
-        return {
-            'total_alertes': 0,
-            'eligibles': 0,
-            'envoyes': 0,
-            'echecs': 0,
-            'ignores_sans_email': 0,
-            'ignores_cooldown': 0,
-            'error': 'Configuration SMTP incomplète (hôte ou expéditeur manquant).'
-        }
-
-    # Charger les prêts actifs + email
-    prets_actifs = conn.execute('''
-        SELECT p.id, p.personne_id, p.descriptif_objets, p.date_emprunt,
-               p.duree_pret_jours, p.duree_pret_heures, p.date_retour_prevue,
-               pe.nom, pe.prenom, pe.email
-        FROM prets p
-        JOIN personnes pe ON p.personne_id = pe.id
-        WHERE p.retour_confirme = 0
-        ORDER BY p.date_emprunt ASC
-    ''').fetchall()
-
-    duree_def = float(get_setting('duree_alerte_defaut', '7', conn=conn) or '7')
-    unite_def = get_setting('duree_alerte_unite', 'jours', conn=conn)
-    heure_fin = get_setting('heure_fin_journee', '17:45', conn=conn)
+    max_tentatives = int(get_setting('rappel_email_max_tentatives', '3', conn=conn) or '3')
 
     stats = {
         'total_alertes': 0,
@@ -494,47 +604,94 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
         'ignores_sans_email': 0,
         'ignores_cooldown': 0,
         'bloques': 0,
+        'total_retards': 0,
+        'total_retours_24h': 0,
     }
 
+    try:
+        log_columns = conn.execute("PRAGMA table_info(rappels_email_log)").fetchall()
+        has_reminder_kind = any((col['name'] if isinstance(col, sqlite3.Row) else col[1]) == 'reminder_kind' for col in log_columns)
+    except Exception:
+        has_reminder_kind = False
+
+    def _insert_log(pret_id, personne_id, email, status, reminder_kind, error_message, depassement_heures):
+        if has_reminder_kind:
+            conn.execute(
+                """
+                INSERT INTO rappels_email_log
+                (pret_id, personne_id, email, sent_at, status, reminder_kind, error_message, depassement_heures)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (pret_id, personne_id, email, now_str, status, reminder_kind, error_message, depassement_heures)
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO rappels_email_log
+                (pret_id, personne_id, email, sent_at, status, error_message, depassement_heures)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (pret_id, personne_id, email, now_str, status, error_message, depassement_heures)
+            )
+
+    if not email_active:
+        stats['error'] = 'Rappels email désactivés dans les réglages.'
+        return stats
+
+    if not smtp_host or not from_email:
+        stats['error'] = 'Configuration SMTP incomplète (hôte ou expéditeur manquant).'
+        return stats
+
+    candidats = lister_prets_pour_rappel_mail(
+        conn,
+        now=now_dt,
+        pret_ids=pret_ids,
+        inclure_retour_24h=inclure_retour_24h,
+    )
+    stats['total_alertes'] = len(candidats)
+    stats['total_retards'] = sum(1 for c in candidats if c['reminder_kind'] == 'overdue')
+    stats['total_retours_24h'] = sum(1 for c in candidats if c['reminder_kind'] == 'upcoming_24h')
+
     a_envoyer = []
-    for pret in prets_actifs:
-        depasse, heures_dep = calcul_depassement_heures(
-            pret['date_emprunt'], pret['duree_pret_heures'], pret['duree_pret_jours'],
-            _duree_defaut=duree_def, _unite_defaut=unite_def,
-            date_retour_prevue=pret['date_retour_prevue'], _heure_fin=heure_fin
-        )
-        if not depasse:
-            continue
-
-        stats['total_alertes'] += 1
-
-        email_dest = (pret['email'] or '').strip()
-        if not email_dest:
+    for c in candidats:
+        if not c['email_ok']:
             stats['ignores_sans_email'] += 1
             continue
-
-        last_sent = conn.execute(
-            """
-            SELECT sent_at FROM rappels_email_log
-            WHERE pret_id = ? AND status = 'sent'
-            ORDER BY sent_at DESC LIMIT 1
-            """,
-            (pret['id'],)
-        ).fetchone()
-        if last_sent and last_sent['sent_at']:
-            try:
-                dt_last = datetime.strptime(last_sent['sent_at'], '%Y-%m-%d %H:%M:%S')
-                if (now_dt - dt_last).total_seconds() < cooldown_h * 3600:
-                    stats['ignores_cooldown'] += 1
-                    continue
-            except Exception:
-                pass
+        if c['max_atteint']:
+            _insert_log(
+                c['pret_id'],
+                c['personne_id'],
+                c['email'],
+                'blocked',
+                c['reminder_kind'],
+                f'Maximum de tentatives atteint ({max_tentatives})',
+                float(max(0.0, c['delta_heures']))
+            )
+            stats['bloques'] += 1
+            continue
+        if not c['cooldown_ok']:
+            stats['ignores_cooldown'] += 1
+            continue
 
         stats['eligibles'] += 1
-        a_envoyer.append((pret, email_dest, heures_dep))
+        a_envoyer.append(c)
 
     if not a_envoyer:
         return stats
+
+    template_body = get_setting('rappel_email_template', '', conn=conn) or ''
+    if not template_body:
+        template_body = (
+            "Bonjour {nom} {prenom},\n\n"
+            "Ceci est un rappel de restitution de matériel PretGo.\n\n"
+            "Objet(s): {objets}\n"
+            "Date d'emprunt: {date_emprunt}\n"
+            "Statut: {type_rappel}\n"
+            "Détail: {depassement}\n"
+            "Tentative: {tentative_numero}/{tentative_total}\n\n"
+            "Merci de procéder au retour du matériel dès que possible.\n\n"
+            "Message automatique PretGo."
+        )
 
     smtp_cls = smtp_factory
     if smtp_cls is None:
@@ -552,66 +709,55 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None):
         if smtp_user:
             server.login(smtp_user, smtp_password)
 
-        template_body = get_setting('rappel_email_template', '', conn=conn) or ''
-        max_tentatives = int(get_setting('rappel_email_max_tentatives', '3', conn=conn) or '3')
-        
-        for pret, email_dest, heures_dep in a_envoyer:
-            dep_texte = _format_depassement_texte(heures_dep)
-            tentative_numero, tentative_total = compter_tentatives_pret(conn, pret['id'])
-            
-            # Vérifier si le max de tentatives est atteint
-            if tentative_numero >= max_tentatives:
-                conn.execute(
-                    """
-                    INSERT INTO rappels_email_log
-                    (pret_id, personne_id, email, sent_at, status, error_message, depassement_heures)
-                    VALUES (?, ?, ?, ?, 'blocked', ?, ?)
-                    """,
-                    (pret['id'], pret['personne_id'], email_dest, now_str, 
-                     f'Maximum de tentatives atteint ({max_tentatives})', float(heures_dep or 0))
-                )
-                stats['bloques'] += 1
-                continue
-            
-            subject = subject_tpl
+        for c in a_envoyer:
+            if c['reminder_kind'] == 'upcoming_24h':
+                type_rappel = 'Retour prévu sous 24h'
+                dep_texte = f"Retour prévu dans {c['delta_label']}"
+            else:
+                type_rappel = 'Prêt en retard'
+                dep_texte = _format_depassement_texte(c['delta_heures'])
+
             body = _render_email_template(
                 template_body,
-                nom=pret['nom'],
-                prenom=pret['prenom'],
-                objets=pret['descriptif_objets'],
-                date_emprunt=pret['date_emprunt'],
+                nom=c['nom'],
+                prenom=c['prenom'],
+                objets=c['descriptif_objets'],
+                date_emprunt=c['date_emprunt'],
                 depassement=dep_texte,
-                tentative_numero=str(tentative_numero),
-                tentative_total=str(tentative_total)
+                type_rappel=type_rappel,
+                tentative_numero=str(c['tentative_numero']),
+                tentative_total=str(c['tentative_total'])
             )
 
             msg = EmailMessage()
-            msg['Subject'] = subject
+            msg['Subject'] = subject_tpl
             msg['From'] = from_email
-            msg['To'] = email_dest
+            msg['To'] = c['email']
             if reply_to:
                 msg['Reply-To'] = reply_to
             msg.set_content(body)
 
             try:
                 server.send_message(msg)
-                conn.execute(
-                    """
-                    INSERT INTO rappels_email_log
-                    (pret_id, personne_id, email, sent_at, status, error_message, depassement_heures)
-                    VALUES (?, ?, ?, ?, 'sent', '', ?)
-                    """,
-                    (pret['id'], pret['personne_id'], email_dest, now_str, float(heures_dep or 0))
+                _insert_log(
+                    c['pret_id'],
+                    c['personne_id'],
+                    c['email'],
+                    'sent',
+                    c['reminder_kind'],
+                    '',
+                    float(max(0.0, c['delta_heures']))
                 )
                 stats['envoyes'] += 1
             except Exception as e:
-                conn.execute(
-                    """
-                    INSERT INTO rappels_email_log
-                    (pret_id, personne_id, email, sent_at, status, error_message, depassement_heures)
-                    VALUES (?, ?, ?, ?, 'failed', ?, ?)
-                    """,
-                    (pret['id'], pret['personne_id'], email_dest, now_str, str(e)[:500], float(heures_dep or 0))
+                _insert_log(
+                    c['pret_id'],
+                    c['personne_id'],
+                    c['email'],
+                    'failed',
+                    c['reminder_kind'],
+                    str(e)[:500],
+                    float(max(0.0, c['delta_heures']))
                 )
                 stats['echecs'] += 1
     finally:

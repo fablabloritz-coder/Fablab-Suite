@@ -173,6 +173,7 @@ def init_db():
             email TEXT NOT NULL,
             sent_at DATETIME NOT NULL,
             status TEXT NOT NULL DEFAULT 'sent',
+            reminder_kind TEXT NOT NULL DEFAULT 'overdue',
             error_message TEXT DEFAULT '',
             depassement_heures REAL DEFAULT 0,
             FOREIGN KEY (pret_id) REFERENCES prets(id) ON DELETE CASCADE,
@@ -205,6 +206,12 @@ def init_db():
     # ── Migration colonne email pour personnes ──
     try:
         cursor.execute("ALTER TABLE personnes ADD COLUMN email TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+    # ── Migration colonne reminder_kind pour historique rappels ──
+    try:
+        cursor.execute("ALTER TABLE rappels_email_log ADD COLUMN reminder_kind TEXT DEFAULT 'overdue'")
     except sqlite3.OperationalError:
         pass
 
@@ -340,6 +347,8 @@ def init_db():
         'rappel_email_scheduler_jours': 'mon,tue,wed,thu,fri',
         # ── Limite de tentatives ──
         'rappel_email_max_tentatives': '3',
+        # ── Inclure aussi les retours prévus dans les 24h ──
+        'rappel_email_inclure_retour_24h': '1',
     }
     for cle, valeur in parametres_defaut.items():
         try:

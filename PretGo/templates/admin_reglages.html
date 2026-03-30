@@ -358,9 +358,13 @@
                 </div>
                 <div class="card-body p-4">
                     <p class="text-muted small mb-3">
-                        Envoie un email aux personnes ayant un prêt en dépassement (section Alertes),
-                        avec anti-spam par délai minimum entre deux rappels d'un même prêt.
+                        Envoie un email aux personnes ayant un prêt en dépassement (section Alertes)
+                        et, si activé, aux prêts prévus sous 24h.
+                        Anti-spam appliqué via délai minimum entre deux rappels d'un même prêt.
                     </p>
+                    <a href="{{ url_for('admin.admin_rappel_mail') }}" class="btn btn-outline-primary btn-sm mb-3">
+                        <i class="bi bi-envelope-heart"></i> Ouvrir la page dédiée "Rappel Mail"
+                    </a>
 
                     <form method="POST" action="{{ url_for('admin.admin_reglages') }}">
                         <input type="hidden" name="action" value="email_rappels_settings">
@@ -424,7 +428,7 @@
                                 <small class="text-muted d-block mt-2">
                                     <strong>Variables disponibles :</strong>
                                     <code>{nom}</code>, <code>{prenom}</code>, <code>{objets}</code>, 
-                                    <code>{date_emprunt}</code>, <code>{depassement}</code>
+                                    <code>{date_emprunt}</code>, <code>{depassement}</code>, <code>{type_rappel}</code>
                                 </small>
                             </div>
 
@@ -438,6 +442,11 @@
                                     <input class="form-check-input" type="checkbox" id="rappel_email_use_ssl"
                                            name="rappel_email_use_ssl" {{ 'checked' if rappel_email_use_ssl == '1' }}>
                                     <label class="form-check-label" for="rappel_email_use_ssl">SSL/TLS direct</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="rappel_email_inclure_retour_24h"
+                                           name="rappel_email_inclure_retour_24h" {{ 'checked' if rappel_email_inclure_retour_24h == '1' }}>
+                                    <label class="form-check-label" for="rappel_email_inclure_retour_24h">Inclure les retours prévus sous 24h</label>
                                 </div>
                             </div>
                         </div>

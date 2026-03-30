@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Rappel Mail - Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4">
+        <div>
+            <h2 class="mb-1"><i class="bi bi-envelope-heart"></i> Rappel Mail</h2>
+            <p class="text-muted mb-0">Selection des destinataires et suivi des envois de rappel.</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-secondary" href="{{ url_for('admin.historique_rappels') }}">
+                <i class="bi bi-clock-history"></i> Historique complet
+            </a>
+            <a class="btn btn-outline-success" href="{{ url_for('admin.api_rappels_export', statut='tous') }}">
+                <i class="bi bi-download"></i> Export CSV
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-primary text-white">
+                <div class="card-body text-center">
+                    <div class="small text-white-50">Total envois</div>
+                    <div class="fs-3 fw-bold">{{ stats.sent }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-danger text-white">
+                <div class="card-body text-center">
+                    <div class="small text-white-50">Erreurs</div>
+                    <div class="fs-3 fw-bold">{{ stats.failed }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-secondary text-white">
+                <div class="card-body text-center">
+                    <div class="small text-white-50">Tentatives</div>
+                    <div class="fs-3 fw-bold">{{ stats.total }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-info text-white">
+                <div class="card-body text-center">
+                    <div class="small text-white-50">Dernier envoi</div>
+                    <div class="small fw-semibold">
+                        {% if stats.last_send_at %}
+                            {{ stats.last_send_at | format_date }}
+                        {% else %}
+                            Aucun
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light py-3 px-4">
+            <h5 class="mb-0"><i class="bi bi-sliders"></i> Options de rappel</h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="POST" action="{{ url_for('admin.admin_rappel_mail') }}" class="d-flex gap-3 align-items-center flex-wrap">
+                <input type="hidden" name="action" value="save_options">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="inclure24h" name="rappel_email_inclure_retour_24h" {% if inclure_retour_24h %}checked{% endif %}>
+                    <label class="form-check-label" for="inclure24h">
+                        Inclure les rappels 24h avant la date de retour
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Enregistrer
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin.admin_rappel_mail') }}">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-light py-3 px-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0"><i class="bi bi-people"></i> Destinataires eligibles</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="submit" name="action" value="send_selected" class="btn btn-primary btn-sm">
+                        <i class="bi bi-send"></i> Envoyer la selection
+                    </button>
+                    <button type="submit" name="action" value="send_all" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-send-check"></i> Envoyer tous les eligibles
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if candidats %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:42px;" class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="checkAllCandidats">
+                                </th>
+                                <th>Type</th>
+                                <th>Personne</th>
+                                <th>Email</th>
+                                <th>Objet(s)</th>
+                                <th>Etat</th>
+                                <th>Tentatives</th>
+                                <th>Envoi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in candidats %}
+                            <tr class="{{ 'table-warning' if c.reminder_kind == 'upcoming_24h' else '' }}">
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input candidat-checkbox" name="pret_ids" value="{{ c.pret_id }}" {% if not c.can_send %}disabled{% endif %}>
+                                </td>
+                                <td>
+                                    {% if c.reminder_kind == 'upcoming_24h' %}
+                                        <span class="badge bg-info">Retour &lt;24h</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">En retard</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <strong>{{ c.prenom }} {{ c.nom }}</strong>
+                                    <div class="small text-muted">Pret #{{ c.pret_id }}</div>
+                                </td>
+                                <td class="small">{{ c.email or '-' }}</td>
+                                <td class="small">{{ c.descriptif_objets }}</td>
+                                <td>
+                                    {% if c.reminder_kind == 'upcoming_24h' %}
+                                        <span class="small text-info">Retour prevu dans {{ c.delta_label }}</span>
+                                    {% else %}
+                                        <span class="small text-danger">Retard: {{ c.delta_label }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ c.tentative_numero }}/{{ c.tentative_total }}</span>
+                                </td>
+                                <td>
+                                    {% if c.can_send %}
+                                        <span class="badge bg-success">Eligible</span>
+                                    {% elif not c.email_ok %}
+                                        <span class="badge bg-secondary">Email invalide/absent</span>
+                                    {% elif c.max_atteint %}
+                                        <span class="badge bg-dark">Max tentatives</span>
+                                    {% elif not c.cooldown_ok %}
+                                        <span class="badge bg-secondary">Cooldown</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Non eligible</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="p-4 text-center text-muted">
+                    <i class="bi bi-inbox" style="font-size:2.2rem; opacity:0.3;"></i>
+                    <p class="mt-2 mb-0">Aucun pret en retard ou a moins de 24h de retour.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-light py-3 px-4">
+            <h5 class="mb-0"><i class="bi bi-clock-history"></i> Historique recent (25 derniers)</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if logs %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Personne</th>
+                            <th>Email</th>
+                            <th>Pret</th>
+                            <th>Statut</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr class="{{ 'table-danger' if log.status == 'failed' else '' }}">
+                            <td class="small">{{ log.sent_at | format_date }}</td>
+                            <td>
+                                {% if log.reminder_kind == 'upcoming_24h' %}
+                                    <span class="badge bg-info">Retour &lt;24h</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">En retard</span>
+                                {% endif %}
+                            </td>
+                            <td class="small">{{ (log.prenom ~ ' ' ~ log.nom) if log.nom else '(supprimee)' }}</td>
+                            <td class="small">{{ log.email }}</td>
+                            <td class="small">#{{ log.pret_id }}</td>
+                            <td>
+                                {% if log.status == 'sent' %}
+                                    <span class="badge bg-success">Envoye</span>
+                                {% elif log.status == 'failed' %}
+                                    <span class="badge bg-danger">Erreur</span>
+                                {% elif log.status == 'blocked' %}
+                                    <span class="badge bg-dark">Bloque</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ log.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="small text-muted">{{ log.error_message or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-4 text-center text-muted">Aucun historique disponible.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const master = document.getElementById('checkAllCandidats');
+    if (!master) {
+        return;
+    }
+    master.addEventListener('change', function() {
+        const boxes = document.querySelectorAll('.candidat-checkbox:not([disabled])');
+        boxes.forEach((box) => {
+            box.checked = master.checked;
+        });
+    });
+});
+</script>
+{% endblock %}

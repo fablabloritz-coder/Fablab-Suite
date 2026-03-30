@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for, current_app
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATABASE_PATH, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR, RECOVERY_CODE_PATH
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response, lister_prets_pour_rappel_mail
 from datetime import datetime, timedelta
 import csv
 import io
@@ -494,6 +494,7 @@ def admin_reglages():
             set_setting('rappel_email_reply_to', request.form.get('rappel_email_reply_to', '').strip())
             set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
             set_setting('rappel_email_template', request.form.get('rappel_email_template', '').strip() or '')
+            set_setting('rappel_email_inclure_retour_24h', '1' if request.form.get('rappel_email_inclure_retour_24h') else '0')
 
             cooldown = request.form.get('rappel_email_cooldown_heures', '24').strip()
             try:
@@ -507,13 +508,15 @@ def admin_reglages():
 
         elif action == 'email_rappels_send_now':
             conn = get_app_db()
-            stats = envoyer_rappels_alertes_email(conn)
+            inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+            stats = envoyer_rappels_alertes_email(conn, inclure_retour_24h=inclure_retour_24h)
             conn.commit()
             if stats.get('error'):
                 flash(stats['error'], 'danger')
             else:
                 flash(
-                    f"Rappels envoyés: {stats['envoyes']} | échecs: {stats['echecs']} | "
+                    f"Rappels envoyés: {stats['envoyes']} | retards: {stats.get('total_retards', 0)} | "
+                    f"retours <24h: {stats.get('total_retours_24h', 0)} | échecs: {stats['echecs']} | "
                     f"sans email: {stats['ignores_sans_email']} | cooldown: {stats['ignores_cooldown']}",
                     'success' if stats['echecs'] == 0 else 'warning'
                 )
@@ -592,11 +595,99 @@ def admin_reglages():
                            rappel_email_subject=get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel'),
                            rappel_email_cooldown_heures=get_setting('rappel_email_cooldown_heures', '24'),
                            rappel_email_template=get_setting('rappel_email_template', ''),
+                           rappel_email_inclure_retour_24h=get_setting('rappel_email_inclure_retour_24h', '1'),
                            rappel_email_scheduler_enabled=get_setting('rappel_email_scheduler_enabled', '0'),
                            rappel_email_scheduler_heure=get_setting('rappel_email_scheduler_heure', '09'),
                            rappel_email_scheduler_minute=get_setting('rappel_email_scheduler_minute', '00'),
                            rappel_email_scheduler_jours=get_setting('rappel_email_scheduler_jours', 'mon,tue,wed,thu,fri'),
                            rappel_email_max_tentatives=get_setting('rappel_email_max_tentatives', '3'))
+
+
+@bp.route('/admin/rappel-mail', methods=['GET', 'POST'])
+@admin_required
+def admin_rappel_mail():
+    """Page dédiée aux rappels mail (sélection destinataires + historique)."""
+    conn = get_app_db()
+
+    if request.method == 'POST':
+        action = request.form.get('action', '').strip()
+
+        if action == 'save_options':
+            set_setting('rappel_email_inclure_retour_24h', '1' if request.form.get('rappel_email_inclure_retour_24h') else '0')
+            flash('Options de rappel mail enregistrées.', 'success')
+
+        elif action in ('send_selected', 'send_all'):
+            inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+            pret_ids = None
+            if action == 'send_selected':
+                selected_ids = []
+                for raw in request.form.getlist('pret_ids'):
+                    try:
+                        selected_ids.append(int(raw))
+                    except (TypeError, ValueError):
+                        continue
+                if not selected_ids:
+                    flash('Aucun prêt sélectionné pour l\'envoi.', 'warning')
+                    return redirect(url_for('admin.admin_rappel_mail'))
+                pret_ids = selected_ids
+
+            stats = envoyer_rappels_alertes_email(
+                conn,
+                pret_ids=pret_ids,
+                inclure_retour_24h=inclure_retour_24h
+            )
+            conn.commit()
+            if stats.get('error'):
+                flash(stats['error'], 'danger')
+            else:
+                flash(
+                    f"Rappels envoyés: {stats['envoyes']} | retards: {stats.get('total_retards', 0)} | "
+                    f"retours <24h: {stats.get('total_retours_24h', 0)} | échecs: {stats['echecs']} | "
+                    f"sans email: {stats['ignores_sans_email']} | cooldown: {stats['ignores_cooldown']} | bloqués: {stats.get('bloques', 0)}",
+                    'success' if stats['echecs'] == 0 else 'warning'
+                )
+
+        return redirect(url_for('admin.admin_rappel_mail'))
+
+    inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+    candidats = lister_prets_pour_rappel_mail(conn, inclure_retour_24h=inclure_retour_24h)
+    stats = obtenir_statistiques_rappels_email(conn)
+
+    try:
+        log_columns = conn.execute("PRAGMA table_info(rappels_email_log)").fetchall()
+        has_reminder_kind = any(col['name'] == 'reminder_kind' for col in log_columns)
+    except Exception:
+        has_reminder_kind = False
+
+    if has_reminder_kind:
+        logs = conn.execute('''
+            SELECT r.id, r.pret_id, r.personne_id, r.email, r.sent_at, r.status,
+                   r.error_message, r.depassement_heures, r.reminder_kind,
+                   p.nom, p.prenom
+            FROM rappels_email_log r
+            LEFT JOIN personnes p ON r.personne_id = p.id
+            ORDER BY r.sent_at DESC
+            LIMIT 25
+        ''').fetchall()
+    else:
+        logs = conn.execute('''
+            SELECT r.id, r.pret_id, r.personne_id, r.email, r.sent_at, r.status,
+                   r.error_message, r.depassement_heures,
+                   'overdue' AS reminder_kind,
+                   p.nom, p.prenom
+            FROM rappels_email_log r
+            LEFT JOIN personnes p ON r.personne_id = p.id
+            ORDER BY r.sent_at DESC
+            LIMIT 25
+        ''').fetchall()
+
+    return render_template(
+        'admin_rappel_mail.html',
+        candidats=candidats,
+        logs=logs,
+        stats=stats,
+        inclure_retour_24h=inclure_retour_24h,
+    )
 
 
 
