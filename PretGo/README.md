@@ -57,6 +57,17 @@ Cette application tourne **en local** sur votre poste — aucun serveur externe,
 - Tableau de bord avec alertes de prêts en dépassement
 - Badge de notification dans la barre de navigation
 - Export CSV des alertes en cours
+### 📧 Rappels email automatiques (NEW)
+- **Scheduler automatique** : configurations des jours, heures et minutes pour les envois
+- **Tentatives de rappel** : suivi du nombre de relances par prêt (max configurable, par défaut 3)
+- **Anti-spam** : blocage automatique après limite de tentatives pour éviter la surcharge
+- **Template configurable** : personnalisez le corps du rappel avec variables (`{nom}`, `{prenom}`, `{depassement}`, etc.)
+- **Historique complet** : dashboard d'administration avec filtres (statut, date) et export CSV
+- **FabHome Integration** : notifications centralisées dans le hub FabHome (alertes en temps réel)
+- **Tracking robuste** : tentative N/M, statuts détaillés (Envoyé / Erreur / Bloqué), messages d'erreur SMTP stockés
+
+👉 **Documentation complète** : voir [SYSTEM_EMAIL_GUIDE.md](SYSTEM_EMAIL_GUIDE.md)
+
 
 
 ### Administration
@@ -67,6 +78,8 @@ Cette application tourne **en local** sur votre poste — aucun serveur externe,
 - **Personnalisation du bip sonore** lors des scans webcam : choix du volume et du type de bip (sine, carré, triangle, dent de scie), test instantané, réglages persistants sur toutes les pages
 - Réinitialisation de la base de données
 - Génération de données de démonstration dynamiques (s'adapte aux catégories configurées)
+- **Configuration email SMTP** : test connexion, activation/désactivation, template customisable
+- **Gestion du scheduler email** : configure horaire, jours, limite de tentatives avec interface visuelle
 ### Ergonomie du scan
 - Bouton de scan toujours visible dans la barre de navigation
 - Icône contextuelle selon le mode (webcam ou douchette)
