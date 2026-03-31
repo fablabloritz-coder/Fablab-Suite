@@ -411,6 +411,12 @@
                                        value="{{ rappel_email_reply_to }}" placeholder="support@domaine.fr">
                             </div>
                             <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">Email de référence (monitoring)</label>
+                                <input type="email" name="rappel_email_reference_email" class="form-control"
+                                       value="{{ rappel_email_reference_email }}" placeholder="monitoring@domaine.fr">
+                                <small class="text-muted">Reçoit un récapitulatif des envois effectués.</small>
+                            </div>
+                            <div class="col-12 col-md-4">
                                 <label class="form-label fw-bold">Cooldown (heures)</label>
                                 <input type="number" min="0" step="0.5" name="rappel_email_cooldown_heures" class="form-control"
                                        value="{{ rappel_email_cooldown_heures }}">
@@ -463,6 +469,11 @@
                                            name="rappel_email_html_active" {{ 'checked' if rappel_email_html_active == '1' }}>
                                     <label class="form-check-label" for="rappel_email_html_active">Activer version HTML (fallback texte automatique)</label>
                                 </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="rappel_email_reference_active"
+                                           name="rappel_email_reference_active" {{ 'checked' if rappel_email_reference_active == '1' }}>
+                                    <label class="form-check-label" for="rappel_email_reference_active">Envoyer un récapitulatif à l'email de référence</label>
+                                </div>
                             </div>
 
                             <div class="col-12 col-md-8">
@@ -495,6 +506,13 @@
                                 <i class="bi bi-cloud-check"></i> Tester SMTP
                             </button>
                         </div>
+                    </form>
+
+                    <form method="POST" action="{{ url_for('admin.admin_reglages') }}" class="mt-3">
+                        <input type="hidden" name="action" value="email_reference_send_now">
+                        <button type="submit" class="btn btn-outline-dark">
+                            <i class="bi bi-send-check"></i> Envoyer un mail de référence maintenant
+                        </button>
                     </form>
                 </div>
             </div>
@@ -589,6 +607,7 @@
                 <h5 class="modal-title" id="modalPreviewEmailLabel">
                     <i class="bi bi-envelope-open"></i> Aperçu de l'email
                 </h5>
+                <span id="previewKindBadge" class="badge bg-secondary">Type</span>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -657,9 +676,17 @@ function previsualiserEmail(kind = 'overdue') {
     fetchJsonOrThrow('{{ url_for("admin.api_email_preview") }}?' + qs.toString())
         .then(data => {
             const title = document.getElementById('modalPreviewEmailLabel');
+            const kindBadge = document.getElementById('previewKindBadge');
             title.innerHTML = data.preview_kind === 'upcoming_24h'
                 ? '<i class="bi bi-envelope-open-heart"></i> Aperçu email - retour sous 24h'
                 : '<i class="bi bi-envelope-open"></i> Aperçu email - prêt en retard';
+            if (data.preview_kind === 'upcoming_24h') {
+                kindBadge.className = 'badge bg-info text-dark';
+                kindBadge.textContent = 'Retour <24h';
+            } else {
+                kindBadge.className = 'badge bg-warning text-dark';
+                kindBadge.textContent = 'Retard';
+            }
             document.getElementById('previewFrom').textContent = data.from || '(non configuré)';
             document.getElementById('previewSubject').textContent = data.subject || '(sujet vide)';
             document.getElementById('previewBody').textContent = data.body || '(corps vide)';

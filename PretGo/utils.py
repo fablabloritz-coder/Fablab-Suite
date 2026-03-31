@@ -409,6 +409,213 @@ def _get_signature_image_info(conn):
     return raw, subtype, 'pretgo-signature'
 
 
+def _label_reminder_kind(reminder_kind):
+    return 'Retour prévu sous 24h' if reminder_kind == 'upcoming_24h' else 'Prêt en retard'
+
+
+def _build_reference_report(conn, sent_details, now_dt, title_prefix='Rapport envoi rappels'):
+    total = len(sent_details)
+    total_retards = sum(1 for item in sent_details if item.get('reminder_kind') == 'overdue')
+    total_24h = sum(1 for item in sent_details if item.get('reminder_kind') == 'upcoming_24h')
+
+    subject = f"[PretGo] {title_prefix} - {now_dt.strftime('%Y-%m-%d %H:%M')}"
+    lines = [
+        f"{title_prefix} PretGo",
+        "",
+        f"Total listés: {total}",
+        f"Retards: {total_retards}",
+        f"Retours <24h: {total_24h}",
+        "",
+        "Liste des emails:",
+    ]
+
+    if not sent_details:
+        lines.append("(Aucun élément)")
+    else:
+        for idx, item in enumerate(sent_details, start=1):
+            lines.append(
+                f"{idx}. {item.get('email', '')} | {_label_reminder_kind(item.get('reminder_kind'))} | prêt #{item.get('pret_id', '?')}"
+            )
+
+    template_overdue = get_setting('rappel_email_template', '', conn=conn) or ''
+    template_24h = get_setting('rappel_email_template_retour_24h', '', conn=conn) or ''
+
+    if not template_overdue:
+        template_overdue = (
+            "Bonjour {nom} {prenom},\n\n"
+            "Ceci est un rappel de restitution de matériel PretGo.\n\n"
+            "Objet(s): {objets}\n"
+            "Date d'emprunt: {date_emprunt}\n"
+            "Dépassement: {depassement}\n"
+            "Tentative: {tentative_numero}/{tentative_total}\n\n"
+            "Merci de procéder au retour du matériel dès que possible.\n\n"
+            "Message automatique PretGo."
+        )
+
+    if not template_24h:
+        template_24h = (
+            "Bonjour {nom} {prenom},\n\n"
+            "Votre prêt PretGo arrive bientôt à échéance.\n\n"
+            "Objet(s): {objets}\n"
+            "Date d'emprunt: {date_emprunt}\n"
+            "Retour prévu: {depassement}\n"
+            "Tentative: {tentative_numero}/{tentative_total}\n\n"
+            "Merci d'anticiper le retour dans les délais prévus.\n\n"
+            "Message automatique PretGo."
+        )
+
+    preview_vars = {
+        'nom': 'Dupont',
+        'prenom': 'Jean',
+        'objets': 'Scie à métaux + Équerre de précision',
+        'date_emprunt': now_dt.strftime('%Y-%m-%d %H:%M:%S'),
+        'tentative_numero': '1',
+        'tentative_total': '3',
+    }
+    preview_overdue = _render_email_template(
+        template_overdue,
+        depassement='2j3h',
+        type_rappel='Prêt en retard',
+        **preview_vars,
+    )
+    preview_24h = _render_email_template(
+        template_24h,
+        depassement='dans 12h',
+        type_rappel='Retour prévu sous 24h',
+        **preview_vars,
+    )
+
+    lines.extend([
+        "",
+        "----------------------------------------",
+        "APERÇU TEMPLATE - PRÊT EN RETARD",
+        "----------------------------------------",
+        preview_overdue,
+        "",
+        "----------------------------------------",
+        "APERÇU TEMPLATE - RETOUR <24H",
+        "----------------------------------------",
+        preview_24h,
+    ])
+
+    text_body = "\n".join(lines)
+
+    html_list = "".join(
+        f"<li><strong>{html_escape(item.get('email', ''))}</strong> - "
+        f"{html_escape(_label_reminder_kind(item.get('reminder_kind')))} - prêt #{item.get('pret_id', '?')}</li>"
+        for item in sent_details
+    )
+    if not html_list:
+        html_list = "<li>(Aucun élément)</li>"
+
+    html_body = (
+        "<!DOCTYPE html><html><body style='font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;'>"
+        f"<h3>{html_escape(title_prefix)} PretGo</h3>"
+        f"<p><strong>Total listés:</strong> {total}<br>"
+        f"<strong>Retards:</strong> {total_retards}<br>"
+        f"<strong>Retours &lt;24h:</strong> {total_24h}</p>"
+        "<p><strong>Liste des emails:</strong></p>"
+        f"<ol>{html_list}</ol>"
+        "<hr>"
+        "<p><strong>Aperçu template - prêt en retard</strong></p>"
+        f"<pre style='white-space:pre-wrap;background:#f8f9fa;border:1px solid #dee2e6;padding:10px;border-radius:6px;'>{html_escape(preview_overdue)}</pre>"
+        "<p><strong>Aperçu template - retour &lt;24h</strong></p>"
+        f"<pre style='white-space:pre-wrap;background:#f8f9fa;border:1px solid #dee2e6;padding:10px;border-radius:6px;'>{html_escape(preview_24h)}</pre>"
+        "</body></html>"
+    )
+
+    return subject, text_body, html_body
+
+
+def envoyer_email_reference_manuel(conn, smtp_factory=None, now=None):
+    """Envoie manuellement un mail de contrôle à l'email de référence."""
+    now_dt = now or datetime.now()
+
+    smtp_host = (get_setting('rappel_email_smtp_host', '', conn=conn) or '').strip()
+    smtp_port = int(get_setting('rappel_email_smtp_port', '587', conn=conn) or '587')
+    smtp_user = (get_setting('rappel_email_smtp_user', '', conn=conn) or '').strip()
+    smtp_password = get_setting('rappel_email_smtp_password', '', conn=conn) or ''
+    use_tls = get_setting('rappel_email_use_tls', '1', conn=conn) == '1'
+    use_ssl = get_setting('rappel_email_use_ssl', '0', conn=conn) == '1'
+    if use_tls and use_ssl:
+        use_tls = False
+
+    from_email = (get_setting('rappel_email_from', '', conn=conn) or '').strip()
+    reply_to = (get_setting('rappel_email_reply_to', '', conn=conn) or '').strip()
+    reference_email = (get_setting('rappel_email_reference_email', '', conn=conn) or '').strip()
+    inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+    html_active = get_setting('rappel_email_html_active', '1', conn=conn) == '1'
+
+    if not reference_email or not valider_email(reference_email):
+        return {'success': False, 'message': "Email de référence invalide ou non configuré."}
+    if not smtp_host or not from_email:
+        return {'success': False, 'message': "Configuration SMTP incomplète (hôte ou expéditeur manquant)."}
+
+    candidats = lister_prets_pour_rappel_mail(conn, now=now_dt, inclure_retour_24h=inclure_retour_24h)
+    details = [
+        {
+            'email': item.get('email', ''),
+            'reminder_kind': item.get('reminder_kind', 'overdue'),
+            'pret_id': item.get('pret_id'),
+        }
+        for item in candidats if item.get('email')
+    ]
+    subject, text_body, html_report = _build_reference_report(
+        conn,
+        details,
+        now_dt,
+        title_prefix='Test manuel monitoring rappels'
+    )
+
+    smtp_cls = smtp_factory
+    if smtp_cls is None:
+        smtp_cls = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+
+    signature_raw, signature_subtype, signature_cid = _get_signature_image_info(conn)
+    server = None
+    try:
+        if use_ssl:
+            server = smtp_cls(smtp_host, smtp_port, context=ssl.create_default_context(), timeout=10)
+        else:
+            server = smtp_cls(smtp_host, smtp_port, timeout=10)
+            if use_tls:
+                server.starttls(context=ssl.create_default_context())
+        if smtp_user:
+            server.login(smtp_user, smtp_password)
+
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = from_email
+        msg['To'] = reference_email
+        if reply_to:
+            msg['Reply-To'] = reply_to
+        msg.set_content(text_body)
+
+        if html_active:
+            msg.add_alternative(html_report, subtype='html')
+            if signature_raw:
+                try:
+                    msg.get_payload()[-1].add_related(
+                        signature_raw,
+                        maintype='image',
+                        subtype=signature_subtype,
+                        cid=f'<{signature_cid}>'
+                    )
+                except Exception:
+                    pass
+
+        server.send_message(msg)
+        return {'success': True, 'message': f"Email de référence envoyé à {reference_email}."}
+    except Exception as e:
+        return {'success': False, 'message': f"Échec envoi email de référence: {str(e)[:200]}"}
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+
 def generer_preview_email(conn, reminder_kind='overdue'):
     """Génère un aperçu de l'email avec des valeurs de test.
     
@@ -691,6 +898,8 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
     reply_to = (get_setting('rappel_email_reply_to', '', conn=conn) or '').strip()
     subject_tpl = (get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel', conn=conn) or '').strip()
     max_tentatives = int(get_setting('rappel_email_max_tentatives', '3', conn=conn) or '3')
+    reference_active = get_setting('rappel_email_reference_active', '0', conn=conn) == '1'
+    reference_email = (get_setting('rappel_email_reference_email', '', conn=conn) or '').strip()
 
     stats = {
         'total_alertes': 0,
@@ -702,6 +911,7 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
         'bloques': 0,
         'total_retards': 0,
         'total_retours_24h': 0,
+        'reference_notified': 0,
     }
 
     try:
@@ -822,13 +1032,14 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
         if smtp_user:
             server.login(smtp_user, smtp_password)
 
+        sent_details = []
         for c in a_envoyer:
             if c['reminder_kind'] == 'upcoming_24h':
-                type_rappel = 'Retour prévu sous 24h'
+                type_rappel = _label_reminder_kind('upcoming_24h')
                 dep_texte = f"Retour prévu dans {c['delta_label']}"
                 active_template = template_upcoming_24h
             else:
-                type_rappel = 'Prêt en retard'
+                type_rappel = _label_reminder_kind('overdue')
                 dep_texte = _format_depassement_texte(c['delta_heures'])
                 active_template = template_overdue
 
@@ -879,6 +1090,12 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
                     float(max(0.0, c['delta_heures']))
                 )
                 stats['envoyes'] += 1
+                sent_details.append({
+                    'email': c['email'],
+                    'type_rappel': type_rappel,
+                    'reminder_kind': c['reminder_kind'],
+                    'pret_id': c['pret_id'],
+                })
             except Exception as e:
                 _insert_log(
                     c['pret_id'],
@@ -890,6 +1107,32 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
                     float(max(0.0, c['delta_heures']))
                 )
                 stats['echecs'] += 1
+
+        # Email de référence (monitoring): récapitulatif des envois réellement partis.
+        if reference_active and reference_email and valider_email(reference_email) and sent_details:
+            recap_subject, recap_text, recap_html = _build_reference_report(
+                conn,
+                sent_details,
+                now_dt,
+                title_prefix='Rapport envoi rappels'
+            )
+
+            recap_msg = EmailMessage()
+            recap_msg['Subject'] = recap_subject
+            recap_msg['From'] = from_email
+            recap_msg['To'] = reference_email
+            if reply_to:
+                recap_msg['Reply-To'] = reply_to
+            recap_msg.set_content(recap_text)
+
+            if html_active:
+                recap_msg.add_alternative(recap_html, subtype='html')
+
+            try:
+                server.send_message(recap_msg)
+                stats['reference_notified'] = 1
+            except Exception as e:
+                _log.warning('Échec envoi email de référence: %s', str(e)[:200])
     finally:
         if server is not None:
             try:

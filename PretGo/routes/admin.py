@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for, current_app
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATABASE_PATH, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR, RECOVERY_CODE_PATH
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response, lister_prets_pour_rappel_mail
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response, lister_prets_pour_rappel_mail, envoyer_email_reference_manuel
 from datetime import datetime, timedelta
 import csv
 import io
@@ -491,8 +491,10 @@ def admin_reglages():
             set_setting('rappel_email_use_tls', '1' if use_tls else '0')
             set_setting('rappel_email_use_ssl', '1' if use_ssl else '0')
             set_setting('rappel_email_html_active', '1' if request.form.get('rappel_email_html_active') else '0')
+            set_setting('rappel_email_reference_active', '1' if request.form.get('rappel_email_reference_active') else '0')
             set_setting('rappel_email_from', request.form.get('rappel_email_from', '').strip())
             set_setting('rappel_email_reply_to', request.form.get('rappel_email_reply_to', '').strip())
+            set_setting('rappel_email_reference_email', request.form.get('rappel_email_reference_email', '').strip())
             set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
             set_setting('rappel_email_template', request.form.get('rappel_email_template', '').strip() or '')
             set_setting('rappel_email_template_retour_24h', request.form.get('rappel_email_template_retour_24h', '').strip() or '')
@@ -564,9 +566,15 @@ def admin_reglages():
                 flash(
                     f"Rappels envoyés: {stats['envoyes']} | retards: {stats.get('total_retards', 0)} | "
                     f"retours <24h: {stats.get('total_retours_24h', 0)} | échecs: {stats['echecs']} | "
-                    f"sans email: {stats['ignores_sans_email']} | cooldown: {stats['ignores_cooldown']}",
+                    f"sans email: {stats['ignores_sans_email']} | cooldown: {stats['ignores_cooldown']} | "
+                    f"monitoring: {'ok' if stats.get('reference_notified') else 'off/ko'}",
                     'success' if stats['echecs'] == 0 else 'warning'
                 )
+
+        elif action == 'email_reference_send_now':
+            conn = get_app_db()
+            result = envoyer_email_reference_manuel(conn)
+            flash(result.get('message') or 'Action exécutée.', 'success' if result.get('success') else 'danger')
 
         elif action == 'email_scheduler_settings':
             from scheduler import email_scheduler
@@ -638,6 +646,8 @@ def admin_reglages():
                            rappel_email_use_tls=get_setting('rappel_email_use_tls', '1'),
                            rappel_email_use_ssl=get_setting('rappel_email_use_ssl', '0'),
                            rappel_email_html_active=get_setting('rappel_email_html_active', '1'),
+                           rappel_email_reference_active=get_setting('rappel_email_reference_active', '0'),
+                           rappel_email_reference_email=get_setting('rappel_email_reference_email', ''),
                            rappel_email_from=get_setting('rappel_email_from', ''),
                            rappel_email_reply_to=get_setting('rappel_email_reply_to', ''),
                            rappel_email_subject=get_setting('rappel_email_subject', '[PretGo] Rappel de retour de matériel'),
@@ -693,7 +703,8 @@ def admin_rappel_mail():
                 flash(
                     f"Rappels envoyés: {stats['envoyes']} | retards: {stats.get('total_retards', 0)} | "
                     f"retours <24h: {stats.get('total_retours_24h', 0)} | échecs: {stats['echecs']} | "
-                    f"sans email: {stats['ignores_sans_email']} | cooldown: {stats['ignores_cooldown']} | bloqués: {stats.get('bloques', 0)}",
+                    f"sans email: {stats['ignores_sans_email']} | cooldown: {stats['ignores_cooldown']} | bloqués: {stats.get('bloques', 0)} | "
+                    f"monitoring: {'ok' if stats.get('reference_notified') else 'off/ko'}",
                     'success' if stats['echecs'] == 0 else 'warning'
                 )
 

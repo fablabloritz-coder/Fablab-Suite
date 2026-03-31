@@ -332,6 +332,8 @@ def init_db():
         'rappel_email_cooldown_heures': '24',
         'rappel_email_html_active': '1',
         'rappel_email_signature_image': '',
+        'rappel_email_reference_active': '0',
+        'rappel_email_reference_email': '',
         'rappel_email_template': (
             "Bonjour {nom} {prenom},\n\n"
             "Ceci est un rappel de restitution de matériel PretGo.\n\n"
