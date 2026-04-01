@@ -446,8 +446,8 @@ function buildActionHTML(aid) {
                     </div>
                     <div class="col-md-4">
                         <label class="form-label"><i class="bi bi-calculator me-1"></i> Surface</label>
-                        <input type="number" class="form-control f-surface" step="0.0001" min="0" placeholder="Auto ou manuel"
-                               oninput="normalizeSurfaceInput(this)">
+                           <input type="text" class="form-control f-surface" inputmode="decimal" autocomplete="off" placeholder="Auto ou manuel"
+                               onblur="normalizeSurfaceInput(this)">
                     </div>
                 </div>
             </div>
@@ -541,6 +541,7 @@ function selectActionType(aid, type) {
     // machines
     const mg = card.querySelector('.grp-machine');
     const ms = card.querySelector('.f-machine');
+    const previousMachineId = ms.value;
     const filteredM = REF_DATA.machines.filter(m => m.type_activite_id === type.id && (m.statut || 'disponible') === 'disponible');
     const allM = REF_DATA.machines.filter(m => m.type_activite_id === type.id);
     const unavail = allM.length - filteredM.length;
@@ -549,9 +550,22 @@ function selectActionType(aid, type) {
         ms.innerHTML = '<option value="">Sélectionner...</option>';
         filteredM.forEach(m => ms.innerHTML += `<option value="${m.id}">${m.nom}</option>`);
         if (unavail > 0) ms.innerHTML += `<option disabled>── ${unavail} indisponible(s) ──</option>`;
+        if (previousMachineId && filteredM.some(m => String(m.id) === previousMachineId)) {
+            ms.value = previousMachineId;
+        } else {
+            ms.value = '';
+        }
     } else {
         mg.style.display = allM.length > 0 ? '' : 'none';
-        ms.innerHTML = allM.length > 0 ? `<option value="">Toutes indisponibles</option>` : '<option value="">Aucune</option>';
+        if (allM.length > 0) {
+            ms.innerHTML = '<option value="">Aucune machine compatible</option>';
+            allM.forEach(m => {
+                ms.innerHTML += `<option value="${m.id}" disabled>${m.nom} (indisponible)</option>`;
+            });
+            ms.value = '';
+        } else {
+            ms.innerHTML = '<option value="">Aucune machine</option>';
+        }
     }
 
     // materials — via junction table (materiau_machine)
@@ -565,6 +579,7 @@ function selectActionType(aid, type) {
 function updateMaterialSelect(card, machineId) {
     const mtg = card.querySelector('.grp-materiau');
     const mts = card.querySelector('.f-materiau');
+    const previousMaterialId = mts.value;
     const mm = REF_DATA.materiau_machine || [];
 
     // Matériaux liés à aucune machine (génériques)
@@ -592,9 +607,14 @@ function updateMaterialSelect(card, machineId) {
         mtg.style.display = '';
         mts.innerHTML = '<option value="">Sélectionner...</option>';
         filteredMat.forEach(m => mts.innerHTML += `<option value="${m.id}">${m.nom}</option>`);
+        if (previousMaterialId && filteredMat.some(m => String(m.id) === previousMaterialId)) {
+            mts.value = previousMaterialId;
+        } else {
+            mts.value = '';
+        }
     } else {
         mtg.style.display = 'none';
-        mts.innerHTML = '<option value="">Aucun</option>';
+        mts.innerHTML = '<option value="">Aucun matériau compatible</option>';
     }
 }
 
@@ -653,14 +673,12 @@ function calcActionSurface(aid) {
 
 function normalizeSurfaceInput(inputEl) {
     if (!inputEl) return;
-    const raw = String(inputEl.value || '').replace(',', '.').trim();
+    const raw = String(inputEl.value || '').trim();
     if (raw === '') return;
-    const n = parseFloat(raw);
-    if (!Number.isFinite(n) || n < 0) {
+    const n = parseSurfaceValue(raw);
+    if (n === null) {
         inputEl.value = '';
-        return;
     }
-    inputEl.value = n;
 }
 
 function parseSurfaceValue(raw) {

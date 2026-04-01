@@ -61,8 +61,8 @@ function renderInventaire() {
     if (!inventaireData.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">' +
             '<i class="bi bi-inbox" style="font-size:2rem;"></i><br>' +
-            'Aucun matériau avec suivi de stock<br>' +
-            '<small>Activez le suivi stock dans Paramètres → Matériaux</small></td></tr>';
+            'Aucun matériau suivi en stock<br>' +
+            '<small>Activez le suivi de stock dans Paramètres → Matériaux</small></td></tr>';
         return;
     }
 

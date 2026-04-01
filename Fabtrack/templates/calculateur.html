@@ -48,16 +48,16 @@
                         <div class="col-6">
                             <label class="form-label">Longueur</label>
                             <div class="input-group">
-                                <input type="number" id="calcLongueur" class="form-control form-control-lg"
-                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                    <input type="text" id="calcLongueur" class="form-control form-control-lg"
+                                        inputmode="decimal" autocomplete="off" placeholder="0" oninput="calculate()">
                                 <span class="input-group-text unit-label">mm</span>
                             </div>
                         </div>
                         <div class="col-6">
                             <label class="form-label">Largeur</label>
                             <div class="input-group">
-                                <input type="number" id="calcLargeur" class="form-control form-control-lg"
-                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                    <input type="text" id="calcLargeur" class="form-control form-control-lg"
+                                        inputmode="decimal" autocomplete="off" placeholder="0" oninput="calculate()">
                                 <span class="input-group-text unit-label">mm</span>
                             </div>
                         </div>
@@ -69,8 +69,8 @@
                     <div class="mb-3">
                         <label class="form-label">Diamètre (ou rayon ×2)</label>
                         <div class="input-group">
-                            <input type="number" id="calcDiametre" class="form-control form-control-lg"
-                                   step="0.1" min="0" placeholder="0" oninput="calculate()">
+                            <input type="text" id="calcDiametre" class="form-control form-control-lg"
+                                inputmode="decimal" autocomplete="off" placeholder="0" oninput="calculate()">
                             <span class="input-group-text unit-label">mm</span>
                         </div>
                     </div>
@@ -82,16 +82,16 @@
                         <div class="col-6">
                             <label class="form-label">Base</label>
                             <div class="input-group">
-                                <input type="number" id="calcBase" class="form-control form-control-lg"
-                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                    <input type="text" id="calcBase" class="form-control form-control-lg"
+                                        inputmode="decimal" autocomplete="off" placeholder="0" oninput="calculate()">
                                 <span class="input-group-text unit-label">mm</span>
                             </div>
                         </div>
                         <div class="col-6">
                             <label class="form-label">Hauteur</label>
                             <div class="input-group">
-                                <input type="number" id="calcHauteur" class="form-control form-control-lg"
-                                       step="0.1" min="0" placeholder="0" oninput="calculate()">
+                                    <input type="text" id="calcHauteur" class="form-control form-control-lg"
+                                        inputmode="decimal" autocomplete="off" placeholder="0" oninput="calculate()">
                                 <span class="input-group-text unit-label">mm</span>
                             </div>
                         </div>
@@ -202,6 +202,13 @@ let currentUnit = 'mm';
 let calcHistory = JSON.parse(localStorage.getItem('fabtrack_calc_history') || '[]');
 const UNIT_FACTORS = { mm: 1e6, cm: 1e4, m: 1 };
 
+function parseDecimalValue(raw) {
+    const text = String(raw || '').replace(',', '.').trim();
+    if (!text) return 0;
+    const value = parseFloat(text);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
 function onReferenceDataLoaded() {
     renderMachineZones();
     renderHistory();
@@ -230,15 +237,15 @@ function calculate() {
     const factor = UNIT_FACTORS[currentUnit];
 
     if (currentShape === 'rectangle') {
-        const l = parseFloat(document.getElementById('calcLongueur').value) || 0;
-        const w = parseFloat(document.getElementById('calcLargeur').value) || 0;
+        const l = parseDecimalValue(document.getElementById('calcLongueur').value);
+        const w = parseDecimalValue(document.getElementById('calcLargeur').value);
         surface = (l * w) / factor;
     } else if (currentShape === 'circle') {
-        const d = parseFloat(document.getElementById('calcDiametre').value) || 0;
+        const d = parseDecimalValue(document.getElementById('calcDiametre').value);
         surface = (Math.PI * (d/2) * (d/2)) / factor;
     } else if (currentShape === 'triangle') {
-        const b = parseFloat(document.getElementById('calcBase').value) || 0;
-        const h = parseFloat(document.getElementById('calcHauteur').value) || 0;
+        const b = parseDecimalValue(document.getElementById('calcBase').value);
+        const h = parseDecimalValue(document.getElementById('calcHauteur').value);
         surface = (b * h / 2) / factor;
     }
 

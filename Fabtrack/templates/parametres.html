@@ -85,11 +85,11 @@
                             <input type="hidden" id="typeImagePath">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label"><i class="bi bi-cpu me-1"></i> Machines associées (optionnel)</label>
+                            <label class="form-label"><i class="bi bi-cpu me-1"></i> Machines compatibles (optionnel)</label>
                             <div id="typeMachineCheckboxes" class="border rounded p-2" style="max-height:300px;overflow-y:auto;">
                                 <small class="text-muted">Chargement...</small>
                             </div>
-                            <small class="text-muted">Cochez les machines à réaffecter à ce type</small>
+                            <small class="text-muted">Cochez les machines compatibles avec ce type</small>
                         </div>
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary flex-fill" id="typeSubmitBtn">
@@ -1235,7 +1235,7 @@ function resetMachineForm() {
 // ========== MATÉRIAUX ==========
 function getLinkedMachineNames(matId) {
     const links = (REF_DATA.materiau_machine||[]).filter(l => l.materiau_id === matId);
-    if (!links.length) return '<em class="text-muted">Générique (sans machine)</em>';
+    if (!links.length) return '<em class="text-muted">Générique (compatible avec toutes les machines)</em>';
     return links.map(l => {
         const m = REF_DATA.machines.find(x=>x.id===l.machine_id);
         return m ? m.nom : '?';

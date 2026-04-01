@@ -13,6 +13,8 @@ def _to_float(value):
     try:
         if value is None or value == '':
             return None
+        if isinstance(value, str):
+            value = value.replace(',', '.').strip()
         return float(value)
     except (ValueError, TypeError):
         return None
@@ -39,6 +41,65 @@ def _surface_from_action(action):
     largeur_mm = _to_float(action.get('largeur_mm'))
     if longueur_mm and largeur_mm:
         return (longueur_mm * largeur_mm) / 1e6
+    return None
+
+
+def _machine_is_compatible_with_type(db, machine_id, type_activite_id):
+    if not machine_id or not type_activite_id:
+        return True
+    row = db.execute(
+        'SELECT 1 FROM machines WHERE id=? AND type_activite_id=?',
+        (machine_id, type_activite_id)
+    ).fetchone()
+    return bool(row)
+
+
+def _material_is_compatible_with_selection(db, type_activite_id, machine_id, materiau_id):
+    if not materiau_id:
+        return True
+
+    generic_match = db.execute(
+                '''SELECT 1
+                     FROM materiaux
+                     WHERE id=?
+                         AND id NOT IN (SELECT materiau_id FROM materiau_machine)''',
+        (materiau_id,)
+    ).fetchone()
+    if generic_match:
+        return True
+
+    if machine_id:
+        row = db.execute(
+            'SELECT 1 FROM materiau_machine WHERE machine_id=? AND materiau_id=?',
+            (machine_id, materiau_id)
+        ).fetchone()
+        return bool(row)
+
+    if type_activite_id:
+        row = db.execute(
+            '''SELECT 1
+               FROM materiau_machine mm
+               JOIN machines m ON m.id = mm.machine_id
+               WHERE mm.materiau_id=? AND m.type_activite_id=?
+            ''',
+            (materiau_id, type_activite_id)
+        ).fetchone()
+        return bool(row)
+
+    return False
+
+
+def _validate_action_selection(db, action):
+    type_activite_id = action.get('type_activite_id')
+    machine_id = action.get('machine_id') or None
+    materiau_id = action.get('materiau_id') or None
+
+    if not _machine_is_compatible_with_type(db, machine_id, type_activite_id):
+        return 'Machine incompatible avec le type d\'activité choisi.'
+
+    if not _material_is_compatible_with_selection(db, type_activite_id, machine_id, materiau_id):
+        return 'Matériau incompatible avec la machine ou le type d\'activité choisi.'
+
     return None
 
 
@@ -185,10 +246,11 @@ def api_get_consommations():
 def api_create_consommation():
     data = request.get_json(); db = get_db()
     try:
-        surface = None
-        if data.get('longueur_mm') and data.get('largeur_mm'):
-            try: surface = (float(data['longueur_mm'])*float(data['largeur_mm']))/1e6
-            except (ValueError, TypeError): pass
+        validation_error = _validate_action_selection(db, data)
+        if validation_error:
+            return jsonify({'success': False, 'error': validation_error}), 400
+
+        surface = _surface_from_action(data)
 
         nom_prep = _resolve_nom(db, 'preparateurs', data.get('preparateur_id'))
         nom_type = _resolve_nom(db, 'types_activite', data.get('type_activite_id'))
@@ -218,7 +280,7 @@ def api_create_consommation():
             data.get('quantite') or 0, data.get('unite',''),
             data.get('poids_grammes') or None,
             data.get('longueur_mm') or None, data.get('largeur_mm') or None,
-            surface or data.get('surface_m2') or None,
+            surface or None,
             data.get('epaisseur') or None,
             data.get('nb_feuilles') or None, data.get('format_papier') or None,
             data.get('nb_feuilles_plastique') or None,
@@ -267,11 +329,13 @@ def api_create_consommation_batch():
         nom_cls  = _resolve_nom(db, 'classes', common['classe_id'])
         nom_ref  = _resolve_nom(db, 'referents', common['referent_id'])
 
-        for action in actions:
-            surface = None
-            if action.get('longueur_mm') and action.get('largeur_mm'):
-                try: surface = (float(action['longueur_mm']) * float(action['largeur_mm'])) / 1e6
-                except (ValueError, TypeError): pass
+        for index, action in enumerate(actions, start=1):
+            validation_error = _validate_action_selection(db, action)
+            if validation_error:
+                db.rollback()
+                return jsonify({'success': False, 'error': f'Action {index}: {validation_error}'}), 400
+
+            surface = _surface_from_action(action)
 
             nom_type = _resolve_nom(db, 'types_activite', action.get('type_activite_id'))
             nom_mach = _resolve_nom(db, 'machines', action.get('machine_id'))
@@ -297,7 +361,7 @@ def api_create_consommation_batch():
                 action.get('quantite') or 0, action.get('unite', ''),
                 action.get('poids_grammes') or None,
                 action.get('longueur_mm') or None, action.get('largeur_mm') or None,
-                surface or action.get('surface_m2') or None,
+                surface or None,
                 action.get('epaisseur') or None,
                 action.get('nb_feuilles') or None, action.get('format_papier') or None,
                 action.get('nb_feuilles_plastique') or None,
@@ -338,10 +402,11 @@ def api_delete_consommation(id):
 def api_update_consommation(id):
     data = request.get_json(); db = get_db()
     try:
-        surface = None
-        if data.get('longueur_mm') and data.get('largeur_mm'):
-            try: surface = (float(data['longueur_mm'])*float(data['largeur_mm']))/1e6
-            except (ValueError, TypeError): pass
+        validation_error = _validate_action_selection(db, data)
+        if validation_error:
+            return jsonify({'success': False, 'error': validation_error}), 400
+
+        surface = _surface_from_action(data)
 
         nom_prep = _resolve_nom(db, 'preparateurs', data.get('preparateur_id'))
         nom_type = _resolve_nom(db, 'types_activite', data.get('type_activite_id'))
@@ -373,7 +438,7 @@ def api_update_consommation(id):
             data.get('quantite') or 0, data.get('unite',''),
             data.get('poids_grammes') or None,
             data.get('longueur_mm') or None, data.get('largeur_mm') or None,
-            surface or data.get('surface_m2') or None,
+            surface or None,
             data.get('epaisseur') or None,
             data.get('nb_feuilles') or None, data.get('format_papier') or None,
             data.get('nb_feuilles_plastique') or None,
