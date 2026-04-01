@@ -11,8 +11,6 @@ from html import escape as html_escape
 import base64
 import logging
 import os
-import secrets
-import shutil
 import smtplib
 import ssl
 import threading

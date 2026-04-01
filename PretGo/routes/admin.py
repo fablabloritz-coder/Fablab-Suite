@@ -1,6 +1,6 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for, current_app
-from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATABASE_PATH, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR, RECOVERY_CODE_PATH
+from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR
 from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response, lister_prets_pour_rappel_mail, envoyer_email_reference_manuel
 from datetime import datetime, timedelta
 import csv
