@@ -125,12 +125,7 @@ let referentChoices = [];
 
 function getCompatibleMachineIdsForType(typeId) {
     const links = REF_DATA.machine_type_activite || [];
-    const fromLinks = links.filter(l => l.type_activite_id === typeId).map(l => l.machine_id);
-    if (fromLinks.length) {
-        return new Set(fromLinks);
-    }
-    // Fallback legacy
-    return new Set((REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id));
+    return new Set(links.filter(l => l.type_activite_id === typeId).map(l => l.machine_id));
 }
 
 /* ---------- lifecycle ---------- */

@@ -47,16 +47,8 @@ def _surface_from_action(action):
 def _machine_is_compatible_with_type(db, machine_id, type_activite_id):
     if not machine_id or not type_activite_id:
         return True
-    # Nouveau modèle : table de liaison many-to-many
     row = db.execute(
         'SELECT 1 FROM machine_type_activite WHERE machine_id=? AND type_activite_id=?',
-        (machine_id, type_activite_id)
-    ).fetchone()
-    if row:
-        return True
-    # Fallback legacy : colonne machines.type_activite_id
-    row = db.execute(
-        'SELECT 1 FROM machines WHERE id=? AND type_activite_id=?',
         (machine_id, type_activite_id)
     ).fetchone()
     return bool(row)
@@ -65,18 +57,9 @@ def _machine_is_compatible_with_type(db, machine_id, type_activite_id):
 def _machine_ids_for_type(db, type_activite_id):
     if not type_activite_id:
         return set()
-    m2m_ids = {
+    return {
         r['machine_id'] for r in db.execute(
             'SELECT machine_id FROM machine_type_activite WHERE type_activite_id=?',
-            (type_activite_id,)
-        ).fetchall()
-    }
-    if m2m_ids:
-        return m2m_ids
-    # Fallback legacy
-    return {
-        r['id'] for r in db.execute(
-            'SELECT id FROM machines WHERE type_activite_id=?',
             (type_activite_id,)
         ).fetchall()
     }

@@ -1126,7 +1126,7 @@ function renderCompatibilityMatrixDemo() {
 
         const cells = types.map(t => {
             const typeLinks = mta.filter(l => l.type_activite_id === t.id);
-            const isCompatible = typeLinks.some(l => l.machine_id === m.id) || (!typeLinks.length && m.type_activite_id === t.id);
+            const isCompatible = typeLinks.some(l => l.machine_id === m.id);
             if (!isCompatible) {
                 return `<td class="text-center text-muted"><button class="btn btn-sm btn-outline-secondary" onclick="openMatrixCellEditor(${m.id}, ${t.id})" title="Activer cette compatibilité">—</button></td>`;
             }
@@ -1165,7 +1165,7 @@ function openMatrixCellEditor(machineId, typeId) {
     const mtm = REF_DATA.machine_type_materiau || [];
 
     const typeLinks = mta.filter(l => l.type_activite_id === typeId);
-    const compatible = typeLinks.some(l => l.machine_id === machineId) || (!typeLinks.length && machine?.type_activite_id === typeId);
+    const compatible = typeLinks.some(l => l.machine_id === machineId);
     document.getElementById('matrixCellCompatible').checked = compatible;
     document.getElementById('matrixCellContext').innerHTML = `<strong>Machine:</strong> ${machine?.nom || machineId} • <strong>Type:</strong> ${type?.nom || typeId}`;
 
@@ -1262,7 +1262,7 @@ function getCompatibleMaterialCountForType(typeId) {
     const linkedMatIds = new Set(mm.map(l => l.materiau_id));
     const genericCount = REF_DATA.materiaux.filter(m => !linkedMatIds.has(m.id)).length;
     const typeMtaLinks = mta.filter(l => l.type_activite_id === typeId);
-    const typeMachineIds = new Set(typeMtaLinks.length ? typeMtaLinks.map(l => l.machine_id) : (REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id));
+    const typeMachineIds = new Set(typeMtaLinks.map(l => l.machine_id));
     const typeLinkedMatIds = new Set(mm.filter(l => typeMachineIds.has(l.machine_id)).map(l => l.materiau_id));
     return genericCount + typeLinkedMatIds.size;
 }
@@ -1278,7 +1278,7 @@ function renderTypesActivite() {
         const imgOrEmoji = t.image_path
             ? `<img src="${t.image_path}" class="rounded me-2 entity-img-type">`
             : `<span class="fs-4 me-1">${t.icone||'🔧'}</span>`;
-        const machCount = REF_DATA.machines.filter(m => m.type_activite_id === t.id).length;
+        const machCount = (REF_DATA.machine_type_activite || []).filter(l => l.type_activite_id === t.id).length;
         const matCount = getCompatibleMaterialCountForType(t.id);
         const formMode = getFormModeLabel(t.unite_defaut);
         return `
@@ -1351,9 +1351,7 @@ function editTypeActivite(id) {
     const typeLinks = links.filter(l => l.type_activite_id === id);
     document.querySelectorAll('.type-machine-cb').forEach(cb => {
         const machineId = parseInt(cb.value);
-        cb.checked = typeLinks.length
-            ? typeLinks.some(l => l.machine_id === machineId)
-            : REF_DATA.machines.some(m => m.id === machineId && m.type_activite_id === id);
+        cb.checked = typeLinks.some(l => l.machine_id === machineId);
     });
     document.getElementById('typeFormTitle').textContent = 'Modifier le type d\'activité';
     document.getElementById('typeSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
