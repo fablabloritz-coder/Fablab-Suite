@@ -69,29 +69,12 @@ def _material_is_compatible_with_selection(db, type_activite_id, machine_id, mat
     if not materiau_id:
         return True
 
-    generic_match = db.execute(
-                '''SELECT 1
-                     FROM materiaux
-                     WHERE id=?
-                         AND id NOT IN (SELECT materiau_id FROM materiau_machine)''',
-        (materiau_id,)
-    ).fetchone()
-    if generic_match:
-        return True
-
     if machine_id:
-        # Nouveau modèle : cellule type+machine+materiau explicite prioritaire si définie
-        if type_activite_id:
-            cell_rows = db.execute(
-                'SELECT materiau_id FROM machine_type_materiau WHERE machine_id=? AND type_activite_id=?',
-                (machine_id, type_activite_id)
-            ).fetchall()
-            if cell_rows:
-                return materiau_id in {r['materiau_id'] for r in cell_rows}
-
+        if not type_activite_id:
+            return False
         row = db.execute(
-            'SELECT 1 FROM materiau_machine WHERE machine_id=? AND materiau_id=?',
-            (machine_id, materiau_id)
+            'SELECT 1 FROM machine_type_materiau WHERE machine_id=? AND type_activite_id=? AND materiau_id=?',
+            (machine_id, type_activite_id, materiau_id)
         ).fetchone()
         return bool(row)
 
@@ -100,7 +83,7 @@ def _material_is_compatible_with_selection(db, type_activite_id, machine_id, mat
         if not machine_ids:
             return False
 
-        # Matériau autorisé si présent dans au moins une cellule type+machine
+        # Matériau autorisé si présent dans au moins une cellule de la matrice pour ce type.
         placeholders = ','.join(['?'] * len(machine_ids))
         cell_row = db.execute(
             f'''SELECT 1
@@ -114,15 +97,7 @@ def _material_is_compatible_with_selection(db, type_activite_id, machine_id, mat
         if cell_row:
             return True
 
-        # Fallback : via liaison machine<->materiau
-        row = db.execute(
-            f'''SELECT 1
-                FROM materiau_machine mm
-                WHERE mm.materiau_id=? AND mm.machine_id IN ({placeholders})
-            ''',
-            [materiau_id, *machine_ids]
-        ).fetchone()
-        return bool(row)
+        return False
 
     return False
 
@@ -777,19 +752,8 @@ def api_import_csv(entity):
                                 row.get('principes_conception','').strip()))
 
                 elif entity == 'materiaux':
-                    cur_mat = db.execute('INSERT OR IGNORE INTO materiaux (nom,unite) VALUES (?,?)',
+                    db.execute('INSERT OR IGNORE INTO materiaux (nom,unite) VALUES (?,?)',
                                (row['nom'].strip(), row.get('unite','').strip()))
-                    if cur_mat.lastrowid:
-                        mat_id = cur_mat.lastrowid
-                    else:
-                        mat_id = db.execute('SELECT id FROM materiaux WHERE nom=?', (row['nom'].strip(),)).fetchone()[0]
-                    machines_str = row.get('machines', '').strip()
-                    if machines_str:
-                        for mnom in machines_str.split(','):
-                            mnom = mnom.strip()
-                            mrow = db.execute('SELECT id FROM machines WHERE nom=?', (mnom,)).fetchone()
-                            if mrow:
-                                db.execute('INSERT OR IGNORE INTO materiau_machine (materiau_id, machine_id) VALUES (?,?)', (mat_id, mrow[0]))
 
                 elif entity == 'classes':
                     db.execute('INSERT OR IGNORE INTO classes (nom) VALUES (?)', (row['nom'].strip(),))
