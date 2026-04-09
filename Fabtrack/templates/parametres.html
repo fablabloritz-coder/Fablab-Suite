@@ -1125,7 +1125,8 @@ function renderCompatibilityMatrixDemo() {
         const machineMatNames = materiaux.filter(mat => machineMatIds.has(mat.id)).map(mat => mat.nom);
 
         const cells = types.map(t => {
-            const isCompatible = mta.some(l => l.machine_id === m.id && l.type_activite_id === t.id) || (!mta.length && m.type_activite_id === t.id);
+            const typeLinks = mta.filter(l => l.type_activite_id === t.id);
+            const isCompatible = typeLinks.some(l => l.machine_id === m.id) || (!typeLinks.length && m.type_activite_id === t.id);
             if (!isCompatible) {
                 return `<td class="text-center text-muted"><button class="btn btn-sm btn-outline-secondary" onclick="openMatrixCellEditor(${m.id}, ${t.id})" title="Activer cette compatibilité">—</button></td>`;
             }
@@ -1163,7 +1164,8 @@ function openMatrixCellEditor(machineId, typeId) {
     const mta = REF_DATA.machine_type_activite || [];
     const mtm = REF_DATA.machine_type_materiau || [];
 
-    const compatible = mta.some(l => l.machine_id === machineId && l.type_activite_id === typeId) || (!mta.length && machine?.type_activite_id === typeId);
+    const typeLinks = mta.filter(l => l.type_activite_id === typeId);
+    const compatible = typeLinks.some(l => l.machine_id === machineId) || (!typeLinks.length && machine?.type_activite_id === typeId);
     document.getElementById('matrixCellCompatible').checked = compatible;
     document.getElementById('matrixCellContext').innerHTML = `<strong>Machine:</strong> ${machine?.nom || machineId} • <strong>Type:</strong> ${type?.nom || typeId}`;
 
@@ -1259,7 +1261,8 @@ function getCompatibleMaterialCountForType(typeId) {
     const mta = REF_DATA.machine_type_activite || [];
     const linkedMatIds = new Set(mm.map(l => l.materiau_id));
     const genericCount = REF_DATA.materiaux.filter(m => !linkedMatIds.has(m.id)).length;
-    const typeMachineIds = new Set((mta.length ? mta.filter(l => l.type_activite_id === typeId).map(l => l.machine_id) : (REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id)));
+    const typeMtaLinks = mta.filter(l => l.type_activite_id === typeId);
+    const typeMachineIds = new Set(typeMtaLinks.length ? typeMtaLinks.map(l => l.machine_id) : (REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id));
     const typeLinkedMatIds = new Set(mm.filter(l => typeMachineIds.has(l.machine_id)).map(l => l.materiau_id));
     return genericCount + typeLinkedMatIds.size;
 }
@@ -1345,10 +1348,11 @@ function editTypeActivite(id) {
     if (t.image_path) { preview.src = t.image_path; preview.style.display = ''; clearBtn.style.display = ''; }
     else { preview.style.display = 'none'; clearBtn.style.display = 'none'; }
     const links = REF_DATA.machine_type_activite || [];
+    const typeLinks = links.filter(l => l.type_activite_id === id);
     document.querySelectorAll('.type-machine-cb').forEach(cb => {
         const machineId = parseInt(cb.value);
-        cb.checked = links.length
-            ? links.some(l => l.machine_id === machineId && l.type_activite_id === id)
+        cb.checked = typeLinks.length
+            ? typeLinks.some(l => l.machine_id === machineId)
             : REF_DATA.machines.some(m => m.id === machineId && m.type_activite_id === id);
     });
     document.getElementById('typeFormTitle').textContent = 'Modifier le type d\'activité';
