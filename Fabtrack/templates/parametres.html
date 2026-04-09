@@ -12,6 +12,9 @@
     <button class="filter-tab active" onclick="showSection('types_activite',this)">
         <i class="bi bi-grid-3x3-gap"></i> Types d'activité
     </button>
+    <button class="filter-tab" onclick="showSection('matrice_demo',this)">
+        <i class="bi bi-table"></i> Matrice démo
+    </button>
     <button class="filter-tab" onclick="showSection('machines',this)">
         <i class="bi bi-cpu"></i> Machines
     </button>
@@ -39,6 +42,39 @@
     <button class="filter-tab" onclick="showSection('donnees_test',this)">
         <i class="bi bi-database-add"></i> Données de test
     </button>
+</div>
+
+<!-- ================ MATRICE DÉMO ================ -->
+<div class="section-panel" id="section-matrice_demo" style="display:none;">
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <strong><i class="bi bi-diagram-3 me-1"></i> Démo architecture Type × Machine × Matériau</strong>
+            <div class="d-flex gap-2 flex-wrap" id="compatMatrixStats"></div>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                Démonstration lecture seule basée sur données réelles. Cellule verte = machine compatible avec type, avec nombre de matériaux effectivement proposés.
+            </p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead id="compatMatrixHead" class="table-light"></thead>
+                    <tbody id="compatMatrixBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+        <div class="card-header">
+            <strong><i class="bi bi-info-circle me-1"></i> Lecture de la matrice</strong>
+        </div>
+        <div class="card-body">
+            <ul class="mb-0 small text-muted">
+                <li><strong>Matériaux génériques</strong>: matériaux sans liaison machine, proposés partout.</li>
+                <li><strong>Matériaux dédiés</strong>: matériaux liés à une machine précise via table de jonction.</li>
+                <li><strong>Résolution finale</strong>: matériaux génériques + matériaux dédiés aux machines du type.</li>
+            </ul>
+        </div>
+    </div>
 </div>
 
 <!-- ================ TYPES D'ACTIVITÉ ================ -->
@@ -1010,12 +1046,75 @@ function toSearchText() {
 }
 
 function renderAll() {
+    renderCompatibilityMatrixDemo();
     renderTypesActivite();
     renderMachines();
     renderMateriaux();
     renderClasses();
     renderReferents();
     renderPreparateurs();
+}
+
+function renderCompatibilityMatrixDemo() {
+    const head = document.getElementById('compatMatrixHead');
+    const body = document.getElementById('compatMatrixBody');
+    const stats = document.getElementById('compatMatrixStats');
+    if (!head || !body || !stats || !REF_DATA) return;
+
+    const types = [...(REF_DATA.types_activite || [])];
+    const machines = [...(REF_DATA.machines || [])];
+    const materiaux = [...(REF_DATA.materiaux || [])];
+    const links = REF_DATA.materiau_machine || [];
+
+    const linkedMatIds = new Set(links.map(l => l.materiau_id));
+    const genericMats = materiaux.filter(m => !linkedMatIds.has(m.id));
+
+    stats.innerHTML = `
+        <span class="badge bg-primary">${types.length} types</span>
+        <span class="badge bg-secondary">${machines.length} machines</span>
+        <span class="badge bg-info text-dark">${materiaux.length} matériaux</span>
+        <span class="badge bg-success">${genericMats.length} génériques</span>
+    `;
+
+    head.innerHTML = `
+        <tr>
+            <th style="min-width:220px;">Machine</th>
+            ${types.map(t => `<th class="text-center" title="${t.nom} (${t.unite_defaut || 'unité libre'})">${t.icone || '🔧'} ${t.nom}</th>`).join('')}
+        </tr>
+    `;
+
+    if (!machines.length || !types.length) {
+        body.innerHTML = '<tr><td class="text-center text-muted py-4" colspan="99">Données insuffisantes pour générer la matrice.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = machines.map(m => {
+        const machineMatIds = new Set(links.filter(l => l.machine_id === m.id).map(l => l.materiau_id));
+        const machineMatNames = materiaux.filter(mat => machineMatIds.has(mat.id)).map(mat => mat.nom);
+
+        const cells = types.map(t => {
+            if (m.type_activite_id !== t.id) {
+                return '<td class="text-center text-muted">—</td>';
+            }
+            const resolvedCount = genericMats.length + machineMatIds.size;
+            const tip = [
+                `${m.nom} compatible avec ${t.nom}`,
+                `Génériques: ${genericMats.length}`,
+                `Dédiés machine: ${machineMatIds.size}`,
+                machineMatNames.length ? `Matériaux dédiés: ${machineMatNames.join(', ')}` : 'Matériaux dédiés: aucun',
+            ].join(' | ');
+            return `<td class="text-center" title="${tip}"><span class="badge bg-success">✅ ${resolvedCount} mat.</span></td>`;
+        }).join('');
+
+        return `
+        <tr>
+            <td>
+                <strong>${m.nom}</strong>
+                <div class="small text-muted">${getTypeName(m.type_activite_id)} • ${m.statut || 'disponible'}</div>
+            </td>
+            ${cells}
+        </tr>`;
+    }).join('');
 }
 
 // ========== Image Upload Helper ==========
