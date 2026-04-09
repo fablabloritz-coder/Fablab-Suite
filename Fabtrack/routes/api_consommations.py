@@ -47,11 +47,39 @@ def _surface_from_action(action):
 def _machine_is_compatible_with_type(db, machine_id, type_activite_id):
     if not machine_id or not type_activite_id:
         return True
+    # Nouveau modèle : table de liaison many-to-many
+    row = db.execute(
+        'SELECT 1 FROM machine_type_activite WHERE machine_id=? AND type_activite_id=?',
+        (machine_id, type_activite_id)
+    ).fetchone()
+    if row:
+        return True
+    # Fallback legacy : colonne machines.type_activite_id
     row = db.execute(
         'SELECT 1 FROM machines WHERE id=? AND type_activite_id=?',
         (machine_id, type_activite_id)
     ).fetchone()
     return bool(row)
+
+
+def _machine_ids_for_type(db, type_activite_id):
+    if not type_activite_id:
+        return set()
+    m2m_ids = {
+        r['machine_id'] for r in db.execute(
+            'SELECT machine_id FROM machine_type_activite WHERE type_activite_id=?',
+            (type_activite_id,)
+        ).fetchall()
+    }
+    if m2m_ids:
+        return m2m_ids
+    # Fallback legacy
+    return {
+        r['id'] for r in db.execute(
+            'SELECT id FROM machines WHERE type_activite_id=?',
+            (type_activite_id,)
+        ).fetchall()
+    }
 
 
 def _material_is_compatible_with_selection(db, type_activite_id, machine_id, materiau_id):
@@ -69,6 +97,15 @@ def _material_is_compatible_with_selection(db, type_activite_id, machine_id, mat
         return True
 
     if machine_id:
+        # Nouveau modèle : cellule type+machine+materiau explicite prioritaire si définie
+        if type_activite_id:
+            cell_rows = db.execute(
+                'SELECT materiau_id FROM machine_type_materiau WHERE machine_id=? AND type_activite_id=?',
+                (machine_id, type_activite_id)
+            ).fetchall()
+            if cell_rows:
+                return materiau_id in {r['materiau_id'] for r in cell_rows}
+
         row = db.execute(
             'SELECT 1 FROM materiau_machine WHERE machine_id=? AND materiau_id=?',
             (machine_id, materiau_id)
@@ -76,13 +113,31 @@ def _material_is_compatible_with_selection(db, type_activite_id, machine_id, mat
         return bool(row)
 
     if type_activite_id:
+        machine_ids = _machine_ids_for_type(db, type_activite_id)
+        if not machine_ids:
+            return False
+
+        # Matériau autorisé si présent dans au moins une cellule type+machine
+        placeholders = ','.join(['?'] * len(machine_ids))
+        cell_row = db.execute(
+            f'''SELECT 1
+                FROM machine_type_materiau
+                WHERE type_activite_id=?
+                  AND machine_id IN ({placeholders})
+                  AND materiau_id=?
+                LIMIT 1''',
+            [type_activite_id, *machine_ids, materiau_id]
+        ).fetchone()
+        if cell_row:
+            return True
+
+        # Fallback : via liaison machine<->materiau
         row = db.execute(
-            '''SELECT 1
-               FROM materiau_machine mm
-               JOIN machines m ON m.id = mm.machine_id
-               WHERE mm.materiau_id=? AND m.type_activite_id=?
+            f'''SELECT 1
+                FROM materiau_machine mm
+                WHERE mm.materiau_id=? AND mm.machine_id IN ({placeholders})
             ''',
-            (materiau_id, type_activite_id)
+            [materiau_id, *machine_ids]
         ).fetchone()
         return bool(row)
 

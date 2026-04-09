@@ -34,6 +34,8 @@ def api_reference():
                 'machines':      rows_to_list(db.execute('SELECT * FROM machines WHERE actif=1 ORDER BY type_activite_id, nom').fetchall()),
                 'materiaux':     rows_to_list(db.execute('SELECT * FROM materiaux WHERE actif=1 ORDER BY nom').fetchall()),
                 'materiau_machine': rows_to_list(db.execute('SELECT * FROM materiau_machine').fetchall()),
+                'machine_type_activite': rows_to_list(db.execute('SELECT * FROM machine_type_activite').fetchall()),
+                'machine_type_materiau': rows_to_list(db.execute('SELECT * FROM machine_type_materiau').fetchall()),
                 'classes':       rows_to_list(db.execute('SELECT * FROM classes WHERE actif=1 ORDER BY nom').fetchall()),
                 'referents':     rows_to_list(db.execute('SELECT * FROM referents WHERE actif=1 ORDER BY categorie, nom').fetchall()),
             })
@@ -51,6 +53,8 @@ def api_reference():
                     'machines':      rows_to_list(db2.execute('SELECT * FROM machines WHERE actif=1 ORDER BY type_activite_id, nom').fetchall()),
                     'materiaux':     rows_to_list(db2.execute('SELECT * FROM materiaux WHERE actif=1 ORDER BY nom').fetchall()),
                     'materiau_machine': rows_to_list(db2.execute('SELECT * FROM materiau_machine').fetchall()),
+                    'machine_type_activite': rows_to_list(db2.execute('SELECT * FROM machine_type_activite').fetchall()),
+                    'machine_type_materiau': rows_to_list(db2.execute('SELECT * FROM machine_type_materiau').fetchall()),
                     'classes':       rows_to_list(db2.execute('SELECT * FROM classes WHERE actif=1 ORDER BY nom').fetchall()),
                     'referents':     rows_to_list(db2.execute('SELECT * FROM referents WHERE actif=1 ORDER BY categorie, nom').fetchall()),
                 })
@@ -124,8 +128,13 @@ def api_add_machine():
              data.get('marque','').strip(), data.get('zone_travail','').strip(),
              data.get('puissance','').strip(), data.get('description','').strip(),
              data.get('image_path',''), data.get('principes_conception','')))
+        machine_id = cur.lastrowid
+        db.execute(
+            'INSERT OR IGNORE INTO machine_type_activite (machine_id, type_activite_id) VALUES (?, ?)',
+            (machine_id, int(data['type_activite_id']))
+        )
         db.commit()
-        return jsonify({'success':True,'id':cur.lastrowid})
+        return jsonify({'success':True,'id':machine_id})
     except Exception as e:
         return jsonify({'success':False,'error':str(e)}), 400
     finally:
@@ -143,6 +152,10 @@ def api_update_machine(id):
                     data.get('puissance','').strip(), data.get('description','').strip(),
                     data.get('statut','disponible'), data.get('image_path',''),
                     data.get('principes_conception',''), id))
+        db.execute(
+            'INSERT OR IGNORE INTO machine_type_activite (machine_id, type_activite_id) VALUES (?, ?)',
+            (id, int(data['type_activite_id']))
+        )
         db.commit()
         return jsonify({'success':True})
     except Exception as e:
@@ -205,6 +218,87 @@ def api_update_materiau(id):
         return jsonify({'success':True})
     except Exception as e:
         return jsonify({'success':False,'error':str(e)}), 400
+    finally:
+        db.close()
+
+
+# ── Compatibilité matricielle (v2) ──
+
+@bp.route('/api/compat/type-machine', methods=['PUT'])
+def api_set_type_machine_compatibility():
+    data = request.get_json() or {}
+    db = get_db()
+    try:
+        type_id = int(data.get('type_id') or 0)
+        machine_ids = [int(mid) for mid in (data.get('machine_ids') or [])]
+        if not type_id:
+            return jsonify({'success': False, 'error': 'type_id requis'}), 400
+
+        db.execute('DELETE FROM machine_type_activite WHERE type_activite_id=?', (type_id,))
+        for machine_id in machine_ids:
+            db.execute(
+                'INSERT OR IGNORE INTO machine_type_activite (machine_id, type_activite_id) VALUES (?, ?)',
+                (machine_id, type_id)
+            )
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        db.close()
+
+
+@bp.route('/api/compat/matrix-cell', methods=['PUT'])
+def api_update_matrix_cell():
+    data = request.get_json() or {}
+    db = get_db()
+    try:
+        type_id = int(data.get('type_id') or 0)
+        machine_id = int(data.get('machine_id') or 0)
+        compatible = bool(data.get('compatible', False))
+        material_ids = [int(mid) for mid in (data.get('material_ids') or [])]
+
+        if not type_id or not machine_id:
+            return jsonify({'success': False, 'error': 'type_id et machine_id requis'}), 400
+
+        # Compatibilité machine <-> type
+        if compatible:
+            db.execute(
+                'INSERT OR IGNORE INTO machine_type_activite (machine_id, type_activite_id) VALUES (?, ?)',
+                (machine_id, type_id)
+            )
+        else:
+            db.execute(
+                'DELETE FROM machine_type_activite WHERE machine_id=? AND type_activite_id=?',
+                (machine_id, type_id)
+            )
+            db.execute(
+                'DELETE FROM machine_type_materiau WHERE machine_id=? AND type_activite_id=?',
+                (machine_id, type_id)
+            )
+            db.commit()
+            return jsonify({'success': True})
+
+        # Matériaux dédiés à cette cellule
+        db.execute(
+            'DELETE FROM machine_type_materiau WHERE machine_id=? AND type_activite_id=?',
+            (machine_id, type_id)
+        )
+        for mat_id in material_ids:
+            db.execute(
+                'INSERT OR IGNORE INTO machine_type_materiau (machine_id, type_activite_id, materiau_id) VALUES (?, ?, ?)',
+                (machine_id, type_id, mat_id)
+            )
+            # Maintient aussi la compatibilité machine <-> matériau globale
+            db.execute(
+                'INSERT OR IGNORE INTO materiau_machine (materiau_id, machine_id) VALUES (?, ?)',
+                (mat_id, machine_id)
+            )
+
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     finally:
         db.close()
 

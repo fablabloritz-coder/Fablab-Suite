@@ -77,6 +77,34 @@
     </div>
 </div>
 
+<!-- Modal édition cellule matrice -->
+<div class="modal fade" id="matrixCellModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-1"></i> Éditer compatibilité cellule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3" id="matrixCellContext"></div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="matrixCellCompatible">
+                    <label class="form-check-label" for="matrixCellCompatible">Machine compatible avec ce type d'activité</label>
+                </div>
+                <div id="matrixCellMaterialsBlock">
+                    <label class="form-label"><i class="bi bi-box-seam me-1"></i> Matériaux dédiés à cette cellule (optionnel)</label>
+                    <div class="small text-muted mb-2">Si vide: fallback sur matériaux machine + génériques.</div>
+                    <div id="matrixCellMaterials" class="border rounded p-2" style="max-height:280px;overflow-y:auto;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveMatrixCell()"><i class="bi bi-check-lg"></i> Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ================ TYPES D'ACTIVITÉ ================ -->
 <div class="section-panel" id="section-types_activite">
     <div class="row g-4">
@@ -964,6 +992,7 @@ const STATUT_LABELS = {disponible:'✅ Disponible',en_reparation:'🔧 En répar
 let selectedIds = { machines:new Set(), materiaux:new Set(), classes:new Set(), referents:new Set(), types_activite:new Set(), preparateurs:new Set() };
 let pendingDelete = null;
 let customFields = [];
+let matrixCellEdit = { machineId: null, typeId: null };
 
 // ========== Tab Switching ==========
 function showSection(name, btn) {
@@ -1022,9 +1051,10 @@ function buildTypeMachineCheckboxes() {
         container.innerHTML = '<small class="text-muted">Aucune machine disponible</small>';
         return;
     }
+    const links = REF_DATA.machine_type_activite || [];
     container.innerHTML = REF_DATA.machines.map(m =>
         `<div class="form-check"><input class="form-check-input type-machine-cb" type="checkbox" value="${m.id}" id="tmcb_${m.id}">
-         <label class="form-check-label small" for="tmcb_${m.id}">${m.nom} <span class="text-muted">(${getTypeName(m.type_activite_id)})</span></label></div>`
+         <label class="form-check-label small" for="tmcb_${m.id}">${m.nom} <span class="text-muted">(${getTypeName((links.find(l => l.machine_id === m.id) || {}).type_activite_id || m.type_activite_id)})</span></label></div>`
     ).join('');
 }
 
@@ -1065,6 +1095,8 @@ function renderCompatibilityMatrixDemo() {
     const machines = [...(REF_DATA.machines || [])];
     const materiaux = [...(REF_DATA.materiaux || [])];
     const links = REF_DATA.materiau_machine || [];
+    const mta = REF_DATA.machine_type_activite || [];
+    const mtm = REF_DATA.machine_type_materiau || [];
 
     const linkedMatIds = new Set(links.map(l => l.materiau_id));
     const genericMats = materiaux.filter(m => !linkedMatIds.has(m.id));
@@ -1093,17 +1125,24 @@ function renderCompatibilityMatrixDemo() {
         const machineMatNames = materiaux.filter(mat => machineMatIds.has(mat.id)).map(mat => mat.nom);
 
         const cells = types.map(t => {
-            if (m.type_activite_id !== t.id) {
-                return '<td class="text-center text-muted">—</td>';
+            const isCompatible = mta.some(l => l.machine_id === m.id && l.type_activite_id === t.id) || (!mta.length && m.type_activite_id === t.id);
+            if (!isCompatible) {
+                return `<td class="text-center text-muted"><button class="btn btn-sm btn-outline-secondary" onclick="openMatrixCellEditor(${m.id}, ${t.id})" title="Activer cette compatibilité">—</button></td>`;
             }
-            const resolvedCount = genericMats.length + machineMatIds.size;
+
+            const cellMaterialIds = new Set(mtm.filter(l => l.machine_id === m.id && l.type_activite_id === t.id).map(l => l.materiau_id));
+            const resolvedCount = cellMaterialIds.size ? (genericMats.length + cellMaterialIds.size) : (genericMats.length + machineMatIds.size);
             const tip = [
                 `${m.nom} compatible avec ${t.nom}`,
                 `Génériques: ${genericMats.length}`,
-                `Dédiés machine: ${machineMatIds.size}`,
-                machineMatNames.length ? `Matériaux dédiés: ${machineMatNames.join(', ')}` : 'Matériaux dédiés: aucun',
+                cellMaterialIds.size
+                    ? `Dédiés cellule: ${cellMaterialIds.size}`
+                    : `Dédiés machine: ${machineMatIds.size}`,
+                cellMaterialIds.size
+                    ? `Matériaux cellule: ${materiaux.filter(mat => cellMaterialIds.has(mat.id)).map(mat => mat.nom).join(', ')}`
+                    : (machineMatNames.length ? `Matériaux machine: ${machineMatNames.join(', ')}` : 'Matériaux machine: aucun'),
             ].join(' | ');
-            return `<td class="text-center" title="${tip}"><span class="badge bg-success">✅ ${resolvedCount} mat.</span></td>`;
+            return `<td class="text-center" title="${tip}"><button class="btn btn-sm btn-success" onclick="openMatrixCellEditor(${m.id}, ${t.id})">✅ ${resolvedCount} mat.</button></td>`;
         }).join('');
 
         return `
@@ -1115,6 +1154,55 @@ function renderCompatibilityMatrixDemo() {
             ${cells}
         </tr>`;
     }).join('');
+}
+
+function openMatrixCellEditor(machineId, typeId) {
+    matrixCellEdit = { machineId, typeId };
+    const machine = (REF_DATA.machines || []).find(m => m.id === machineId);
+    const type = (REF_DATA.types_activite || []).find(t => t.id === typeId);
+    const mta = REF_DATA.machine_type_activite || [];
+    const mtm = REF_DATA.machine_type_materiau || [];
+
+    const compatible = mta.some(l => l.machine_id === machineId && l.type_activite_id === typeId) || (!mta.length && machine?.type_activite_id === typeId);
+    document.getElementById('matrixCellCompatible').checked = compatible;
+    document.getElementById('matrixCellContext').innerHTML = `<strong>Machine:</strong> ${machine?.nom || machineId} • <strong>Type:</strong> ${type?.nom || typeId}`;
+
+    const selectedMaterialIds = new Set(mtm.filter(l => l.machine_id === machineId && l.type_activite_id === typeId).map(l => l.materiau_id));
+    const container = document.getElementById('matrixCellMaterials');
+    container.innerHTML = (REF_DATA.materiaux || []).map(m => `
+        <div class="form-check">
+            <input class="form-check-input matrix-cell-mat-cb" type="checkbox" value="${m.id}" id="mcm_${m.id}" ${selectedMaterialIds.has(m.id) ? 'checked' : ''}>
+            <label class="form-check-label" for="mcm_${m.id}">${m.nom} ${m.unite ? `<span class="text-muted">(${m.unite})</span>` : ''}</label>
+        </div>
+    `).join('');
+
+    document.getElementById('matrixCellMaterialsBlock').style.opacity = compatible ? '1' : '0.5';
+    const modal = new bootstrap.Modal(document.getElementById('matrixCellModal'));
+    modal.show();
+}
+
+async function saveMatrixCell() {
+    const machine_id = matrixCellEdit.machineId;
+    const type_id = matrixCellEdit.typeId;
+    const compatible = document.getElementById('matrixCellCompatible').checked;
+    const material_ids = [...document.querySelectorAll('.matrix-cell-mat-cb:checked')].map(cb => parseInt(cb.value));
+
+    const res = await fetch('/api/compat/matrix-cell', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ machine_id, type_id, compatible, material_ids })
+    }).then(r => r.json()).catch(() => ({success:false,error:'Erreur réseau'}));
+
+    if (!res.success) {
+        showToast('Erreur matrice: ' + (res.error || 'inconnue'), 'error');
+        return;
+    }
+
+    showToast('Cellule mise à jour');
+    const modalEl = document.getElementById('matrixCellModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+    await reloadRef();
 }
 
 // ========== Image Upload Helper ==========
@@ -1168,9 +1256,10 @@ function getFormModeLabel(unite) {
 
 function getCompatibleMaterialCountForType(typeId) {
     const mm = REF_DATA.materiau_machine || [];
+    const mta = REF_DATA.machine_type_activite || [];
     const linkedMatIds = new Set(mm.map(l => l.materiau_id));
     const genericCount = REF_DATA.materiaux.filter(m => !linkedMatIds.has(m.id)).length;
-    const typeMachineIds = new Set((REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id));
+    const typeMachineIds = new Set((mta.length ? mta.filter(l => l.type_activite_id === typeId).map(l => l.machine_id) : (REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id)));
     const typeLinkedMatIds = new Set(mm.filter(l => typeMachineIds.has(l.machine_id)).map(l => l.materiau_id));
     return genericCount + typeLinkedMatIds.size;
 }
@@ -1231,13 +1320,11 @@ async function saveTypeActivite(e) {
     if (res.success) {
         const newTypeId = id || res.id;
         const checkedMachines = [...document.querySelectorAll('.type-machine-cb:checked')].map(cb => parseInt(cb.value));
-        for (const mid of checkedMachines) {
-            const m = REF_DATA.machines.find(x => x.id === mid);
-            if (m && m.type_activite_id !== parseInt(newTypeId)) {
-                await fetch(`/api/machines/${mid}`, {method:'PUT',headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({...m, type_activite_id: parseInt(newTypeId)})}).then(r=>r.json());
-            }
-        }
+        await fetch('/api/compat/type-machine', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ type_id: parseInt(newTypeId), machine_ids: checkedMachines })
+        }).then(r => r.json());
         showToast(id ? `Type "${body.nom}" modifié` : `Type "${body.nom}" ajouté`);
         resetTypeForm(); await reloadRef();
     } else showToast('Erreur: '+(res.error||''),'error');
@@ -1257,8 +1344,12 @@ function editTypeActivite(id) {
     const clearBtn = document.getElementById('typeClearImgBtn');
     if (t.image_path) { preview.src = t.image_path; preview.style.display = ''; clearBtn.style.display = ''; }
     else { preview.style.display = 'none'; clearBtn.style.display = 'none'; }
+    const links = REF_DATA.machine_type_activite || [];
     document.querySelectorAll('.type-machine-cb').forEach(cb => {
-        cb.checked = REF_DATA.machines.some(m => m.id === parseInt(cb.value) && m.type_activite_id === id);
+        const machineId = parseInt(cb.value);
+        cb.checked = links.length
+            ? links.some(l => l.machine_id === machineId && l.type_activite_id === id)
+            : REF_DATA.machines.some(m => m.id === machineId && m.type_activite_id === id);
     });
     document.getElementById('typeFormTitle').textContent = 'Modifier le type d\'activité';
     document.getElementById('typeSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';

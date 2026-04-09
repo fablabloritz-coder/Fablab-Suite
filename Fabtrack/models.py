@@ -87,6 +87,31 @@ def init_db():
         FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE
     );
 
+    -- Compatibilité robuste (v2)
+    CREATE TABLE IF NOT EXISTS machine_type_activite (
+        machine_id INTEGER NOT NULL,
+        type_activite_id INTEGER NOT NULL,
+        PRIMARY KEY (machine_id, type_activite_id),
+        FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
+        FOREIGN KEY (type_activite_id) REFERENCES types_activite(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_machine_type_activite_machine ON machine_type_activite(machine_id);
+    CREATE INDEX IF NOT EXISTS idx_machine_type_activite_type ON machine_type_activite(type_activite_id);
+
+    CREATE TABLE IF NOT EXISTS machine_type_materiau (
+        machine_id INTEGER NOT NULL,
+        type_activite_id INTEGER NOT NULL,
+        materiau_id INTEGER NOT NULL,
+        PRIMARY KEY (machine_id, type_activite_id, materiau_id),
+        FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
+        FOREIGN KEY (type_activite_id) REFERENCES types_activite(id) ON DELETE CASCADE,
+        FOREIGN KEY (materiau_id) REFERENCES materiaux(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_machine_type_materiau_machine_type ON machine_type_materiau(machine_id, type_activite_id);
+    CREATE INDEX IF NOT EXISTS idx_machine_type_materiau_materiau ON machine_type_materiau(materiau_id);
+
     CREATE TABLE IF NOT EXISTS classes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nom TEXT NOT NULL UNIQUE,
@@ -356,6 +381,38 @@ def _migrate_db(c):
     matcols = [r[1] for r in c.execute("PRAGMA table_info(materiaux)").fetchall()]
     if 'type_activite_id' in matcols:
         _migrate_materiaux_to_junction(c)
+
+    # Compatibilité robuste v2 (idempotent)
+    c.executescript('''
+        CREATE TABLE IF NOT EXISTS machine_type_activite (
+            machine_id INTEGER NOT NULL,
+            type_activite_id INTEGER NOT NULL,
+            PRIMARY KEY (machine_id, type_activite_id),
+            FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
+            FOREIGN KEY (type_activite_id) REFERENCES types_activite(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_type_activite_machine ON machine_type_activite(machine_id);
+        CREATE INDEX IF NOT EXISTS idx_machine_type_activite_type ON machine_type_activite(type_activite_id);
+
+        CREATE TABLE IF NOT EXISTS machine_type_materiau (
+            machine_id INTEGER NOT NULL,
+            type_activite_id INTEGER NOT NULL,
+            materiau_id INTEGER NOT NULL,
+            PRIMARY KEY (machine_id, type_activite_id, materiau_id),
+            FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
+            FOREIGN KEY (type_activite_id) REFERENCES types_activite(id) ON DELETE CASCADE,
+            FOREIGN KEY (materiau_id) REFERENCES materiaux(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_type_materiau_machine_type ON machine_type_materiau(machine_id, type_activite_id);
+        CREATE INDEX IF NOT EXISTS idx_machine_type_materiau_materiau ON machine_type_materiau(materiau_id);
+    ''')
+
+    # Backfill depuis modèle historique (1 machine -> 1 type)
+    c.execute('''
+        INSERT OR IGNORE INTO machine_type_activite (machine_id, type_activite_id)
+        SELECT id, type_activite_id FROM machines
+        WHERE actif=1 AND type_activite_id IS NOT NULL
+    ''')
 
     # Remplir les noms dénormalisés pour les consommations existantes qui n'en ont pas
     _backfill_denormalized_names(c)

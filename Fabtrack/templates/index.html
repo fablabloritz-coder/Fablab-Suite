@@ -123,6 +123,16 @@ let actionUnits = {};     // per-action decoupe unit
 let classeChoices = [];
 let referentChoices = [];
 
+function getCompatibleMachineIdsForType(typeId) {
+    const links = REF_DATA.machine_type_activite || [];
+    const fromLinks = links.filter(l => l.type_activite_id === typeId).map(l => l.machine_id);
+    if (fromLinks.length) {
+        return new Set(fromLinks);
+    }
+    // Fallback legacy
+    return new Set((REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id));
+}
+
 /* ---------- lifecycle ---------- */
 function onReferenceDataLoaded() {
     populateGlobalSelects();
@@ -542,8 +552,9 @@ function selectActionType(aid, type) {
     const mg = card.querySelector('.grp-machine');
     const ms = card.querySelector('.f-machine');
     const previousMachineId = ms.value;
-    const filteredM = REF_DATA.machines.filter(m => m.type_activite_id === type.id && (m.statut || 'disponible') === 'disponible');
-    const allM = REF_DATA.machines.filter(m => m.type_activite_id === type.id);
+    const compatibleMachineIds = getCompatibleMachineIdsForType(type.id);
+    const allM = REF_DATA.machines.filter(m => compatibleMachineIds.has(m.id));
+    const filteredM = allM.filter(m => (m.statut || 'disponible') === 'disponible');
     const unavail = allM.length - filteredM.length;
     if (filteredM.length > 0) {
         mg.style.display = '';
@@ -581,6 +592,7 @@ function updateMaterialSelect(card, machineId) {
     const mts = card.querySelector('.f-materiau');
     const previousMaterialId = mts.value;
     const mm = REF_DATA.materiau_machine || [];
+    const mtm = REF_DATA.machine_type_materiau || [];
 
     // Matériaux liés à aucune machine (génériques)
     const linkedMatIds = new Set(mm.map(l => l.materiau_id));
@@ -588,16 +600,33 @@ function updateMaterialSelect(card, machineId) {
 
     let filteredMat = [];
     if (machineId) {
-        // Matériaux liés à cette machine + génériques
-        const machMatIds = new Set(mm.filter(l => l.machine_id === parseInt(machineId)).map(l => l.materiau_id));
-        filteredMat = REF_DATA.materiaux.filter(m => machMatIds.has(m.id) || !linkedMatIds.has(m.id));
+        const typeId = parseInt(card.querySelector('.f-type-activite')?.value);
+        if (typeId) {
+            const cellLinks = mtm.filter(l => l.machine_id === parseInt(machineId) && l.type_activite_id === typeId);
+            if (cellLinks.length) {
+                const cellMatIds = new Set(cellLinks.map(l => l.materiau_id));
+                filteredMat = REF_DATA.materiaux.filter(m => cellMatIds.has(m.id) || !linkedMatIds.has(m.id));
+            } else {
+                // Matériaux liés à cette machine + génériques
+                const machMatIds = new Set(mm.filter(l => l.machine_id === parseInt(machineId)).map(l => l.materiau_id));
+                filteredMat = REF_DATA.materiaux.filter(m => machMatIds.has(m.id) || !linkedMatIds.has(m.id));
+            }
+        } else {
+            // Matériaux liés à cette machine + génériques
+            const machMatIds = new Set(mm.filter(l => l.machine_id === parseInt(machineId)).map(l => l.materiau_id));
+            filteredMat = REF_DATA.materiaux.filter(m => machMatIds.has(m.id) || !linkedMatIds.has(m.id));
+        }
     } else {
         // Pas de machine → matériaux génériques + tous ceux liés aux machines de ce type
         const typeId = parseInt(card.querySelector('.f-type-activite')?.value);
         if (typeId) {
-            const typeMachIds = new Set(REF_DATA.machines.filter(m => m.type_activite_id === typeId).map(m => m.id));
+            const typeMachIds = getCompatibleMachineIdsForType(typeId);
+            const typeCellMatIds = new Set(mtm.filter(l => typeMachIds.has(l.machine_id) && l.type_activite_id === typeId).map(l => l.materiau_id));
             const typeMatIds = new Set(mm.filter(l => typeMachIds.has(l.machine_id)).map(l => l.materiau_id));
             filteredMat = REF_DATA.materiaux.filter(m => typeMatIds.has(m.id) || !linkedMatIds.has(m.id));
+            if (typeCellMatIds.size) {
+                filteredMat = REF_DATA.materiaux.filter(m => typeCellMatIds.has(m.id) || !linkedMatIds.has(m.id));
+            }
         } else {
             filteredMat = genericMats;
         }
