@@ -1054,6 +1054,28 @@ async function uploadImage(fileInput, entity, entityId) {
 }
 
 // ========== TYPES D'ACTIVITÉ ==========
+function getFormModeLabel(unite) {
+    const map = {
+        g: 'Poids',
+        'm²': 'Surface',
+        feuilles: 'Quantité unitaire',
+        metres: 'Mètre linéaire',
+        'mètres': 'Mètre linéaire',
+        thermo: 'Thermoformage',
+        '': 'Libre',
+    };
+    return map[unite || ''] || 'Libre';
+}
+
+function getCompatibleMaterialCountForType(typeId) {
+    const mm = REF_DATA.materiau_machine || [];
+    const linkedMatIds = new Set(mm.map(l => l.materiau_id));
+    const genericCount = REF_DATA.materiaux.filter(m => !linkedMatIds.has(m.id)).length;
+    const typeMachineIds = new Set((REF_DATA.machines || []).filter(m => m.type_activite_id === typeId).map(m => m.id));
+    const typeLinkedMatIds = new Set(mm.filter(l => typeMachineIds.has(l.machine_id)).map(l => l.materiau_id));
+    return genericCount + typeLinkedMatIds.size;
+}
+
 function renderTypesActivite() {
     const list = document.getElementById('typesActiviteList');
     document.getElementById('typeCount').textContent = REF_DATA.types_activite.length;
@@ -1066,14 +1088,17 @@ function renderTypesActivite() {
             ? `<img src="${t.image_path}" class="rounded me-2 entity-img-type">`
             : `<span class="fs-4 me-1">${t.icone||'🔧'}</span>`;
         const machCount = REF_DATA.machines.filter(m => m.type_activite_id === t.id).length;
+        const matCount = getCompatibleMaterialCountForType(t.id);
+        const formMode = getFormModeLabel(t.unite_defaut);
         return `
-        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(t.nom, t.unite_defaut, t.couleur)}">
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(t.nom, t.unite_defaut, t.couleur, formMode)}">
             <div class="d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" data-entity="types_activite" data-id="${t.id}" onchange="onCheckboxChange('types_activite',${t.id},this.checked)">
                 ${imgOrEmoji}
                 <div>
                     <strong>${t.nom}</strong>
-                    <br><small class="text-muted">Unité: ${t.unite_defaut||'—'} • <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${t.couleur};vertical-align:middle;"></span> ${t.couleur} • ${machCount} machine(s)</small>
+                    <br><small class="text-muted">Unité: ${t.unite_defaut||'—'} • Formulaire: ${formMode}</small>
+                    <br><small class="text-muted"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${t.couleur};vertical-align:middle;"></span> ${t.couleur} • ${machCount} machine(s) • ${matCount} matériau(x) compatible(s)</small>
                 </div>
             </div>
             <div class="d-flex gap-1">
@@ -1295,6 +1320,21 @@ function getLinkedMachineNames(matId) {
     }).join(', ');
 }
 
+function getLinkedTypeNamesForMaterial(matId) {
+    const links = (REF_DATA.materiau_machine||[]).filter(l => l.materiau_id === matId);
+    if (!links.length) return '<em class="text-muted">Compatible avec tous les types via mode générique</em>';
+    const typeIds = new Set();
+    links.forEach(l => {
+        const m = REF_DATA.machines.find(x => x.id === l.machine_id);
+        if (m?.type_activite_id) typeIds.add(m.type_activite_id);
+    });
+    const names = [...typeIds].map(tid => {
+        const t = REF_DATA.types_activite.find(x => x.id === tid);
+        return t ? t.nom : '?';
+    }).filter(Boolean);
+    return names.length ? names.join(', ') : '<em class="text-muted">Aucun type lié</em>';
+}
+
 function renderMateriaux() {
     const list = document.getElementById('materiauxList');
     document.getElementById('matCount').textContent = REF_DATA.materiaux.length;
@@ -1307,12 +1347,13 @@ function renderMateriaux() {
             ? `<img src="${m.image_path}" class="rounded me-2 entity-img-mat">`
             : '<span class="me-2 text-muted"><i class="bi bi-image"></i></span>';
         const linkedMachines = getLinkedMachineNames(m.id).replace(/<[^>]+>/g, ' ');
+        const linkedTypes = getLinkedTypeNamesForMaterial(m.id).replace(/<[^>]+>/g, ' ');
         return `
-        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(m.nom, m.unite, linkedMachines)}">
+        <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(m.nom, m.unite, linkedMachines, linkedTypes)}">
             <div class="d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" data-entity="materiaux" data-id="${m.id}" onchange="onCheckboxChange('materiaux',${m.id},this.checked)">
                 ${imgHtml}
-                <div><strong>${m.nom}</strong>${m.unite?' • '+m.unite:''}<br><small class="text-muted"><i class="bi bi-cpu me-1"></i>${getLinkedMachineNames(m.id)}</small></div>
+                <div><strong>${m.nom}</strong>${m.unite?' • '+m.unite:''}<br><small class="text-muted"><i class="bi bi-cpu me-1"></i>${getLinkedMachineNames(m.id)}</small><br><small class="text-muted"><i class="bi bi-grid-3x3-gap me-1"></i>${getLinkedTypeNamesForMaterial(m.id)}</small></div>
             </div>
             <div class="d-flex gap-1">
                 <button class="btn btn-outline-primary btn-sm" onclick="editMateriau(${m.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
