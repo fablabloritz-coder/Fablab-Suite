@@ -71,17 +71,24 @@
                             <label class="form-label">Unité par défaut</label>
                             <select class="form-select" id="newTypeUnite">
                                 <option value="">Aucune</option>
-                                <option value="g">Grammes (g)</option>
-                                <option value="m²">Mètres carrés (m²)</option>
-                                <option value="feuilles">Feuilles</option>
+                                <option value="g">Grammes (g) — formulaire 3D</option>
+                                <option value="m²">Mètres carrés (m²) — formulaire découpe</option>
+                                <option value="feuilles">Feuilles — formulaire impression papier</option>
+                                <option value="thermo">Thermoformage — formulaire feuilles plastique</option>
                                 <option value="pièces">Pièces</option>
                                 <option value="mètres">Mètres linéaires</option>
                             </select>
+                            <small class="text-muted">Les formulaires de détail s'affichent selon cette valeur.</small>
                         </div>
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
                             <input type="file" class="form-control form-control-sm" id="typeImageFile" accept="image/*" onchange="previewImg(this,'typeImgPreview')">
-                            <img id="typeImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <img id="typeImgPreview" class="rounded" style="max-height:60px;display:none;">
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="typeClearImgBtn" style="display:none" onclick="clearTypeImage()">
+                                    <i class="bi bi-x-lg"></i> Supprimer l'image
+                                </button>
+                            </div>
                             <input type="hidden" id="typeImagePath">
                         </div>
                         <div class="mb-3">
@@ -1099,7 +1106,9 @@ function editTypeActivite(id) {
     document.getElementById('newTypeUnite').value = t.unite_defaut || '';
     document.getElementById('typeImagePath').value = t.image_path || '';
     const preview = document.getElementById('typeImgPreview');
-    if (t.image_path) { preview.src = t.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    const clearBtn = document.getElementById('typeClearImgBtn');
+    if (t.image_path) { preview.src = t.image_path; preview.style.display = ''; clearBtn.style.display = ''; }
+    else { preview.style.display = 'none'; clearBtn.style.display = 'none'; }
     document.querySelectorAll('.type-machine-cb').forEach(cb => {
         cb.checked = REF_DATA.machines.some(m => m.id === parseInt(cb.value) && m.type_activite_id === id);
     });
@@ -1109,12 +1118,21 @@ function editTypeActivite(id) {
     document.getElementById('newTypeName').focus();
 }
 
+function clearTypeImage() {
+    document.getElementById('typeImagePath').value = '';
+    document.getElementById('typeImgPreview').src = '';
+    document.getElementById('typeImgPreview').style.display = 'none';
+    document.getElementById('typeClearImgBtn').style.display = 'none';
+    document.getElementById('typeImageFile').value = '';
+}
+
 function resetTypeForm() {
     document.getElementById('editTypeId').value = '';
     document.getElementById('typeForm').reset();
     document.getElementById('newTypeIcon').value = '🔧';
     document.getElementById('newTypeColor').value = '#6b7280';
     document.getElementById('typeImgPreview').style.display = 'none';
+    document.getElementById('typeClearImgBtn').style.display = 'none';
     document.getElementById('typeImagePath').value = '';
     document.querySelectorAll('.type-machine-cb').forEach(cb => cb.checked = false);
     document.getElementById('typeFormTitle').textContent = 'Ajouter un type d\'activité';

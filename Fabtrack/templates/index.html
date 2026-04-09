@@ -638,10 +638,10 @@ function showActionSpecificFields(aid, type) {
     } else if (DECOUPE_TYPES.includes(typeName) || unite === 'm²') {
         card.querySelector('.sp-decoupe').style.display = '';
         title.textContent = 'Calculateur de surface';
-    } else if (typeName === 'Impression Papier') {
+    } else if (typeName === 'Impression Papier' || unite === 'feuilles') {
         card.querySelector('.sp-papier').style.display = '';
         title.textContent = 'Détails Impression Papier';
-    } else if (typeName === 'Thermoformage') {
+    } else if (typeName === 'Thermoformage' || unite === 'thermo') {
         card.querySelector('.sp-thermo').style.display = '';
         title.textContent = 'Détails Thermoformage';
     } else {
