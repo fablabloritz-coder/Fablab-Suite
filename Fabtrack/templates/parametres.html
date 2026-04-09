@@ -1019,8 +1019,6 @@ function populateTypeSelects() {
     });
 }
 
-}
-
 function getTypeName(id) {
     const t = REF_DATA.types_activite.find(x=>x.id===id);
     return t ? `${t.icone} ${t.nom}` : '—';
