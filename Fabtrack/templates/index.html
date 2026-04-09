@@ -846,7 +846,7 @@ async function loadRecent() {
                 </td>
                 <td>${getBadgeHTML(row.type_activite_nom, row.badge_class)}</td>
                 <td>${row.machine_nom || '<span class="text-muted">—</span>'}</td>
-                <td>${getMaterialImg(row.materiau_nom)}${row.materiau_nom || '<span class="text-muted">—</span>'}</td>
+                <td>${row.materiau_image_path ? `<img src="${row.materiau_image_path}" class="material-thumb me-2" alt="${row.materiau_nom || 'Matériau'}">` : ''}${row.materiau_nom || '<span class="text-muted">—</span>'}</td>
                 <td>${getDetailsText(row)}</td>
                 <td>${row.preparateur_nom || '<span class="text-muted">—</span>'}</td>
                 <td>

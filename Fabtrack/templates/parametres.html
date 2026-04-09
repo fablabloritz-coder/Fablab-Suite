@@ -197,7 +197,12 @@
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
                             <input type="file" class="form-control form-control-sm" id="machineImageFile" accept="image/*" onchange="previewImg(this,'machineImgPreview')">
-                            <img id="machineImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <img id="machineImgPreview" class="rounded" style="max-height:60px;display:none;">
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="machineClearImgBtn" style="display:none" onclick="clearMachineImage()">
+                                    <i class="bi bi-x-lg"></i> Supprimer l'image
+                                </button>
+                            </div>
                             <input type="hidden" id="machineImagePath">
                         </div>
                         <div class="d-flex gap-2">
@@ -271,7 +276,12 @@
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
                             <input type="file" class="form-control form-control-sm" id="matImageFile" accept="image/*" onchange="previewImg(this,'matImgPreview')">
-                            <img id="matImgPreview" class="mt-2 rounded" style="max-height:60px;display:none;">
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <img id="matImgPreview" class="rounded" style="max-height:60px;display:none;">
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="matClearImgBtn" style="display:none" onclick="clearMatImage()">
+                                    <i class="bi bi-x-lg"></i> Supprimer l'image
+                                </button>
+                            </div>
                             <input type="hidden" id="matImagePath">
                         </div>
                         <div class="d-flex gap-2">
@@ -1011,11 +1021,25 @@ function renderAll() {
 // ========== Image Upload Helper ==========
 function previewImg(input, previewId) {
     const preview = document.getElementById(previewId);
+    const clearBtnByPreview = {
+        typeImgPreview: 'typeClearImgBtn',
+        machineImgPreview: 'machineClearImgBtn',
+        matImgPreview: 'matClearImgBtn',
+    };
+    const clearBtnId = clearBtnByPreview[previewId];
+    const clearBtn = clearBtnId ? document.getElementById(clearBtnId) : null;
     if (input.files && input.files[0]) {
         const reader = new FileReader();
-        reader.onload = e => { preview.src = e.target.result; preview.style.display = ''; };
+        reader.onload = e => {
+            preview.src = e.target.result;
+            preview.style.display = '';
+            if (clearBtn) clearBtn.style.display = '';
+        };
         reader.readAsDataURL(input.files[0]);
-    } else { preview.style.display = 'none'; }
+    } else {
+        preview.style.display = 'none';
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
 }
 
 async function uploadImage(fileInput, entity, entityId) {
@@ -1227,7 +1251,9 @@ function editMachine(id) {
     document.getElementById('newMachineDesc').value = m.description || '';
     document.getElementById('machineImagePath').value = m.image_path || '';
     const preview = document.getElementById('machineImgPreview');
-    if (m.image_path) { preview.src = m.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    const clearBtn = document.getElementById('machineClearImgBtn');
+    if (m.image_path) { preview.src = m.image_path; preview.style.display = ''; clearBtn.style.display = ''; }
+    else { preview.style.display = 'none'; clearBtn.style.display = 'none'; }
     // Charger les principes de conception
     document.querySelectorAll('.principes-cb').forEach(cb => cb.checked = false);
     (m.principes_conception||'').split(',').filter(Boolean).forEach(p => {
@@ -1239,12 +1265,21 @@ function editMachine(id) {
     document.getElementById('newMachineName').focus();
 }
 
+function clearMachineImage() {
+    document.getElementById('machineImagePath').value = '';
+    document.getElementById('machineImgPreview').src = '';
+    document.getElementById('machineImgPreview').style.display = 'none';
+    document.getElementById('machineClearImgBtn').style.display = 'none';
+    document.getElementById('machineImageFile').value = '';
+}
+
 function resetMachineForm() {
     document.getElementById('editMachineId').value = '';
     document.getElementById('machineForm').reset();
     document.getElementById('newMachineQte').value = 1;
     document.getElementById('machineImagePath').value = '';
     document.getElementById('machineImgPreview').style.display = 'none';
+    document.getElementById('machineClearImgBtn').style.display = 'none';
     document.querySelectorAll('.principes-cb').forEach(cb => cb.checked = false);
     document.getElementById('machineSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';
     document.getElementById('machineCancelBtn').style.display = 'none';
@@ -1268,7 +1303,9 @@ function renderMateriaux() {
         list.innerHTML='<div class="empty-state"><i class="bi bi-box-seam"></i><p>Aucun matériau</p></div>'; return;
     }
     list.innerHTML = REF_DATA.materiaux.map(m => {
-        const imgHtml = m.image_path ? `<img src="${m.image_path}" class="rounded me-2 entity-img-mat">` : getMaterialImg(m.nom);
+        const imgHtml = m.image_path
+            ? `<img src="${m.image_path}" class="rounded me-2 entity-img-mat">`
+            : '<span class="me-2 text-muted"><i class="bi bi-image"></i></span>';
         const linkedMachines = getLinkedMachineNames(m.id).replace(/<[^>]+>/g, ' ');
         return `
         <div class="list-group-item d-flex justify-content-between align-items-center py-3" data-search="${toSearchText(m.nom, m.unite, linkedMachines)}">
@@ -1317,16 +1354,27 @@ function editMateriau(id) {
     });
     document.getElementById('matImagePath').value = m.image_path || '';
     const preview = document.getElementById('matImgPreview');
-    if (m.image_path) { preview.src = m.image_path; preview.style.display = ''; } else { preview.style.display = 'none'; }
+    const clearBtn = document.getElementById('matClearImgBtn');
+    if (m.image_path) { preview.src = m.image_path; preview.style.display = ''; clearBtn.style.display = ''; }
+    else { preview.style.display = 'none'; clearBtn.style.display = 'none'; }
     document.getElementById('matFormTitle').textContent = 'Modifier le matériau';
     document.getElementById('matSubmitBtn').innerHTML = '<i class="bi bi-check-lg"></i> Enregistrer';
     document.getElementById('matCancelBtn').style.display = '';
     document.getElementById('newMatName').focus();
 }
 
+function clearMatImage() {
+    document.getElementById('matImagePath').value = '';
+    document.getElementById('matImgPreview').src = '';
+    document.getElementById('matImgPreview').style.display = 'none';
+    document.getElementById('matClearImgBtn').style.display = 'none';
+    document.getElementById('matImageFile').value = '';
+}
+
 function resetMatForm() {
     document.getElementById('editMatId').value = ''; document.getElementById('matForm').reset();
     document.getElementById('matImagePath').value = ''; document.getElementById('matImgPreview').style.display = 'none';
+    document.getElementById('matClearImgBtn').style.display = 'none';
     document.querySelectorAll('.mat-machine-cb').forEach(cb => cb.checked = false);
     document.getElementById('matFormTitle').textContent = 'Ajouter un matériau';
     document.getElementById('matSubmitBtn').innerHTML = '<i class="bi bi-plus-lg"></i> Ajouter';

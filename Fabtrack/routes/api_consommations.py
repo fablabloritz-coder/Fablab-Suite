@@ -203,7 +203,9 @@ def api_get_consommations():
                    COALESCE(m.nom, c.nom_machine) as machine_nom,
                    COALESCE(cl.nom, c.nom_classe) as classe_nom,
                    COALESCE(r.nom, c.nom_referent) as referent_nom, r.categorie as referent_categorie,
-                   COALESCE(mat.nom, c.nom_materiau) as materiau_nom, mat.unite as materiau_unite
+                     COALESCE(mat.nom, c.nom_materiau) as materiau_nom,
+                     mat.unite as materiau_unite,
+                     mat.image_path as materiau_image_path
             FROM consommations c
             LEFT JOIN preparateurs p ON c.preparateur_id=p.id
             LEFT JOIN types_activite t ON c.type_activite_id=t.id

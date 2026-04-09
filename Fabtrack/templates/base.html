@@ -315,12 +315,9 @@ function getMaterialImg(matName) {
         'Papier A4 Couleur': 'papier_a4', 'Papier A4 N&B': 'papier_a4_noir_et_blanc',
         'Papier A5 Couleur': 'papier_a5', 'Papier A5 N&B': 'papier_a5_noir_et_blanc',
     };
-    // Try exact match first, then partial match
-    let file = nameMap[matName];
-    if (!file) {
-        const key = Object.keys(nameMap).find(k => matName.toLowerCase().includes(k.toLowerCase()));
-        if (key) file = nameMap[key];
-    }
+    // Exact match only: avoid wrong automatic attribution (e.g. PLA shown everywhere).
+    const normalized = (matName || '').toString().trim();
+    const file = nameMap[normalized];
     if (file) {
         return `<img src="/static/img/${file}.png" class="material-thumb me-2" alt="${matName}" onerror="this.style.display='none'">`;
     }
