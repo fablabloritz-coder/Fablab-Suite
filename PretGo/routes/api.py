@@ -57,8 +57,20 @@ def api_personnes():
     return jsonify(result)
 
 
+@bp.route('/api/personnes/<int:personne_id>/prets-actifs')
+def api_prets_actifs_personne(personne_id):
+    """Retourne les emprunts actifs (non rendus) pour une personne donnée."""
+    conn = get_app_db()
+    prets = conn.execute('''
+        SELECT id, descriptif_objets, date_emprunt, date_retour_prevue
+        FROM prets
+        WHERE personne_id = ? AND retour_confirme = 0
+        ORDER BY date_emprunt DESC
+    ''', (personne_id,)).fetchall()
+    return jsonify([dict(p) for p in prets])
 
-@bp.route('/api/images-materiel')
+
+
 @admin_required
 def api_liste_images():
     """Retourne la liste des images disponibles dans le dossier uploads."""

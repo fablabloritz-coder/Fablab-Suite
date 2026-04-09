@@ -87,9 +87,31 @@ function initAutocomplete() {
                                 + '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetPersonne()">'
                                 + '<i class="bi bi-x-lg"></i> Changer'
                                 + '</button>'
-                                + '</div>';
+                                + '</div>'
+                                + '<div id="prets-actifs-zone"></div>';
                             selectedDiv.style.display = 'block';
                             resultsDiv.style.display = 'none';
+
+                            // Charger les emprunts actifs de cette personne
+                            fetch('/api/personnes/' + personne.id + '/prets-actifs')
+                                .then(r => r.json())
+                                .then(prets => {
+                                    const zone = document.getElementById('prets-actifs-zone');
+                                    if (!zone || !prets.length) return;
+                                    let html = '<div class="alert alert-warning mt-2 mb-0 py-2">'
+                                        + '<i class="bi bi-exclamation-triangle-fill me-2"></i>'
+                                        + '<strong>' + prets.length + ' emprunt(s) en cours pour cette personne :</strong>'
+                                        + '<ul class="mb-0 mt-1 ps-3">';
+                                    prets.forEach(p => {
+                                        const dateStr = p.date_emprunt ? new Date(p.date_emprunt).toLocaleDateString('fr-FR') : '';
+                                        const retourStr = p.date_retour_prevue
+                                            ? ' — retour prévu : ' + new Date(p.date_retour_prevue).toLocaleDateString('fr-FR') : '';
+                                        html += '<li class="small">' + escapeHtml(p.descriptif_objets) + (dateStr ? ' <span class="text-muted">(' + dateStr + retourStr + ')</span>' : '') + '</li>';
+                                    });
+                                    html += '</ul></div>';
+                                    zone.innerHTML = html;
+                                })
+                                .catch(() => {});
                         });
 
                         resultsDiv.appendChild(item);
