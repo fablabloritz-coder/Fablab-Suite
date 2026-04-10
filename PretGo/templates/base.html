@@ -208,7 +208,7 @@
 
     <!-- Footer -->
     <footer class="text-center text-muted py-3 mt-4 border-top">
-        <small>PretGo &mdash; Données stockées localement</small>
+        <small>PretGo &mdash; Données stockées localement &mdash; <a href="#" class="text-muted" onclick="showUpdatesModal(); return false;"><i class="bi bi-stars me-1"></i>Nouveautés</a></small>
     </footer>
 
     <!-- Modal Nouveautés (affiché une fois par version) -->
@@ -321,6 +321,13 @@
             modalEl.addEventListener('hidden.bs.modal', markDismissed, { once: true });
             modal.show();
         }
+
+        window.showUpdatesModal = function() {
+            fillModalContent();
+            const modalEl = document.getElementById('updatesModal');
+            if (!modalEl) return;
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        };
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', maybeShowUpdatesModal);
