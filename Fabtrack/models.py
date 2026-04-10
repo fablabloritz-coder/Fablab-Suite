@@ -163,6 +163,8 @@ def _sync_base_material_pack_into_image_library(c):
         '''
     )
 
+    active_pack_paths = set()
+
     for filename in sorted(os.listdir(pack_dir)):
         file_path = os.path.join(pack_dir, filename)
         if not os.path.isfile(file_path):
@@ -173,7 +175,20 @@ def _sync_base_material_pack_into_image_library(c):
             continue
 
         rel_path = f"/api/image-library/base-pack/{quote(filename)}"
+        active_pack_paths.add(rel_path)
         _upsert_image_library_path(c, rel_path, 'materiaux-base-pack')
+
+    if active_pack_paths:
+        placeholders = ','.join(['?'] * len(active_pack_paths))
+        c.execute(
+            f'''
+            UPDATE image_library
+            SET actif=0
+            WHERE entity_hint='materiaux-base-pack'
+              AND path NOT IN ({placeholders})
+            ''',
+            list(active_pack_paths),
+        )
 
 
 def get_setup_status():
