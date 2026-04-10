@@ -634,7 +634,7 @@ def ajouter_materiel():
         _log.exception('Erreur chargement formulaire ajouter_materiel: %s', exc)
 
 
-        flash('Erreur lors du chargement du formulaire.', 'danger')
+        flash(f'Erreur lors du chargement du formulaire: {exc}', 'danger')
 
 
         return redirect(url_for('inventaire.inventaire'))
@@ -799,7 +799,7 @@ def modifier_materiel(mat_id):
         _log.exception('Erreur chargement modifier_materiel(%s): %s', mat_id, exc)
 
 
-        flash('Erreur lors du chargement du formulaire.', 'danger')
+        flash(f'Erreur lors du chargement du formulaire: {exc}', 'danger')
 
 
         return redirect(url_for('inventaire.inventaire'))
