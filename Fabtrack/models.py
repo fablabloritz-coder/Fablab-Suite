@@ -10,6 +10,7 @@ import sqlite3
 import os
 import random
 from datetime import datetime, timedelta
+from urllib.parse import quote, unquote
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DATA_DIR, 'fabtrack.db')
@@ -22,6 +23,30 @@ SETUP_PACK_EMPTY = 'empty'
 SETUP_PACK_GENERIC = 'generic'
 SETUP_PACK_LORITZ = 'loritz'
 SETUP_PACK_LEGACY = 'legacy-existing'
+BASE_MATERIAL_PACK_DIRS = (
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        'static',
+        'base-pack',
+        'materials',
+        'png',
+    ),
+    # Chemin legacy conservé en fallback local (non requis en production).
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        'images de base',
+        'icon_matériaux',
+        'PNG',
+    ),
+)
+IMAGE_LIBRARY_ENTITY_SOURCES = (
+    ('types_activite', 'types_activite'),
+    ('machines', 'machines'),
+    ('materiaux', 'materiaux'),
+    ('referents', 'referents'),
+    ('preparateurs', 'preparateurs'),
+    ('stock_fournisseurs', 'stock_fournisseurs'),
+)
 
 
 def get_db():
@@ -70,6 +95,85 @@ def _has_meaningful_data(c):
         if row:
             return True
     return False
+
+
+def _image_label_from_path(path):
+    raw = (path or '').replace('\\', '/').strip()
+    if not raw:
+        return ''
+    raw = unquote(raw)
+    name = raw.split('/')[-1]
+    if '.' in name:
+        name = name.rsplit('.', 1)[0]
+    return name.replace('_', ' ').strip()
+
+
+def get_base_material_pack_dir():
+    for candidate in BASE_MATERIAL_PACK_DIRS:
+        if os.path.isdir(candidate):
+            return candidate
+    return ''
+
+
+def _upsert_image_library_path(c, path, entity_hint='general'):
+    clean_path = (path or '').strip()
+    if not clean_path:
+        return
+
+    label = _image_label_from_path(clean_path)
+    c.execute(
+        'INSERT OR IGNORE INTO image_library (label, path, entity_hint, actif) VALUES (?,?,?,1)',
+        (label, clean_path, entity_hint),
+    )
+    c.execute(
+        '''
+        UPDATE image_library
+        SET actif=1,
+            label=CASE WHEN label IS NULL OR label='' THEN ? ELSE label END,
+            entity_hint=CASE WHEN entity_hint IS NULL OR entity_hint='' THEN ? ELSE entity_hint END
+        WHERE path=?
+        ''',
+        (label, entity_hint, clean_path),
+    )
+
+
+def _sync_image_library_from_references(c):
+    """Synchronise image_library avec les images déjà référencées par les entités."""
+    for table_name, hint in IMAGE_LIBRARY_ENTITY_SOURCES:
+        rows = c.execute(
+            f"SELECT DISTINCT image_path FROM {table_name} WHERE actif=1 AND image_path IS NOT NULL AND TRIM(image_path)!=''"
+        ).fetchall()
+        for row in rows:
+            _upsert_image_library_path(c, row[0], hint)
+
+
+def _sync_base_material_pack_into_image_library(c):
+    """Ajoute le pack de base matériaux à image_library (idempotent)."""
+    pack_dir = get_base_material_pack_dir()
+    if not pack_dir:
+        return
+
+    # Retire les anciennes entrées SVG du pack de base.
+    c.execute(
+        '''
+        UPDATE image_library
+        SET actif=0
+        WHERE entity_hint='materiaux-base-pack'
+          AND lower(path) LIKE '/api/image-library/base-pack/%.svg'
+        '''
+    )
+
+    for filename in sorted(os.listdir(pack_dir)):
+        file_path = os.path.join(pack_dir, filename)
+        if not os.path.isfile(file_path):
+            continue
+
+        lower = filename.lower()
+        if not (lower.endswith('.png') or lower.endswith('.jpg') or lower.endswith('.jpeg') or lower.endswith('.webm')):
+            continue
+
+        rel_path = f"/api/image-library/base-pack/{quote(filename)}"
+        _upsert_image_library_path(c, rel_path, 'materiaux-base-pack')
 
 
 def get_setup_status():
@@ -121,6 +225,9 @@ def apply_starter_pack(pack_name):
             _insert_generic_reference_data(c)
         elif normalized_pack == SETUP_PACK_LORITZ:
             _insert_reference_data(c)
+
+        _sync_image_library_from_references(c)
+        _sync_base_material_pack_into_image_library(c)
 
         _set_param(db, SETUP_STATE_KEY, SETUP_STATE_COMPLETED)
         _set_param(db, SETUP_PACK_KEY, normalized_pack)
@@ -565,6 +672,8 @@ def _migrate_db(c):
     _ensure_mission_categories_schema(c)
     _ensure_mission_events_schema(c)
     _backfill_mission_events(c)
+    _sync_image_library_from_references(c)
+    _sync_base_material_pack_into_image_library(c)
 
 
 def _ensure_mission_categories_schema(c):

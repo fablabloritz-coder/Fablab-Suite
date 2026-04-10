@@ -1,7 +1,7 @@
 """Routes API admin — backup/restore, demo, reset, custom fields, upload, machine statut."""
 
-from flask import Blueprint, request, jsonify, send_file
-from models import get_db, init_db, reset_db, generate_demo_data, DATA_DIR, get_setup_status, apply_starter_pack
+from flask import Blueprint, request, jsonify, send_file, send_from_directory
+from models import get_db, init_db, reset_db, generate_demo_data, DATA_DIR, get_setup_status, apply_starter_pack, get_base_material_pack_dir
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import json, os, shutil, glob, logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # ── Config upload ──
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webm'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ── Config backup ──
@@ -127,7 +127,7 @@ def api_upload_image():
         return jsonify({'success': False, 'error': 'Aucun fichier'}), 400
     f = request.files['file']
     if f.filename == '' or not allowed_file(f.filename):
-        return jsonify({'success': False, 'error': 'Fichier non autorisé (png, jpg, gif, webp, svg)'}), 400
+        return jsonify({'success': False, 'error': 'Fichier non autorisé (png, jpg, webm)'}), 400
     entity = request.form.get('entity', 'general')
     entity_id = request.form.get('entity_id', '0')
     rel_path = _save_uploaded_image(f, entity, entity_id)
@@ -141,6 +141,25 @@ def api_image_library_list():
         rows = db.execute(
             'SELECT id, label, path, entity_hint, created_at FROM image_library WHERE actif=1 ORDER BY id DESC'
         ).fetchall()
+    except Exception:
+        db.close()
+        # Auto-répare les instances qui n'ont pas encore appliqué la migration image_library.
+        init_db()
+        db = get_db()
+        rows = db.execute(
+            'SELECT id, label, path, entity_hint, created_at FROM image_library WHERE actif=1 ORDER BY id DESC'
+        ).fetchall()
+    else:
+        # Sécurité: si la bibliothèque est vide, relancer une init pour injecter pack + références.
+        if not rows:
+            db.close()
+            init_db()
+            db = get_db()
+            rows = db.execute(
+                'SELECT id, label, path, entity_hint, created_at FROM image_library WHERE actif=1 ORDER BY id DESC'
+            ).fetchall()
+
+    try:
         return jsonify({'success': True, 'items': [dict(r) for r in rows]})
     finally:
         db.close()
@@ -153,7 +172,7 @@ def api_image_library_upload():
 
     f = request.files['file']
     if f.filename == '' or not allowed_file(f.filename):
-        return jsonify({'success': False, 'error': 'Fichier non autorisé (png, jpg, gif, webp, svg)'}), 400
+        return jsonify({'success': False, 'error': 'Fichier non autorisé (png, jpg, webm)'}), 400
 
     entity = request.form.get('entity', 'library')
     entity_id = request.form.get('entity_id', '0')
@@ -235,6 +254,20 @@ def api_image_library_delete(image_id):
         return jsonify({'success': False, 'error': str(e)}), 400
     finally:
         db.close()
+
+
+@bp.route('/api/image-library/base-pack/<path:filename>', methods=['GET'])
+def api_image_library_base_pack_file(filename):
+    safe_name = os.path.basename(filename)
+    if safe_name != filename:
+        return jsonify({'success': False, 'error': 'Chemin invalide'}), 400
+    pack_dir = get_base_material_pack_dir()
+    if not pack_dir:
+        return jsonify({'success': False, 'error': 'Pack de base introuvable'}), 404
+    full_path = os.path.join(pack_dir, safe_name)
+    if not os.path.isfile(full_path):
+        return jsonify({'success': False, 'error': 'Image introuvable'}), 404
+    return send_from_directory(pack_dir, safe_name)
 
 
 @bp.route('/api/setup/status', methods=['GET'])

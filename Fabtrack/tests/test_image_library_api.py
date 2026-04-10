@@ -51,8 +51,9 @@ class ImageLibraryApiTests(unittest.TestCase):
         self.assertEqual(listing.status_code, 200, listing.data)
         listing_body = listing.get_json()
         self.assertTrue(listing_body.get('success'), listing_body)
-        self.assertEqual(len(listing_body.get('items', [])), 1)
-        self.assertEqual(listing_body['items'][0]['label'], 'Image test')
+        items = listing_body.get('items', [])
+        self.assertGreaterEqual(len(items), 1)
+        self.assertTrue(any(item.get('label') == 'Image test' for item in items))
 
     def test_delete_refuses_when_image_is_in_use(self):
         payload = {
@@ -88,6 +89,39 @@ class ImageLibraryApiTests(unittest.TestCase):
         body = deletion.get_json()
         self.assertFalse(body.get('success', True))
         self.assertIn('encore utilisée', body.get('error', ''))
+
+    def test_migration_backfills_existing_entity_image_paths(self):
+        db = models.get_db()
+        try:
+            db.execute(
+                "INSERT INTO materiaux (nom, unite, image_path) VALUES (?,?,?)",
+                ('PLA Legacy', 'g', '/static/img/pla.png'),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        # Simule un redémarrage/upgrade qui relance init_db + migration.
+        models.init_db()
+
+        listing = self.client.get('/api/image-library')
+        self.assertEqual(listing.status_code, 200, listing.data)
+        body = listing.get_json()
+        self.assertTrue(body.get('success'), body)
+        paths = [item['path'] for item in body.get('items', [])]
+        self.assertIn('/static/img/pla.png', paths)
+
+    def test_init_includes_base_material_pack_images(self):
+        if not models.get_base_material_pack_dir():
+            self.skipTest('Pack de base matériaux absent dans cet environnement')
+
+        listing = self.client.get('/api/image-library')
+        self.assertEqual(listing.status_code, 200, listing.data)
+        body = listing.get_json()
+        self.assertTrue(body.get('success'), body)
+
+        paths = [item['path'] for item in body.get('items', [])]
+        self.assertIn('/api/image-library/base-pack/pla.png', paths)
 
 
 if __name__ == '__main__':
