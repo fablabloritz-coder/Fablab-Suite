@@ -133,6 +133,17 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_error(e):
+    import traceback
+    traceback.print_exc()
+    # Écrire le traceback dans un fichier pour diagnostic distant
+    try:
+        import os
+        err_path = os.path.join(DATA_DIR, 'last_error.log')
+        with open(err_path, 'w', encoding='utf-8') as f:
+            f.write(f'[{__import__("datetime").datetime.now()}] {e}\n')
+            f.write(traceback.format_exc())
+    except Exception:
+        pass
     return render_template('500.html'), 500
 
 

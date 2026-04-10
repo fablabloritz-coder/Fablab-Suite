@@ -28,6 +28,18 @@ import uuid
 from werkzeug.utils import secure_filename
 
 
+import logging
+
+
+import sqlite3
+
+
+import traceback
+
+
+_log = logging.getLogger(__name__)
+
+
 
 
 
@@ -580,28 +592,52 @@ def ajouter_materiel():
                 return redirect(url_for('inventaire.inventaire'))
 
 
-            except Exception:
+            except sqlite3.IntegrityError:
 
 
                 flash(f'Le numéro d\'inventaire {numero_inv} existe déjà.', 'danger')
 
 
+            except Exception as exc:
+
+
+                _log.exception('Erreur inattendue dans ajouter_materiel: %s', exc)
+
+
+                flash('Erreur interne lors de l\'ajout du matériel. Veuillez réessayer.', 'danger')
 
 
 
-    conn = get_app_db()
 
 
-    categories = conn.execute('SELECT * FROM categories_materiel ORDER BY nom').fetchall()
+    try:
 
 
-    champs_custom = get_champs_personnalises('materiel')
+        conn = get_app_db()
 
 
-    return render_template('ajouter_materiel.html', categories=categories, form=form_data,
+        categories = conn.execute('SELECT * FROM categories_materiel ORDER BY nom').fetchall()
 
 
-                           champs_custom=champs_custom)
+        champs_custom = get_champs_personnalises('materiel')
+
+
+        return render_template('ajouter_materiel.html', categories=categories, form=form_data,
+
+
+                               champs_custom=champs_custom)
+
+
+    except Exception as exc:
+
+
+        _log.exception('Erreur chargement formulaire ajouter_materiel: %s', exc)
+
+
+        flash('Erreur lors du chargement du formulaire.', 'danger')
+
+
+        return redirect(url_for('inventaire.inventaire'))
 
 
 
@@ -727,31 +763,46 @@ def modifier_materiel(mat_id):
 
 
 
-    materiel = conn.execute('SELECT * FROM inventaire WHERE id = ?', (mat_id,)).fetchone()
+    try:
 
 
-    categories = conn.execute('SELECT * FROM categories_materiel ORDER BY nom').fetchall()
+        materiel = conn.execute('SELECT * FROM inventaire WHERE id = ?', (mat_id,)).fetchone()
 
 
-    if not materiel:
+        categories = conn.execute('SELECT * FROM categories_materiel ORDER BY nom').fetchall()
 
 
-        flash('Matériel non trouvé.', 'danger')
+        if not materiel:
+
+
+            flash('Matériel non trouvé.', 'danger')
+
+
+            return redirect(url_for('inventaire.inventaire'))
+
+
+        champs_custom = get_champs_personnalises('materiel')
+
+
+        valeurs_custom = get_valeurs_champs(mat_id, 'materiel')
+
+
+        return render_template('modifier_materiel.html', materiel=materiel, categories=categories,
+
+
+                               champs_custom=champs_custom, valeurs_custom=valeurs_custom)
+
+
+    except Exception as exc:
+
+
+        _log.exception('Erreur chargement modifier_materiel(%s): %s', mat_id, exc)
+
+
+        flash('Erreur lors du chargement du formulaire.', 'danger')
 
 
         return redirect(url_for('inventaire.inventaire'))
-
-
-    champs_custom = get_champs_personnalises('materiel')
-
-
-    valeurs_custom = get_valeurs_champs(mat_id, 'materiel')
-
-
-    return render_template('modifier_materiel.html', materiel=materiel, categories=categories,
-
-
-                           champs_custom=champs_custom, valeurs_custom=valeurs_custom)
 
 
 
