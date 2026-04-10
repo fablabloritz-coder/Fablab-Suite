@@ -71,6 +71,7 @@ def api_prets_actifs_personne(personne_id):
 
 
 
+@bp.route('/api/liste-images')
 @admin_required
 def api_liste_images():
     """Retourne la liste des images disponibles dans le dossier uploads."""
