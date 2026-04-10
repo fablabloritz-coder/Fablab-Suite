@@ -21,6 +21,9 @@
     <button class="filter-tab" onclick="showSection('materiaux',this)">
         <i class="bi bi-box-seam"></i> Matériaux
     </button>
+    <button class="filter-tab" onclick="showSection('image_library',this)">
+        <i class="bi bi-images"></i> Bibliothèque images
+    </button>
     <button class="filter-tab" onclick="showSection('classes',this)">
         <i class="bi bi-mortarboard"></i> Classes
     </button>
@@ -147,6 +150,9 @@
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
                             <input type="file" class="form-control form-control-sm" id="typeImageFile" accept="image/*" onchange="previewImg(this,'typeImgPreview')">
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openImageLibraryPicker('typeImagePath','typeImgPreview','typeClearImgBtn')">
+                                <i class="bi bi-images me-1"></i> Choisir depuis la bibliothèque
+                            </button>
                             <div class="d-flex align-items-center gap-2 mt-2">
                                 <img id="typeImgPreview" class="rounded" style="max-height:60px;display:none;">
                                 <button type="button" class="btn btn-outline-danger btn-sm" id="typeClearImgBtn" style="display:none" onclick="clearTypeImage()">
@@ -254,6 +260,9 @@
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
                             <input type="file" class="form-control form-control-sm" id="machineImageFile" accept="image/*" onchange="previewImg(this,'machineImgPreview')">
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openImageLibraryPicker('machineImagePath','machineImgPreview','machineClearImgBtn')">
+                                <i class="bi bi-images me-1"></i> Choisir depuis la bibliothèque
+                            </button>
                             <div class="d-flex align-items-center gap-2 mt-2">
                                 <img id="machineImgPreview" class="rounded" style="max-height:60px;display:none;">
                                 <button type="button" class="btn btn-outline-danger btn-sm" id="machineClearImgBtn" style="display:none" onclick="clearMachineImage()">
@@ -329,6 +338,9 @@
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
                             <input type="file" class="form-control form-control-sm" id="matImageFile" accept="image/*" onchange="previewImg(this,'matImgPreview')">
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="openImageLibraryPicker('matImagePath','matImgPreview','matClearImgBtn')">
+                                <i class="bi bi-images me-1"></i> Choisir depuis la bibliothèque
+                            </button>
                             <div class="d-flex align-items-center gap-2 mt-2">
                                 <img id="matImgPreview" class="rounded" style="max-height:60px;display:none;">
                                 <button type="button" class="btn btn-outline-danger btn-sm" id="matClearImgBtn" style="display:none" onclick="clearMatImage()">
@@ -371,6 +383,69 @@
                     </div>
                     <div class="list-group list-group-flush" id="materiauxList" style="max-height:500px;overflow-y:auto;"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================ BIBLIOTHÈQUE D'IMAGES ================ -->
+<div class="section-panel" id="section-image_library" style="display:none;">
+    <div class="row g-4">
+        <div class="col-lg-4 settings-form-col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-cloud-upload text-primary"></i><strong>Ajouter une image</strong>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="return uploadImageToLibrary(event)" id="imageLibraryForm">
+                        <div class="mb-3">
+                            <label class="form-label">Fichier image</label>
+                            <input type="file" class="form-control" id="libImageFile" accept="image/*" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Nom (optionnel)</label>
+                            <input type="text" class="form-control" id="libImageLabel" placeholder="Ex: Bobine PLA verte">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Contexte</label>
+                            <select class="form-select" id="libImageHint">
+                                <option value="general">Général</option>
+                                <option value="machines">Machines</option>
+                                <option value="materiaux">Matériaux</option>
+                                <option value="types_activite">Types d'activité</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-plus-lg me-1"></i> Ajouter à la bibliothèque
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <strong><i class="bi bi-images me-1"></i> Images disponibles</strong>
+                    <span class="badge bg-secondary" id="imageLibraryCount">0</span>
+                </div>
+                <div class="card-body">
+                    <div id="imageLibraryList" class="row g-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal sélecteur image -->
+<div class="modal fade" id="imagePickerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-images me-1"></i> Choisir une image depuis la bibliothèque</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="imagePickerGrid" class="row g-3"></div>
             </div>
         </div>
     </div>
@@ -982,6 +1057,8 @@ let selectedIds = { machines:new Set(), materiaux:new Set(), classes:new Set(), 
 let pendingDelete = null;
 let customFields = [];
 let matrixCellEdit = { machineId: null, typeId: null };
+let IMAGE_LIBRARY = [];
+let imagePickerTarget = null;
 
 // ========== Tab Switching ==========
 function showSection(name, btn) {
@@ -990,11 +1067,13 @@ function showSection(name, btn) {
     document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
     if (btn) btn.classList.add('active');
     if (name === 'custom_fields') loadCustomFields();
+    if (name === 'image_library') loadImageLibrary();
 }
 
 function onReferenceDataLoaded() {
     populateTypeSelects();
     renderAll();
+    loadImageLibrary();
     initPersonnalisation();
     initFablabInfo();
     // Handle hash navigation (e.g. from navbar icon)
@@ -1189,9 +1268,156 @@ async function uploadImage(fileInput, entity, entityId) {
     formData.append('file', fileInput.files[0]);
     formData.append('entity', entity);
     formData.append('entity_id', entityId || '0');
-    const res = await fetch('/api/upload-image', {method:'POST', body:formData});
+    formData.append('entity_hint', entity);
+    formData.append('label', fileInput.files[0].name || '');
+    const res = await fetch('/api/image-library/upload', {method:'POST', body:formData});
     const data = await res.json();
+    if (data.success) {
+        loadImageLibrary();
+    }
     return data.success ? data.path : '';
+}
+
+// ========== BIBLIOTHÈQUE D'IMAGES ==========
+async function loadImageLibrary() {
+    try {
+        const res = await fetch('/api/image-library');
+        const data = await res.json();
+        if (!data.success) return;
+        IMAGE_LIBRARY = data.items || [];
+        renderImageLibrary();
+        renderImagePickerGrid();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function renderImageLibrary() {
+    const list = document.getElementById('imageLibraryList');
+    const count = document.getElementById('imageLibraryCount');
+    if (!list || !count) return;
+
+    count.textContent = IMAGE_LIBRARY.length;
+    if (!IMAGE_LIBRARY.length) {
+        list.innerHTML = '<div class="col-12"><div class="empty-state"><i class="bi bi-images"></i><p>Aucune image dans la bibliothèque</p></div></div>';
+        return;
+    }
+
+    list.innerHTML = IMAGE_LIBRARY.map(item => `
+        <div class="col-md-6 col-xl-4">
+            <div class="card border h-100 shadow-none">
+                <img src="${item.path}" class="card-img-top" alt="${esc(item.label || 'image')}" style="height:150px;object-fit:contain;background:#f8f9fa;">
+                <div class="card-body p-2">
+                    <div class="small fw-semibold text-truncate">${esc(item.label || item.path.split('/').pop())}</div>
+                    <div class="small text-muted text-truncate">${esc(item.entity_hint || 'general')}</div>
+                    <div class="d-flex gap-1 mt-2">
+                        <button class="btn btn-outline-primary btn-sm flex-fill" onclick="copyImagePath('${esc(item.path)}')">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteImageFromLibrary(${item.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderImagePickerGrid() {
+    const grid = document.getElementById('imagePickerGrid');
+    if (!grid) return;
+
+    if (!IMAGE_LIBRARY.length) {
+        grid.innerHTML = '<div class="col-12 text-muted">Aucune image disponible.</div>';
+        return;
+    }
+
+    grid.innerHTML = IMAGE_LIBRARY.map(item => `
+        <div class="col-md-4 col-xl-3">
+            <button type="button" class="btn btn-outline-secondary w-100 h-100 text-start" onclick="selectImageFromLibrary('${esc(item.path)}')">
+                <img src="${item.path}" alt="${esc(item.label || 'image')}" class="w-100 rounded mb-2" style="height:120px;object-fit:contain;background:#f8f9fa;">
+                <div class="small text-truncate">${esc(item.label || item.path.split('/').pop())}</div>
+            </button>
+        </div>
+    `).join('');
+}
+
+function openImageLibraryPicker(targetInputId, previewId, clearBtnId) {
+    imagePickerTarget = { targetInputId, previewId, clearBtnId };
+    renderImagePickerGrid();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('imagePickerModal')).show();
+}
+
+function selectImageFromLibrary(path) {
+    if (!imagePickerTarget) return;
+    const input = document.getElementById(imagePickerTarget.targetInputId);
+    const preview = document.getElementById(imagePickerTarget.previewId);
+    const clearBtn = document.getElementById(imagePickerTarget.clearBtnId);
+
+    if (input) input.value = path;
+    if (preview) {
+        preview.src = path;
+        preview.style.display = '';
+    }
+    if (clearBtn) clearBtn.style.display = '';
+
+    const fileInputId = {
+        typeImagePath: 'typeImageFile',
+        machineImagePath: 'machineImageFile',
+        matImagePath: 'matImageFile',
+    }[imagePickerTarget.targetInputId];
+    if (fileInputId) {
+        const fileInput = document.getElementById(fileInputId);
+        if (fileInput) fileInput.value = '';
+    }
+
+    const modal = bootstrap.Modal.getInstance(document.getElementById('imagePickerModal'));
+    if (modal) modal.hide();
+}
+
+async function uploadImageToLibrary(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('libImageFile');
+    if (!fileInput.files || !fileInput.files[0]) return false;
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('entity', 'library');
+    formData.append('entity_id', '0');
+    formData.append('entity_hint', document.getElementById('libImageHint').value || 'general');
+    formData.append('label', document.getElementById('libImageLabel').value.trim());
+
+    const res = await fetch('/api/image-library/upload', { method: 'POST', body: formData }).then(r => r.json());
+    if (!res.success) {
+        showToast('Erreur upload: ' + (res.error || ''), 'error');
+        return false;
+    }
+    showToast('Image ajoutée à la bibliothèque');
+    document.getElementById('imageLibraryForm').reset();
+    await loadImageLibrary();
+    return false;
+}
+
+async function deleteImageFromLibrary(imageId) {
+    showConfirm('Supprimer', 'Retirer cette image de la bibliothèque ?', async () => {
+        const res = await fetch(`/api/image-library/${imageId}`, { method: 'DELETE' }).then(r => r.json());
+        if (!res.success) {
+            showToast('Erreur: ' + (res.error || ''), 'error');
+            return;
+        }
+        showToast('Image retirée de la bibliothèque');
+        await loadImageLibrary();
+    });
+}
+
+async function copyImagePath(path) {
+    try {
+        await navigator.clipboard.writeText(path);
+        showToast('Chemin copié');
+    } catch (e) {
+        showToast('Impossible de copier le chemin', 'error');
+    }
 }
 
 // ========== TYPES D'ACTIVITÉ ==========

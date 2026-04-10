@@ -14,6 +14,15 @@ from datetime import datetime, timedelta
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DATA_DIR, 'fabtrack.db')
 
+SETUP_STATE_KEY = 'setup_state'
+SETUP_PACK_KEY = 'starter_pack'
+SETUP_COMPLETED_AT_KEY = 'setup_completed_at'
+SETUP_STATE_COMPLETED = 'completed'
+SETUP_PACK_EMPTY = 'empty'
+SETUP_PACK_GENERIC = 'generic'
+SETUP_PACK_LORITZ = 'loritz'
+SETUP_PACK_LEGACY = 'legacy-existing'
+
 
 def get_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -22,6 +31,107 @@ def get_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def _ensure_parametres_table(db):
+    from fabsuite_core.config import ensure_parametres_table
+
+    ensure_parametres_table(db)
+
+
+def _get_param(db, key, default=None):
+    from fabsuite_core.config import get_param
+
+    _ensure_parametres_table(db)
+    return get_param(db, key, default)
+
+
+def _set_param(db, key, value):
+    from fabsuite_core.config import set_param
+
+    _ensure_parametres_table(db)
+    set_param(db, key, value)
+
+
+def _has_meaningful_data(c):
+    tables = (
+        'types_activite',
+        'machines',
+        'materiaux',
+        'classes',
+        'referents',
+        'preparateurs',
+        'consommations',
+        'stock_articles',
+        'missions',
+    )
+    for table in tables:
+        row = c.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone()
+        if row:
+            return True
+    return False
+
+
+def get_setup_status():
+    db = get_db()
+    try:
+        state = _get_param(db, SETUP_STATE_KEY, '')
+        pack = _get_param(db, SETUP_PACK_KEY, '')
+
+        if state == SETUP_STATE_COMPLETED:
+            return {
+                'needs_setup': False,
+                'state': state,
+                'starter_pack': pack or SETUP_PACK_EMPTY,
+            }
+
+        if _has_meaningful_data(db):
+            _set_param(db, SETUP_STATE_KEY, SETUP_STATE_COMPLETED)
+            if not pack:
+                _set_param(db, SETUP_PACK_KEY, SETUP_PACK_LEGACY)
+            db.commit()
+            return {
+                'needs_setup': False,
+                'state': SETUP_STATE_COMPLETED,
+                'starter_pack': pack or SETUP_PACK_LEGACY,
+            }
+
+        return {
+            'needs_setup': True,
+            'state': 'pending',
+            'starter_pack': '',
+        }
+    finally:
+        db.close()
+
+
+def apply_starter_pack(pack_name):
+    normalized_pack = (pack_name or '').strip().lower()
+    if normalized_pack not in (SETUP_PACK_EMPTY, SETUP_PACK_GENERIC, SETUP_PACK_LORITZ):
+        raise ValueError('Pack de démarrage invalide')
+
+    db = get_db()
+    try:
+        current_state = _get_param(db, SETUP_STATE_KEY, '')
+        if current_state == SETUP_STATE_COMPLETED or _has_meaningful_data(db):
+            raise ValueError('Instance déjà initialisée')
+
+        c = db.cursor()
+        if normalized_pack == SETUP_PACK_GENERIC:
+            _insert_generic_reference_data(c)
+        elif normalized_pack == SETUP_PACK_LORITZ:
+            _insert_reference_data(c)
+
+        _set_param(db, SETUP_STATE_KEY, SETUP_STATE_COMPLETED)
+        _set_param(db, SETUP_PACK_KEY, normalized_pack)
+        _set_param(db, SETUP_COMPLETED_AT_KEY, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        db.commit()
+        return {'success': True, 'starter_pack': normalized_pack}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 # ============================================================
@@ -190,6 +300,18 @@ def init_db():
         FOREIGN KEY (custom_field_id) REFERENCES custom_fields(id)
     );
 
+    CREATE TABLE IF NOT EXISTS image_library (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        label TEXT DEFAULT '',
+        path TEXT NOT NULL UNIQUE,
+        entity_hint TEXT DEFAULT '',
+        actif INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_image_library_actif ON image_library(actif);
+    CREATE INDEX IF NOT EXISTS idx_image_library_created_at ON image_library(created_at);
+
     -- ── Module Stock (intégré depuis FabStock) ──
     -- Note : les catégories stock viennent de types_activite (plus de table stock_categories séparée)
     -- stock_articles.categorie_id référence types_activite.id
@@ -321,7 +443,6 @@ def init_db():
     ''')
 
     _migrate_db(c)
-    _insert_reference_data(c)
     _insert_mission_categories_seed(c)
     _insert_stock_reference_data(c)
     conn.commit()
@@ -752,6 +873,26 @@ def _insert_reference_data(c):
 
     # Pas de classes par défaut — à configurer par chaque fablab
     # Les classes et préparateurs peuvent être ajoutés via les paramètres ou la démo
+
+
+def _insert_generic_reference_data(c):
+    types = [
+        ('Impression 3D', '🖨️', '#f59e0b', 'badge-3d', 'g'),
+        ('Découpe Laser', '⚡', '#ef4444', 'badge-laser', 'm²'),
+        ('CNC / Fraisage', '⚙️', '#3b82f6', 'badge-cnc', 'm²'),
+        ('Impression Papier', '📄', '#22c55e', 'badge-papier', 'feuilles'),
+        ('Thermoformage', '🔥', '#a855f7', 'badge-thermo', 'feuilles'),
+        ('Bricolage', '🔧', '#6366f1', 'badge-bricolage', ''),
+    ]
+    for nom, icone, couleur, badge, unite in types:
+        c.execute(
+            'INSERT OR IGNORE INTO types_activite (nom,icone,couleur,badge_class,unite_defaut) VALUES (?,?,?,?,?)',
+            (nom, icone, couleur, badge, unite),
+        )
+        c.execute(
+            'UPDATE types_activite SET unite_defaut=? WHERE nom=? AND (unite_defaut IS NULL OR unite_defaut="")',
+            (unite, nom),
+        )
 
 
 def _insert_stock_reference_data(c):

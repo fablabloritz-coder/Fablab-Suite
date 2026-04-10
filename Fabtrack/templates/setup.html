@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Premier démarrage{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center py-4">
+    <div class="col-xl-10">
+        <div class="text-center mb-4">
+            <span class="badge rounded-pill text-bg-primary px-3 py-2 mb-3">Configuration initiale</span>
+            <h1 class="page-title mb-2"><i class="bi bi-magic"></i> Premier démarrage Fabtrack</h1>
+            <p class="page-subtitle mx-auto" style="max-width: 760px;">
+                Cette instance est vide. Choisissez comment initialiser le référentiel sans imposer de parc machine ou de matériaux si vous partez de zéro.
+            </p>
+        </div>
+
+        <div class="alert alert-info border-0 shadow-sm mb-4">
+            <div class="d-flex gap-3 align-items-start">
+                <i class="bi bi-shield-check fs-4"></i>
+                <div>
+                    <strong>Comportement non cassant</strong><br>
+                    Cette étape n'apparaît que sur une instance vide. Les instances déjà en production ne sont pas redémarrées sur ce flux.
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="card h-100 border-0 shadow-sm setup-pack-card">
+                    <div class="card-body d-flex flex-column">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="fs-3">🧱</span>
+                            <h2 class="h5 mb-0">Installation vide</h2>
+                        </div>
+                        <p class="text-muted small flex-grow-1">
+                            Aucun type, aucune machine, aucun matériau préchargé. Recommandé si vous voulez tout configurer vous-même.
+                        </p>
+                        <button class="btn btn-outline-primary mt-3" onclick="applyStarterPack('empty')">
+                            Choisir ce mode
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card h-100 border-0 shadow-sm setup-pack-card">
+                    <div class="card-body d-flex flex-column">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="fs-3">🧰</span>
+                            <h2 class="h5 mb-0">Pack générique</h2>
+                        </div>
+                        <p class="text-muted small flex-grow-1">
+                            Crée uniquement des types d'activité génériques pour démarrer plus vite, sans machines ni matériaux prédéfinis.
+                        </p>
+                        <button class="btn btn-primary mt-3" onclick="applyStarterPack('generic')">
+                            Choisir ce mode
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card h-100 border-0 shadow-sm setup-pack-card">
+                    <div class="card-body d-flex flex-column">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="fs-3">🏭</span>
+                            <h2 class="h5 mb-0">Pack Loritz</h2>
+                        </div>
+                        <p class="text-muted small flex-grow-1">
+                            Précharge le parc Loritz actuel, avec les machines et matériaux déjà utilisés dans l'installation historique.
+                        </p>
+                        <button class="btn btn-dark mt-3" onclick="applyStarterPack('loritz')">
+                            Choisir ce mode
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="setupFeedback" class="mt-4"></div>
+    </div>
+</div>
+
+<style>
+.setup-pack-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+</style>
+
+<script>
+async function applyStarterPack(pack) {
+    const feedback = document.getElementById('setupFeedback');
+    feedback.innerHTML = '<div class="alert alert-secondary border-0 shadow-sm">Initialisation en cours...</div>';
+
+    try {
+        const response = await fetch('/api/setup/apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pack})
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Erreur pendant l\'initialisation');
+        }
+        feedback.innerHTML = '<div class="alert alert-success border-0 shadow-sm">Configuration initiale terminée. Redirection...</div>';
+        window.location.href = '/parametres';
+    } catch (err) {
+        feedback.innerHTML = `<div class="alert alert-danger border-0 shadow-sm">${err.message}</div>`;
+    }
+}
+</script>
+{% endblock %}

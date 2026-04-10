@@ -1,7 +1,7 @@
 """Routes API admin — backup/restore, demo, reset, custom fields, upload, machine statut."""
 
 from flask import Blueprint, request, jsonify, send_file
-from models import get_db, init_db, reset_db, generate_demo_data, DATA_DIR
+from models import get_db, init_db, reset_db, generate_demo_data, DATA_DIR, get_setup_status, apply_starter_pack
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import json, os, shutil, glob, logging
@@ -109,6 +109,15 @@ def _human_size(nbytes):
     return f'{nbytes:.1f} To'
 
 
+def _save_uploaded_image(file_obj, entity='general', entity_id='0'):
+    ext = file_obj.filename.rsplit('.', 1)[1].lower()
+    filename = secure_filename(f"{entity}_{entity_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file_obj.save(filepath)
+    rel_path = f'/static/uploads/{filename}'
+    return rel_path
+
+
 # ── Upload image ──
 
 @bp.route('/api/upload-image', methods=['POST'])
@@ -121,12 +130,126 @@ def api_upload_image():
         return jsonify({'success': False, 'error': 'Fichier non autorisé (png, jpg, gif, webp, svg)'}), 400
     entity = request.form.get('entity', 'general')
     entity_id = request.form.get('entity_id', '0')
-    ext = f.filename.rsplit('.', 1)[1].lower()
-    filename = secure_filename(f"{entity}_{entity_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}")
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    f.save(filepath)
-    rel_path = f'/static/uploads/{filename}'
+    rel_path = _save_uploaded_image(f, entity, entity_id)
     return jsonify({'success': True, 'path': rel_path})
+
+
+@bp.route('/api/image-library', methods=['GET'])
+def api_image_library_list():
+    db = get_db()
+    try:
+        rows = db.execute(
+            'SELECT id, label, path, entity_hint, created_at FROM image_library WHERE actif=1 ORDER BY id DESC'
+        ).fetchall()
+        return jsonify({'success': True, 'items': [dict(r) for r in rows]})
+    finally:
+        db.close()
+
+
+@bp.route('/api/image-library/upload', methods=['POST'])
+def api_image_library_upload():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Aucun fichier'}), 400
+
+    f = request.files['file']
+    if f.filename == '' or not allowed_file(f.filename):
+        return jsonify({'success': False, 'error': 'Fichier non autorisé (png, jpg, gif, webp, svg)'}), 400
+
+    entity = request.form.get('entity', 'library')
+    entity_id = request.form.get('entity_id', '0')
+    label = (request.form.get('label', '') or '').strip()
+    entity_hint = (request.form.get('entity_hint', entity) or '').strip()
+
+    rel_path = _save_uploaded_image(f, entity, entity_id)
+
+    db = get_db()
+    try:
+        db.execute(
+            '''
+            INSERT OR REPLACE INTO image_library (id, label, path, entity_hint, actif, created_at)
+            VALUES (
+                (SELECT id FROM image_library WHERE path=?),
+                ?, ?, ?, 1,
+                COALESCE((SELECT created_at FROM image_library WHERE path=?), datetime('now','localtime'))
+            )
+            ''',
+            (rel_path, label, rel_path, entity_hint, rel_path)
+        )
+        db.commit()
+        return jsonify({'success': True, 'path': rel_path})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        db.close()
+
+
+@bp.route('/api/image-library/<int:image_id>', methods=['DELETE'])
+def api_image_library_delete(image_id):
+    db = get_db()
+    try:
+        row = db.execute('SELECT path FROM image_library WHERE id=?', (image_id,)).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Image introuvable'}), 404
+
+        path = row['path']
+        in_use = db.execute(
+            '''
+            SELECT 1 FROM (
+                SELECT image_path AS path FROM types_activite WHERE actif=1
+                UNION ALL
+                SELECT image_path AS path FROM machines WHERE actif=1
+                UNION ALL
+                SELECT image_path AS path FROM materiaux WHERE actif=1
+                UNION ALL
+                SELECT image_path AS path FROM referents WHERE actif=1
+                UNION ALL
+                SELECT image_path AS path FROM preparateurs WHERE actif=1
+                UNION ALL
+                SELECT image_path AS path FROM stock_fournisseurs WHERE actif=1
+            ) ref
+            WHERE path=?
+            LIMIT 1
+            ''',
+            (path,)
+        ).fetchone()
+
+        if in_use:
+            return jsonify({'success': False, 'error': 'Image encore utilisée. Retirez-la des entités avant suppression.'}), 400
+
+        db.execute('DELETE FROM image_library WHERE id=?', (image_id,))
+        db.commit()
+
+        if path.startswith('/static/uploads/'):
+            filename = path.split('/static/uploads/', 1)[1]
+            full_path = os.path.join(UPLOAD_FOLDER, filename)
+            if os.path.exists(full_path):
+                try:
+                    os.remove(full_path)
+                except OSError:
+                    pass
+
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        db.close()
+
+
+@bp.route('/api/setup/status', methods=['GET'])
+def api_setup_status():
+    return jsonify(get_setup_status())
+
+
+@bp.route('/api/setup/apply', methods=['POST'])
+def api_setup_apply():
+    data = request.get_json() or {}
+    try:
+        result = apply_starter_pack(data.get('pack'))
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 
 # ── Statut machines ──
