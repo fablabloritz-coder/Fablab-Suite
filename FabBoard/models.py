@@ -118,6 +118,9 @@ def init_db():
         ordre INTEGER NOT NULL,             -- Ordre d'affichage
         temps_affichage INTEGER DEFAULT 30, -- Durée en secondes
         actif INTEGER DEFAULT 1,
+        fond_type TEXT DEFAULT 'defaut',
+        fond_valeur TEXT DEFAULT '',
+        layout_ratio INTEGER DEFAULT 60,    -- Ratio hauteur grand bloc pour layouts large_top_* (en %)
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime')),
         FOREIGN KEY(layout_id) REFERENCES layouts(id) ON DELETE RESTRICT
@@ -330,6 +333,11 @@ def migrate_db():
         c.execute("ALTER TABLE slides ADD COLUMN fond_type TEXT DEFAULT 'defaut'")
         c.execute("ALTER TABLE slides ADD COLUMN fond_valeur TEXT DEFAULT ''")
         print('[FabBoard] Migration : colonnes fond_type/fond_valeur ajoutées à slides')
+
+    # Migration : ajouter le ratio de hauteur configurable pour les layouts large_top_*
+    if 'layout_ratio' not in columns:
+        c.execute("ALTER TABLE slides ADD COLUMN layout_ratio INTEGER DEFAULT 60")
+        print('[FabBoard] Migration : colonne layout_ratio ajoutée à slides')
 
     # Migration : ajouter le widget 'video' s'il n'existe pas
     if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'video'").fetchone()[0] == 0:

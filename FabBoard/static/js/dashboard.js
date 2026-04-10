@@ -337,9 +337,17 @@ async function displayCurrentSlide() {
     const grille = JSON.parse(slide.grille_json);
     
     // Style CSS Grid
+    let gridRows = `repeat(${slide.lignes}, 1fr)`;
+    const slideRatio = parseInt(slide.layout_ratio, 10);
+    if ((slide.layout_code === 'large_top_2bottom' || slide.layout_code === 'large_top_3bottom') && slide.lignes === 2 && !Number.isNaN(slideRatio)) {
+        const large = Math.max(50, Math.min(80, slideRatio));
+        const small = 100 - large;
+        gridRows = `${large}fr ${small}fr`;
+    }
+
     const gridStyle = `
         grid-template-columns: repeat(${slide.colonnes}, 1fr);
-        grid-template-rows: repeat(${slide.lignes}, 1fr);
+        grid-template-rows: ${gridRows};
         gap: 0.8rem;
         padding: 0.8rem;
     `;
@@ -479,10 +487,14 @@ function updateClock() {
     const horloges = document.querySelectorAll('.widget-horloge-time, .horloge-heure');
     
     horloges.forEach(el => {
+        const root = el.closest('.widget-horloge');
+        const formatHoraire = (root?.dataset.timeFormat || '24h').toLowerCase();
+        const showSeconds = (root?.dataset.showSeconds || '1') !== '0';
         const timeStr = now.toLocaleTimeString('fr-FR', { 
             hour: '2-digit', 
             minute: '2-digit', 
-            second: '2-digit' 
+            second: showSeconds ? '2-digit' : undefined,
+            hour12: formatHoraire === '12h'
         });
         el.textContent = timeStr;
     });
@@ -491,6 +503,13 @@ function updateClock() {
     const dates = document.querySelectorAll('.widget-horloge-date, .horloge-date');
     
     dates.forEach(el => {
+        const root = el.closest('.widget-horloge');
+        const showDate = (root?.dataset.showDate || '1') !== '0';
+        if (!showDate) {
+            el.classList.add('d-none');
+            return;
+        }
+        el.classList.remove('d-none');
         const dateStr = now.toLocaleDateString('fr-FR', {
             weekday: 'long',
             day: 'numeric',

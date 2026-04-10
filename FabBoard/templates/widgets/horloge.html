@@ -1,9 +1,23 @@
 <!-- Widget Horloge : Affiche l'heure et la date en temps réel (Pro Design) -->
-<div class="widget widget-horloge" data-widget-code="horloge">
-    <div class="horloge-bg"></div>
+{% set format_horaire = config.get('format', '24h') %}
+{% set afficher_secondes = config.get('afficher_secondes', true) %}
+{% set afficher_date = config.get('afficher_date', true) %}
+{% set style_horloge = config.get('style_horloge', 'classic') %}
+{% set fond_type = config.get('fond_type', 'gradient_night') %}
+{% set fond_image = config.get('fond_image', '') %}
+
+<div
+    class="widget widget-horloge horloge-style-{{ style_horloge }}"
+    data-widget-code="horloge"
+    data-time-format="{{ format_horaire }}"
+    data-show-seconds="{{ '1' if afficher_secondes else '0' }}"
+    data-show-date="{{ '1' if afficher_date else '0' }}"
+>
+    <div class="horloge-bg horloge-bg-{{ fond_type }}"{% if fond_type == 'image' and fond_image %} style="background-image:url('{{ fond_image }}');background-size:cover;background-position:center;"{% endif %}></div>
     <div class="horloge-container">
+        <div class="horloge-badge"><i class="bi bi-clock-fill"></i> Heure actuelle</div>
         <div class="horloge-top">
-            <div class="horloge-date" id="horloge-date-{{ widget_id }}">-- --- ----</div>
+            <div class="horloge-date {% if not afficher_date %}d-none{% endif %}" id="horloge-date-{{ widget_id }}">-- --- ----</div>
         </div>
         <div class="horloge-heure" id="horloge-heure-{{ widget_id }}">--:--:--</div>
         <div class="horloge-bottom">
@@ -33,6 +47,28 @@
     background: linear-gradient(135deg, #111827 0%, #1e293b 50%, #0f172a 100%);
 }
 
+.horloge-bg-gradient_night {
+    background: linear-gradient(135deg, #111827 0%, #1e293b 50%, #0f172a 100%);
+}
+
+.horloge-bg-gradient_day {
+    background: linear-gradient(135deg, #0f172a 0%, #0b4a6f 45%, #155e75 100%);
+}
+
+.horloge-bg-tech {
+    background:
+        radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.22), transparent 30%),
+        radial-gradient(circle at 80% 75%, rgba(45, 212, 191, 0.18), transparent 28%),
+        linear-gradient(160deg, #020617 0%, #0f172a 55%, #1e293b 100%);
+}
+
+.horloge-bg-image::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(140deg, rgba(2, 6, 23, 0.66), rgba(15, 23, 42, 0.55));
+}
+
 .horloge-container {
     text-align: center;
     color: #e2e8f0;
@@ -43,6 +79,20 @@
     align-items: center;
     gap: 12px;
     width: 100%;
+}
+
+.horloge-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 999px;
+    padding: 0.2rem 0.75rem;
+    font-size: clamp(10px, 0.95vw, 13px);
+    letter-spacing: 0.06em;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.36);
+    text-transform: uppercase;
 }
 
 .horloge-date {
@@ -85,10 +135,24 @@
     text-transform: uppercase;
 }
 
+.widget-horloge.horloge-style-focus .horloge-heure {
+    font-weight: 500;
+    text-shadow: 0 0 18px rgba(148, 163, 184, 0.2);
+}
+
+.widget-horloge.horloge-style-focus .horloge-badge {
+    border-color: rgba(56, 189, 248, 0.38);
+    color: #7dd3fc;
+}
+
 @media (max-width: 768px) {
     .horloge-container {
         padding: 20px 10px;
         gap: 8px;
+    }
+
+    .horloge-badge {
+        padding: 0.15rem 0.55rem;
     }
 }
 </style>
@@ -106,18 +170,28 @@
     // Ne PAS créer de setInterval ici pour éviter un conflit d'écriture.
     var now = (typeof getServerNow === 'function') ? getServerNow() : new Date();
     
+    const root = heureEl.closest('.widget-horloge');
+    const formatHoraire = (root?.dataset.timeFormat || '24h').toLowerCase();
+    const showSeconds = (root?.dataset.showSeconds || '1') !== '0';
+    const showDate = (root?.dataset.showDate || '1') !== '0';
+
     heureEl.textContent = now.toLocaleTimeString('fr-FR', {
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit',
-        hour12: false
+        second: showSeconds ? '2-digit' : undefined,
+        hour12: formatHoraire === '12h'
     });
     
-    dateEl.textContent = now.toLocaleDateString('fr-FR', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-    });
+    if (showDate) {
+        dateEl.classList.remove('d-none');
+        dateEl.textContent = now.toLocaleDateString('fr-FR', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    } else {
+        dateEl.classList.add('d-none');
+    }
 })();
 </script>

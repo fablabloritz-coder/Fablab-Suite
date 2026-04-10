@@ -4,8 +4,14 @@
     {% set heure_cible = config.get('heure_cible', '00:00') %}
     {% set datetime_cible = date_cible ~ 'T' ~ heure_cible if date_cible else '' %}
     {% set afficher_secondes = config.get('afficher_secondes', true) %}
+    {% set fond_type = config.get('fond_type', 'countdown') %}
+    {% set fond_image = config.get('fond_image', '') %}
 
-    <h3><i class="bi bi-hourglass-split"></i> {{ titre }}</h3>
+    <div class="timer-bg timer-bg-{{ fond_type }}"{% if fond_type == 'image' and fond_image %} style="background-image:url('{{ fond_image }}');background-size:cover;background-position:center;"{% endif %}></div>
+    <div class="timer-content">
+    <div class="timer-chip"><i class="bi bi-hourglass-split"></i> Compte a rebours</div>
+
+    <h3><i class="bi bi-flag"></i> {{ titre }}</h3>
 
     {% if date_cible %}
     <div class="timer-display" data-target="{{ datetime_cible }}">
@@ -33,6 +39,7 @@
     </div>
     <div class="timer-target-date">
         {% if date_cible %}{{ date_cible[8:10] ~ '/' ~ date_cible[5:7] ~ '/' ~ date_cible[:4] ~ ' à ' ~ heure_cible }}{% endif %}
+    </div>
     </div>
 
     <script>
@@ -85,3 +92,64 @@
     </div>
     {% endif %}
 </div>
+
+<style>
+.widget-timer {
+    position: relative;
+    overflow: hidden;
+}
+
+.timer-content {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+}
+
+.timer-bg {
+    position: absolute;
+    inset: 0;
+}
+
+.timer-bg-countdown {
+    background:
+        radial-gradient(circle at 18% 25%, rgba(251, 191, 36, 0.22), transparent 25%),
+        radial-gradient(circle at 78% 80%, rgba(249, 115, 22, 0.18), transparent 28%),
+        linear-gradient(155deg, #1f2937 0%, #0f172a 55%, #111827 100%);
+}
+
+.timer-bg-alert {
+    background:
+        repeating-linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0, rgba(239, 68, 68, 0.08) 12px, transparent 12px, transparent 24px),
+        linear-gradient(150deg, #3f0d12 0%, #1f2937 45%, #111827 100%);
+}
+
+.timer-bg-image::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.7), rgba(2, 6, 23, 0.55));
+}
+
+.timer-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    padding: 0.2rem 0.75rem;
+    border: 1px solid rgba(251, 191, 36, 0.32);
+    background: rgba(30, 41, 59, 0.45);
+    color: #fcd34d;
+    font-size: calc(0.68rem * var(--ws, 1));
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.65rem;
+}
+
+.timer-unit {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 10px;
+    min-width: 72px;
+    padding: 0.35rem 0.4rem;
+}
+</style>

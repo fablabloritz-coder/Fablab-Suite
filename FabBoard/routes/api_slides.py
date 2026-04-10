@@ -49,8 +49,8 @@ def create_slide():
         ordre = (max_ordre or 0) + 1
 
         cursor = db.execute('''
-            INSERT INTO slides (nom, layout_id, ordre, temps_affichage, actif, fond_type, fond_valeur)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO slides (nom, layout_id, ordre, temps_affichage, actif, fond_type, fond_valeur, layout_ratio)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             data['nom'],
             data['layout_id'],
@@ -58,7 +58,8 @@ def create_slide():
             data.get('temps_affichage', 30),
             data.get('actif', 1),
             data.get('fond_type', 'defaut'),
-            data.get('fond_valeur', '')
+            data.get('fond_valeur', ''),
+            data.get('layout_ratio', 60)
         ))
 
         slide_id = cursor.lastrowid
@@ -99,7 +100,7 @@ def update_slide(id):
         db.execute('''
             UPDATE slides SET
                 nom = ?, layout_id = ?, temps_affichage = ?, actif = ?,
-                fond_type = ?, fond_valeur = ?,
+                fond_type = ?, fond_valeur = ?, layout_ratio = ?,
                 updated_at = datetime('now','localtime')
             WHERE id = ?
         ''', (
@@ -109,6 +110,7 @@ def update_slide(id):
             data.get('actif', existing['actif']),
             data.get('fond_type', existing['fond_type'] or 'defaut'),
             data.get('fond_valeur', existing['fond_valeur'] or ''),
+            data.get('layout_ratio', existing['layout_ratio'] if existing['layout_ratio'] is not None else 60),
             id
         ))
 

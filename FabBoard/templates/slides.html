@@ -103,6 +103,14 @@
                             <!-- Layouts chargés dynamiquement -->
                         </div>
                     </div>
+
+                    <div class="mb-3" id="layoutHeightRatioGroup" style="display:none;">
+                        <label for="layoutHeightRatio" class="form-label">Hauteur du bloc large (%)</label>
+                        <input type="range" class="form-range" id="layoutHeightRatio" min="50" max="80" step="1" value="60" oninput="updateLayoutRatioLabel(this.value)">
+                        <div class="small text-muted">
+                            Bloc large: <span id="layoutHeightRatioValue">60</span>% | Petits blocs: <span id="layoutHeightSmallRatioValue">40</span>%
+                        </div>
+                    </div>
                     
                     <div class="mb-3">
                         <label for="slideDuration" class="form-label">

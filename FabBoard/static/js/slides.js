@@ -153,6 +153,30 @@ function uploadSlideBg(fileInput) {
         .catch(() => showToast('Erreur lors de l\'upload', 'error'));
 }
 
+function updateLayoutRatioLabel(value) {
+    const large = parseInt(value, 10) || 60;
+    const small = 100 - large;
+    const largeEl = document.getElementById('layoutHeightRatioValue');
+    const smallEl = document.getElementById('layoutHeightSmallRatioValue');
+    if (largeEl) largeEl.textContent = String(large);
+    if (smallEl) smallEl.textContent = String(small);
+}
+
+function toggleLayoutHeightOptions() {
+    const group = document.getElementById('layoutHeightRatioGroup');
+    if (!group) return;
+
+    const selectedLayout = document.querySelector('.layout-option.selected');
+    if (!selectedLayout) {
+        group.style.display = 'none';
+        return;
+    }
+
+    const layoutCode = selectedLayout.getAttribute('data-layout-code') || '';
+    const supportsRatio = layoutCode === 'large_top_2bottom' || layoutCode === 'large_top_3bottom';
+    group.style.display = supportsRatio ? '' : 'none';
+}
+
 // ========== STATE ==========
 let currentSlides = [];
 let currentLayouts = [];
@@ -476,9 +500,17 @@ function renderPreview() {
     const slideWidgets = slide.widgets || [];
     
     // Construire la grille CSS
+    let gridRows = `repeat(${slide.lignes}, 1fr)`;
+    const slideRatio = parseInt(slide.layout_ratio, 10);
+    if ((slide.layout_code === 'large_top_2bottom' || slide.layout_code === 'large_top_3bottom') && slide.lignes === 2 && !Number.isNaN(slideRatio)) {
+        const large = Math.max(50, Math.min(80, slideRatio));
+        const small = 100 - large;
+        gridRows = `${large}fr ${small}fr`;
+    }
+
     const gridStyle = `
         grid-template-columns: repeat(${slide.colonnes}, 1fr);
-        grid-template-rows: repeat(${slide.lignes}, 1fr);
+        grid-template-rows: ${gridRows};
     `;
     
     // Construire les widgets
@@ -636,6 +668,8 @@ function openAddSlideModal() {
     document.getElementById('slideFondType').value = 'defaut';
     document.getElementById('slideFondCouleur').value = '#0b1120';
     document.getElementById('slideFondImage').value = '';
+    document.getElementById('layoutHeightRatio').value = '60';
+    updateLayoutRatioLabel('60');
     document.getElementById('fondImagePreview').innerHTML = '';
     toggleFondOptions();
     
@@ -666,6 +700,10 @@ function editSlide(slideId) {
         const preview = document.getElementById('fondImagePreview');
         preview.innerHTML = fondValeur ? '<img src="' + escapeHtml(fondValeur) + '" style="max-width:100%;max-height:80px;border-radius:6px;">' : '';
     }
+
+    const ratio = slide.layout_ratio !== null && slide.layout_ratio !== undefined ? String(slide.layout_ratio) : '60';
+    document.getElementById('layoutHeightRatio').value = ratio;
+    updateLayoutRatioLabel(ratio);
     toggleFondOptions();
     
     renderLayoutSelector(slide.layout_id);
@@ -694,6 +732,7 @@ function renderLayoutSelector(selectedLayoutId = null) {
         return `
             <div class="layout-option ${layout.id === selectedLayoutId ? 'selected' : ''}" 
                  data-layout-id="${layout.id}"
+                 data-layout-code="${safeEscape(layout.code || '')}"
                  onclick="selectLayout(${layout.id})">
                 <div class="layout-preview" style="${gridStyle}">
                     ${cellsHTML}
@@ -702,6 +741,8 @@ function renderLayoutSelector(selectedLayoutId = null) {
             </div>
         `;
     }).join('');
+
+    toggleLayoutHeightOptions();
 }
 
 function selectLayout(layoutId) {
@@ -712,6 +753,7 @@ function selectLayout(layoutId) {
     
     // Ajouter la sélection
     document.querySelector(`[data-layout-id="${layoutId}"]`).classList.add('selected');
+    toggleLayoutHeightOptions();
 }
 
 async function saveSlide() {
@@ -737,6 +779,13 @@ async function saveSlide() {
     }
     
     const layout_id = parseInt(selectedLayout.getAttribute('data-layout-id'));
+    const selectedLayoutCode = selectedLayout.getAttribute('data-layout-code') || '';
+    const ratioInput = document.getElementById('layoutHeightRatio');
+    let layout_ratio = 60;
+    if (selectedLayoutCode === 'large_top_2bottom' || selectedLayoutCode === 'large_top_3bottom') {
+        layout_ratio = parseInt(ratioInput.value, 10) || 60;
+        layout_ratio = Math.max(50, Math.min(80, layout_ratio));
+    }
     
     if (!nom) {
         showToast('Le nom est requis', 'warning');
@@ -744,7 +793,7 @@ async function saveSlide() {
     }
     
     try {
-        const data = { nom, layout_id, temps_affichage, actif, fond_type, fond_valeur };
+        const data = { nom, layout_id, temps_affichage, actif, fond_type, fond_valeur, layout_ratio };
         let result;
         let newSlideId;
         
@@ -996,6 +1045,17 @@ const WIDGET_CONFIG_DEFINITIONS = {
             ], default: '24h' },
             { key: 'afficher_secondes', label: 'Afficher les secondes', type: 'checkbox', default: true },
             { key: 'afficher_date', label: 'Afficher la date', type: 'checkbox', default: true },
+            { key: 'style_horloge', label: 'Style visuel', type: 'select', options: [
+                { value: 'classic', label: 'Classique' },
+                { value: 'focus', label: 'Focus horaire' }
+            ], default: 'classic' },
+            { key: 'fond_type', label: 'Fond du widget', type: 'select', options: [
+                { value: 'gradient_night', label: 'Gradient nuit' },
+                { value: 'gradient_day', label: 'Gradient jour' },
+                { value: 'tech', label: 'Style techno' },
+                { value: 'image', label: 'Image personnalisée' }
+            ], default: 'gradient_night' },
+            { key: 'fond_image', label: 'Image de fond (si activée)', type: 'image_upload', default: '' },
             ECHELLE_FIELD
         ]
     },
@@ -1159,6 +1219,12 @@ const WIDGET_CONFIG_DEFINITIONS = {
             { key: 'date_cible', label: 'Date cible', type: 'date', default: '' },
             { key: 'heure_cible', label: 'Heure cible', type: 'time', default: '00:00' },
             { key: 'afficher_secondes', label: 'Afficher les secondes', type: 'checkbox', default: true },
+            { key: 'fond_type', label: 'Fond du widget', type: 'select', options: [
+                { value: 'countdown', label: 'Compte a rebours (chaud)' },
+                { value: 'alert', label: 'Alerte evenement' },
+                { value: 'image', label: 'Image personnalisée' }
+            ], default: 'countdown' },
+            { key: 'fond_image', label: 'Image de fond (si activée)', type: 'image_upload', default: '' },
             ECHELLE_FIELD
         ]
     },
