@@ -1,0 +1,13 @@
+{
+  "version": "2.1.0",
+  "date": "2026-04-10",
+  "title": "Module Stock, Missions et Raise3D",
+  "notes": [
+    "Module Stock intégré : articles, mouvements, fournisseurs, inventaire physique",
+    "Conversion automatique m² pour les articles planche/panneau avec double affichage",
+    "Module Missions : kanban 3 colonnes (À faire / En cours / Terminé) avec priorités",
+    "Intégration Raise3D : statut des 3 imprimantes en temps réel",
+    "Popup de nouveautés après mise à jour (une fois par version)"
+  ],
+  "_source": "manuel"
+}
