@@ -1,0 +1,11 @@
+{
+  "version": "1.3.0",
+  "date": "2026-04-10",
+  "title": "Améliorations UX et administration",
+  "notes": [
+    "Nouvelle popup de nouveautés après mise à jour (une fois par version)",
+    "Améliorations de lisibilité sur les écrans d'administration",
+    "Corrections mineures de stabilité et de confort d'usage"
+  ],
+  "_source": "manuel"
+}
