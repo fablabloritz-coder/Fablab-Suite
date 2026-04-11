@@ -1,0 +1,12 @@
+{
+  "version": "1.5.0",
+  "date": "2026-04-10",
+  "title": "Suite FabLab & améliorations hub",
+  "notes": [
+    "Intégration FabLab Suite : enregistrement et monitoring de toutes les apps",
+    "Dashboard enrichi : widgets dynamiques par app, proxy manifest/health",
+    "Liens navigateur corrigés : accès local simplifié depuis le navigateur",
+    "Popup de nouveautés après mise à jour (une fois par version)"
+  ],
+  "_source": "manuel"
+}
