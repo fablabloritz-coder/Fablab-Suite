@@ -1,0 +1,13 @@
+{
+  "version": "3.1.0",
+  "date": "2026-04-10",
+  "title": "Widget Missions Fabtrack & layout ratio",
+  "notes": [
+    "Widget Missions Fabtrack : kanban 3 colonnes en lecture seule sur le dashboard TV",
+    "Widget machines : layout CSS grid responsive avec taille de police adaptative",
+    "Horloge et Timer : identité visuelle distincte, fonds configurables",
+    "Réglage de hauteur des blocs pour les layouts \"Large + 2/3 blocs\"",
+    "Popup de nouveautés après mise à jour (une fois par version)"
+  ],
+  "_source": "manuel"
+}

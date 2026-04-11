@@ -239,53 +239,47 @@
 
     <script>
     (function() {
-        const RELEASE_INFO = {
-            version: '3.1.0',
-            date: '2026-04-10',
-            title: 'Widget Missions Fabtrack & layout ratio',
-            notes: [
-                'Widget Missions Fabtrack : kanban 3 colonnes en lecture seule sur le dashboard TV.',
-                'Widget machines : layout CSS grid responsive avec taille de police adaptative.',
-                'Horloge et Timer : identité visuelle distincte, fonds configurables.',
-                'Réglage de hauteur des blocs pour les layouts "Large + 2/3 blocs".',
-                'Popup de nouveautés après mise à jour (une fois par version).'
-            ]
-        };
-
         const STORAGE_KEY = 'fabboard:last_seen_release';
 
-        function isDismissedForCurrentVersion() {
-            try { return localStorage.getItem(STORAGE_KEY) === RELEASE_INFO.version; } catch (_) { return false; }
-        }
-
-        function markDismissed() {
-            try { localStorage.setItem(STORAGE_KEY, RELEASE_INFO.version); } catch (_) {}
-        }
-
-        function fillModalContent() {
+        function fillModal(info) {
             const versionLine = document.getElementById('updatesVersionLine');
             const updatesList = document.getElementById('updatesList');
             if (!versionLine || !updatesList) return false;
-            versionLine.textContent = `Version ${RELEASE_INFO.version} - ${RELEASE_INFO.date} - ${RELEASE_INFO.title}`;
-            updatesList.innerHTML = RELEASE_INFO.notes.map(note => `<li class="mb-2">${note}</li>`).join('');
+            versionLine.textContent = `Version ${info.version} — ${info.date} — ${info.title}`;
+            updatesList.innerHTML = info.notes.map(n => `<li class="mb-2">${n}</li>`).join('');
             return true;
         }
 
-        function maybeShowUpdatesModal() {
-            const modalEl = document.getElementById('updatesModal');
-            if (!modalEl) return;
-            if (isDismissedForCurrentVersion()) return;
-            if (!fillModalContent()) return;
-            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-            modalEl.addEventListener('hidden.bs.modal', markDismissed, { once: true });
-            modal.show();
+        async function loadReleaseNotes() {
+            const resp = await fetch('/static/release-notes.json?_v=' + Date.now());
+            if (!resp.ok) throw new Error('release-notes.json inaccessible');
+            return resp.json();
         }
 
-        window.showUpdatesModal = function() {
-            fillModalContent();
-            const modalEl = document.getElementById('updatesModal');
-            if (!modalEl) return;
-            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        async function maybeShowUpdatesModal() {
+            try {
+                const info = await loadReleaseNotes();
+                const stored = localStorage.getItem(STORAGE_KEY);
+                if (stored === info.version) return;
+                if (!fillModal(info)) return;
+                const modalEl = document.getElementById('updatesModal');
+                if (!modalEl) return;
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modalEl.addEventListener('hidden.bs.modal', () => {
+                    try { localStorage.setItem(STORAGE_KEY, info.version); } catch (_) {}
+                }, { once: true });
+                modal.show();
+            } catch (_) {}
+        }
+
+        window.showUpdatesModal = async function() {
+            try {
+                const info = await loadReleaseNotes();
+                fillModal(info);
+                const modalEl = document.getElementById('updatesModal');
+                if (!modalEl) return;
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            } catch (_) {}
         };
 
         if (document.readyState === 'loading') {
