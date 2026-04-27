@@ -1,6 +1,7 @@
 """PretGo — Blueprint : core"""
 from flask import Blueprint, render_template, request
 from database import get_setting
+from reservations_logic import get_reservation_risks, get_upcoming_reservations
 from utils import get_app_db, calcul_depassement_heures
 
 bp = Blueprint('core', __name__)
@@ -8,6 +9,8 @@ bp = Blueprint('core', __name__)
 @bp.route('/')
 def index():
     conn = get_app_db()
+    upcoming_reservations = get_upcoming_reservations(conn, limit=5)
+    reservation_risks = get_reservation_risks(conn, limit=5)
 
     page = request.args.get('page', 1, type=int)
     par_page = 50
@@ -36,6 +39,9 @@ def index():
         'personnes': conn.execute(
             'SELECT COUNT(*) FROM personnes WHERE actif = 1'
         ).fetchone()[0],
+        'reservations': conn.execute(
+            "SELECT COUNT(*) FROM reservations WHERE statut IN ('demande', 'confirmee')"
+        ).fetchone()[0],
     }
 
     derniers_retours = conn.execute('''
@@ -50,6 +56,8 @@ def index():
     return render_template(
         'index.html',
         prets_actifs=prets_actifs,
+        upcoming_reservations=upcoming_reservations,
+        reservation_risks=reservation_risks,
         stats=stats,
         derniers_retours=derniers_retours,
         page=page,
@@ -204,7 +212,10 @@ def alertes():
                 'depassement_texte': dep_texte,
             })
 
+    reservation_risks = get_reservation_risks(conn)
+
     return render_template('alertes.html', alertes=alertes_list,
+                           reservation_risks=reservation_risks,
                            duree_defaut=duree_defaut, unite_defaut=unite_defaut)
 
 

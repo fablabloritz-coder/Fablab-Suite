@@ -411,6 +411,21 @@ def admin_reglages():
             else:
                 flash('Format d\'heure invalide (attendu HH:MM).', 'danger')
 
+        elif action == 'reservation_policy':
+            buffer_raw = request.form.get('reservation_buffer_hours', '24').strip()
+            lock_raw = request.form.get('reservation_lock_window_hours', '48').strip()
+            try:
+                buffer_val = float(buffer_raw)
+                lock_val = float(lock_raw)
+                if buffer_val < 0 or lock_val < 0:
+                    flash('Les valeurs de réservation doivent être positives.', 'danger')
+                else:
+                    set_setting('reservation_buffer_hours', str(buffer_val))
+                    set_setting('reservation_lock_window_hours', str(lock_val))
+                    flash('Politique de réservation hybride enregistrée.', 'success')
+            except ValueError:
+                flash('Valeurs invalides pour la politique de réservation.', 'danger')
+
         elif action == 'scanner_prefixe_suffixe':
             prefixe = request.form.get('scanner_prefixe', '').strip()
             suffixe = request.form.get('scanner_suffixe', '').strip()
@@ -626,6 +641,8 @@ def admin_reglages():
                            imp_texte_libre=get_setting('impression_texte_libre', ''),
                            mode_scanner=get_setting('mode_scanner', 'les_deux'),
                            heure_fin_journee=get_setting('heure_fin_journee', '17:45'),
+                           reservation_buffer_hours=get_setting('reservation_buffer_hours', '24'),
+                           reservation_lock_window_hours=get_setting('reservation_lock_window_hours', '48'),
                            scanner_prefixe=get_setting('scanner_prefixe', ''),
                            scanner_suffixe=get_setting('scanner_suffixe', ''),
                            theme_couleur_primaire=get_setting('theme_couleur_primaire', '#1a73e8'),

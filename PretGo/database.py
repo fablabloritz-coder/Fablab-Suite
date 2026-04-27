@@ -139,6 +139,21 @@ def init_db():
             FOREIGN KEY (materiel_id) REFERENCES inventaire(id)
         );
 
+        CREATE TABLE IF NOT EXISTS reservations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            personne_id INTEGER NOT NULL,
+            materiel_id INTEGER NOT NULL,
+            date_reservation TEXT NOT NULL,
+            statut TEXT NOT NULL DEFAULT 'confirmee',
+            pret_id INTEGER DEFAULT NULL,
+            notes TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (personne_id) REFERENCES personnes(id),
+            FOREIGN KEY (materiel_id) REFERENCES inventaire(id),
+            FOREIGN KEY (pret_id) REFERENCES prets(id)
+        );
+
         CREATE TABLE IF NOT EXISTS lieux (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL UNIQUE,
@@ -215,6 +230,18 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # ── Migration table reservations (colonnes complémentaires) ──
+    for col, default in [
+        ('pret_id', 'INTEGER DEFAULT NULL'),
+        ('notes', "TEXT DEFAULT ''"),
+        ('created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
+        ('updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
+    ]:
+        try:
+            cursor.execute(f'ALTER TABLE reservations ADD COLUMN {col} {default}')
+        except sqlite3.OperationalError:
+            pass
+
     # ── Index sur les clés étrangères pour accélérer les requêtes ──
     cursor.executescript('''
         CREATE INDEX IF NOT EXISTS idx_prets_personne_id ON prets(personne_id);
@@ -223,6 +250,9 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_prets_retour_confirme ON prets(retour_confirme);
         CREATE INDEX IF NOT EXISTS idx_pret_materiels_pret_id ON pret_materiels(pret_id);
         CREATE INDEX IF NOT EXISTS idx_pret_materiels_materiel_id ON pret_materiels(materiel_id);
+        CREATE INDEX IF NOT EXISTS idx_reservations_materiel_date ON reservations(materiel_id, date_reservation);
+        CREATE INDEX IF NOT EXISTS idx_reservations_statut ON reservations(statut);
+        CREATE INDEX IF NOT EXISTS idx_reservations_pret_id ON reservations(pret_id);
         CREATE INDEX IF NOT EXISTS idx_valeurs_champs_champ_id ON valeurs_champs_personnalises(champ_id);
         CREATE INDEX IF NOT EXISTS idx_valeurs_champs_entite_id ON valeurs_champs_personnalises(entite_id);
         CREATE INDEX IF NOT EXISTS idx_rappels_email_pret_sent_at ON rappels_email_log(pret_id, sent_at DESC);
@@ -363,6 +393,9 @@ def init_db():
         'rappel_email_max_tentatives': '3',
         # ── Inclure aussi les retours prévus dans les 24h ──
         'rappel_email_inclure_retour_24h': '1',
+        # ── Politique réservations (mode hybride) ──
+        'reservation_buffer_hours': '24',
+        'reservation_lock_window_hours': '48',
     }
     for cle, valeur in parametres_defaut.items():
         try:

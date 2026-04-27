@@ -42,25 +42,113 @@
 
 <!-- Statistiques -->
 <div class="row g-3 mb-4">
-    <div class="col-4">
+    <div class="col-6 col-md-3">
         <div class="stat-card bg-warning bg-opacity-10">
             <div class="number text-warning">{{ stats.actifs }}</div>
             <div class="label">Prêts en cours</div>
         </div>
     </div>
-    <div class="col-4">
+    <div class="col-6 col-md-3">
         <div class="stat-card bg-success bg-opacity-10">
             <div class="number text-success">{{ stats.retournes }}</div>
             <div class="label">Retours effectués</div>
         </div>
     </div>
-    <div class="col-4">
+    <div class="col-6 col-md-3">
+        <div class="stat-card bg-primary bg-opacity-10">
+            <div class="number text-primary">{{ stats.reservations }}</div>
+            <div class="label">Réservations actives</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
         <div class="stat-card bg-primary bg-opacity-10">
             <div class="number text-primary">{{ stats.personnes }}</div>
             <div class="label">Personnes enregistrées</div>
         </div>
     </div>
 </div>
+
+{% if reservation_risks %}
+<div class="card border-0 shadow-sm mb-4 border-danger">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-danger">
+            <i class="bi bi-exclamation-diamond-fill me-2"></i>
+            Réservations à risque ({{ reservation_risks|length }})
+        </h5>
+        <a href="{{ url_for('core.alertes') }}" class="btn btn-outline-danger btn-sm">
+            Voir toutes les alertes
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="list-group list-group-flush">
+            {% for risk in reservation_risks %}
+            <a href="{{ url_for('prets.detail_pret', pret_id=risk.pret_id) }}" class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                    <div>
+                        <div class="fw-bold">{{ risk.materiel_label }}</div>
+                        <div class="small text-muted">
+                            Prêt actuel: {{ risk.pret_prenom }} {{ risk.pret_nom }}
+                            — Réservation: {{ risk.reservation_prenom }} {{ risk.reservation_nom }}
+                        </div>
+                    </div>
+                    <div class="text-end small">
+                        <div class="text-danger fw-semibold">{{ risk.risk_message }}</div>
+                        <div class="text-muted">{{ risk.reservation_dt.strftime('%d/%m/%Y %H:%M') }}</div>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if upcoming_reservations %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+        <h5 class="mb-0">
+            <i class="bi bi-bookmark-check-fill text-primary me-2"></i>
+            Prochaines réservations
+        </h5>
+        <a href="{{ url_for('reservations.reservations') }}" class="btn btn-outline-primary btn-sm">
+            Ouvrir le planning
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-touch table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Emprunteur</th>
+                        <th>Matériel</th>
+                        <th>Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in upcoming_reservations %}
+                    <tr onclick="window.location='{{ url_for('reservations.reservations') }}'" style="cursor:pointer">
+                        <td>{{ r.date_reservation | format_date }}</td>
+                        <td>{{ r.nom }} {{ r.prenom }}</td>
+                        <td>
+                            <strong>{{ r.numero_inventaire }}</strong>
+                            <div class="small text-muted">{{ r.type_materiel }}</div>
+                        </td>
+                        <td>
+                            {% if r.statut == 'confirmee' %}
+                            <span class="badge bg-primary">Confirmée</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Demande</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Prêts en cours -->
 <div class="card border-0 shadow-sm mb-4">

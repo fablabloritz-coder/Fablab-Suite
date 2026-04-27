@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Réservations - PretGo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-bookmark-check-fill text-primary"></i> Réservations
+    </h1>
+</div>
+
+<div class="alert alert-info d-flex align-items-start gap-2">
+    <i class="bi bi-info-circle-fill mt-1"></i>
+    <div>
+        <strong>Mode hybride activé.</strong> Le prêt est bloqué si la date de retour prévue
+        empiète sur la marge de sécurité avant réservation, ou quand la réservation est imminente.
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Nouvelle réservation</h5>
+    </div>
+    <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('reservations.reservations') }}" class="row g-3">
+            <div class="col-12 col-md-6">
+                <label class="form-label fw-bold">Emprunteur</label>
+                <select name="personne_id" class="form-select" required>
+                    <option value="">— Sélectionner —</option>
+                    {% for p in personnes %}
+                    <option value="{{ p.id }}">
+                        {{ p.nom }} {{ p.prenom }}
+                        {% if p.classe %} — {{ p.classe }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <label class="form-label fw-bold">Matériel</label>
+                <select name="materiel_id" class="form-select" required>
+                    <option value="">— Sélectionner —</option>
+                    {% for m in inventaire %}
+                    <option value="{{ m.id }}">
+                        {{ m.numero_inventaire }} — {{ m.type_materiel }}
+                        {% if m.marque or m.modele %}({{ m.marque or '' }} {{ m.modele or '' }}){% endif %}
+                        {% if m.etat == 'prete' %}[Actuellement prêté]{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-12 col-md-4">
+                <label class="form-label fw-bold">Date et heure</label>
+                <input type="datetime-local" name="date_reservation" class="form-control" required>
+            </div>
+
+            <div class="col-12 col-md-4">
+                <label class="form-label fw-bold">Statut initial</label>
+                <select name="statut" class="form-select">
+                    <option value="confirmee" selected>Confirmée</option>
+                    <option value="demande">Demande</option>
+                </select>
+            </div>
+
+            <div class="col-12 col-md-4">
+                <label class="form-label fw-bold">Notes</label>
+                <input type="text" name="notes" class="form-control" placeholder="Optionnel">
+            </div>
+
+            <div class="col-12">
+                <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-check2-circle"></i> Enregistrer la réservation
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0"><i class="bi bi-list-ul"></i> Planning des réservations</h5>
+    </div>
+    <div class="card-body p-0">
+        {% if reservations %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Date réservation</th>
+                        <th>Emprunteur</th>
+                        <th>Matériel</th>
+                        <th>Statut</th>
+                        <th>Notes</th>
+                        {% if is_admin %}<th>Actions</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reservations %}
+                    {% set is_past = r.date_reservation < now_dt.strftime('%Y-%m-%d %H:%M:%S') %}
+                    <tr class="{% if is_past %}table-light{% endif %}">
+                        <td>{{ r.date_reservation | format_date }}</td>
+                        <td>
+                            <strong>{{ r.nom }} {{ r.prenom }}</strong>
+                            <div>
+                                <span class="cat-badge" style="{{ r.categorie | style_categorie }}">{{ r.categorie | label_categorie }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <strong>{{ r.numero_inventaire }}</strong>
+                            <div class="small text-muted">
+                                {{ r.type_materiel }}
+                                {% if r.marque or r.modele %}— {{ r.marque or '' }} {{ r.modele or '' }}{% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if r.statut == 'confirmee' %}
+                                <span class="badge bg-primary">Confirmée</span>
+                            {% elif r.statut == 'demande' %}
+                                <span class="badge bg-warning text-dark">Demande</span>
+                            {% elif r.statut == 'convertie_en_pret' %}
+                                <span class="badge bg-success">Convertie en prêt</span>
+                            {% elif r.statut == 'annulee' %}
+                                <span class="badge bg-secondary">Annulée</span>
+                            {% elif r.statut == 'expiree' %}
+                                <span class="badge bg-dark">Expirée</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark">{{ r.statut }}</span>
+                            {% endif %}
+                            {% if r.linked_pret_id %}
+                            <div class="small mt-1">
+                                <a href="{{ url_for('prets.detail_pret', pret_id=r.linked_pret_id) }}">Voir le prêt #{{ r.linked_pret_id }}</a>
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td>{{ r.notes or '—' }}</td>
+                        {% if is_admin %}
+                        <td>
+                            {% if r.statut in ['confirmee', 'demande'] %}
+                            <div class="d-flex flex-wrap gap-2">
+                                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reservations.convertir_reservation', reservation_id=r.id) }}">
+                                    <i class="bi bi-arrow-left-right"></i> Convertir en prêt
+                                </a>
+                                <form method="POST" action="{{ url_for('reservations.annuler_reservation', reservation_id=r.id) }}" onsubmit="return confirm('Annuler cette réservation ?')">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">
+                                        <i class="bi bi-x-circle"></i> Annuler
+                                    </button>
+                                </form>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+            <i class="bi bi-calendar2-check fs-2 d-block mb-2"></i>
+            Aucune réservation enregistrée.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

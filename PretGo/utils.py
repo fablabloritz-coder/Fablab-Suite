@@ -4,6 +4,7 @@ PretGo — Fonctions utilitaires partagées entre les blueprints.
 
 from flask import g, redirect, url_for, flash, session, request, Response
 from database import get_db, get_setting, set_setting, DATABASE_PATH, BACKUP_DIR, DOCUMENTS_DIR, RECOVERY_CODE_PATH
+from reservations_logic import get_reservation_risks
 from datetime import datetime, timedelta
 from functools import wraps
 from email.message import EmailMessage
@@ -1548,6 +1549,7 @@ def register_context_processors(app):
                 )
                 if depasse:
                     nb_alertes += 1
+            nb_alertes += len(get_reservation_risks(conn, now_dt=datetime.now()))
         except Exception:
             pass
 

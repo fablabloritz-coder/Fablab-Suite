@@ -9,7 +9,19 @@
 <div class="card border-0 shadow-sm">
     <div class="card-body p-4">
         <form method="POST" action="{{ url_for('prets.nouveau_pret') }}" id="formNouveauPret">
-            <input type="hidden" id="personne_id" name="personne_id" value="">
+            <input type="hidden" id="personne_id" name="personne_id" value="{{ reservation_prefill.personne_id if reservation_prefill else '' }}">
+            <input type="hidden" name="reservation_id" value="{{ reservation_prefill.id if reservation_prefill else '' }}">
+
+            {% if reservation_prefill %}
+            <div class="alert alert-primary d-flex align-items-start gap-2 mb-4">
+                <i class="bi bi-bookmark-check-fill mt-1"></i>
+                <div>
+                    <strong>Conversion d'une réservation.</strong>
+                    Prêt prérempli depuis la réservation du {{ reservation_prefill.date_reservation | format_date }}
+                    pour <strong>{{ reservation_prefill.numero_inventaire }}</strong>.
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Étape 1 : Sélection de la personne -->
             <div class="mb-4">
@@ -17,17 +29,28 @@
                     <i class="bi bi-person-fill text-primary"></i> 1. Qui emprunte ?
                 </label>
                 <div class="position-relative">
-                    <div class="search-box">
+                    <div class="search-box" {% if reservation_prefill %}style="display:none"{% endif %}>
                         <i class="bi bi-search"></i>
                         <input type="text"
                                id="personne-search"
                                class="form-control form-control-lg"
                                placeholder="Tapez un nom ou prénom pour rechercher..."
-                               autocomplete="off">
+                               autocomplete="off"
+                               value="{{ reservation_prefill.nom ~ ' ' ~ reservation_prefill.prenom if reservation_prefill else '' }}">
                     </div>
                     <div id="autocomplete-results" class="autocomplete-results" style="display:none"></div>
                 </div>
-                <div id="personne-selected" style="display:none" class="mt-2"></div>
+                <div id="personne-selected" class="mt-2" {% if not reservation_prefill %}style="display:none"{% endif %}>
+                    {% if reservation_prefill %}
+                    <div class="alert alert-success py-2 mb-0 d-flex align-items-center">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        <span><strong>{{ reservation_prefill.nom }} {{ reservation_prefill.prenom }}</strong>
+                            <span class="cat-badge ms-2" style="{{ reservation_prefill.categorie | style_categorie }}">{{ reservation_prefill.categorie | label_categorie }}</span>
+                            {% if reservation_prefill.classe %}<small class="text-muted ms-1">({{ reservation_prefill.classe }})</small>{% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
 
             <!-- Étape 2 : Objets empruntés (multi-matériel) -->
@@ -48,8 +71,9 @@
                                    class="form-control form-control-lg item-input"
                                    placeholder="N° inventaire, marque, modèle ou texte libre..."
                                    autocomplete="off"
+                                   value="{% if reservation_prefill %}{{ reservation_prefill.type_materiel }}{% if reservation_prefill.marque %} — {{ reservation_prefill.marque }}{% endif %}{% if reservation_prefill.modele %} {{ reservation_prefill.modele }}{% endif %} ({{ reservation_prefill.numero_inventaire }}){% endif %}"
                                    required>
-                            <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="">
+                            <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="{{ reservation_prefill.materiel_id if reservation_prefill else '' }}">
                             {% if mode_scanner != 'douchette' %}
                             <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
                                 <i class="bi bi-upc-scan"></i>
@@ -59,8 +83,8 @@
                                 <i class="bi bi-x-lg"></i>
                             </button>
                         </div>
-                        <div class="item-linked mt-1" style="display:none">
-                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label"></span></span>
+                        <div class="item-linked mt-1" {% if not reservation_prefill %}style="display:none"{% endif %}>
+                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label">{{ reservation_prefill.numero_inventaire if reservation_prefill else '' }}</span></span>
                             <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-unlink-item">délier</button>
                         </div>
                         <div class="item-suggestions autocomplete-results" style="display:none"></div>
@@ -204,7 +228,8 @@
                        id="notes"
                        name="notes"
                        class="form-control"
-                       placeholder="Informations complémentaires...">
+                      placeholder="Informations complémentaires..."
+                      value="{{ reservation_prefill.notes if reservation_prefill and reservation_prefill.notes else '' }}">
             </div>
 
             <!-- Date et heure automatiques -->

@@ -5,8 +5,9 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="page-title mb-0">
         <i class="bi bi-exclamation-triangle-fill text-danger"></i> Alertes
-        {% if alertes %}
-        <span class="badge bg-danger ms-2">{{ alertes|length }}</span>
+        {% set total_alertes = alertes|length + reservation_risks|length %}
+        {% if total_alertes %}
+        <span class="badge bg-danger ms-2">{{ total_alertes }}</span>
         {% endif %}
     </h1>
     <div class="text-muted">
@@ -18,6 +19,52 @@
         {% endif %}
     </div>
 </div>
+
+{% if reservation_risks %}
+<div class="alert alert-warning d-flex align-items-center mb-4">
+    <i class="bi bi-bookmark-x-fill me-2 fs-4"></i>
+    <div>
+        <strong>{{ reservation_risks|length }} prêt(s) menacent une réservation future.</strong>
+        Ces cas demandent une action avant la date de réservation.
+    </div>
+</div>
+
+{% for risk in reservation_risks %}
+<div class="alerte-card border-warning">
+    <div class="alerte-depassement bg-warning text-dark">
+        <i class="bi bi-bookmark-x"></i>
+        Réservation à risque le {{ risk.reservation_dt.strftime('%d/%m/%Y à %H:%M') }}
+    </div>
+    <div class="pret-header">
+        <div>
+            <div class="pret-name">{{ risk.pret_prenom }} {{ risk.pret_nom }}</div>
+            <span class="cat-badge" style="{{ risk.pret_categorie | style_categorie }}">{{ risk.pret_categorie | label_categorie }}</span>
+        </div>
+        <div class="text-end">
+            <div class="fs-6 fw-bold text-warning-emphasis">{{ risk.materiel_label }}</div>
+            <small class="text-muted">Réservation pour {{ risk.reservation_prenom }} {{ risk.reservation_nom }}</small>
+        </div>
+    </div>
+    <div class="pret-objects">
+        <i class="bi bi-box text-warning"></i> {{ risk.descriptif_objets }}
+    </div>
+    <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="pret-date">
+            <i class="bi bi-info-circle"></i> {{ risk.risk_message }}
+            <br><i class="bi bi-calendar-event text-warning"></i> Retour théorique : {{ risk.expected_return_dt.strftime('%d/%m/%Y à %H:%M') }}
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('prets.detail_pret', pret_id=risk.pret_id) }}" class="btn btn-outline-secondary">
+                <i class="bi bi-eye"></i> Détail
+            </a>
+            <a href="{{ url_for('prets.retour') }}?q={{ risk.pret_nom|urlencode }}" class="btn btn-success btn-lg">
+                <i class="bi bi-check-lg"></i> Enregistrer le retour
+            </a>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
 
 {% if alertes %}
 <div class="alert alert-danger d-flex align-items-center mb-4">
@@ -74,10 +121,12 @@
 {% endfor %}
 
 {% else %}
+{% if not reservation_risks %}
 <div class="empty-state">
     <i class="bi bi-check-circle text-success" style="font-size: 4rem;"></i>
     <p class="mt-3 fs-5">Aucune alerte en cours</p>
     <p class="text-muted">Tous les prêts sont dans les délais autorisés ({{ duree_defaut }} {{ unite_defaut if unite_defaut else 'jour(s)' }} par défaut).</p>
 </div>
+{% endif %}
 {% endif %}
 {% endblock %}
