@@ -125,7 +125,7 @@ def expire_old_reservations(conn, now_dt: datetime | None = None) -> None:
         UPDATE reservations
         SET statut = 'expiree', updated_at = CURRENT_TIMESTAMP
         WHERE statut IN ('demande', 'confirmee')
-          AND date_reservation < ?
+          AND COALESCE(date_fin_reservation, date_reservation) < ?
         """,
         (format_db_datetime(now_dt),),
     )
@@ -149,7 +149,7 @@ def find_reservation_conflicts_for_loan(
     for materiel_id in sorted(set(material_ids)):
         rows = conn.execute(
             """
-            SELECT id, date_reservation, statut
+            SELECT id, date_reservation, date_fin_reservation, statut
             FROM reservations
             WHERE materiel_id = ?
               AND statut IN ('demande', 'confirmee')
@@ -165,7 +165,8 @@ def find_reservation_conflicts_for_loan(
             if exclude_reservation_id and row['id'] == exclude_reservation_id:
                 continue
             reservation_dt = parse_db_datetime(row['date_reservation'])
-            if not reservation_dt or reservation_dt <= now_dt:
+            reservation_end_dt = parse_db_datetime(row['date_fin_reservation']) if row['date_fin_reservation'] else reservation_dt
+            if not reservation_dt or reservation_end_dt <= now_dt:
                 continue
 
             if reservation_dt <= lock_deadline:
@@ -204,20 +205,23 @@ def find_creation_conflicts_for_reservation(
     conn,
     materiel_id: int,
     reservation_dt: datetime,
+    reservation_end_dt: datetime | None = None,
     now_dt: datetime | None = None,
 ) -> list[str]:
     """Retourne des messages de conflit pour une création de réservation."""
     if now_dt is None:
         now_dt = datetime.now()
+    if reservation_end_dt is None:
+        reservation_end_dt = reservation_dt
 
     buffer_hours, _ = get_reservation_policy(conn)
     latest_return_allowed = reservation_dt - timedelta(hours=buffer_hours)
     conflicts = []
 
-    # 1) Conflit avec une autre réservation proche sur ce matériel.
+    # 1) Conflit avec une autre réservation qui chevauche cette plage.
     existing = conn.execute(
         """
-        SELECT id, date_reservation
+        SELECT id, date_reservation, date_fin_reservation
         FROM reservations
         WHERE materiel_id = ?
           AND statut IN ('demande', 'confirmee')
@@ -228,15 +232,18 @@ def find_creation_conflicts_for_reservation(
 
     for row in existing:
         existing_dt = parse_db_datetime(row['date_reservation'])
-        if not existing_dt or existing_dt <= now_dt:
+        existing_end_dt = parse_db_datetime(row['date_fin_reservation']) if row['date_fin_reservation'] else existing_dt
+        if not existing_dt or existing_end_dt <= now_dt:
             continue
-        if abs((existing_dt - reservation_dt).total_seconds()) < 3600:
+        # Chevauchement si: debut_new < fin_existant ET fin_new > debut_existant
+        if reservation_dt < existing_end_dt and reservation_end_dt > existing_dt:
             conflicts.append(
-                f"Une réservation existe déjà autour de ce créneau ({existing_dt.strftime('%d/%m/%Y %H:%M')})."
+                f"Une réservation existe déjà pour cette période "
+                f"({existing_dt.strftime('%d/%m/%Y')} - {existing_end_dt.strftime('%d/%m/%Y')})."
             )
             break
 
-    # 2) Conflit avec un prêt en cours qui risque d'empiéter.
+    # 2) Conflit avec un prêt en cours qui risque d'empiéter sur le début de la réservation.
     active_loans = conn.execute(
         """
         SELECT DISTINCT p.id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,

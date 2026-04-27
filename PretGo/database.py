@@ -236,6 +236,7 @@ def init_db():
         ('notes', "TEXT DEFAULT ''"),
         ('created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
         ('updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
+        ('date_fin_reservation', 'TEXT DEFAULT NULL'),
     ]:
         try:
             cursor.execute(f'ALTER TABLE reservations ADD COLUMN {col} {default}')

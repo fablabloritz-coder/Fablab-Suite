@@ -73,14 +73,30 @@
                 </div>
             </div>
 
-            <!-- Date / Statut / Notes -->
-            <div class="row g-3 mb-4">
-                <div class="col-12 col-md-4">
-                    <label class="form-label fw-bold">Date et heure de réservation</label>
-                    <input type="datetime-local" name="date_reservation" class="form-control form-control-lg" required>
+            <!-- Date / Plage de réservation -->
+            <div class="mb-4">
+                <label class="form-label fw-bold">Dates de réservation</label>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="res-multi-jours" name="res_multi_jours">
+                    <label class="form-check-label" for="res-multi-jours">
+                        <i class="bi bi-calendar-range"></i> Réservation sur plusieurs jours
+                    </label>
                 </div>
+                <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small text-muted">Début</label>
+                        <input type="datetime-local" name="date_reservation" class="form-control form-control-lg" required>
+                    </div>
+                    <div class="col-12 col-md-6" id="res-zone-fin" style="display:none">
+                        <label class="form-label small text-muted">Fin (incluse)</label>
+                        <input type="datetime-local" name="date_fin_reservation" class="form-control form-control-lg">
+                    </div>
+                </div>
+            </div>
 
-                <div class="col-12 col-md-4">
+            <!-- Statut / Notes -->
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-6">
                     <label class="form-label fw-bold d-flex align-items-center gap-1">
                         Statut initial
                         <span tabindex="0" data-bs-toggle="tooltip" data-bs-html="true"
@@ -101,7 +117,7 @@
                     </div>
                 </div>
 
-                <div class="col-12 col-md-4">
+                <div class="col-12 col-md-6">
                     <label class="form-label fw-bold">Notes</label>
                     <input type="text" name="notes" class="form-control form-control-lg" placeholder="Optionnel">
                 </div>
@@ -126,7 +142,7 @@
             <table class="table table-hover mb-0 align-middle">
                 <thead>
                     <tr>
-                        <th>Date réservation</th>
+                        <th>Période réservée</th>
                         <th>Emprunteur</th>
                         <th>Matériel</th>
                         <th>Statut</th>
@@ -136,9 +152,14 @@
                 </thead>
                 <tbody>
                     {% for r in reservations %}
-                    {% set is_past = r.date_reservation < now_dt.strftime('%Y-%m-%d %H:%M:%S') %}
+                    {% set is_past = (r.date_fin_reservation or r.date_reservation) < now_dt.strftime('%Y-%m-%d %H:%M:%S') %}
                     <tr class="{% if is_past %}table-light{% endif %}">
-                        <td>{{ r.date_reservation | format_date }}</td>
+                        <td>
+                            {{ r.date_reservation | format_date }}
+                            {% if r.date_fin_reservation and r.date_fin_reservation != r.date_reservation %}
+                                <br><small class="text-muted">→ {{ r.date_fin_reservation | format_date }}</small>
+                            {% endif %}
+                        </td>
                         <td>
                             <strong>{{ r.nom }} {{ r.prenom }}</strong>
                             <div>
@@ -387,6 +408,23 @@
         });
     }
     {% endif %}
+
+    // ── Toggle multi-jours ──
+    const cbMulti = document.getElementById('res-multi-jours');
+    const zoneFin = document.getElementById('res-zone-fin');
+    const inputFin = document.querySelector('input[name="date_fin_reservation"]');
+    
+    if (cbMulti) {
+        cbMulti.addEventListener('change', function () {
+            if (this.checked) {
+                zoneFin.style.display = 'block';
+                inputFin.focus();
+            } else {
+                zoneFin.style.display = 'none';
+                inputFin.value = '';
+            }
+        });
+    }
 })();
 </script>
 {% endblock %}

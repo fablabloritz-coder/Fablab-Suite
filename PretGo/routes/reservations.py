@@ -50,22 +50,31 @@ def reservations():
         personne_id = (request.form.get('personne_id') or '').strip()
         materiel_id = (request.form.get('materiel_id') or '').strip()
         date_reservation_raw = (request.form.get('date_reservation') or '').strip()
+        date_fin_raw = (request.form.get('date_fin_reservation') or '').strip()
         notes = (request.form.get('notes') or '').strip()
         statut = (request.form.get('statut') or 'confirmee').strip().lower()
         if statut not in ('demande', 'confirmee'):
             statut = 'confirmee'
 
         reservation_dt = parse_form_datetime_local(date_reservation_raw)
+        reservation_end_dt = parse_form_datetime_local(date_fin_raw) if date_fin_raw else None
 
         if not personne_id or not materiel_id or not reservation_dt:
             flash('Veuillez renseigner la personne, le matériel et la date de réservation.', 'danger')
         elif reservation_dt <= now_dt:
             flash('La date de réservation doit être dans le futur.', 'danger')
+        elif reservation_end_dt and reservation_end_dt < reservation_dt:
+            flash('La date de fin doit être égale ou ultérieure à la date de début.', 'danger')
         else:
+            # Si pas de date fin, utiliser la date début (réservation mono-jour)
+            if not reservation_end_dt:
+                reservation_end_dt = reservation_dt
+            
             conflicts = find_creation_conflicts_for_reservation(
                 conn,
                 materiel_id=int(materiel_id),
                 reservation_dt=reservation_dt,
+                reservation_end_dt=reservation_end_dt,
                 now_dt=now_dt,
             )
             if conflicts:
@@ -74,10 +83,10 @@ def reservations():
             else:
                 conn.execute(
                     """
-                    INSERT INTO reservations (personne_id, materiel_id, date_reservation, statut, notes)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO reservations (personne_id, materiel_id, date_reservation, date_fin_reservation, statut, notes)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (int(personne_id), int(materiel_id), format_db_datetime(reservation_dt), statut, notes),
+                    (int(personne_id), int(materiel_id), format_db_datetime(reservation_dt), format_db_datetime(reservation_end_dt), statut, notes),
                 )
                 conn.commit()
                 flash('Réservation enregistrée avec succès.', 'success')
