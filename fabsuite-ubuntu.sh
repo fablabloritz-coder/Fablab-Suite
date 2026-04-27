@@ -1296,11 +1296,33 @@ check_port_free() {
 
 start_app() {
   local app="$1"
+  local service
+  service="$(service_name_for_app "$app")"
+
   if ! check_port_free "$app"; then
     return 1
   fi
+
   echo "[$app] docker compose up -d --build"
-  with_repo "$app" up -d --build
+
+  if with_repo "$app" up -d --build; then
+    return 0
+  fi
+
+  # Common failure in mixed/legacy states: container name already reserved
+  # by an old container not tracked by the current compose project.
+  local cid
+  cid="$(docker ps -aq -f "name=^/${service}$" 2>/dev/null || true)"
+  if [[ -n "$cid" ]]; then
+    echo "[WARN] [$app] container name '/${service}' already exists (cid=${cid}). Removing and retrying once..."
+    if docker rm -f "$service" >/dev/null 2>&1; then
+      with_repo "$app" up -d --build
+      return $?
+    fi
+    echo "[WARN] [$app] failed to remove conflicting container '/${service}'."
+  fi
+
+  return 1
 }
 
 stop_app() {
@@ -1522,7 +1544,7 @@ run_install() {
 
   read -r -a app_list <<< "$APPS"
   for app in "${app_list[@]}"; do
-    start_app "$app" || { echo "WARNING: [$app] start failed (port conflict?)"; failed="$failed $app"; }
+    start_app "$app" || { echo "WARNING: [$app] start failed (port/name conflict or compose error)"; failed="$failed $app"; }
   done
 
   echo
