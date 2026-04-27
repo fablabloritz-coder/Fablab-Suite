@@ -10,6 +10,7 @@ from reservations_logic import (
     format_db_datetime,
     parse_form_datetime_local,
 )
+from database import get_setting
 from utils import get_app_db, admin_required
 
 bp = Blueprint('reservations', __name__)
@@ -114,6 +115,7 @@ def reservations():
         personnes=personnes,
         inventaire=inventaire,
         now_dt=now_dt,
+        mode_scanner=get_setting('mode_scanner', 'les_deux'),
     )
 
 

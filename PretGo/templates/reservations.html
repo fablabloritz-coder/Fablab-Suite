@@ -21,54 +21,94 @@
         <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Nouvelle réservation</h5>
     </div>
     <div class="card-body p-4">
-        <form method="POST" action="{{ url_for('reservations.reservations') }}" class="row g-3">
-            <div class="col-12 col-md-6">
-                <label class="form-label fw-bold">Emprunteur</label>
-                <select name="personne_id" class="form-select" required>
-                    <option value="">— Sélectionner —</option>
-                    {% for p in personnes %}
-                    <option value="{{ p.id }}">
-                        {{ p.nom }} {{ p.prenom }}
-                        {% if p.classe %} — {{ p.classe }}{% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
+        <form method="POST" action="{{ url_for('reservations.reservations') }}" id="formReservation">
+
+            <!-- Emprunteur -->
+            <div class="mb-4">
+                <label class="form-label fw-bold fs-5">
+                    <i class="bi bi-person-fill text-primary"></i> 1. Qui emprunte ?
+                </label>
+                <input type="hidden" id="personne_id" name="personne_id" value="">
+                <div class="position-relative">
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="text"
+                               id="personne-search"
+                               class="form-control form-control-lg"
+                               placeholder="Tapez un nom ou prénom pour rechercher..."
+                               autocomplete="off">
+                    </div>
+                    <div id="autocomplete-results" class="autocomplete-results" style="display:none"></div>
+                </div>
+                <div id="personne-selected" class="mt-2" style="display:none"></div>
             </div>
 
-            <div class="col-12 col-md-6">
-                <label class="form-label fw-bold">Matériel</label>
-                <select name="materiel_id" class="form-select" required>
-                    <option value="">— Sélectionner —</option>
-                    {% for m in inventaire %}
-                    <option value="{{ m.id }}">
-                        {{ m.numero_inventaire }} — {{ m.type_materiel }}
-                        {% if m.marque or m.modele %}({{ m.marque or '' }} {{ m.modele or '' }}){% endif %}
-                        {% if m.etat == 'prete' %}[Actuellement prêté]{% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
+            <!-- Matériel -->
+            <div class="mb-4">
+                <label class="form-label fw-bold fs-5">
+                    <i class="bi bi-box-fill text-primary"></i> 2. Quel matériel ?
+                </label>
+                <p class="text-muted small mb-2">
+                    Tapez pour chercher dans l'inventaire ou scannez un code-barres. Saisie libre acceptée.
+                </p>
+                <input type="hidden" id="res-materiel-id" name="materiel_id" value="">
+                <div class="position-relative" id="res-item-zone">
+                    <div class="input-group">
+                        <input type="text"
+                               id="res-materiel-input"
+                               class="form-control form-control-lg"
+                               placeholder="N° inventaire, marque, modèle..."
+                               autocomplete="off">
+                        {% if mode_scanner != 'douchette' %}
+                        <button type="button" id="res-btn-scan" class="btn btn-outline-info" title="Scanner un code-barres">
+                            <i class="bi bi-upc-scan"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                    <div id="res-item-linked" class="mt-1" style="display:none">
+                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span id="res-linked-label"></span></span>
+                        <button type="button" id="res-btn-unlink" class="btn btn-sm btn-link text-danger p-0 ms-1">délier</button>
+                    </div>
+                    <div id="res-item-suggestions" class="autocomplete-results" style="display:none"></div>
+                </div>
             </div>
 
-            <div class="col-12 col-md-4">
-                <label class="form-label fw-bold">Date et heure</label>
-                <input type="datetime-local" name="date_reservation" class="form-control" required>
+            <!-- Date / Statut / Notes -->
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-bold">Date et heure de réservation</label>
+                    <input type="datetime-local" name="date_reservation" class="form-control form-control-lg" required>
+                </div>
+
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-bold d-flex align-items-center gap-1">
+                        Statut initial
+                        <span tabindex="0" data-bs-toggle="tooltip" data-bs-html="true"
+                              title="<strong>Confirmée</strong> : la réservation est validée et sera prise en compte immédiatement dans les vérifications de conflits.<br><br><strong>Demande</strong> : en attente de validation admin. Le matériel n'est pas encore bloqué."
+                              class="text-muted" style="cursor:pointer">
+                            <i class="bi bi-question-circle-fill"></i>
+                        </span>
+                    </label>
+                    <select name="statut" class="form-select form-select-lg">
+                        <option value="confirmee" selected>✅ Confirmée</option>
+                        <option value="demande">🕐 Demande (en attente)</option>
+                    </select>
+                    <div class="mt-2">
+                        <div class="d-flex flex-column gap-1">
+                            <small class="text-primary fw-semibold"><i class="bi bi-check-circle-fill me-1"></i><strong>Confirmée</strong> — réservation validée, prise en compte immédiatement dans les contrôles de conflits. Le matériel est considéré réservé à cette date.</small>
+                            <small class="text-warning-emphasis fw-semibold"><i class="bi bi-hourglass-split me-1"></i><strong>Demande</strong> — en attente de validation par un admin. Le matériel n'est pas encore bloqué.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-bold">Notes</label>
+                    <input type="text" name="notes" class="form-control form-control-lg" placeholder="Optionnel">
+                </div>
             </div>
 
-            <div class="col-12 col-md-4">
-                <label class="form-label fw-bold">Statut initial</label>
-                <select name="statut" class="form-select">
-                    <option value="confirmee" selected>Confirmée</option>
-                    <option value="demande">Demande</option>
-                </select>
-            </div>
-
-            <div class="col-12 col-md-4">
-                <label class="form-label fw-bold">Notes</label>
-                <input type="text" name="notes" class="form-control" placeholder="Optionnel">
-            </div>
-
-            <div class="col-12">
-                <button class="btn btn-primary" type="submit">
+            <div>
+                <button class="btn btn-primary btn-lg" type="submit" id="res-btn-submit">
                     <i class="bi bi-check2-circle"></i> Enregistrer la réservation
                 </button>
             </div>
@@ -164,4 +204,189 @@
         {% endif %}
     </div>
 </div>
+
+{% if mode_scanner != 'douchette' %}
+<!-- Modal Scanner -->
+<div class="modal fade" id="modalScannerRes" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upc-scan"></i> Scanner un code-barres</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="scanner-reader-res" style="width:100%"></div>
+                <p class="text-muted text-center small mt-2">Placez le code-barres devant la caméra</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if mode_scanner != 'douchette' %}
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+{% endif %}
+<script>
+(function () {
+    'use strict';
+
+    // ── Tooltips Bootstrap ──
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        new bootstrap.Tooltip(el);
+    });
+
+    // ── Champ matériel : autocomplete + scan ──
+    const matInput    = document.getElementById('res-materiel-input');
+    const matIdField  = document.getElementById('res-materiel-id');
+    const matLinked   = document.getElementById('res-item-linked');
+    const matLabel    = document.getElementById('res-linked-label');
+    const matSugg     = document.getElementById('res-item-suggestions');
+    const btnUnlink   = document.getElementById('res-btn-unlink');
+    const btnScan     = document.getElementById('res-btn-scan');
+    const formRes     = document.getElementById('formReservation');
+    let debounce      = null;
+    let html5QrCode   = null;
+
+    function setLinked(item) {
+        let label = item.type_materiel;
+        if (item.marque) label += ' — ' + item.marque;
+        if (item.modele) label += ' ' + item.modele;
+        if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
+            label += ' (' + item.numero_inventaire + ')';
+        matInput.value          = label;
+        matIdField.value        = item.id;
+        matLabel.textContent    = item.numero_inventaire || label;
+        matLinked.style.display = 'block';
+        matSugg.style.display   = 'none';
+    }
+
+    function clearLinked() {
+        matIdField.value        = '';
+        matLinked.style.display = 'none';
+    }
+
+    function searchInventaire(query, fromScan) {
+        fetch('/api/inventaire?q=' + encodeURIComponent(query))
+            .then(r => r.json())
+            .then(items => {
+                if (!items.length) { matSugg.style.display = 'none'; return; }
+
+                // 1 seul résultat → liaison automatique
+                if (items.length === 1) {
+                    setLinked(items[0]);
+                    if (fromScan && typeof window.playBeep === 'function') window.playBeep(0.15, 'up');
+                    return;
+                }
+
+                // Plusieurs résultats → liste déroulante
+                matSugg.innerHTML = '';
+                items.forEach(item => {
+                    let label = item.type_materiel;
+                    if (item.marque) label += ' — ' + item.marque;
+                    if (item.modele) label += ' ' + item.modele;
+                    if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
+                        label += ' (' + item.numero_inventaire + ')';
+                    const div = document.createElement('div');
+                    div.className = 'autocomplete-item d-flex align-items-center gap-2';
+                    if (item.image) {
+                        const img = document.createElement('img');
+                        img.src = '/static/uploads/materiel/' + encodeURIComponent(item.image);
+                        img.style.cssText = 'width:35px;height:35px;object-fit:cover;border-radius:4px;';
+                        div.appendChild(img);
+                    } else {
+                        const ic = document.createElement('i');
+                        ic.className = 'bi bi-pc-display text-primary';
+                        ic.style.cssText = 'font-size:1.2rem;min-width:30px;text-align:center;';
+                        div.appendChild(ic);
+                    }
+                    const sp = document.createElement('span');
+                    sp.className = 'flex-grow-1';
+                    sp.textContent = label;
+                    div.appendChild(sp);
+                    const bd = document.createElement('span');
+                    bd.className = 'badge ' + (item.etat === 'disponible' ? 'bg-success' : 'bg-secondary');
+                    bd.textContent = item.etat === 'disponible' ? 'Disponible' : item.etat;
+                    div.appendChild(bd);
+                    div.addEventListener('click', () => { setLinked(item); });
+                    matSugg.appendChild(div);
+                });
+                matSugg.style.display = 'block';
+            })
+            .catch(() => {});
+    }
+
+    matInput.addEventListener('input', function () {
+        clearLinked();
+        clearTimeout(debounce);
+        const val = this.value.trim();
+        if (val.length < 2) { matSugg.style.display = 'none'; return; }
+        debounce = setTimeout(() => searchInventaire(val, false), 300);
+    });
+
+    matInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const val = this.value.trim();
+            if (val.length >= 2) searchInventaire(val, false);
+        }
+    });
+
+    if (btnUnlink) btnUnlink.addEventListener('click', clearLinked);
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('#res-item-zone')) matSugg.style.display = 'none';
+    });
+
+    // Validation : personne_id et matériel obligatoires
+    formRes.addEventListener('submit', function (e) {
+        const pid = document.getElementById('personne_id').value;
+        const txt = matInput.value.trim();
+        if (!pid) {
+            e.preventDefault();
+            alert('Veuillez sélectionner un emprunteur.');
+            return;
+        }
+        if (!txt) {
+            e.preventDefault();
+            alert('Veuillez renseigner le matériel.');
+        }
+    });
+
+    // ── Scan caméra ──
+    {% if mode_scanner != 'douchette' %}
+    if (btnScan) {
+        btnScan.addEventListener('click', function () {
+            const modal = new bootstrap.Modal(document.getElementById('modalScannerRes'));
+            modal.show();
+            setTimeout(() => {
+                if (html5QrCode) try { html5QrCode.stop(); } catch (e) {}
+                html5QrCode = new Html5Qrcode('scanner-reader-res');
+                html5QrCode.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 250, height: 100 } },
+                    (decoded) => {
+                        html5QrCode.stop().then(() => {
+                            modal.hide();
+                            matInput.value = decoded;
+                            clearLinked();
+                            searchInventaire(decoded, true);
+                        });
+                    },
+                    () => {}
+                ).catch(err => {
+                    document.getElementById('scanner-reader-res').innerHTML =
+                        '<div class="alert alert-warning text-center"><i class="bi bi-camera-video-off"></i> Caméra non disponible<br><small>' + err + '</small></div>';
+                });
+            }, 500);
+        });
+
+        document.getElementById('modalScannerRes').addEventListener('hidden.bs.modal', function () {
+            if (html5QrCode) try { html5QrCode.stop(); } catch (e) {}
+        });
+    }
+    {% endif %}
+})();
+</script>
 {% endblock %}
