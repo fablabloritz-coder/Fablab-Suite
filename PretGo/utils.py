@@ -1355,16 +1355,16 @@ def admin_required(f):
 def register_filters(app):
     """Enregistre tous les filtres Jinja personnalisés."""
 
-        @app.template_filter('fromjson')
-        def fromjson(value):
-            """Parse une chaîne JSON."""
-            if not value:
-                return []
-            try:
-                import json
-                return json.loads(value)
-            except Exception:
-                return []
+    @app.template_filter('fromjson')
+    def fromjson(value):
+        """Parse une chaîne JSON."""
+        if not value:
+            return []
+        try:
+            import json
+            return json.loads(value)
+        except Exception:
+            return []
 
     @app.template_filter('format_date')
     def format_date(value):

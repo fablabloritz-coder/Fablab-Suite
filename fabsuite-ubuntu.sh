@@ -1034,6 +1034,8 @@ run_repair_env() {
     fi
   fi
 
+  auto_fix_data_paths_from_running_containers
+
   local app
   local -a app_list
   read -r -a app_list <<< "$APPS"
@@ -1044,6 +1046,71 @@ run_repair_env() {
       echo "[repair-env] [INFO] ${app} absent localement (normal avant un premier install)."
     fi
   done
+}
+
+auto_fix_data_paths_from_running_containers() {
+  # Best effort: if docker is unavailable, keep repair-env usable before prepare-host.
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "[repair-env] [INFO] Docker absent: auto-fix des DATA_PATH ignore."
+    return 0
+  fi
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "[repair-env] [INFO] docker compose indisponible: auto-fix des DATA_PATH ignore."
+    return 0
+  fi
+
+  local -a specs
+  specs=(
+    "FabHome|fabhome|core-data|/app/data|FABHOME_DATA_PATH|./data"
+    "FabHome|fabhome|icons|/app/static/icons|FABHOME_ICONS_PATH|./icons"
+    "Fabtrack|fabtrack|core-data|/app/data|FABTRACK_DATA_PATH|./docker-data/data"
+    "PretGo|pretgo|core-data|/app/data|PRETGO_DATA_PATH|./docker-data/data"
+    "FabBoard|fabboard|core-data|/app/data|FABBOARD_DATA_PATH|./docker-data/data"
+    "FabInventory|fabinventory|core-data|/data|FABINVENTORY_DATA_PATH|./docker-data/data"
+  )
+
+  local changed=0
+  local spec app container label dest var_name default_rel raw_path expected current current_norm cur_state next_state
+
+  for spec in "${specs[@]}"; do
+    IFS='|' read -r app container label dest var_name default_rel <<< "$spec"
+
+    raw_path="${!var_name:-$default_rel}"
+    expected="$(resolve_bind_source_path "$app" "$raw_path")"
+    current="$(container_bind_source_for_dest "$container" "$dest")"
+
+    if [[ -z "$current" ]]; then
+      continue
+    fi
+
+    if command -v readlink >/dev/null 2>&1; then
+      current_norm="$(readlink -m "$current")"
+    else
+      current_norm="$current"
+    fi
+
+    if [[ "$current_norm" == "$expected" ]]; then
+      continue
+    fi
+
+    cur_state="$(path_state_label "$current_norm")"
+    next_state="$(path_state_label "$expected")"
+
+    # Auto-fix only when currently mounted path clearly contains data and
+    # configured next path does not. This prevents accidental data detachment.
+    if [[ "$cur_state" == "has-data" && "$next_state" != "has-data" ]]; then
+      set_env_var "$var_name" "$current_norm"
+      printf -v "$var_name" '%s' "$current_norm"
+      changed=$((changed + 1))
+      echo "[repair-env] AUTO-FIX ${var_name}: ${raw_path} -> ${current_norm} (preserve ${app} ${label})"
+    fi
+  done
+
+  if (( changed > 0 )); then
+    echo "[repair-env] AUTO-FIX: ${changed} variable(s) DATA_PATH ajustee(s) pour eviter un decrochage de donnees."
+  else
+    echo "[repair-env] AUTO-FIX: aucun changement necessaire."
+  fi
 }
 
 run_check_data_safety() {
@@ -1085,8 +1152,14 @@ run_check_data_safety() {
       else
         cur_state="$(path_state_label "$current_norm")"
         next_state="$(path_state_label "$expected")"
-        echo "[RISK] ${app} ${label}: path actuel='${current_norm}' -> prochain='${expected}' (actuel:${cur_state}, prochain:${next_state})"
-        risk_count=$((risk_count + 1))
+        if [[ "$cur_state" == "has-data" && "$next_state" != "has-data" ]]; then
+          echo "[RISK] ${app} ${label}: path actuel='${current_norm}' -> prochain='${expected}' (actuel:${cur_state}, prochain:${next_state})"
+          risk_count=$((risk_count + 1))
+        elif [[ "$cur_state" != "has-data" && "$next_state" == "has-data" ]]; then
+          echo "[INFO] ${app} ${label}: path actuel='${current_norm}' -> prochain='${expected}' (actuel:${cur_state}, prochain:${next_state}, bascule vers un chemin avec donnees)"
+        else
+          echo "[WARN] ${app} ${label}: path actuel='${current_norm}' -> prochain='${expected}' (actuel:${cur_state}, prochain:${next_state})"
+        fi
       fi
     else
       if path_has_data "$expected"; then
