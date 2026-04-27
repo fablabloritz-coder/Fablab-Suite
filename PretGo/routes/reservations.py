@@ -1,6 +1,7 @@
 """PretGo — Blueprint : reservations"""
 
 from datetime import datetime
+import json
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
@@ -48,7 +49,6 @@ def reservations():
 
     if request.method == 'POST':
         personne_id = (request.form.get('personne_id') or '').strip()
-        materiel_id = (request.form.get('materiel_id') or '').strip()
         date_reservation_raw = (request.form.get('date_reservation') or '').strip()
         date_fin_raw = (request.form.get('date_fin_reservation') or '').strip()
         notes = (request.form.get('notes') or '').strip()
@@ -56,11 +56,23 @@ def reservations():
         if statut not in ('demande', 'confirmee'):
             statut = 'confirmee'
 
+        # Multi-items
+        items_descriptions = request.form.getlist('res_items_description[]')
+        items_materiel_ids = request.form.getlist('res_items_materiel_id[]')
+        
+        # Nettoyer et filtrer
+        items = []
+        for desc, mid in zip(items_descriptions, items_materiel_ids):
+            desc = (desc or '').strip()
+            mid = (mid or '').strip()
+            if desc:  # Au moins description requise (mid peut être vide = texte libre)
+                items.append({'description': desc, 'materiel_id': int(mid) if mid else None})
+        
         reservation_dt = parse_form_datetime_local(date_reservation_raw)
         reservation_end_dt = parse_form_datetime_local(date_fin_raw) if date_fin_raw else None
 
-        if not personne_id or not materiel_id or not reservation_dt:
-            flash('Veuillez renseigner la personne, le matériel et la date de réservation.', 'danger')
+        if not personne_id or not items or not reservation_dt:
+            flash('Veuillez renseigner la personne, ajouter au moins un objet, et la date de réservation.', 'danger')
         elif reservation_dt <= now_dt:
             flash('La date de réservation doit être dans le futur.', 'danger')
         elif reservation_end_dt and reservation_end_dt < reservation_dt:
@@ -70,23 +82,30 @@ def reservations():
             if not reservation_end_dt:
                 reservation_end_dt = reservation_dt
             
-            conflicts = find_creation_conflicts_for_reservation(
-                conn,
-                materiel_id=int(materiel_id),
-                reservation_dt=reservation_dt,
-                reservation_end_dt=reservation_end_dt,
-                now_dt=now_dt,
-            )
+            # Utiliser le premier materiel_id pour les conflits (s'il existe)
+            main_materiel_id = next((i['materiel_id'] for i in items if i['materiel_id']), None)
+            
+            conflicts = []
+            if main_materiel_id:  # Vérifier conflits seulement si on a un ID d'inventaire
+                conflicts = find_creation_conflicts_for_reservation(
+                    conn,
+                    materiel_id=main_materiel_id,
+                    reservation_dt=reservation_dt,
+                    reservation_end_dt=reservation_end_dt,
+                    now_dt=now_dt,
+                )
+            
             if conflicts:
                 for msg in conflicts:
                     flash(msg, 'warning')
             else:
+                items_json = json.dumps(items, ensure_ascii=False)
                 conn.execute(
                     """
-                    INSERT INTO reservations (personne_id, materiel_id, date_reservation, date_fin_reservation, statut, notes)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO reservations (personne_id, materiel_id, date_reservation, date_fin_reservation, statut, notes, items_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (int(personne_id), int(materiel_id), format_db_datetime(reservation_dt), format_db_datetime(reservation_end_dt), statut, notes),
+                    (int(personne_id), main_materiel_id, format_db_datetime(reservation_dt), format_db_datetime(reservation_end_dt), statut, notes, items_json),
                 )
                 conn.commit()
                 flash('Réservation enregistrée avec succès.', 'success')
@@ -99,7 +118,7 @@ def reservations():
              , p.id AS linked_pret_id
         FROM reservations r
         JOIN personnes pe ON pe.id = r.personne_id
-        JOIN inventaire inv ON inv.id = r.materiel_id
+         LEFT JOIN inventaire inv ON inv.id = r.materiel_id
          LEFT JOIN prets p ON p.id = r.pret_id
         ORDER BY r.date_reservation ASC
         """

@@ -43,33 +43,44 @@
                 <div id="personne-selected" class="mt-2" style="display:none"></div>
             </div>
 
-            <!-- Matériel -->
+            <!-- Matériel(s) -->
             <div class="mb-4">
                 <label class="form-label fw-bold fs-5">
-                    <i class="bi bi-box-fill text-primary"></i> 2. Quel matériel ?
+                    <i class="bi bi-box-fill text-primary"></i> 2. Quel(s) matériel(s) ?
                 </label>
                 <p class="text-muted small mb-2">
-                    Tapez pour chercher dans l'inventaire ou scannez un code-barres. Saisie libre acceptée.
+                    Tapez pour chercher dans l'inventaire, scannez un code-barres, ou saisissez du texte libre. Ajoutez plusieurs lignes si nécessaire.
                 </p>
-                <input type="hidden" id="res-materiel-id" name="materiel_id" value="">
-                <div class="position-relative" id="res-item-zone">
-                    <div class="input-group">
-                        <input type="text"
-                               id="res-materiel-input"
-                               class="form-control form-control-lg"
-                               placeholder="N° inventaire, marque, modèle..."
-                               autocomplete="off">
-                        {% if mode_scanner != 'douchette' %}
-                        <button type="button" id="res-btn-scan" class="btn btn-outline-info" title="Scanner un code-barres">
-                            <i class="bi bi-upc-scan"></i>
-                        </button>
-                        {% endif %}
+
+                <div id="res-items-container">
+                    <!-- Item 1 (par défaut) -->
+                    <div class="res-item-row mb-2 position-relative" data-index="0">
+                        <div class="input-group">
+                            <input type="text"
+                                   class="form-control form-control-lg res-item-input"
+                                   placeholder="N° inventaire, marque, modèle ou texte libre..."
+                                   autocomplete="off"
+                                   required>
+                            <input type="hidden" class="res-item-materiel-id" value="">
+                            {% if mode_scanner != 'douchette' %}
+                            <button type="button" class="btn btn-outline-info res-btn-scan-item" title="Scanner un code-barres">
+                                <i class="bi bi-upc-scan"></i>
+                            </button>
+                            {% endif %}
+                            <button type="button" class="btn btn-outline-danger res-btn-remove-item" title="Retirer" style="display:none">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        <div class="res-item-linked mt-1" style="display:none">
+                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="res-linked-label"></span></span>
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 res-btn-unlink-item">délier</button>
+                        </div>
+                        <div class="res-item-suggestions autocomplete-results" style="display:none"></div>
                     </div>
-                    <div id="res-item-linked" class="mt-1" style="display:none">
-                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span id="res-linked-label"></span></span>
-                        <button type="button" id="res-btn-unlink" class="btn btn-sm btn-link text-danger p-0 ms-1">délier</button>
-                    </div>
-                    <div id="res-item-suggestions" class="autocomplete-results" style="display:none"></div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <small class="text-muted">Nouvelle ligne ajoutée automatiquement après chaque objet reconnu.</small>
                 </div>
             </div>
 
@@ -167,11 +178,30 @@
                             </div>
                         </td>
                         <td>
-                            <strong>{{ r.numero_inventaire }}</strong>
-                            <div class="small text-muted">
-                                {{ r.type_materiel }}
-                                {% if r.marque or r.modele %}— {{ r.marque or '' }} {{ r.modele or '' }}{% endif %}
-                            </div>
+                            {% if r.items_json %}
+                                {% set items = r.items_json|fromjson %}
+                                <ul class="list-unstyled mb-0">
+                                {% for item in items %}
+                                    <li>
+                                        {% if item.materiel_id %}
+                                            <strong>{{ item.description }}</strong>
+                                            <i class="bi bi-check-circle text-success" title="Lié à l'inventaire"></i>
+                                        {% else %}
+                                            <em class="text-muted">{{ item.description }}</em>
+                                            <i class="bi bi-pencil text-secondary" title="Texte libre (pas d'inventaire)"></i>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                            {% elif r.numero_inventaire %}
+                                <strong>{{ r.numero_inventaire }}</strong>
+                                <div class="small text-muted">
+                                    {{ r.type_materiel }}
+                                    {% if r.marque or r.modele %}— {{ r.marque or '' }} {{ r.modele or '' }}{% endif %}
+                                </div>
+                            {% else %}
+                                <em class="text-muted">—</em>
+                            {% endif %}
                         </td>
                         <td>
                             {% if r.statut == 'confirmee' %}
@@ -258,51 +288,115 @@
         new bootstrap.Tooltip(el);
     });
 
-    // ── Champ matériel : autocomplete + scan ──
-    const matInput    = document.getElementById('res-materiel-input');
-    const matIdField  = document.getElementById('res-materiel-id');
-    const matLinked   = document.getElementById('res-item-linked');
-    const matLabel    = document.getElementById('res-linked-label');
-    const matSugg     = document.getElementById('res-item-suggestions');
-    const btnUnlink   = document.getElementById('res-btn-unlink');
-    const btnScan     = document.getElementById('res-btn-scan');
+    // ── Gestion multi-items ──
+    const container   = document.getElementById('res-items-container');
     const formRes     = document.getElementById('formReservation');
-    let debounce      = null;
+    let itemIndex     = 1;
+    let debounceTimers = {};
+    let activeScanTarget = null;
     let html5QrCode   = null;
 
-    function setLinked(item) {
+    function createItemRow(index) {
+        const row = document.createElement('div');
+        row.className = 'res-item-row mb-2 position-relative';
+        row.dataset.index = index;
+        row.innerHTML = `
+            <div class="input-group">
+                <input type="text" name="res_items_description[]"
+                       class="form-control form-control-lg res-item-input"
+                       placeholder="N° inventaire, marque, modèle ou texte libre..."
+                       autocomplete="off" required>
+                <input type="hidden" name="res_items_materiel_id[]" class="res-item-materiel-id" value="">
+                {% if mode_scanner != 'douchette' %}
+                <button type="button" class="btn btn-outline-info res-btn-scan-item" title="Scanner un code-barres">
+                    <i class="bi bi-upc-scan"></i>
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-outline-danger res-btn-remove-item" title="Retirer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="res-item-linked mt-1" style="display:none">
+                <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="res-linked-label"></span></span>
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 res-btn-unlink-item">délier</button>
+            </div>
+            <div class="res-item-suggestions autocomplete-results" style="display:none"></div>
+        `;
+        return row;
+    }
+
+    function rowIsAvailableForInput(row) {
+        const inputVal = (row.querySelector('.res-item-input')?.value || '').trim();
+        const linkedId = (row.querySelector('.res-item-materiel-id')?.value || '').trim();
+        return !linkedId && inputVal.length === 0;
+    }
+
+    function ensureEmptyRow(focusInput = false) {
+        let row = Array.from(container.querySelectorAll('.res-item-row')).find(rowIsAvailableForInput);
+        if (!row) {
+            row = createItemRow(itemIndex);
+            itemIndex++;
+            container.appendChild(row);
+            updateRemoveButtons();
+        }
+        if (focusInput) {
+            const input = row.querySelector('.res-item-input');
+            if (input) input.focus();
+        }
+        return row;
+    }
+
+    function focusNextItemRow(currentRow) {
+        const rows = Array.from(container.querySelectorAll('.res-item-row'));
+        const currentIndex = rows.indexOf(currentRow);
+        let next = rows.slice(currentIndex + 1).find(rowIsAvailableForInput);
+        if (!next) next = ensureEmptyRow(false);
+        const input = next?.querySelector('.res-item-input');
+        if (input) input.focus();
+    }
+
+    function updateRemoveButtons() {
+        const rows = container.querySelectorAll('.res-item-row');
+        rows.forEach(row => {
+            row.querySelector('.res-btn-remove-item').style.display = rows.length > 1 ? '' : 'none';
+        });
+    }
+
+    function setLinked(row, item) {
         let label = item.type_materiel;
         if (item.marque) label += ' — ' + item.marque;
         if (item.modele) label += ' ' + item.modele;
         if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
             label += ' (' + item.numero_inventaire + ')';
-        matInput.value          = label;
-        matIdField.value        = item.id;
-        matLabel.textContent    = item.numero_inventaire || label;
-        matLinked.style.display = 'block';
-        matSugg.style.display   = 'none';
+        row.querySelector('.res-item-input').value = label;
+        row.querySelector('.res-item-materiel-id').value = item.id;
+        row.querySelector('.res-linked-label').textContent = item.numero_inventaire || label;
+        row.querySelector('.res-item-linked').style.display = 'block';
+        row.querySelector('.res-item-suggestions').style.display = 'none';
     }
 
-    function clearLinked() {
-        matIdField.value        = '';
-        matLinked.style.display = 'none';
+    function clearLinked(row) {
+        row.querySelector('.res-item-materiel-id').value = '';
+        row.querySelector('.res-item-linked').style.display = 'none';
     }
 
-    function searchInventaire(query, fromScan) {
+    function searchInventaire(row, query, fromScan) {
         fetch('/api/inventaire?q=' + encodeURIComponent(query))
             .then(r => r.json())
             .then(items => {
-                if (!items.length) { matSugg.style.display = 'none'; return; }
+                const box = row.querySelector('.res-item-suggestions');
+                if (!items.length) { box.style.display = 'none'; return; }
 
                 // 1 seul résultat → liaison automatique
                 if (items.length === 1) {
-                    setLinked(items[0]);
+                    setLinked(row, items[0]);
                     if (fromScan && typeof window.playBeep === 'function') window.playBeep(0.15, 'up');
+                    focusNextItemRow(row);
                     return;
                 }
 
                 // Plusieurs résultats → liste déroulante
-                matSugg.innerHTML = '';
+                box.innerHTML = '';
                 items.forEach(item => {
                     let label = item.type_materiel;
                     if (item.marque) label += ' — ' + item.marque;
@@ -330,83 +424,97 @@
                     bd.className = 'badge ' + (item.etat === 'disponible' ? 'bg-success' : 'bg-secondary');
                     bd.textContent = item.etat === 'disponible' ? 'Disponible' : item.etat;
                     div.appendChild(bd);
-                    div.addEventListener('click', () => { setLinked(item); });
-                    matSugg.appendChild(div);
+                    div.addEventListener('click', () => { setLinked(row, item); focusNextItemRow(row); });
+                    box.appendChild(div);
                 });
-                matSugg.style.display = 'block';
+                box.style.display = 'block';
             })
             .catch(() => {});
     }
 
-    matInput.addEventListener('input', function () {
-        clearLinked();
-        clearTimeout(debounce);
-        const val = this.value.trim();
-        if (val.length < 2) { matSugg.style.display = 'none'; return; }
-        debounce = setTimeout(() => searchInventaire(val, false), 300);
-    });
-
-    matInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const val = this.value.trim();
-            if (val.length >= 2) searchInventaire(val, false);
+    // ── Event delegation ──
+    container.addEventListener('click', function(e) {
+        if (e.target.closest('.res-btn-remove-item')) {
+            e.target.closest('.res-item-row').remove();
+            updateRemoveButtons();
+        }
+        if (e.target.closest('.res-btn-unlink-item')) {
+            const row = e.target.closest('.res-item-row');
+            clearLinked(row);
+        }
+        if (e.target.closest('.res-btn-scan-item')) {
+            activeScanTarget = e.target.closest('.res-item-row');
+            openScanner();
         }
     });
 
-    if (btnUnlink) btnUnlink.addEventListener('click', clearLinked);
-
-    document.addEventListener('click', function (e) {
-        if (!e.target.closest('#res-item-zone')) matSugg.style.display = 'none';
+    container.addEventListener('input', function(e) {
+        if (!e.target.classList.contains('res-item-input')) return;
+        const row = e.target.closest('.res-item-row');
+        const idx = row.dataset.index;
+        clearLinked(row);
+        clearTimeout(debounceTimers[idx]);
+        const val = e.target.value.trim();
+        if (val.length < 2) { row.querySelector('.res-item-suggestions').style.display = 'none'; return; }
+        debounceTimers[idx] = setTimeout(() => searchInventaire(row, val, false), 300);
     });
 
-    // Validation : personne_id et matériel obligatoires
-    formRes.addEventListener('submit', function (e) {
+    container.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && e.target.classList.contains('res-item-input')) {
+            e.preventDefault();
+            const row = e.target.closest('.res-item-row');
+            const val = e.target.value.trim();
+            if (val.length >= 2) searchInventaire(row, val, false);
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#res-items-container')) {
+            container.querySelectorAll('.res-item-suggestions').forEach(s => s.style.display = 'none');
+        }
+    });
+
+    // ── Validation ──
+    formRes.addEventListener('submit', function(e) {
         const pid = document.getElementById('personne_id').value;
-        const txt = matInput.value.trim();
-        if (!pid) {
-            e.preventDefault();
-            alert('Veuillez sélectionner un emprunteur.');
-            return;
-        }
-        if (!txt) {
-            e.preventDefault();
-            alert('Veuillez renseigner le matériel.');
-        }
+        let hasItem = false;
+        container.querySelectorAll('.res-item-input').forEach(i => { if (i.value.trim()) hasItem = true; });
+        if (!pid) { e.preventDefault(); alert('Veuillez sélectionner un emprunteur.'); return; }
+        if (!hasItem) { e.preventDefault(); alert('Veuillez ajouter au moins un objet.'); }
     });
 
-    // ── Scan caméra ──
+    // ── Scanner caméra ──
     {% if mode_scanner != 'douchette' %}
-    if (btnScan) {
-        btnScan.addEventListener('click', function () {
-            const modal = new bootstrap.Modal(document.getElementById('modalScannerRes'));
-            modal.show();
-            setTimeout(() => {
-                if (html5QrCode) try { html5QrCode.stop(); } catch (e) {}
-                html5QrCode = new Html5Qrcode('scanner-reader-res');
-                html5QrCode.start(
-                    { facingMode: 'environment' },
-                    { fps: 10, qrbox: { width: 250, height: 100 } },
-                    (decoded) => {
-                        html5QrCode.stop().then(() => {
-                            modal.hide();
-                            matInput.value = decoded;
-                            clearLinked();
-                            searchInventaire(decoded, true);
-                        });
-                    },
-                    () => {}
-                ).catch(err => {
-                    document.getElementById('scanner-reader-res').innerHTML =
-                        '<div class="alert alert-warning text-center"><i class="bi bi-camera-video-off"></i> Caméra non disponible<br><small>' + err + '</small></div>';
-                });
-            }, 500);
-        });
-
-        document.getElementById('modalScannerRes').addEventListener('hidden.bs.modal', function () {
-            if (html5QrCode) try { html5QrCode.stop(); } catch (e) {}
-        });
+    function openScanner() {
+        const modal = new bootstrap.Modal(document.getElementById('modalScannerRes'));
+        modal.show();
+        setTimeout(() => {
+            if (html5QrCode) try { html5QrCode.stop(); } catch(e) {}
+            html5QrCode = new Html5Qrcode('scanner-reader-res');
+            html5QrCode.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 250, height: 100 } },
+                (decoded) => {
+                    html5QrCode.stop().then(() => {
+                        modal.hide();
+                        if (activeScanTarget) {
+                            const inp = activeScanTarget.querySelector('.res-item-input');
+                            activeScanTarget.dataset.scanSource = 'webcam';
+                            inp.value = decoded;
+                            inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    });
+                }, () => {}
+            ).catch(err => {
+                document.getElementById('scanner-reader-res').innerHTML =
+                    '<div class="alert alert-warning text-center"><i class="bi bi-camera-video-off"></i> Caméra non disponible<br><small>' + err + '</small></div>';
+            });
+        }, 500);
     }
+
+    document.getElementById('modalScannerRes').addEventListener('hidden.bs.modal', function() {
+        if (html5QrCode) try { html5QrCode.stop(); } catch(e) {}
+    });
     {% endif %}
 
     // ── Toggle multi-jours ──
@@ -425,6 +533,10 @@
             }
         });
     }
+
+    // Init
+    ensureEmptyRow(false);
+    updateRemoveButtons();
 })();
 </script>
 {% endblock %}
