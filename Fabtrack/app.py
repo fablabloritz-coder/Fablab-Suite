@@ -4,8 +4,9 @@ Suivi de consommation pour Fablab (Loritz)
 """
 
 from flask import Flask, render_template, request, jsonify
-from models import get_db, init_db, DATA_DIR
+from models import get_db, init_db, DATA_DIR, FABTRACK_SCHEMA_VERSION
 from fabsuite_core.security import load_secret_key
+from fabsuite_core.schema import assert_min_schema_version, get_schema_version
 from routes import register_blueprints
 from routes.api_admin import check_auto_backup
 import os, logging
@@ -35,6 +36,12 @@ def ensure_db():
     # et garantit que les nouvelles tables (ex: stock_*) sont créées
     # même sur une DB existante.
     init_db()
+    db = get_db()
+    try:
+        assert_min_schema_version(db, FABTRACK_SCHEMA_VERSION, app_name='fabtrack')
+        logging.info("Schéma SQLite FabTrack OK (v%s)", get_schema_version(db))
+    finally:
+        db.close()
     check_auto_backup()
     _db_initialized = True
     app.config.pop('_DB_NEEDS_REINIT', None)

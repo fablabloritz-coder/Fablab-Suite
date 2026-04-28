@@ -6,6 +6,7 @@ import logging
 from flask import Flask, request, jsonify, redirect, url_for
 
 from fabsuite_core.security import load_secret_key
+from fabsuite_core.schema import assert_min_schema_version, get_schema_version
 from routes import register_blueprints
 import models
 
@@ -33,6 +34,12 @@ logger = logging.getLogger(__name__)
 
 # Initialiser la base de données au démarrage
 models.init_db()
+_db = models.get_db()
+try:
+    assert_min_schema_version(_db, models.FABHOME_SCHEMA_VERSION, app_name='fabhome')
+    logger.info("Schéma SQLite FabHome OK (v%s)", get_schema_version(_db))
+finally:
+    _db.close()
 
 # ============================================================
 #  ENREGISTREMENT DES BLUEPRINTS

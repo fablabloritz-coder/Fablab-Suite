@@ -9,11 +9,13 @@ import hashlib
 import secrets
 import string
 from werkzeug.security import generate_password_hash, check_password_hash
+from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 # Chemin vers le fichier de base de données
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DATABASE_PATH = os.path.join(DATA_DIR, 'gestion_prets.db')
 RECOVERY_CODE_PATH = os.path.join(DATA_DIR, 'code_recuperation.txt')
+PRETGO_SCHEMA_VERSION = 2026042801
 
 
 def get_db():
@@ -429,6 +431,14 @@ def init_db():
             )
             if os.path.exists(RECOVERY_CODE_PATH):
                 os.remove(RECOVERY_CODE_PATH)
+
+    stamp_schema_version(
+        conn,
+        app_name='pretgo',
+        version=PRETGO_SCHEMA_VERSION,
+        label='init_db idempotent migrations',
+    )
+    assert_min_schema_version(conn, PRETGO_SCHEMA_VERSION, app_name='pretgo')
 
     conn.commit()
     conn.close()

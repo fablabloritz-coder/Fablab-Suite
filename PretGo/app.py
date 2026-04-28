@@ -8,9 +8,10 @@ Puis ouvrir http://localhost:5000
 """
 
 from flask import Flask, request, session, g, abort, render_template
-from database import init_db, DATA_DIR
+from database import init_db, get_db, DATA_DIR, PRETGO_SCHEMA_VERSION
 from utils import get_app_db, register_filters, register_context_processors, check_and_run_backup
 from fabsuite_core.security import load_secret_key
+from fabsuite_core.schema import assert_min_schema_version, get_schema_version
 from routes import register_blueprints
 from scheduler import email_scheduler
 import os
@@ -29,6 +30,12 @@ app.secret_key = load_secret_key(DATA_DIR, env_var='FLASK_SECRET_KEY')
 with app.app_context():
     try:
         init_db()
+        _db = get_db()
+        try:
+            assert_min_schema_version(_db, PRETGO_SCHEMA_VERSION, app_name='pretgo')
+            print(f"[PretGo] Schéma SQLite OK (v{get_schema_version(_db)})")
+        finally:
+            _db.close()
     except Exception as e:
         import traceback as _tb
         print("\n[ERREUR INIT_DB]", e)

@@ -5,8 +5,9 @@ Architecture blueprints + fabsuite_core
 """
 
 from flask import Flask, render_template, request, jsonify
-from models import get_db, init_db, migrate_db
+from models import get_db, init_db, migrate_db, FABBOARD_SCHEMA_VERSION
 from fabsuite_core.security import load_secret_key
+from fabsuite_core.schema import assert_min_schema_version, get_schema_version
 from sync_worker import start_sync_worker, stop_sync_worker
 import os
 import logging
@@ -96,6 +97,12 @@ def ensure_db():
     if not _db_initialized:
         init_db()
         migrate_db()
+        db = get_db()
+        try:
+            assert_min_schema_version(db, FABBOARD_SCHEMA_VERSION, app_name='fabboard')
+            logger.info('Schéma SQLite FabBoard OK (v%s)', get_schema_version(db))
+        finally:
+            db.close()
         _auto_bootstrap_sources()
         _db_initialized = True
 

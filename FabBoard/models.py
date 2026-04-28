@@ -6,8 +6,10 @@ Schéma : activités, sources externes, événements calendrier, paramètres
 import sqlite3
 import os
 from datetime import datetime, timedelta
+from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'fabboard.db')
+FABBOARD_SCHEMA_VERSION = 2026042801
 
 
 def _is_running_in_docker():
@@ -309,6 +311,14 @@ def init_db():
                 VALUES (?, ?, ?, '{}')
             ''', (slide_id, widget_id, idx))
 
+    stamp_schema_version(
+        conn,
+        app_name='fabboard',
+        version=FABBOARD_SCHEMA_VERSION,
+        label='init_db idempotent migrations',
+    )
+    assert_min_schema_version(conn, FABBOARD_SCHEMA_VERSION, app_name='fabboard')
+
     conn.commit()
     conn.close()
     print(f'[FabBoard] Base de données initialisée : {DB_PATH}')
@@ -409,6 +419,14 @@ def migrate_db():
         c.execute('UPDATE slide_widgets SET widget_id = ? WHERE widget_id = ?', (new_id, old_id))
         c.execute('DELETE FROM widgets_disponibles WHERE id = ?', (old_id,))
         print(f'[FabBoard] Migration : widget legacy "{old_code}" remappé vers "{new_code}"')
+
+    stamp_schema_version(
+        conn,
+        app_name='fabboard',
+        version=FABBOARD_SCHEMA_VERSION,
+        label='migrate_db idempotent migrations',
+    )
+    assert_min_schema_version(conn, FABBOARD_SCHEMA_VERSION, app_name='fabboard')
 
     conn.commit()
     conn.close()

@@ -11,9 +11,11 @@ import os
 import random
 from datetime import datetime, timedelta
 from urllib.parse import quote, unquote
+from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DATA_DIR, 'fabtrack.db')
+FABTRACK_SCHEMA_VERSION = 2026042801
 
 SETUP_STATE_KEY = 'setup_state'
 SETUP_PACK_KEY = 'starter_pack'
@@ -567,6 +569,15 @@ def init_db():
     _migrate_db(c)
     _insert_mission_categories_seed(c)
     _insert_stock_reference_data(c)
+
+    stamp_schema_version(
+        conn,
+        app_name='fabtrack',
+        version=FABTRACK_SCHEMA_VERSION,
+        label='init_db idempotent migrations',
+    )
+    assert_min_schema_version(conn, FABTRACK_SCHEMA_VERSION, app_name='fabtrack')
+
     conn.commit()
     conn.close()
 

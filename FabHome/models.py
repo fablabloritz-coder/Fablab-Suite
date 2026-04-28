@@ -4,10 +4,12 @@ import sqlite3
 import os
 import json
 import logging
+from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get('FABHOME_DB', 'data/fabhome.db')
+FABHOME_SCHEMA_VERSION = 2026042801
 
 
 def get_db():
@@ -282,6 +284,14 @@ def init_db():
         conn.execute(
             'INSERT OR IGNORE INTO widgets (profile_id, type, config, enabled, sort_order) VALUES (1,?,?,?,?)',
             (wtype, cfg, en, order))
+
+    stamp_schema_version(
+        conn,
+        app_name='fabhome',
+        version=FABHOME_SCHEMA_VERSION,
+        label='init_db idempotent migrations',
+    )
+    assert_min_schema_version(conn, FABHOME_SCHEMA_VERSION, app_name='fabhome')
 
     conn.commit()
     conn.close()
