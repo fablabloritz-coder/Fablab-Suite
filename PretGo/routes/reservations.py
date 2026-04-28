@@ -24,13 +24,14 @@ def convertir_reservation(reservation_id):
     conn = get_app_db()
     row = conn.execute(
         '''
-        SELECT id, statut, date_reservation, date_fin_reservation,
-               pe.nom, pe.prenom,
+        SELECT r.id, r.statut, r.date_reservation, r.date_fin_reservation,
+               COALESCE(pe.nom, '[Inconnu]') AS nom,
+               COALESCE(pe.prenom, '') AS prenom,
                inv.numero_inventaire, inv.type_materiel, inv.marque, inv.modele
-        FROM reservations
-        JOIN personnes pe ON pe.id = reservations.personne_id
-        LEFT JOIN inventaire inv ON inv.id = reservations.materiel_id
-        WHERE id = ?
+        FROM reservations r
+        LEFT JOIN personnes pe ON pe.id = r.personne_id
+        LEFT JOIN inventaire inv ON inv.id = r.materiel_id
+        WHERE r.id = ?
         ''',
         (reservation_id,),
     ).fetchone()
