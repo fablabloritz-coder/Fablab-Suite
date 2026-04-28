@@ -59,8 +59,7 @@
                             <input type="text"
                                    class="form-control form-control-lg res-item-input"
                                    placeholder="N° inventaire, marque, modèle ou texte libre..."
-                                   autocomplete="off"
-                                   required>
+                                autocomplete="off">
                             <input type="hidden" class="res-item-materiel-id" value="">
                             {% if mode_scanner != 'douchette' %}
                             <button type="button" class="btn btn-outline-info res-btn-scan-item" title="Scanner un code-barres">
@@ -96,11 +95,11 @@
                 <div class="row g-2">
                     <div class="col-12 col-md-6">
                         <label class="form-label small text-muted">Début</label>
-                        <input type="datetime-local" name="date_reservation" class="form-control form-control-lg" required>
+                        <input type="date" name="date_reservation" class="form-control form-control-lg" min="{{ now_dt.strftime('%Y-%m-%d') }}" required>
                     </div>
                     <div class="col-12 col-md-6" id="res-zone-fin" style="display:none">
                         <label class="form-label small text-muted">Fin (incluse)</label>
-                        <input type="datetime-local" name="date_fin_reservation" class="form-control form-control-lg">
+                        <input type="date" name="date_fin_reservation" class="form-control form-control-lg" min="{{ now_dt.strftime('%Y-%m-%d') }}">
                     </div>
                 </div>
             </div>
@@ -305,7 +304,7 @@
                 <input type="text" name="res_items_description[]"
                        class="form-control form-control-lg res-item-input"
                        placeholder="N° inventaire, marque, modèle ou texte libre..."
-                       autocomplete="off" required>
+                      autocomplete="off">
                 <input type="hidden" name="res_items_materiel_id[]" class="res-item-materiel-id" value="">
                 {% if mode_scanner != 'douchette' %}
                 <button type="button" class="btn btn-outline-info res-btn-scan-item" title="Scanner un code-barres">
