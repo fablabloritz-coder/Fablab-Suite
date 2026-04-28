@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Conversion réservation - PretGo{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title mb-0">
+        <i class="bi bi-arrow-left-right text-primary"></i> Conversion en prêt
+    </h1>
+    <a class="btn btn-outline-secondary" href="{{ url_for('reservations.reservations') }}#planning-reservations">
+        <i class="bi bi-calendar3"></i> Retour au planning
+    </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+        <div class="mb-3">
+            <h5 class="mb-1">Réservation #{{ reservation.id }}</h5>
+            <div class="text-muted">
+                {{ reservation.nom }} {{ reservation.prenom }}
+                {% if start_dt %}
+                • Départ prévu : {{ start_dt | format_date }}
+                {% endif %}
+            </div>
+            <div class="mt-2"><strong>{{ material_label }}</strong></div>
+        </div>
+
+        {% if can_convert_now %}
+        <div class="alert alert-success d-flex align-items-start gap-2">
+            <i class="bi bi-check-circle-fill mt-1"></i>
+            <div>
+                La date de départ est atteinte : vous pouvez transformer cette réservation en prêt.
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning d-flex align-items-start gap-2">
+            <i class="bi bi-clock-history mt-1"></i>
+            <div>
+                La date de départ n'est pas encore atteinte.
+                Vous pouvez attendre l'échéance, ou forcer le départ maintenant (la date de début sera ajustée).
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex flex-wrap gap-2">
+            {% if can_convert_now %}
+            <a class="btn btn-primary"
+               href="{{ url_for('reservations.convertir_reservation', reservation_id=reservation.id, action='convert') }}">
+                <i class="bi bi-play-circle"></i> Transformer en prêt
+            </a>
+            {% else %}
+            <a class="btn btn-outline-primary disabled" aria-disabled="true" href="#">
+                <i class="bi bi-play-circle"></i> Transformer en prêt
+            </a>
+            <a class="btn btn-warning"
+               href="{{ url_for('reservations.convertir_reservation', reservation_id=reservation.id, action='force') }}"
+               onclick="return confirm('Forcer le départ maintenant ? La date de début sera modifiée.')">
+                <i class="bi bi-lightning-charge"></i> Forcer le départ maintenant
+            </a>
+            {% endif %}
+            <a class="btn btn-outline-secondary" href="{{ url_for('reservations.reservations') }}#planning-reservations">
+                Annuler
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

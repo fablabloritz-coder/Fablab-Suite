@@ -6,9 +6,11 @@ import json
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from reservations_logic import (
+    compute_expected_return_datetime,
     expire_old_reservations,
     find_creation_conflicts_for_reservation,
     format_db_datetime,
+    parse_db_datetime,
     parse_form_datetime_local,
 )
 from database import get_setting
@@ -22,8 +24,12 @@ def convertir_reservation(reservation_id):
     conn = get_app_db()
     row = conn.execute(
         '''
-        SELECT id, statut
+        SELECT id, statut, date_reservation, date_fin_reservation,
+               pe.nom, pe.prenom,
+               inv.numero_inventaire, inv.type_materiel, inv.marque, inv.modele
         FROM reservations
+        JOIN personnes pe ON pe.id = reservations.personne_id
+        LEFT JOIN inventaire inv ON inv.id = reservations.materiel_id
         WHERE id = ?
         ''',
         (reservation_id,),
@@ -37,7 +43,54 @@ def convertir_reservation(reservation_id):
         flash('Cette réservation ne peut plus être convertie en prêt.', 'warning')
         return redirect(url_for('reservations.reservations'))
 
-    return redirect(url_for('prets.nouveau_pret', reservation_id=reservation_id))
+    start_dt = parse_db_datetime(row['date_reservation'])
+    end_dt = parse_db_datetime(row['date_fin_reservation']) if row['date_fin_reservation'] else None
+    now_dt = datetime.now()
+    can_convert_now = bool(start_dt and now_dt >= start_dt)
+
+    action = (request.args.get('action') or '').strip().lower()
+    if action:
+        if action == 'convert':
+            if not can_convert_now:
+                flash("La date de départ n'est pas encore atteinte. Vous pouvez forcer le départ si nécessaire.", 'warning')
+                return redirect(url_for('reservations.convertir_reservation', reservation_id=reservation_id))
+            return redirect(url_for('prets.nouveau_pret', reservation_id=reservation_id))
+
+        if action == 'force':
+            now_str = format_db_datetime(now_dt)
+            new_end_dt = end_dt
+            if not new_end_dt or new_end_dt < now_dt:
+                new_end_dt = now_dt
+            conn.execute(
+                '''
+                UPDATE reservations
+                SET date_reservation = ?,
+                    date_fin_reservation = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                ''',
+                (now_str, format_db_datetime(new_end_dt), reservation_id),
+            )
+            conn.commit()
+            flash('Départ de réservation forcé : la date de début a été ajustée à maintenant.', 'info')
+            return redirect(url_for('prets.nouveau_pret', reservation_id=reservation_id))
+
+        flash('Action de conversion invalide.', 'warning')
+        return redirect(url_for('reservations.convertir_reservation', reservation_id=reservation_id))
+
+    material_label = row['numero_inventaire'] or 'Objet non lié à l\'inventaire'
+    if row['marque'] or row['modele']:
+        material_label = f"{material_label} — {' '.join(p for p in [row['marque'], row['modele']] if p)}"
+
+    return render_template(
+        'reservation_conversion.html',
+        reservation=row,
+        start_dt=start_dt,
+        now_dt=now_dt,
+        can_convert_now=can_convert_now,
+        material_label=material_label,
+    )
+
 
 
 @bp.route('/reservations', methods=['GET', 'POST'])
@@ -137,11 +190,68 @@ def reservations():
         """
     ).fetchall()
 
+    prets_actifs = conn.execute(
+        """
+        SELECT p.id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
+               p.date_retour_prevue, p.descriptif_objets,
+               pe.nom, pe.prenom
+        FROM prets p
+        JOIN personnes pe ON pe.id = p.personne_id
+        WHERE p.retour_confirme = 0
+        ORDER BY p.date_emprunt ASC
+        """
+    ).fetchall()
+
+    planning_items = []
+    for r in reservations_rows:
+        start_dt = parse_db_datetime(r['date_reservation'])
+        end_dt = parse_db_datetime(r['date_fin_reservation']) if r['date_fin_reservation'] else start_dt
+        if not start_dt:
+            continue
+        if not end_dt or end_dt < start_dt:
+            end_dt = start_dt
+
+        planning_items.append({
+            'kind': 'reservation',
+            'id': int(r['id']),
+            'status': r['statut'],
+            'title': f"{r['nom']} {r['prenom']} — {r['numero_inventaire'] or 'Objet libre'}",
+            'start': format_db_datetime(start_dt),
+            'end': format_db_datetime(end_dt),
+            'url': url_for('reservations.convertir_reservation', reservation_id=r['id'])
+            if r['statut'] in ('confirmee', 'demande') else None,
+        })
+
+    for p in prets_actifs:
+        start_dt = parse_db_datetime(p['date_emprunt'])
+        if not start_dt:
+            continue
+        end_dt = compute_expected_return_datetime(
+            conn,
+            start_dt,
+            p['duree_pret_heures'],
+            p['duree_pret_jours'],
+            p['date_retour_prevue'],
+        )
+        if not end_dt or end_dt < start_dt:
+            end_dt = start_dt
+
+        planning_items.append({
+            'kind': 'pret',
+            'id': int(p['id']),
+            'status': 'actif',
+            'title': f"{p['nom']} {p['prenom']} — {p['descriptif_objets']}",
+            'start': format_db_datetime(start_dt),
+            'end': format_db_datetime(end_dt),
+            'url': url_for('prets.detail_pret', pret_id=p['id']),
+        })
+
     return render_template(
         'reservations.html',
         reservations=reservations_rows,
         personnes=personnes,
         inventaire=inventaire,
+        planning_items=planning_items,
         now_dt=now_dt,
         mode_scanner=get_setting('mode_scanner', 'les_deux'),
     )
