@@ -371,9 +371,22 @@
         return false;
     }
 
+    function showDuplicateWarning(row) {
+        let warn = row.querySelector('.res-duplicate-warn');
+        if (!warn) {
+            warn = document.createElement('div');
+            warn.className = 'res-duplicate-warn text-danger small mt-1';
+            warn.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>Cet objet est déjà dans la liste.';
+            row.appendChild(warn);
+        }
+        warn.style.display = '';
+        clearTimeout(warn._hideTimer);
+        warn._hideTimer = setTimeout(() => { warn.style.display = 'none'; }, 3000);
+    }
+
     function setLinked(row, item) {
         if (isAlreadyLinked(item.id, row)) {
-            alert('Cet objet est déjà dans la liste.');
+            showDuplicateWarning(row);
             return false;
         }
         let label = item.type_materiel;
@@ -500,7 +513,7 @@
         for (const r of container.querySelectorAll('.res-item-row')) {
             const mid = (r.querySelector('.res-item-materiel-id')?.value || '').trim();
             if (mid) {
-                if (ids.includes(mid)) { e.preventDefault(); alert('Le même objet est présent plusieurs fois dans la liste.'); return; }
+                if (ids.includes(mid)) { e.preventDefault(); showDuplicateWarning(r); return; }
                 ids.push(mid);
             }
         }

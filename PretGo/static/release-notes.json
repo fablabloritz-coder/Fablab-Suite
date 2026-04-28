@@ -1,11 +1,13 @@
 {
-  "version": "1.3.0",
-  "date": "2026-04-10",
-  "title": "Améliorations UX et administration",
+  "version": "1.4.0",
+  "date": "2026-04-28",
+  "title": "Multi-objets, réservations et garde-fous formulaires",
   "notes": [
-    "Nouvelle popup de nouveautés après mise à jour (une fois par version)",
-    "Améliorations de lisibilité sur les écrans d'administration",
-    "Corrections mineures de stabilité et de confort d'usage"
+    "<strong>Prêts multi-objets</strong> — ajoutez plusieurs équipements dans un même prêt ou une même réservation, avec saisie libre ou liaison à l'inventaire.",
+    "<strong>Réservations multi-jours</strong> — définissez une date de début <em>et</em> de fin pour les réservations longues durée.",
+    "<strong>Autocomplete &amp; scan</strong> sur les formulaires de prêt et de réservation — recherchez un objet par n° inventaire, marque ou modèle, ou scannez son code-barres.",
+    "<strong>Garde-fou doublons</strong> — impossible d'ajouter deux fois le même objet d'inventaire dans un formulaire ; un avertissement s'affiche directement sous la ligne sans interrompre la saisie.",
+    "<strong>Rappels e-mail</strong> — envoi automatique de rappels pour les emprunts qui arrivent à échéance."
   ],
   "_source": "manuel"
 }

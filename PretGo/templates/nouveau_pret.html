@@ -399,6 +399,19 @@ function toggleDuree() {
         return false;
     }
 
+    function showDuplicateWarning(row) {
+        let warn = row.querySelector('.item-duplicate-warn');
+        if (!warn) {
+            warn = document.createElement('div');
+            warn.className = 'item-duplicate-warn text-danger small mt-1';
+            warn.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>Cet objet est déjà dans la liste.';
+            row.appendChild(warn);
+        }
+        warn.style.display = '';
+        clearTimeout(warn._hideTimer);
+        warn._hideTimer = setTimeout(() => { warn.style.display = 'none'; }, 3000);
+    }
+
     function rowIsAvailableForScan(row) {
         const inputVal = (row.querySelector('.item-input')?.value || '').trim();
         const linkedId = (row.querySelector('.item-materiel-id')?.value || '').trim();
@@ -541,7 +554,7 @@ function toggleDuree() {
                     
                     // Assigner automatiquement (si pas déjà dans la liste)
                     if (isAlreadyLinked(item.id, row)) {
-                        alert('Cet objet est déjà dans la liste.');
+                        showDuplicateWarning(row);
                         return;
                     }
                     row.querySelector('.item-input').value = label;
@@ -590,7 +603,7 @@ function toggleDuree() {
                     div.appendChild(bd);
                     div.addEventListener('click', () => {
                         if (isAlreadyLinked(item.id, row)) {
-                            alert('Cet objet est déjà dans la liste.');
+                            showDuplicateWarning(row);
                             return;
                         }
                         row.querySelector('.item-input').value = label;
@@ -655,7 +668,7 @@ function toggleDuree() {
         for (const r of container.querySelectorAll('.item-row')) {
             const mid = (r.querySelector('.item-materiel-id')?.value || '').trim();
             if (mid) {
-                if (ids.includes(mid)) { alert('Le même objet est présent plusieurs fois dans la liste.'); return; }
+                if (ids.includes(mid)) { showDuplicateWarning(r); return; }
                 ids.push(mid);
             }
         }
