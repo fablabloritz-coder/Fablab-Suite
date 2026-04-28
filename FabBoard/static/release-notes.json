@@ -1,13 +1,13 @@
 {
-  "version": "3.1.0",
-  "date": "2026-04-10",
-  "title": "Widget Missions Fabtrack & layout ratio",
+  "version": "3.2.0",
+  "date": "2026-04-28",
+  "title": "Fiabilite popup et robustesse base locale",
   "notes": [
-    "Widget Missions Fabtrack : kanban 3 colonnes en lecture seule sur le dashboard TV",
-    "Widget machines : layout CSS grid responsive avec taille de police adaptative",
-    "Horloge et Timer : identité visuelle distincte, fonds configurables",
-    "Réglage de hauteur des blocs pour les layouts \"Large + 2/3 blocs\"",
-    "Popup de nouveautés après mise à jour (une fois par version)"
+    "Popup Nouveautes fiabilisee: memoire basee sur signature complete de release.",
+    "Chargement des notes de version via URL statique Flask pour plus de robustesse.",
+    "Migrations SQLite durcies: version de schema tracee et controlee en init et migration.",
+    "Historique de migration idempotent ajoute pour les mises a jour incrementales.",
+    "Log de validation schema au demarrage pour faciliter le support en production."
   ],
   "_source": "manuel"
 }

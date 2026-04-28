@@ -1,13 +1,13 @@
 {
-  "version": "2.1.0",
-  "date": "2026-04-10",
-  "title": "Module Stock, Missions et Raise3D",
+  "version": "2.2.0",
+  "date": "2026-04-28",
+  "title": "Fiabilite popup et migrations SQLite",
   "notes": [
-    "Module Stock intégré : articles, mouvements, fournisseurs, inventaire physique",
-    "Conversion automatique m² pour les articles planche/panneau avec double affichage",
-    "Module Missions : kanban 3 colonnes (À faire / En cours / Terminé) avec priorités",
-    "Intégration Raise3D : statut des 3 imprimantes en temps réel",
-    "Popup de nouveautés après mise à jour (une fois par version)"
+    "Popup Nouveautes fiabilisee: affichage base sur une signature complete de release.",
+    "Chargement des release notes via URL statique Flask pour eviter les erreurs de chemin.",
+    "Migrations SQLite durcies: version de schema tracee et verifiee au premier init DB.",
+    "Historique de migration idempotent pour fiabiliser les mises a jour serveur.",
+    "Journal de verification du schema ajoute au demarrage pour diagnostic rapide."
   ],
   "_source": "manuel"
 }

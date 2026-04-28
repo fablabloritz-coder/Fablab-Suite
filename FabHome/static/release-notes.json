@@ -1,12 +1,13 @@
 {
-  "version": "1.5.0",
-  "date": "2026-04-10",
-  "title": "Suite FabLab & améliorations hub",
+  "version": "1.6.0",
+  "date": "2026-04-28",
+  "title": "Fiabilite popup et robustesse des mises a jour",
   "notes": [
-    "Intégration FabLab Suite : enregistrement et monitoring de toutes les apps",
-    "Dashboard enrichi : widgets dynamiques par app, proxy manifest/health",
-    "Liens navigateur corrigés : accès local simplifié depuis le navigateur",
-    "Popup de nouveautés après mise à jour (une fois par version)"
+    "Popup Nouveautes fiabilisee: detection basee sur signature complete de release et non plus uniquement la version.",
+    "Chargement des notes de release via URL statique Flask pour un comportement plus robuste.",
+    "Migrations SQLite durcies: version de schema tracee dans la base et controlee au demarrage.",
+    "Suivi centralise des migrations avec historique idempotent pour limiter les regressions de mise a jour.",
+    "Validation de compatibilite schema au boot du hub avant activation complete des services."
   ],
   "_source": "manuel"
 }

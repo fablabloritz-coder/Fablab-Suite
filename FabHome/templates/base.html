@@ -50,6 +50,11 @@
     (function() {
         const STORAGE_KEY = 'fabhome:last_seen_release';
 
+        function releaseSignature(info) {
+            const notes = Array.isArray(info.notes) ? info.notes.join('||') : '';
+            return `${info.version || ''}|${info.date || ''}|${info.title || ''}|${notes}`;
+        }
+
         function fillModal(info) {
             const versionLine = document.getElementById('updatesVersionLine');
             const updatesList = document.getElementById('updatesList');
@@ -60,7 +65,7 @@
         }
 
         async function loadReleaseNotes() {
-            const resp = await fetch('/static/release-notes.json?_v=' + Date.now());
+            const resp = await fetch(`{{ url_for('static', filename='release-notes.json') }}?_v=${Date.now()}`);
             if (!resp.ok) throw new Error('release-notes.json inaccessible');
             return resp.json();
         }
@@ -68,14 +73,15 @@
         async function maybeShowUpdatesModal() {
             try {
                 const info = await loadReleaseNotes();
+                const currentSignature = releaseSignature(info);
                 const stored = localStorage.getItem(STORAGE_KEY);
-                if (stored === info.version) return;
+                if (stored === currentSignature) return;
                 if (!fillModal(info)) return;
                 const modalEl = document.getElementById('updatesModal');
                 if (!modalEl) return;
                 const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
                 modalEl.addEventListener('hidden.bs.modal', () => {
-                    try { localStorage.setItem(STORAGE_KEY, info.version); } catch (_) {}
+                    try { localStorage.setItem(STORAGE_KEY, currentSignature); } catch (_) {}
                 }, { once: true });
                 modal.show();
             } catch (_) {}

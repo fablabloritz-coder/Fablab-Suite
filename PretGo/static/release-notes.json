@@ -1,13 +1,13 @@
 {
-  "version": "1.5.0",
+  "version": "1.6.0",
   "date": "2026-04-28",
-  "title": "Planning reservations, conversion guidee et correctifs",
+  "title": "Fiabilite popup et robustesse SQLite",
   "notes": [
-    "<strong>Conversion de reservation guidee</strong> — ouverture d'un ecran de decision avant transformation en pret, avec verification de la date de debut et option de demarrage force.",
-    "<strong>Planning calendrier mensuel</strong> — nouvelle vue calendrier avec navigation mois precedent/suivant et acces direct aux actions depuis les evenements.",
-    "<strong>Filtre d'affichage du planning</strong> — choisissez <em>Tous</em>, <em>Reservations seules</em> ou <em>Prets seuls</em> pour adapter la vue a votre besoin.",
-    "<strong>Formulaire reservation simplifie</strong> — saisie par date (sans heure obligatoire) et lignes vides non bloquantes pour valider plus facilement.",
-    "<strong>Compatibilite anciennes donnees</strong> — correction d'un cas d'erreur 500 sur certaines anciennes reservations lors de la conversion."
+    "<strong>Popup Nouveautes fiabilisee</strong> — detection basee sur une signature complete de release pour eviter les non-affichages apres mise a jour.",
+    "<strong>Planning reservations</strong> — mode filtre par type d'evenements: Tous, Reservations seules, Prets seuls.",
+    "<strong>Conversion de reservation guidee</strong> — ecran de decision avec verification de date et option de demarrage force.",
+    "<strong>Compatibilite donnees anciennes</strong> — correction d'un cas d'erreur 500 sur certaines reservations historiques.",
+    "<strong>Migrations SQLite durcies</strong> — version de schema tracee et verifiee au demarrage pour des mises a jour serveur plus sures."
   ],
   "_source": "manuel"
 }
