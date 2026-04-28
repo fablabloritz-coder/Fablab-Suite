@@ -390,6 +390,15 @@ function toggleDuree() {
         return row;
     }
 
+    function isAlreadyLinked(materielId, excludeRow) {
+        for (const r of container.querySelectorAll('.item-row')) {
+            if (r === excludeRow) continue;
+            const mid = (r.querySelector('.item-materiel-id')?.value || '').trim();
+            if (mid && mid == materielId) return true;
+        }
+        return false;
+    }
+
     function rowIsAvailableForScan(row) {
         const inputVal = (row.querySelector('.item-input')?.value || '').trim();
         const linkedId = (row.querySelector('.item-materiel-id')?.value || '').trim();
@@ -530,7 +539,11 @@ function toggleDuree() {
                     if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
                         label += ' (' + item.numero_inventaire + ')';
                     
-                    // Assigner automatiquement
+                    // Assigner automatiquement (si pas déjà dans la liste)
+                    if (isAlreadyLinked(item.id, row)) {
+                        alert('Cet objet est déjà dans la liste.');
+                        return;
+                    }
                     row.querySelector('.item-input').value = label;
                     row.querySelector('.item-materiel-id').value = item.id;
                     row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
@@ -576,6 +589,10 @@ function toggleDuree() {
                     bd.textContent = item.etat === 'disponible' ? 'Disponible' : item.etat;
                     div.appendChild(bd);
                     div.addEventListener('click', () => {
+                        if (isAlreadyLinked(item.id, row)) {
+                            alert('Cet objet est déjà dans la liste.');
+                            return;
+                        }
                         row.querySelector('.item-input').value = label;
                         row.querySelector('.item-materiel-id').value = item.id;
                         row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
@@ -633,6 +650,15 @@ function toggleDuree() {
         container.querySelectorAll('.item-input').forEach(i => { if (i.value.trim()) hasItem = true; });
         if (!pid) { alert('Veuillez sélectionner une personne.'); return; }
         if (!hasItem) { alert('Veuillez ajouter au moins un objet.'); return; }
+        // Vérifier doublons d'inventaire
+        const ids = [];
+        for (const r of container.querySelectorAll('.item-row')) {
+            const mid = (r.querySelector('.item-materiel-id')?.value || '').trim();
+            if (mid) {
+                if (ids.includes(mid)) { alert('Le même objet est présent plusieurs fois dans la liste.'); return; }
+                ids.push(mid);
+            }
+        }
         new bootstrap.Modal(document.getElementById('modalEngagement')).show();
     });
 

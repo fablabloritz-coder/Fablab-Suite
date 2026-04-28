@@ -362,7 +362,20 @@
         });
     }
 
+    function isAlreadyLinked(materielId, excludeRow) {
+        for (const r of container.querySelectorAll('.res-item-row')) {
+            if (r === excludeRow) continue;
+            const mid = (r.querySelector('.res-item-materiel-id')?.value || '').trim();
+            if (mid && mid == materielId) return true;
+        }
+        return false;
+    }
+
     function setLinked(row, item) {
+        if (isAlreadyLinked(item.id, row)) {
+            alert('Cet objet est déjà dans la liste.');
+            return false;
+        }
         let label = item.type_materiel;
         if (item.marque) label += ' — ' + item.marque;
         if (item.modele) label += ' ' + item.modele;
@@ -389,9 +402,10 @@
 
                 // 1 seul résultat → liaison automatique
                 if (items.length === 1) {
-                    setLinked(row, items[0]);
-                    if (fromScan && typeof window.playBeep === 'function') window.playBeep(0.15, 'up');
-                    focusNextItemRow(row);
+                    if (setLinked(row, items[0]) !== false) {
+                        if (fromScan && typeof window.playBeep === 'function') window.playBeep(0.15, 'up');
+                        focusNextItemRow(row);
+                    }
                     return;
                 }
 
@@ -424,7 +438,7 @@
                     bd.className = 'badge ' + (item.etat === 'disponible' ? 'bg-success' : 'bg-secondary');
                     bd.textContent = item.etat === 'disponible' ? 'Disponible' : item.etat;
                     div.appendChild(bd);
-                    div.addEventListener('click', () => { setLinked(row, item); focusNextItemRow(row); });
+                    div.addEventListener('click', () => { if (setLinked(row, item) !== false) focusNextItemRow(row); });
                     box.appendChild(div);
                 });
                 box.style.display = 'block';
@@ -480,7 +494,16 @@
         let hasItem = false;
         container.querySelectorAll('.res-item-input').forEach(i => { if (i.value.trim()) hasItem = true; });
         if (!pid) { e.preventDefault(); alert('Veuillez sélectionner un emprunteur.'); return; }
-        if (!hasItem) { e.preventDefault(); alert('Veuillez ajouter au moins un objet.'); }
+        if (!hasItem) { e.preventDefault(); alert('Veuillez ajouter au moins un objet.'); return; }
+        // Vérifier doublons d'inventaire
+        const ids = [];
+        for (const r of container.querySelectorAll('.res-item-row')) {
+            const mid = (r.querySelector('.res-item-materiel-id')?.value || '').trim();
+            if (mid) {
+                if (ids.includes(mid)) { e.preventDefault(); alert('Le même objet est présent plusieurs fois dans la liste.'); return; }
+                ids.push(mid);
+            }
+        }
     });
 
     // ── Scanner caméra ──
