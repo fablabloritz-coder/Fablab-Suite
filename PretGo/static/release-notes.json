@@ -1,13 +1,13 @@
 {
-  "version": "1.6.0",
-  "date": "2026-04-28",
-  "title": "Fiabilite popup et robustesse SQLite",
+  "version": "1.7.0",
+  "date": "2026-04-29",
+  "title": "Rappels mail avances et suivi automatique",
   "notes": [
-    "<strong>Popup Nouveautes fiabilisee</strong> — detection basee sur une signature complete de release pour eviter les non-affichages apres mise a jour.",
-    "<strong>Planning reservations</strong> — mode filtre par type d'evenements: Tous, Reservations seules, Prets seuls.",
-    "<strong>Conversion de reservation guidee</strong> — ecran de decision avec verification de date et option de demarrage force.",
-    "<strong>Compatibilite donnees anciennes</strong> — correction d'un cas d'erreur 500 sur certaines reservations historiques.",
-    "<strong>Migrations SQLite durcies</strong> — version de schema tracee et verifiee au demarrage pour des mises a jour serveur plus sures."
+    "<strong>Mode de rappels configurable</strong> — choisissez desormais entre <em>retards uniquement</em>, <em>retards + retours &lt;24h</em> ou <em>retours &lt;24h uniquement</em>.",
+    "<strong>Scheduler aligne sur le mode choisi</strong> — les envois automatiques utilisent le meme mode de rappels que les envois manuels depuis l'admin.",
+    "<strong>Recapitulatif au mail de reference</strong> — lorsqu'au moins un rappel est effectivement parti, un rapport de synthese est aussi envoye a l'adresse de monitoring.",
+    "<strong>Pages admin rappels clarifiees</strong> — les ecrans Reglages et Rappel Mail exposent maintenant directement le type de rappels a envoyer.",
+    "<strong>Validation automatisee</strong> — les tests PretGo couvrent maintenant le mode <em>retours &lt;24h uniquement</em> et l'envoi du recapitulatif de monitoring."
   ],
   "_source": "manuel"
 }

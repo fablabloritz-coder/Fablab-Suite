@@ -56,7 +56,11 @@ class EmailReminderScheduler:
                         conn.commit()
                         conn.close()
                         
-                        msg = f"Rappels email: {stats.get('envoyes', 0)} envoyés, {stats.get('echecs', 0)} erreurs"
+                        msg = (
+                            f"Rappels email: {stats.get('envoyes', 0)} envoyés, "
+                            f"{stats.get('echecs', 0)} erreurs, "
+                            f"monitoring={'ok' if stats.get('reference_notified') else 'off/ko'}"
+                        )
                         _log.info(msg)
                     except Exception as e:
                         _log.error(f'Erreur lors de l\'envoi automatique des rappels: {str(e)[:200]}')

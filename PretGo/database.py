@@ -395,6 +395,8 @@ def init_db():
         'rappel_email_scheduler_jours': 'mon,tue,wed,thu,fri',
         # ── Limite de tentatives ──
         'rappel_email_max_tentatives': '3',
+        # ── Mode de rappels: retard seul | retard + <24h | <24h seul ──
+        'rappel_email_mode': 'overdue_and_24h',
         # ── Inclure aussi les retours prévus dans les 24h ──
         'rappel_email_inclure_retour_24h': '1',
         # ── Politique réservations (mode hybride) ──

@@ -504,10 +504,13 @@
                                            name="rappel_email_use_ssl" {{ 'checked' if rappel_email_use_ssl == '1' }}>
                                     <label class="form-check-label" for="rappel_email_use_ssl">SSL/TLS direct</label>
                                 </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="rappel_email_inclure_retour_24h"
-                                           name="rappel_email_inclure_retour_24h" {{ 'checked' if rappel_email_inclure_retour_24h == '1' }}>
-                                    <label class="form-check-label" for="rappel_email_inclure_retour_24h">Inclure les retours prévus sous 24h</label>
+                                <div class="col-12 col-md-4">
+                                    <label class="form-label fw-bold" for="rappel_email_mode">Mode de rappels</label>
+                                    <select class="form-select" id="rappel_email_mode" name="rappel_email_mode">
+                                        <option value="overdue_only" {{ 'selected' if rappel_email_mode == 'overdue_only' }}>Retards uniquement</option>
+                                        <option value="overdue_and_24h" {{ 'selected' if rappel_email_mode == 'overdue_and_24h' }}>Retards + retours &lt;24h</option>
+                                        <option value="upcoming_24h_only" {{ 'selected' if rappel_email_mode == 'upcoming_24h_only' }}>Retours &lt;24h uniquement</option>
+                                    </select>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="rappel_email_html_active"
@@ -601,6 +604,14 @@
                                        placeholder="mon,tue,wed,thu,fri"
                                        title="Format cron : mon,tue,wed,thu,fri ou * pour tous les jours">
                                 <small class="text-muted">Format : mon, tue, wed, thu, fri, sat, sun ou * (tous)</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Type de rappels automatiques</label>
+                                <select class="form-select" name="rappel_email_mode">
+                                    <option value="overdue_only" {{ 'selected' if rappel_email_mode == 'overdue_only' }}>Retards uniquement</option>
+                                    <option value="overdue_and_24h" {{ 'selected' if rappel_email_mode == 'overdue_and_24h' }}>Retards + retours &lt;24h</option>
+                                    <option value="upcoming_24h_only" {{ 'selected' if rappel_email_mode == 'upcoming_24h_only' }}>Retours &lt;24h uniquement</option>
+                                </select>
                             </div>
                         </div>
 

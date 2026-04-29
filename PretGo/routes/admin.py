@@ -16,6 +16,12 @@ import urllib.error
 import urllib.parse
 
 _audit = logging.getLogger('pretgo.audit')
+REMINDER_MODE_CHOICES = {'overdue_only', 'overdue_and_24h', 'upcoming_24h_only'}
+
+
+def _normalize_rappel_email_mode(raw_value):
+    value = (raw_value or '').strip()
+    return value if value in REMINDER_MODE_CHOICES else 'overdue_and_24h'
 
 bp = Blueprint('admin', __name__)
 
@@ -513,7 +519,9 @@ def admin_reglages():
             set_setting('rappel_email_subject', request.form.get('rappel_email_subject', '').strip() or '[PretGo] Rappel de retour de matériel')
             set_setting('rappel_email_template', request.form.get('rappel_email_template', '').strip() or '')
             set_setting('rappel_email_template_retour_24h', request.form.get('rappel_email_template_retour_24h', '').strip() or '')
-            set_setting('rappel_email_inclure_retour_24h', '1' if request.form.get('rappel_email_inclure_retour_24h') else '0')
+            rappel_email_mode = _normalize_rappel_email_mode(request.form.get('rappel_email_mode'))
+            set_setting('rappel_email_mode', rappel_email_mode)
+            set_setting('rappel_email_inclure_retour_24h', '1' if rappel_email_mode != 'overdue_only' else '0')
 
             # Signature image optionnelle (sécurité: formats limités + taille max)
             signature_rel = get_setting('rappel_email_signature_image', '') or ''
@@ -572,8 +580,8 @@ def admin_reglages():
 
         elif action == 'email_rappels_send_now':
             conn = get_app_db()
-            inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
-            stats = envoyer_rappels_alertes_email(conn, inclure_retour_24h=inclure_retour_24h)
+            rappel_email_mode = _normalize_rappel_email_mode(get_setting('rappel_email_mode', 'overdue_and_24h', conn=conn))
+            stats = envoyer_rappels_alertes_email(conn, mode=rappel_email_mode)
             conn.commit()
             if stats.get('error'):
                 flash(stats['error'], 'danger')
@@ -588,7 +596,8 @@ def admin_reglages():
 
         elif action == 'email_reference_send_now':
             conn = get_app_db()
-            result = envoyer_email_reference_manuel(conn)
+            rappel_email_mode = _normalize_rappel_email_mode(get_setting('rappel_email_mode', 'overdue_and_24h', conn=conn))
+            result = envoyer_email_reference_manuel(conn, mode=rappel_email_mode)
             flash(result.get('message') or 'Action exécutée.', 'success' if result.get('success') else 'danger')
 
         elif action == 'email_scheduler_settings':
@@ -597,6 +606,9 @@ def admin_reglages():
             set_setting('rappel_email_scheduler_heure', request.form.get('rappel_email_scheduler_heure', '09').strip() or '09')
             set_setting('rappel_email_scheduler_minute', request.form.get('rappel_email_scheduler_minute', '00').strip() or '00')
             set_setting('rappel_email_scheduler_jours', request.form.get('rappel_email_scheduler_jours', 'mon,tue,wed,thu,fri').strip() or 'mon,tue,wed,thu,fri')
+            rappel_email_mode = _normalize_rappel_email_mode(request.form.get('rappel_email_mode'))
+            set_setting('rappel_email_mode', rappel_email_mode)
+            set_setting('rappel_email_inclure_retour_24h', '1' if rappel_email_mode != 'overdue_only' else '0')
             flash('Scheduler des rappels email enregistré. Redémarrage automatique.', 'success')
             # Redémarrer le scheduler pour prendre en compte les changements
             email_scheduler.restart(current_app)
@@ -672,6 +684,7 @@ def admin_reglages():
                            rappel_email_template=get_setting('rappel_email_template', ''),
                            rappel_email_template_retour_24h=get_setting('rappel_email_template_retour_24h', ''),
                            rappel_email_signature_image=get_setting('rappel_email_signature_image', ''),
+                           rappel_email_mode=_normalize_rappel_email_mode(get_setting('rappel_email_mode', 'overdue_and_24h')),
                            rappel_email_inclure_retour_24h=get_setting('rappel_email_inclure_retour_24h', '1'),
                            rappel_email_scheduler_enabled=get_setting('rappel_email_scheduler_enabled', '0'),
                            rappel_email_scheduler_heure=get_setting('rappel_email_scheduler_heure', '09'),
@@ -690,11 +703,13 @@ def admin_rappel_mail():
         action = request.form.get('action', '').strip()
 
         if action == 'save_options':
-            set_setting('rappel_email_inclure_retour_24h', '1' if request.form.get('rappel_email_inclure_retour_24h') else '0')
+            rappel_email_mode = _normalize_rappel_email_mode(request.form.get('rappel_email_mode'))
+            set_setting('rappel_email_mode', rappel_email_mode)
+            set_setting('rappel_email_inclure_retour_24h', '1' if rappel_email_mode != 'overdue_only' else '0')
             flash('Options de rappel mail enregistrées.', 'success')
 
         elif action in ('send_selected', 'send_all'):
-            inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+            rappel_email_mode = _normalize_rappel_email_mode(get_setting('rappel_email_mode', 'overdue_and_24h', conn=conn))
             pret_ids = None
             if action == 'send_selected':
                 selected_ids = []
@@ -711,7 +726,7 @@ def admin_rappel_mail():
             stats = envoyer_rappels_alertes_email(
                 conn,
                 pret_ids=pret_ids,
-                inclure_retour_24h=inclure_retour_24h
+                mode=rappel_email_mode
             )
             conn.commit()
             if stats.get('error'):
@@ -727,8 +742,9 @@ def admin_rappel_mail():
 
         return redirect(url_for('admin.admin_rappel_mail'))
 
+    rappel_email_mode = _normalize_rappel_email_mode(get_setting('rappel_email_mode', 'overdue_and_24h', conn=conn))
     inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
-    candidats = lister_prets_pour_rappel_mail(conn, inclure_retour_24h=inclure_retour_24h)
+    candidats = lister_prets_pour_rappel_mail(conn, mode=rappel_email_mode)
     stats = obtenir_statistiques_rappels_email(conn)
 
     try:
@@ -764,6 +780,7 @@ def admin_rappel_mail():
         candidats=candidats,
         logs=logs,
         stats=stats,
+        rappel_email_mode=rappel_email_mode,
         inclure_retour_24h=inclure_retour_24h,
     )
 

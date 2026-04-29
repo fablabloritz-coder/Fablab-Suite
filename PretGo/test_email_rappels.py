@@ -123,6 +123,7 @@ p2 = conn.execute("SELECT id FROM personnes WHERE nom='TEST-RAPPEL' AND prenom='
 
 old_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d %H:%M:%S')
 recent_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+upcoming_start = (datetime.now() - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
 
 conn.execute(
     "INSERT INTO prets (personne_id, descriptif_objets, date_emprunt, retour_confirme) VALUES (?, ?, ?, 0)",
@@ -136,19 +137,23 @@ conn.execute(
     "INSERT INTO prets (personne_id, descriptif_objets, date_emprunt, retour_confirme) VALUES (?, ?, ?, 0)",
     (p1, 'TEST-RAPPEL-RECENT', recent_date)
 )
+conn.execute(
+    "INSERT INTO prets (personne_id, descriptif_objets, date_emprunt, duree_pret_heures, retour_confirme) VALUES (?, ?, ?, ?, 0)",
+    (p1, 'TEST-RAPPEL-24H', upcoming_start, 13)
+)
 conn.commit()
 
-# 1er envoi: 2 alertes, 1 email envoyé, 1 ignoré sans email
+# 1er envoi: 3 alertes, 2 emails envoyés, 1 ignoré sans email
 MockSMTP.sent_messages = []
 now_1 = datetime.now()
 stats_1 = envoyer_rappels_alertes_email(conn, smtp_factory=MockSMTP, now=now_1)
 conn.commit()
 
-check('total_alertes == 2', stats_1.get('total_alertes') == 2)
-check('envoyes == 1', stats_1.get('envoyes') == 1)
+check('total_alertes == 3', stats_1.get('total_alertes') == 3)
+check('envoyes == 2', stats_1.get('envoyes') == 2)
 check('ignores_sans_email == 1', stats_1.get('ignores_sans_email') == 1)
 check('echecs == 0', stats_1.get('echecs') == 0)
-check('smtp sent 1 msg', len(MockSMTP.sent_messages) == 1)
+check('smtp sent 2 msg', len(MockSMTP.sent_messages) == 2)
 
 # 2e envoi à +1h: cooldown => 0 envoi supplémentaire
 MockSMTP.sent_messages = []
@@ -161,7 +166,41 @@ check('smtp sent 0 msg 2e', len(MockSMTP.sent_messages) == 0)
 
 # Vérifier journalisation
 logs = conn.execute("SELECT COUNT(*) AS c FROM rappels_email_log WHERE status='sent'").fetchone()['c']
-check('1 log sent', logs == 1)
+check('2 logs sent', logs == 2)
+
+# 3e envoi: mode retours <24h uniquement
+MockSMTP.sent_messages = []
+conn.execute("UPDATE parametres SET valeur='0' WHERE cle='rappel_email_cooldown_heures'")
+stats_3 = envoyer_rappels_alertes_email(
+    conn,
+    smtp_factory=MockSMTP,
+    now=now_1,
+    mode='upcoming_24h_only'
+)
+conn.commit()
+
+check('24h only total_alertes == 1', stats_3.get('total_alertes') == 1)
+check('24h only total_retours_24h == 1', stats_3.get('total_retours_24h') == 1)
+check('24h only total_retards == 0', stats_3.get('total_retards') == 0)
+check('24h only envoyes == 1', stats_3.get('envoyes') == 1)
+check('24h only smtp sent 1 msg', len(MockSMTP.sent_messages) == 1)
+
+# 4e envoi: si monitoring actif et au moins un email part, un recap part aussi
+MockSMTP.sent_messages = []
+conn.execute("INSERT OR REPLACE INTO parametres (cle, valeur) VALUES ('rappel_email_reference_active', '1')")
+conn.execute("INSERT OR REPLACE INTO parametres (cle, valeur) VALUES ('rappel_email_reference_email', 'monitoring@test.local')")
+stats_4 = envoyer_rappels_alertes_email(
+    conn,
+    smtp_factory=MockSMTP,
+    now=now_1,
+    mode='upcoming_24h_only'
+)
+conn.commit()
+
+check('reference notified == 1', stats_4.get('reference_notified') == 1)
+check('24h only + recap envoyes == 1', stats_4.get('envoyes') == 1)
+check('smtp sent 2 msg with recap', len(MockSMTP.sent_messages) == 2)
+check('recap sent to reference email', any(str(msg.get('To', '')) == 'monitoring@test.local' for msg in MockSMTP.sent_messages))
 
 conn.close()
 

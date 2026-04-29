@@ -29,6 +29,14 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 EMAIL_SIGNATURE_MAX_BYTES = 15 * 1024
+REMINDER_MODE_OVERDUE_ONLY = 'overdue_only'
+REMINDER_MODE_OVERDUE_AND_24H = 'overdue_and_24h'
+REMINDER_MODE_UPCOMING_24H_ONLY = 'upcoming_24h_only'
+REMINDER_MODES = {
+    REMINDER_MODE_OVERDUE_ONLY,
+    REMINDER_MODE_OVERDUE_AND_24H,
+    REMINDER_MODE_UPCOMING_24H_ONLY,
+}
 
 
 # ============================================================
@@ -55,6 +63,30 @@ def calculer_annee_scolaire(d=None):
         return f'{d.year}-{d.year + 1}'
     else:  # janvier–août
         return f'{d.year - 1}-{d.year}'
+
+
+def resolve_rappel_email_mode(conn, mode=None, inclure_retour_24h=None):
+    """Résout le mode de rappel à utiliser avec rétrocompatibilité."""
+    if mode in REMINDER_MODES:
+        return mode
+
+    stored_mode = (get_setting('rappel_email_mode', '', conn=conn) or '').strip()
+    if stored_mode in REMINDER_MODES:
+        return stored_mode
+
+    include_24h = inclure_retour_24h
+    if include_24h is None:
+        include_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+    return REMINDER_MODE_OVERDUE_AND_24H if include_24h else REMINDER_MODE_OVERDUE_ONLY
+
+
+def reminder_mode_includes(reminder_mode, reminder_kind):
+    """Indique si un type de rappel est autorisé par le mode actif."""
+    if reminder_mode == REMINDER_MODE_UPCOMING_24H_ONLY:
+        return reminder_kind == 'upcoming_24h'
+    if reminder_mode == REMINDER_MODE_OVERDUE_ONLY:
+        return reminder_kind == 'overdue'
+    return reminder_kind in ('overdue', 'upcoming_24h')
 
 
 # ============================================================
@@ -526,7 +558,7 @@ def _build_reference_report(conn, sent_details, now_dt, title_prefix='Rapport en
     return subject, text_body, html_body
 
 
-def envoyer_email_reference_manuel(conn, smtp_factory=None, now=None):
+def envoyer_email_reference_manuel(conn, smtp_factory=None, now=None, mode=None):
     """Envoie manuellement un mail de contrôle à l'email de référence."""
     now_dt = now or datetime.now()
 
@@ -542,7 +574,7 @@ def envoyer_email_reference_manuel(conn, smtp_factory=None, now=None):
     from_email = (get_setting('rappel_email_from', '', conn=conn) or '').strip()
     reply_to = (get_setting('rappel_email_reply_to', '', conn=conn) or '').strip()
     reference_email = (get_setting('rappel_email_reference_email', '', conn=conn) or '').strip()
-    inclure_retour_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+    rappel_mode = resolve_rappel_email_mode(conn, mode=mode)
     html_active = get_setting('rappel_email_html_active', '1', conn=conn) == '1'
 
     if not reference_email or not valider_email(reference_email):
@@ -550,7 +582,7 @@ def envoyer_email_reference_manuel(conn, smtp_factory=None, now=None):
     if not smtp_host or not from_email:
         return {'success': False, 'message': "Configuration SMTP incomplète (hôte ou expéditeur manquant)."}
 
-    candidats = lister_prets_pour_rappel_mail(conn, now=now_dt, inclure_retour_24h=inclure_retour_24h)
+    candidats = lister_prets_pour_rappel_mail(conn, now=now_dt, mode=rappel_mode)
     details = [
         {
             'email': item.get('email', ''),
@@ -761,12 +793,10 @@ def _calculer_retour_theorique_datetime(date_emprunt_str, duree_heures, duree_jo
     return dt + timedelta(days=duree_defaut)
 
 
-def lister_prets_pour_rappel_mail(conn, now=None, pret_ids=None, inclure_retour_24h=None):
+def lister_prets_pour_rappel_mail(conn, now=None, pret_ids=None, inclure_retour_24h=None, mode=None):
     """Liste les prêts candidats à un rappel mail (retard + retour dans les 24h)."""
     now_dt = now or datetime.now()
-    include_24h = inclure_retour_24h
-    if include_24h is None:
-        include_24h = get_setting('rappel_email_inclure_retour_24h', '1', conn=conn) == '1'
+    reminder_mode = resolve_rappel_email_mode(conn, mode=mode, inclure_retour_24h=inclure_retour_24h)
 
     ids_filtre = None
     if pret_ids is not None:
@@ -807,10 +837,13 @@ def lister_prets_pour_rappel_mail(conn, now=None, pret_ids=None, inclure_retour_
         if delta_h > 0:
             reminder_kind = 'overdue'
             reminder_label = 'En retard'
-        elif include_24h and -24 <= delta_h < 0:
+        elif -24 <= delta_h < 0:
             reminder_kind = 'upcoming_24h'
             reminder_label = 'Retour < 24h'
         else:
+            continue
+
+        if not reminder_mode_includes(reminder_mode, reminder_kind):
             continue
 
         email_dest = (pret['email'] or '').strip()
@@ -878,10 +911,11 @@ def lister_prets_pour_rappel_mail(conn, now=None, pret_ids=None, inclure_retour_
     return result
 
 
-def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=None, inclure_retour_24h=None):
+def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=None, inclure_retour_24h=None, mode=None):
     """Envoie des rappels email (retards + retours dans 24h)."""
     now_dt = now or datetime.now()
     now_str = now_dt.strftime('%Y-%m-%d %H:%M:%S')
+    rappel_mode = resolve_rappel_email_mode(conn, mode=mode, inclure_retour_24h=inclure_retour_24h)
 
     # Réglages email
     email_active = get_setting('rappel_email_active', '0', conn=conn) == '1'
@@ -952,6 +986,7 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
         now=now_dt,
         pret_ids=pret_ids,
         inclure_retour_24h=inclure_retour_24h,
+        mode=rappel_mode,
     )
     stats['total_alertes'] = len(candidats)
     stats['total_retards'] = sum(1 for c in candidats if c['reminder_kind'] == 'overdue')
