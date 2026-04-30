@@ -15,7 +15,7 @@ from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DATA_DIR, 'fabtrack.db')
-FABTRACK_SCHEMA_VERSION = 2026042801
+FABTRACK_SCHEMA_VERSION = 2026043001
 
 SETUP_STATE_KEY = 'setup_state'
 SETUP_PACK_KEY = 'starter_pack'
@@ -403,6 +403,19 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_conso_classe ON consommations(classe_id);
     CREATE INDEX IF NOT EXISTS idx_conso_referent ON consommations(referent_id);
 
+    CREATE TABLE IF NOT EXISTS consommation_referents (
+        consommation_id INTEGER NOT NULL,
+        ordre INTEGER NOT NULL DEFAULT 0,
+        referent_id INTEGER,
+        nom_referent TEXT DEFAULT '',
+        PRIMARY KEY (consommation_id, ordre),
+        FOREIGN KEY (consommation_id) REFERENCES consommations(id) ON DELETE CASCADE,
+        FOREIGN KEY (referent_id) REFERENCES referents(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conso_refs_conso ON consommation_referents(consommation_id);
+    CREATE INDEX IF NOT EXISTS idx_conso_refs_ref ON consommation_referents(referent_id);
+
     CREATE TABLE IF NOT EXISTS custom_fields (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         entity_type TEXT NOT NULL,
@@ -631,6 +644,20 @@ def _migrate_db(c):
         if col not in ccols:
             c.execute(f"ALTER TABLE consommations ADD COLUMN {col} TEXT DEFAULT ''")
 
+    c.executescript('''
+        CREATE TABLE IF NOT EXISTS consommation_referents (
+            consommation_id INTEGER NOT NULL,
+            ordre INTEGER NOT NULL DEFAULT 0,
+            referent_id INTEGER,
+            nom_referent TEXT DEFAULT '',
+            PRIMARY KEY (consommation_id, ordre),
+            FOREIGN KEY (consommation_id) REFERENCES consommations(id) ON DELETE CASCADE,
+            FOREIGN KEY (referent_id) REFERENCES referents(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_conso_refs_conso ON consommation_referents(consommation_id);
+        CREATE INDEX IF NOT EXISTS idx_conso_refs_ref ON consommation_referents(referent_id);
+    ''')
+
     # Migration matériaux : retirer type_activite_id (anciens schémas)
     matcols = [r[1] for r in c.execute("PRAGMA table_info(materiaux)").fetchall()]
     if 'type_activite_id' in matcols:
@@ -670,6 +697,7 @@ def _migrate_db(c):
 
     # Remplir les noms dénormalisés pour les consommations existantes qui n'en ont pas
     _backfill_denormalized_names(c)
+    _backfill_consumption_referents(c)
 
     # Migration stock_fournisseurs (adresse + image logo)
     sfcols = [r[1] for r in c.execute("PRAGMA table_info(stock_fournisseurs)").fetchall()]
@@ -725,6 +753,16 @@ def _ensure_mission_categories_schema(c):
     c.execute('CREATE INDEX IF NOT EXISTS idx_missions_category ON missions(category_id)')
 
     _insert_mission_categories_seed(c)
+
+
+def _backfill_consumption_referents(c):
+    """Recrée les liaisons référents historiques à partir de consommations.referent_id."""
+    c.execute('''
+        INSERT OR IGNORE INTO consommation_referents (consommation_id, ordre, referent_id, nom_referent)
+        SELECT id, 0, referent_id, COALESCE(nom_referent, '')
+        FROM consommations
+        WHERE referent_id IS NOT NULL
+    ''')
 
 
 def _insert_mission_categories_seed(c):

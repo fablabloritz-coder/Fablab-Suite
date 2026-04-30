@@ -33,6 +33,197 @@ def _to_bool_int(value):
     return 1 if text in ('1', 'true', 'oui', 'yes', 'on') else 0
 
 
+def _normalize_referent_ids(raw_value):
+    if raw_value in (None, '', []):
+        return []
+
+    values = raw_value if isinstance(raw_value, (list, tuple)) else [raw_value]
+    result = []
+    seen = set()
+    for value in values:
+        try:
+            referent_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if referent_id <= 0 or referent_id in seen:
+            continue
+        seen.add(referent_id)
+        result.append(referent_id)
+    return result
+
+
+def _resolve_referent_links(db, raw_value):
+    referent_ids = _normalize_referent_ids(raw_value)
+    if not referent_ids:
+        return []
+
+    placeholders = ','.join(['?'] * len(referent_ids))
+    rows = db.execute(
+        f'SELECT id, nom FROM referents WHERE id IN ({placeholders})',
+        referent_ids,
+    ).fetchall()
+    names_by_id = {int(row['id']): row['nom'] for row in rows}
+
+    links = []
+    for referent_id in referent_ids:
+        name = names_by_id.get(referent_id, '').strip()
+        if name:
+            links.append({'id': referent_id, 'nom': name})
+    return links
+
+
+def _replace_consumption_referents(db, consommation_id, referent_links):
+    db.execute('DELETE FROM consommation_referents WHERE consommation_id=?', (consommation_id,))
+    for index, link in enumerate(referent_links):
+        db.execute(
+            '''
+            INSERT INTO consommation_referents (consommation_id, ordre, referent_id, nom_referent)
+            VALUES (?, ?, ?, ?)
+            ''',
+            (consommation_id, index, link['id'], link['nom']),
+        )
+
+
+def _get_type_row(db, type_activite_id):
+    try:
+        type_id = int(type_activite_id)
+    except (TypeError, ValueError):
+        return None
+    return db.execute(
+        'SELECT id, nom, unite_defaut FROM types_activite WHERE id=?',
+        (type_id,),
+    ).fetchone()
+
+
+def _is_paper_type(type_row):
+    if not type_row:
+        return False
+    type_name = str(type_row['nom'] or '').strip().lower()
+    default_unit = str(type_row['unite_defaut'] or '').strip().lower()
+    return type_name == 'impression papier' or default_unit == 'feuilles'
+
+
+def _paper_material_matches(name, format_papier, impression_mode):
+    text = str(name or '').strip().lower()
+    format_token = str(format_papier or '').strip().lower()
+    if not text or not format_token or format_token not in text:
+        return False
+    if impression_mode == 'couleur':
+        return 'couleur' in text
+    return 'n&b' in text or 'nb' in text or ('noir' in text and 'blanc' in text)
+
+
+def _resolve_paper_material_id(db, type_row, action):
+    format_papier = str(action.get('format_papier') or '').strip().upper()
+    impression_mode = str(action.get('impression_couleur') or '').strip().lower()
+    if not format_papier or impression_mode not in ('couleur', 'nb'):
+        return None
+
+    try:
+        machine_id = int(action.get('machine_id') or 0)
+    except (TypeError, ValueError):
+        machine_id = 0
+
+    if machine_id:
+        rows = db.execute(
+            '''
+            SELECT m.id, m.nom
+            FROM machine_type_materiau mtm
+            JOIN materiaux m ON m.id = mtm.materiau_id
+            WHERE mtm.machine_id=? AND mtm.type_activite_id=? AND m.actif=1
+            ORDER BY m.nom ASC
+            ''',
+            (machine_id, type_row['id']),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            '''
+            SELECT DISTINCT m.id, m.nom
+            FROM machine_type_materiau mtm
+            JOIN machine_type_activite mta
+              ON mta.machine_id = mtm.machine_id AND mta.type_activite_id = mtm.type_activite_id
+            JOIN materiaux m ON m.id = mtm.materiau_id
+            WHERE mtm.type_activite_id=? AND m.actif=1
+            ORDER BY m.nom ASC
+            ''',
+            (type_row['id'],),
+        ).fetchall()
+
+    for row in rows:
+        if _paper_material_matches(row['nom'], format_papier, impression_mode):
+            return row['id']
+    return None
+
+
+def _resolve_effective_material_id(db, action):
+    try:
+        current_id = int(action.get('materiau_id') or 0)
+    except (TypeError, ValueError):
+        current_id = 0
+
+    type_row = _get_type_row(db, action.get('type_activite_id'))
+    if not _is_paper_type(type_row):
+        return current_id or None
+
+    resolved_id = _resolve_paper_material_id(db, type_row, action)
+    return resolved_id or (current_id or None)
+
+
+def _serialize_consumption_detail(db, consommation_id):
+    row = db.execute(
+        '''
+        SELECT c.*,
+               COALESCE(p.nom, c.nom_preparateur) as preparateur_nom,
+               COALESCE(t.nom, c.nom_type_activite) as type_activite_nom,
+               t.icone as type_icone, t.badge_class,
+               COALESCE(m.nom, c.nom_machine) as machine_nom,
+               COALESCE(cl.nom, c.nom_classe) as classe_nom,
+               COALESCE(
+                   NULLIF((
+                       SELECT GROUP_CONCAT(ref_names.nom, ' | ')
+                       FROM (
+                           SELECT COALESCE(r2.nom, cr.nom_referent) AS nom
+                           FROM consommation_referents cr
+                           LEFT JOIN referents r2 ON r2.id = cr.referent_id
+                           WHERE cr.consommation_id = c.id
+                           ORDER BY cr.ordre ASC
+                       ) AS ref_names
+                   ), ''),
+                   COALESCE(r.nom, c.nom_referent)
+               ) as referent_nom,
+               COALESCE(mat.nom, c.nom_materiau) as materiau_nom,
+               mat.unite as materiau_unite,
+               mat.image_path as materiau_image_path
+        FROM consommations c
+        LEFT JOIN preparateurs p ON c.preparateur_id=p.id
+        LEFT JOIN types_activite t ON c.type_activite_id=t.id
+        LEFT JOIN machines m ON c.machine_id=m.id
+        LEFT JOIN classes cl ON c.classe_id=cl.id
+        LEFT JOIN referents r ON c.referent_id=r.id
+        LEFT JOIN materiaux mat ON c.materiau_id=mat.id
+        WHERE c.id=?
+        ''',
+        (consommation_id,),
+    ).fetchone()
+    if not row:
+        return None
+
+    payload = dict(row)
+    referent_rows = db.execute(
+        '''
+        SELECT referent_id
+        FROM consommation_referents
+        WHERE consommation_id=?
+        ORDER BY ordre ASC
+        ''',
+        (consommation_id,),
+    ).fetchall()
+    payload['referent_ids'] = [int(ref['referent_id']) for ref in referent_rows if ref['referent_id']]
+    if not payload['referent_ids'] and payload.get('referent_id'):
+        payload['referent_ids'] = [int(payload['referent_id'])]
+    return payload
+
+
 def _surface_from_action(action):
     surface = _to_float(action.get('surface_m2'))
     if surface is not None:
@@ -42,6 +233,58 @@ def _surface_from_action(action):
     if longueur_mm and largeur_mm:
         return (longueur_mm * largeur_mm) / 1e6
     return None
+
+
+def _normalized_occurrence_count(action):
+    try:
+        count = int(action.get('occurrence_count') or 1)
+    except (TypeError, ValueError):
+        count = 1
+    return max(1, count)
+
+
+def _resolve_material_name(db, materiau_id):
+    if not materiau_id:
+        return ''
+    row = db.execute('SELECT nom FROM materiaux WHERE id=?', (materiau_id,)).fetchone()
+    return str(row['nom'] or '') if row else ''
+
+
+def _occurrence_multiplier_allowed(db, action):
+    type_row = _get_type_row(db, action.get('type_activite_id'))
+    if not type_row:
+        return False
+
+    type_name = str(type_row['nom'] or '').strip().lower()
+    default_unit = str(type_row['unite_defaut'] or '').strip().lower()
+    if default_unit == 'm²' or type_name in ('découpe laser', 'cnc / fraisage'):
+        return True
+
+    if default_unit == 'g' or type_name == 'impression 3d':
+        return 'filament' in _resolve_material_name(db, action.get('materiau_id')).strip().lower()
+
+    return False
+
+
+def _apply_occurrence_multiplier(db, action):
+    payload = dict(action or {})
+    count = _normalized_occurrence_count(payload)
+    payload['occurrence_count'] = count
+
+    if count <= 1 or not _occurrence_multiplier_allowed(db, payload):
+        return payload
+
+    poids = _to_float(payload.get('poids_grammes'))
+    if poids is not None:
+        payload['poids_grammes'] = poids * count
+
+    surface = _surface_from_action(payload)
+    if surface is not None:
+        payload['surface_m2'] = surface * count
+
+    payload['quantite'] = count
+    payload['unite'] = 'occurrences'
+    return payload
 
 
 def _machine_is_compatible_with_type(db, machine_id, type_activite_id):
@@ -215,7 +458,20 @@ def api_get_consommations():
                    t.icone as type_icone, t.badge_class,
                    COALESCE(m.nom, c.nom_machine) as machine_nom,
                    COALESCE(cl.nom, c.nom_classe) as classe_nom,
-                   COALESCE(r.nom, c.nom_referent) as referent_nom, r.categorie as referent_categorie,
+                   COALESCE(
+                       NULLIF((
+                           SELECT GROUP_CONCAT(ref_names.nom, ' | ')
+                           FROM (
+                               SELECT COALESCE(r2.nom, cr.nom_referent) AS nom
+                               FROM consommation_referents cr
+                               LEFT JOIN referents r2 ON r2.id = cr.referent_id
+                               WHERE cr.consommation_id = c.id
+                               ORDER BY cr.ordre ASC
+                           ) AS ref_names
+                       ), ''),
+                       COALESCE(r.nom, c.nom_referent)
+                   ) as referent_nom,
+                   r.categorie as referent_categorie,
                      COALESCE(mat.nom, c.nom_materiau) as materiau_nom,
                      mat.unite as materiau_unite,
                      mat.image_path as materiau_image_path
@@ -238,11 +494,17 @@ def api_get_consommations():
             ('c.type_activite_id =', type_activite_id, int),
             ('c.preparateur_id =', preparateur_id, int),
             ('c.classe_id =', classe_id, int),
-            ('c.referent_id =', referent_id, int),
         ]:
             if val:
                 query += f' AND {col} ?'; params.append(cast(val))
                 count_q += f' AND {col} ?'; cp.append(cast(val))
+
+        if referent_id:
+            ref_val = int(referent_id)
+            query += ' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf WHERE crf.consommation_id = c.id AND crf.referent_id = ?))'
+            params.extend([ref_val, ref_val])
+            count_q += ' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf WHERE crf.consommation_id = c.id AND crf.referent_id = ?))'
+            cp.extend([ref_val, ref_val])
 
         total = db.execute(count_q, cp).fetchone()['total']
         query += ' ORDER BY c.date_saisie DESC, c.created_at DESC LIMIT ? OFFSET ?'
@@ -257,22 +519,39 @@ def api_get_consommations():
         db.close()
 
 
+@bp.route('/api/consommations/<int:id>', methods=['GET'])
+def api_get_consommation(id):
+    db = get_db()
+    try:
+        payload = _serialize_consumption_detail(db, id)
+        if not payload:
+            return jsonify({'success': False, 'error': 'Saisie introuvable'}), 404
+        return jsonify({'success': True, 'data': payload})
+    finally:
+        db.close()
+
+
 @bp.route('/api/consommations', methods=['POST'])
 def api_create_consommation():
     data = request.get_json(); db = get_db()
     try:
-        validation_error = _validate_action_selection(db, data)
+        payload = dict(data or {})
+        payload['materiau_id'] = _resolve_effective_material_id(db, payload)
+        payload = _apply_occurrence_multiplier(db, payload)
+
+        validation_error = _validate_action_selection(db, payload)
         if validation_error:
             return jsonify({'success': False, 'error': validation_error}), 400
 
-        surface = _surface_from_action(data)
+        surface = _surface_from_action(payload)
+        referent_links = _resolve_referent_links(db, payload.get('referent_ids', payload.get('referent_id')))
+        primary_referent = referent_links[0] if referent_links else None
 
-        nom_prep = _resolve_nom(db, 'preparateurs', data.get('preparateur_id'))
-        nom_type = _resolve_nom(db, 'types_activite', data.get('type_activite_id'))
-        nom_mach = _resolve_nom(db, 'machines', data.get('machine_id'))
-        nom_cls  = _resolve_nom(db, 'classes', data.get('classe_id'))
-        nom_ref  = _resolve_nom(db, 'referents', data.get('referent_id'))
-        nom_mat  = _resolve_nom(db, 'materiaux', data.get('materiau_id'))
+        nom_prep = _resolve_nom(db, 'preparateurs', payload.get('preparateur_id'))
+        nom_type = _resolve_nom(db, 'types_activite', payload.get('type_activite_id'))
+        nom_mach = _resolve_nom(db, 'machines', payload.get('machine_id'))
+        nom_cls  = _resolve_nom(db, 'classes', payload.get('classe_id'))
+        nom_mat  = _resolve_nom(db, 'materiaux', payload.get('materiau_id'))
 
         cur = db.execute('''
             INSERT INTO consommations (
@@ -286,28 +565,30 @@ def api_create_consommation():
                 impression_couleur, projet_nom, projet_personnel
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ''', (
-            data.get('date_saisie', datetime.now().strftime('%Y-%m-%d %H:%M')),
-            data.get('preparateur_id'), data.get('type_activite_id'),
-            data.get('machine_id') or None, data.get('classe_id') or None,
-            data.get('referent_id') or None,
-            data.get('materiau_id') or None,
-            nom_prep, nom_type, nom_mach, nom_cls, nom_ref, nom_mat,
-            data.get('quantite') or 0, data.get('unite',''),
-            data.get('poids_grammes') or None,
-            data.get('longueur_mm') or None, data.get('largeur_mm') or None,
+            payload.get('date_saisie', datetime.now().strftime('%Y-%m-%d %H:%M')),
+            payload.get('preparateur_id'), payload.get('type_activite_id'),
+            payload.get('machine_id') or None, payload.get('classe_id') or None,
+            primary_referent['id'] if primary_referent else None,
+            payload.get('materiau_id') or None,
+            nom_prep, nom_type, nom_mach, nom_cls, (primary_referent['nom'] if primary_referent else ''), nom_mat,
+            payload.get('quantite') or 0, payload.get('unite',''),
+            payload.get('poids_grammes') or None,
+            payload.get('longueur_mm') or None, payload.get('largeur_mm') or None,
             surface or None,
-            data.get('epaisseur') or None,
-            data.get('nb_feuilles') or None, data.get('format_papier') or None,
-            data.get('nb_feuilles_plastique') or None,
-            data.get('type_feuille') or None, data.get('commentaire',''),
-            data.get('impression_couleur',''),
-            data.get('projet_nom',''),
-            _to_bool_int(data.get('projet_personnel', 0)),
+            payload.get('epaisseur') or None,
+            payload.get('nb_feuilles') or None, payload.get('format_papier') or None,
+            payload.get('nb_feuilles_plastique') or None,
+            payload.get('type_feuille') or None, payload.get('commentaire',''),
+            payload.get('impression_couleur',''),
+            payload.get('projet_nom',''),
+            _to_bool_int(payload.get('projet_personnel', 0)),
         ))
+
+        _replace_consumption_referents(db, cur.lastrowid, referent_links)
 
         # Synchronisation stock non bloquante (on autorise les stocks négatifs).
         try:
-            _decrease_stock_from_action(db, cur.lastrowid, data)
+            _decrease_stock_from_action(db, cur.lastrowid, payload)
         except Exception:
             pass
 
@@ -332,7 +613,7 @@ def api_create_consommation_batch():
         'date_saisie': data.get('date_saisie', datetime.now().strftime('%Y-%m-%d %H:%M')),
         'preparateur_id': data.get('preparateur_id'),
         'classe_id': data.get('classe_id'),
-        'referent_id': data.get('referent_id'),
+        'referent_ids': data.get('referent_ids', data.get('referent_id')),
         'projet_nom': data.get('projet_nom', ''),
         'projet_personnel': _to_bool_int(data.get('projet_personnel', 0)),
     }
@@ -342,19 +623,24 @@ def api_create_consommation_batch():
     try:
         nom_prep = _resolve_nom(db, 'preparateurs', common['preparateur_id'])
         nom_cls  = _resolve_nom(db, 'classes', common['classe_id'])
-        nom_ref  = _resolve_nom(db, 'referents', common['referent_id'])
+        referent_links = _resolve_referent_links(db, common['referent_ids'])
+        primary_referent = referent_links[0] if referent_links else None
 
         for index, action in enumerate(actions, start=1):
-            validation_error = _validate_action_selection(db, action)
+            action_payload = dict(action or {})
+            action_payload['materiau_id'] = _resolve_effective_material_id(db, action_payload)
+            action_payload = _apply_occurrence_multiplier(db, action_payload)
+
+            validation_error = _validate_action_selection(db, action_payload)
             if validation_error:
                 db.rollback()
                 return jsonify({'success': False, 'error': f'Action {index}: {validation_error}'}), 400
 
-            surface = _surface_from_action(action)
+            surface = _surface_from_action(action_payload)
 
-            nom_type = _resolve_nom(db, 'types_activite', action.get('type_activite_id'))
-            nom_mach = _resolve_nom(db, 'machines', action.get('machine_id'))
-            nom_mat  = _resolve_nom(db, 'materiaux', action.get('materiau_id'))
+            nom_type = _resolve_nom(db, 'types_activite', action_payload.get('type_activite_id'))
+            nom_mach = _resolve_nom(db, 'machines', action_payload.get('machine_id'))
+            nom_mat  = _resolve_nom(db, 'materiaux', action_payload.get('materiau_id'))
 
             cur = db.execute('''
                 INSERT INTO consommations (
@@ -369,26 +655,28 @@ def api_create_consommation_batch():
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ''', (
                 common['date_saisie'], common['preparateur_id'],
-                action.get('type_activite_id'), action.get('machine_id') or None,
-                common.get('classe_id') or None, common.get('referent_id') or None,
-                action.get('materiau_id') or None,
-                nom_prep, nom_type, nom_mach, nom_cls, nom_ref, nom_mat,
-                action.get('quantite') or 0, action.get('unite', ''),
-                action.get('poids_grammes') or None,
-                action.get('longueur_mm') or None, action.get('largeur_mm') or None,
+                action_payload.get('type_activite_id'), action_payload.get('machine_id') or None,
+                common.get('classe_id') or None, (primary_referent['id'] if primary_referent else None),
+                action_payload.get('materiau_id') or None,
+                nom_prep, nom_type, nom_mach, nom_cls, (primary_referent['nom'] if primary_referent else ''), nom_mat,
+                action_payload.get('quantite') or 0, action_payload.get('unite', ''),
+                action_payload.get('poids_grammes') or None,
+                action_payload.get('longueur_mm') or None, action_payload.get('largeur_mm') or None,
                 surface or None,
-                action.get('epaisseur') or None,
-                action.get('nb_feuilles') or None, action.get('format_papier') or None,
-                action.get('nb_feuilles_plastique') or None,
-                action.get('type_feuille') or None, action.get('commentaire', ''),
-                action.get('impression_couleur', ''), common['projet_nom'], common['projet_personnel'],
+                action_payload.get('epaisseur') or None,
+                action_payload.get('nb_feuilles') or None, action_payload.get('format_papier') or None,
+                action_payload.get('nb_feuilles_plastique') or None,
+                action_payload.get('type_feuille') or None, action_payload.get('commentaire', ''),
+                action_payload.get('impression_couleur', ''), common['projet_nom'], common['projet_personnel'],
             ))
             conso_id = cur.lastrowid
             ids.append(conso_id)
 
+            _replace_consumption_referents(db, conso_id, referent_links)
+
             # Synchronisation stock non bloquante (on autorise les stocks négatifs).
             try:
-                _decrease_stock_from_action(db, conso_id, action)
+                _decrease_stock_from_action(db, conso_id, action_payload)
             except Exception:
                 pass
 
@@ -417,18 +705,23 @@ def api_delete_consommation(id):
 def api_update_consommation(id):
     data = request.get_json(); db = get_db()
     try:
-        validation_error = _validate_action_selection(db, data)
+        payload = dict(data or {})
+        payload['materiau_id'] = _resolve_effective_material_id(db, payload)
+        payload = _apply_occurrence_multiplier(db, payload)
+
+        validation_error = _validate_action_selection(db, payload)
         if validation_error:
             return jsonify({'success': False, 'error': validation_error}), 400
 
-        surface = _surface_from_action(data)
+        surface = _surface_from_action(payload)
+        referent_links = _resolve_referent_links(db, payload.get('referent_ids', payload.get('referent_id')))
+        primary_referent = referent_links[0] if referent_links else None
 
-        nom_prep = _resolve_nom(db, 'preparateurs', data.get('preparateur_id'))
-        nom_type = _resolve_nom(db, 'types_activite', data.get('type_activite_id'))
-        nom_mach = _resolve_nom(db, 'machines', data.get('machine_id'))
-        nom_cls  = _resolve_nom(db, 'classes', data.get('classe_id'))
-        nom_ref  = _resolve_nom(db, 'referents', data.get('referent_id'))
-        nom_mat  = _resolve_nom(db, 'materiaux', data.get('materiau_id'))
+        nom_prep = _resolve_nom(db, 'preparateurs', payload.get('preparateur_id'))
+        nom_type = _resolve_nom(db, 'types_activite', payload.get('type_activite_id'))
+        nom_mach = _resolve_nom(db, 'machines', payload.get('machine_id'))
+        nom_cls  = _resolve_nom(db, 'classes', payload.get('classe_id'))
+        nom_mat  = _resolve_nom(db, 'materiaux', payload.get('materiau_id'))
 
         db.execute('''
             UPDATE consommations SET
@@ -445,24 +738,25 @@ def api_update_consommation(id):
                 updated_at=datetime('now','localtime')
             WHERE id=?
         ''', (
-            data.get('date_saisie'), data.get('preparateur_id'),
-            data.get('type_activite_id'), data.get('machine_id') or None,
-            data.get('classe_id') or None, data.get('referent_id') or None,
-            data.get('materiau_id') or None,
-            nom_prep, nom_type, nom_mach, nom_cls, nom_ref, nom_mat,
-            data.get('quantite') or 0, data.get('unite',''),
-            data.get('poids_grammes') or None,
-            data.get('longueur_mm') or None, data.get('largeur_mm') or None,
+            payload.get('date_saisie'), payload.get('preparateur_id'),
+            payload.get('type_activite_id'), payload.get('machine_id') or None,
+            payload.get('classe_id') or None, (primary_referent['id'] if primary_referent else None),
+            payload.get('materiau_id') or None,
+            nom_prep, nom_type, nom_mach, nom_cls, (primary_referent['nom'] if primary_referent else ''), nom_mat,
+            payload.get('quantite') or 0, payload.get('unite',''),
+            payload.get('poids_grammes') or None,
+            payload.get('longueur_mm') or None, payload.get('largeur_mm') or None,
             surface or None,
-            data.get('epaisseur') or None,
-            data.get('nb_feuilles') or None, data.get('format_papier') or None,
-            data.get('nb_feuilles_plastique') or None,
-            data.get('type_feuille') or None, data.get('commentaire',''),
-            data.get('impression_couleur',''),
-            data.get('projet_nom',''),
-            _to_bool_int(data.get('projet_personnel', 0)),
+            payload.get('epaisseur') or None,
+            payload.get('nb_feuilles') or None, payload.get('format_papier') or None,
+            payload.get('nb_feuilles_plastique') or None,
+            payload.get('type_feuille') or None, payload.get('commentaire',''),
+            payload.get('impression_couleur',''),
+            payload.get('projet_nom',''),
+            _to_bool_int(payload.get('projet_personnel', 0)),
             id,
         ))
+        _replace_consumption_referents(db, id, referent_links)
         db.commit(); return jsonify({'success':True})
     except Exception as e:
         db.rollback(); return jsonify({'success':False,'error':str(e)}), 400

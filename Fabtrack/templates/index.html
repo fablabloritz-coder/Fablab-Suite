@@ -44,18 +44,19 @@
                 <input type="hidden" id="classe_id" value="">
             </div>
             <div class="col-md-6">
-                <label class="form-label"><i class="bi bi-person-badge me-1"></i> Référent</label>
+                <label class="form-label"><i class="bi bi-person-badge me-1"></i> Référent(s)</label>
                 <div id="referent_lookup" class="lookup-field">
                     <div class="input-group">
                         <input type="text" id="referent_search" class="form-control"
                                placeholder="Tapez pour filtrer..." autocomplete="off">
-                        <input type="hidden" id="referent_id" value="">
                         <button type="button" class="btn btn-outline-secondary" onclick="addNewReferent()" title="Ajouter un référent">
                             <i class="bi bi-plus-lg"></i>
                         </button>
                     </div>
                     <div id="referent_suggestions" class="lookup-suggestions" style="display:none"></div>
                 </div>
+                <div id="referent_selected" class="d-flex flex-wrap gap-2 mt-2"></div>
+                <div class="form-text">Vous pouvez associer plusieurs référents à une même saisie.</div>
             </div>
         </div>
     </div>
@@ -122,10 +123,80 @@ let actionCounter = 0;   // auto-increment id for actions
 let actionUnits = {};     // per-action decoupe unit
 let classeChoices = [];
 let referentChoices = [];
+let selectedReferentIds = [];
 
 function getCompatibleMachineIdsForType(typeId) {
     const links = REF_DATA.machine_type_activite || [];
     return new Set(links.filter(l => l.type_activite_id === typeId).map(l => l.machine_id));
+}
+
+function getTypeById(typeId) {
+    const numericId = parseInt(typeId, 10);
+    return (REF_DATA.types_activite || []).find(t => parseInt(t.id, 10) === numericId) || null;
+}
+
+function isPaperTypeId(typeId) {
+    const type = getTypeById(typeId);
+    if (!type) return false;
+    return type.nom === 'Impression Papier' || String(type.unite_defaut || '').toLowerCase() === 'feuilles';
+}
+
+function paperMaterialMatches(name, formatPapier, impressionMode) {
+    const text = String(name || '').toLowerCase();
+    const formatToken = String(formatPapier || '').toLowerCase();
+    if (!text || !formatToken || !text.includes(formatToken)) return false;
+    if (impressionMode === 'couleur') return text.includes('couleur');
+    return text.includes('n&b') || text.includes('nb') || (text.includes('noir') && text.includes('blanc'));
+}
+
+function getAvailableMaterialsForCard(card) {
+    const ids = Array.from(card.querySelector('.f-materiau')?.options || [])
+        .map(option => parseInt(option.value, 10))
+        .filter(Number.isInteger);
+    return (REF_DATA.materiaux || []).filter(mat => ids.includes(parseInt(mat.id, 10)));
+}
+
+function syncPaperMaterialSelection(card, availableMaterials) {
+    if (!card) return;
+    const materialGroup = card.querySelector('.grp-materiau');
+    const materialSelect = card.querySelector('.f-materiau');
+    const status = card.querySelector('.papier-material-status');
+    const typeId = parseInt(card.querySelector('.f-type-activite')?.value, 10);
+
+    if (!isPaperTypeId(typeId)) {
+        if (status) status.style.display = 'none';
+        return;
+    }
+
+    const materials = Array.isArray(availableMaterials) ? availableMaterials : getAvailableMaterialsForCard(card);
+    const formatPapier = card.querySelector('.f-format-papier')?.value || '';
+    const impressionMode = card.querySelector('.f-impression-couleur')?.value || '';
+    const match = materials.find(mat => paperMaterialMatches(mat.nom, formatPapier, impressionMode)) || null;
+
+    if (materialGroup) materialGroup.style.display = 'none';
+    if (materialSelect) materialSelect.value = match ? String(match.id) : '';
+    if (!status) return;
+
+    status.style.display = '';
+    if (!formatPapier || !impressionMode) {
+        status.className = 'papier-material-status small text-muted mt-2';
+        status.textContent = 'Le matériau sera sélectionné automatiquement à partir du format et du mode d’impression.';
+        return;
+    }
+
+    if (match) {
+        status.className = 'papier-material-status small text-success mt-2';
+        status.textContent = `Matériau auto : ${match.nom}`;
+        return;
+    }
+
+    status.className = 'papier-material-status small text-danger mt-2';
+    status.textContent = 'Aucun matériau papier compatible trouvé pour ce format et ce mode.';
+}
+
+function syncPaperMaterialSelectionFromField(field) {
+    const card = field.closest('[data-action-id]');
+    if (card) syncPaperMaterialSelection(card);
 }
 
 /* ---------- lifecycle ---------- */
@@ -179,9 +250,10 @@ function populateGlobalSelects() {
     });
 
     syncGlobalLookupHidden('classe_search', 'classe_id', classeChoices);
-    syncGlobalLookupHidden('referent_search', 'referent_id', referentChoices);
     hideLookupSuggestions('classe_suggestions');
     hideLookupSuggestions('referent_suggestions');
+    selectedReferentIds = selectedReferentIds.filter(id => referentChoices.some(choice => parseInt(choice.id, 10) === parseInt(id, 10)));
+    renderSelectedReferents();
 }
 
 function normalizeLookup(value) {
@@ -240,6 +312,49 @@ function hideLookupSuggestions(suggestionsId) {
     if (!box) return;
     box.innerHTML = '';
     box.style.display = 'none';
+}
+
+function getReferentChoiceById(idValue) {
+    const numericId = parseInt(idValue, 10);
+    return referentChoices.find(choice => parseInt(choice.id, 10) === numericId) || null;
+}
+
+function renderSelectedReferents() {
+    const container = document.getElementById('referent_selected');
+    if (!container) return;
+
+    if (!selectedReferentIds.length) {
+        container.innerHTML = '<span class="text-muted small">Aucun référent sélectionné</span>';
+        return;
+    }
+
+    container.innerHTML = selectedReferentIds.map(id => {
+        const choice = getReferentChoiceById(id);
+        const label = choice ? choice.display : `Référent #${id}`;
+        return `<span class="badge rounded-pill text-bg-secondary d-inline-flex align-items-center gap-2 px-3 py-2">
+            <span>${escHtml(label)}</span>
+            <button type="button" class="btn-close btn-close-white btn-sm" aria-label="Retirer" onclick="removeReferentSelection(${id})"></button>
+        </span>`;
+    }).join('');
+}
+
+function addReferentSelection(choice) {
+    const id = parseInt(choice.id, 10);
+    if (!id || selectedReferentIds.includes(id)) {
+        document.getElementById('referent_search').value = '';
+        hideLookupSuggestions('referent_suggestions');
+        return;
+    }
+    selectedReferentIds.push(id);
+    document.getElementById('referent_search').value = '';
+    hideLookupSuggestions('referent_suggestions');
+    renderSelectedReferents();
+}
+
+function removeReferentSelection(idValue) {
+    const numericId = parseInt(idValue, 10);
+    selectedReferentIds = selectedReferentIds.filter(id => id !== numericId);
+    renderSelectedReferents();
 }
 
 function chooseLookupSuggestion(inputId, hiddenId, suggestionsId, choice) {
@@ -321,9 +436,64 @@ function bindLookupInput(inputId, hiddenId, suggestionsId, getChoices) {
     });
 }
 
+function renderReferentSuggestions() {
+    const input = document.getElementById('referent_search');
+    const box = document.getElementById('referent_suggestions');
+    if (!input || !box) return;
+
+    const matches = filterLookupChoices(input.value, referentChoices)
+        .filter(choice => !selectedReferentIds.includes(parseInt(choice.id, 10)));
+    if (!matches.length) {
+        hideLookupSuggestions('referent_suggestions');
+        return;
+    }
+
+    box.innerHTML = '';
+    matches.forEach(choice => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'lookup-suggestion-item';
+        item.textContent = choice.display;
+        item.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            addReferentSelection(choice);
+        });
+        box.appendChild(item);
+    });
+    box.style.display = 'block';
+}
+
+function bindReferentLookupInput() {
+    const input = document.getElementById('referent_search');
+    if (!input || input.dataset.lookupBound) return;
+    input.dataset.lookupBound = '1';
+
+    input.addEventListener('input', () => {
+        renderReferentSuggestions();
+    });
+
+    input.addEventListener('focus', () => {
+        renderReferentSuggestions();
+    });
+
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        const box = document.getElementById('referent_suggestions');
+        if (!box || box.style.display !== 'block') return;
+        const first = box.querySelector('.lookup-suggestion-item');
+        if (!first) return;
+        event.preventDefault();
+        first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => hideLookupSuggestions('referent_suggestions'), 120);
+    });
+}
+
 function bindGlobalLookupInputs() {
     bindLookupInput('classe_search', 'classe_id', 'classe_suggestions', () => classeChoices);
-    bindLookupInput('referent_search', 'referent_id', 'referent_suggestions', () => referentChoices);
+    bindReferentLookupInput();
 
     if (!document.body.dataset.lookupOutsideBound) {
         document.body.dataset.lookupOutsideBound = '1';
@@ -419,6 +589,11 @@ function buildActionHTML(aid) {
                         <label class="form-label"><i class="bi bi-speedometer me-1"></i> Poids (grammes)</label>
                         <input type="number" class="form-control f-poids" step="0.1" min="0" placeholder="Ex: 150.5">
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label"><i class="bi bi-123 me-1"></i> Occurrences</label>
+                        <input type="number" class="form-control f-occurrence-count" min="1" step="1" value="1">
+                        <div class="form-text">Appliqué aux consommations filament.</div>
+                    </div>
                 </div>
             </div>
 
@@ -454,6 +629,11 @@ function buildActionHTML(aid) {
                            <input type="text" class="form-control f-surface" inputmode="decimal" autocomplete="off" placeholder="Auto ou manuel"
                                onblur="normalizeSurfaceInput(this)">
                     </div>
+                    <div class="col-md-4">
+                        <label class="form-label"><i class="bi bi-123 me-1"></i> Occurrences</label>
+                        <input type="number" class="form-control f-occurrence-count" min="1" step="1" value="1">
+                        <div class="form-text">Multiplie la surface totale consommée.</div>
+                    </div>
                 </div>
             </div>
 
@@ -466,7 +646,7 @@ function buildActionHTML(aid) {
                     </div>
                     <div class="col-md-4">
                         <label class="form-label"><i class="bi bi-aspect-ratio me-1"></i> Format</label>
-                        <select class="form-select f-format-papier">
+                        <select class="form-select f-format-papier" onchange="syncPaperMaterialSelectionFromField(this)">
                             <option value="">Sélectionner...</option>
                             <option value="A0">A0 (1189×841)</option>
                             <option value="A1">A1 (841×594)</option>
@@ -478,13 +658,14 @@ function buildActionHTML(aid) {
                     </div>
                     <div class="col-md-4">
                         <label class="form-label"><i class="bi bi-palette me-1"></i> Couleur / N&B</label>
-                        <select class="form-select f-impression-couleur">
+                        <select class="form-select f-impression-couleur" onchange="syncPaperMaterialSelectionFromField(this)">
                             <option value="">Sélectionner...</option>
                             <option value="couleur">🎨 Couleur</option>
                             <option value="nb">⬛ Noir & Blanc</option>
                         </select>
                     </div>
                 </div>
+                <div class="papier-material-status small text-muted mt-2" style="display:none;"></div>
             </div>
 
             <!-- Thermoformage -->
@@ -587,6 +768,7 @@ function updateMaterialSelect(card, machineId) {
     const mts = card.querySelector('.f-materiau');
     const previousMaterialId = mts.value;
     const mtm = REF_DATA.machine_type_materiau || [];
+    const isPaper = isPaperTypeId(card.querySelector('.f-type-activite')?.value);
 
     let filteredMat = [];
     if (machineId) {
@@ -607,7 +789,7 @@ function updateMaterialSelect(card, machineId) {
     }
 
     if (filteredMat.length > 0) {
-        mtg.style.display = '';
+        mtg.style.display = isPaper ? 'none' : '';
         mts.innerHTML = '<option value="">Sélectionner...</option>';
         filteredMat.forEach(m => mts.innerHTML += `<option value="${m.id}">${m.nom}</option>`);
         if (previousMaterialId && filteredMat.some(m => String(m.id) === previousMaterialId)) {
@@ -618,6 +800,10 @@ function updateMaterialSelect(card, machineId) {
     } else {
         mtg.style.display = 'none';
         mts.innerHTML = '<option value="">Aucun matériau compatible</option>';
+    }
+
+    if (isPaper) {
+        syncPaperMaterialSelection(card, filteredMat);
     }
 }
 
@@ -644,6 +830,7 @@ function showActionSpecificFields(aid, type) {
     } else if (typeName === 'Impression Papier' || unite === 'feuilles') {
         card.querySelector('.sp-papier').style.display = '';
         title.textContent = 'Détails Impression Papier';
+        syncPaperMaterialSelection(card);
     } else if (typeName === 'Thermoformage' || unite === 'thermo') {
         card.querySelector('.sp-thermo').style.display = '';
         title.textContent = 'Détails Thermoformage';
@@ -705,8 +892,8 @@ async function addNewReferent() {
         REF_DATA.referents.push({id: data.id, nom: nom.trim(), categorie: '', actif: 1});
         REF_DATA.referents.sort((a, b) => a.nom.localeCompare(b.nom));
         populateGlobalSelects();
-        document.getElementById('referent_id').value = String(data.id);
-        setLookupInputFromId('referent_search', data.id, referentChoices);
+        const created = getReferentChoiceById(data.id);
+        if (created) addReferentSelection(created);
         showToast(`Référent "${nom.trim()}" ajouté`);
     }
 }
@@ -747,6 +934,7 @@ async function doSubmit(andNew) {
             type_activite_id: parseInt(typeId),
             machine_id: parseInt(card.querySelector('.f-machine')?.value) || null,
             materiau_id: parseInt(card.querySelector('.f-materiau')?.value) || null,
+            occurrence_count: parseInt(card.querySelector('.f-occurrence-count')?.value, 10) || 1,
             poids_grammes: parseFloat(card.querySelector('.f-poids')?.value) || null,
             longueur_mm: rawL ? rawL * factor : null,
             largeur_mm: rawW ? rawW * factor : null,
@@ -773,7 +961,7 @@ async function doSubmit(andNew) {
         date_saisie: document.getElementById('date_saisie').value,
         preparateur_id: parseInt(CURRENT_USER),
         classe_id: parseInt(document.getElementById('classe_id').value) || null,
-        referent_id: parseInt(document.getElementById('referent_id').value) || null,
+        referent_ids: selectedReferentIds.slice(),
         projet_nom: document.getElementById('projet_nom').value || '',
         projet_personnel: document.getElementById('projet_personnel').checked ? 1 : 0,
         actions: actions
@@ -818,7 +1006,8 @@ function resetForm() {
     document.getElementById('classe_search').value = '';
     document.getElementById('referent_search').value = '';
     document.getElementById('classe_id').value = '';
-    document.getElementById('referent_id').value = '';
+    selectedReferentIds = [];
+    renderSelectedReferents();
     hideLookupSuggestions('classe_suggestions');
     hideLookupSuggestions('referent_suggestions');
     userChangedDate = false;
@@ -868,6 +1057,7 @@ function getDetailsText(row) {
     const parts = [];
     if (row.poids_grammes) parts.push(`${row.poids_grammes}g`);
     if (row.surface_m2) parts.push(`${row.surface_m2.toFixed(4)} m²`);
+    if (row.quantite && row.unite === 'occurrences' && row.quantite > 1) parts.push(`x${row.quantite} occurrences`);
     if (row.nb_feuilles) parts.push(`${row.nb_feuilles} feuilles`);
     if (row.nb_feuilles_plastique) parts.push(`${row.nb_feuilles_plastique} feuilles pl.`);
     if (row.classe_nom) parts.push(row.classe_nom);

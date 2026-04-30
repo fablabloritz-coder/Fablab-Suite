@@ -88,12 +88,160 @@
         <nav class="d-flex justify-content-center py-3" id="paginationNav"></nav>
     </div>
 </div>
+
+<div class="modal fade" id="editEntryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Modifier la saisie</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editEntryId">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Date et heure</label>
+                        <input type="datetime-local" id="editDateSaisie" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Préparateur</label>
+                        <select id="editPreparateur" class="form-select">
+                            <option value="">Sélectionner</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Type d'activité</label>
+                        <select id="editTypeActivite" class="form-select">
+                            <option value="">Sélectionner</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Machine</label>
+                        <select id="editMachine" class="form-select">
+                            <option value="">Aucune</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Matériau</label>
+                        <select id="editMateriau" class="form-select">
+                            <option value="">Aucun</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Classe</label>
+                        <select id="editClasse" class="form-select">
+                            <option value="">Aucune</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Référents</label>
+                        <select id="editReferents" class="form-select" multiple size="5"></select>
+                        <div class="form-text">Maintenir Ctrl pour sélectionner plusieurs référents.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Projet</label>
+                        <input type="text" id="editProjetNom" class="form-control" placeholder="Nom du projet">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="editProjetPersonnel">
+                            <label class="form-check-label" for="editProjetPersonnel">Projet personnel</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Poids (g)</label>
+                        <input type="number" step="0.01" min="0" id="editPoidsGrammes" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Longueur (mm)</label>
+                        <input type="number" step="0.01" min="0" id="editLongueurMm" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Largeur (mm)</label>
+                        <input type="number" step="0.01" min="0" id="editLargeurMm" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Surface (m²)</label>
+                        <input type="number" step="0.0001" min="0" id="editSurfaceM2" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Épaisseur</label>
+                        <input type="text" id="editEpaisseur" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Nb feuilles</label>
+                        <input type="number" step="1" min="0" id="editNbFeuilles" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Format papier</label>
+                        <input type="text" id="editFormatPapier" class="form-control" placeholder="A4, A3...">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Impression</label>
+                        <select id="editImpressionCouleur" class="form-select">
+                            <option value="">Non défini</option>
+                            <option value="nb">N&B</option>
+                            <option value="couleur">Couleur</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Nb feuilles plastique</label>
+                        <input type="number" step="1" min="0" id="editNbFeuillesPlastique" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Type de feuille</label>
+                        <input type="text" id="editTypeFeuille" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Commentaire</label>
+                        <textarea id="editCommentaire" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditEntry()">
+                    <i class="bi bi-save me-1"></i>Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let currentPage = 1;
 const perPage = 30;
+
+function fillSelectOptions(selectId, rows, placeholder, labelBuilder) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.innerHTML = placeholder ? `<option value="">${placeholder}</option>` : '';
+    rows.forEach(row => {
+        const option = document.createElement('option');
+        option.value = row.id;
+        option.textContent = labelBuilder(row);
+        select.appendChild(option);
+    });
+}
+
+function toDateTimeLocalValue(value) {
+    if (!value) return '';
+    return String(value).replace(' ', 'T').slice(0, 16);
+}
+
+function selectedMultiValues(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return [];
+    return Array.from(select.selectedOptions)
+        .map(option => parseInt(option.value, 10))
+        .filter(Number.isInteger);
+}
+
+function maybeNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(String(value).replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : null;
+}
 
 function onReferenceDataLoaded() {
     const typeSel = document.getElementById('filterType');
@@ -110,6 +258,13 @@ function onReferenceDataLoaded() {
     REF_DATA.classes.forEach(c => {
         classeSel.innerHTML += `<option value="${c.id}">${c.nom}</option>`;
     });
+
+    fillSelectOptions('editPreparateur', REF_DATA.preparateurs, 'Sélectionner', row => row.nom);
+    fillSelectOptions('editTypeActivite', REF_DATA.types_activite, 'Sélectionner', row => `${row.icone || ''} ${row.nom}`.trim());
+    fillSelectOptions('editMachine', REF_DATA.machines, 'Aucune', row => row.nom);
+    fillSelectOptions('editMateriau', REF_DATA.materiaux, 'Aucun', row => row.nom);
+    fillSelectOptions('editClasse', REF_DATA.classes, 'Aucune', row => row.nom);
+    fillSelectOptions('editReferents', REF_DATA.referents, '', row => row.categorie ? `${row.nom} (${row.categorie})` : row.nom);
 
     loadHistorique();
 }
@@ -161,6 +316,9 @@ async function loadHistorique(page) {
                 <td><small>${getDetailsText(row)}</small></td>
                 <td><small class="text-muted">${escHtml(row.commentaire) || '—'}</small></td>
                 <td>
+                    <button class="btn btn-outline-primary btn-sm me-1" onclick="openEditEntry(${row.id})" title="Modifier">
+                        <i class="bi bi-pencil"></i>
+                    </button>
                     <button class="btn btn-outline-danger btn-sm" onclick="deleteEntry(${row.id})" title="Supprimer">
                         <i class="bi bi-trash"></i>
                     </button>
@@ -223,6 +381,93 @@ async function deleteEntry(id) {
             showToast('Erreur suppression', 'error');
         }
     });
+}
+
+async function openEditEntry(id) {
+    try {
+        const res = await fetch(`/api/consommations/${id}`);
+        const result = await res.json();
+        if (!res.ok || !result.success || !result.data) {
+            showToast(result.error || 'Saisie introuvable', 'error');
+            return;
+        }
+
+        const data = result.data;
+        document.getElementById('editEntryId').value = data.id;
+        document.getElementById('editDateSaisie').value = toDateTimeLocalValue(data.date_saisie);
+        document.getElementById('editPreparateur').value = data.preparateur_id || '';
+        document.getElementById('editTypeActivite').value = data.type_activite_id || '';
+        document.getElementById('editMachine').value = data.machine_id || '';
+        document.getElementById('editMateriau').value = data.materiau_id || '';
+        document.getElementById('editClasse').value = data.classe_id || '';
+        document.getElementById('editProjetNom').value = data.projet_nom || '';
+        document.getElementById('editProjetPersonnel').checked = Boolean(data.projet_personnel);
+        document.getElementById('editPoidsGrammes').value = data.poids_grammes ?? '';
+        document.getElementById('editLongueurMm').value = data.longueur_mm ?? '';
+        document.getElementById('editLargeurMm').value = data.largeur_mm ?? '';
+        document.getElementById('editSurfaceM2').value = data.surface_m2 ?? '';
+        document.getElementById('editEpaisseur').value = data.epaisseur || '';
+        document.getElementById('editNbFeuilles').value = data.nb_feuilles ?? '';
+        document.getElementById('editFormatPapier').value = data.format_papier || '';
+        document.getElementById('editImpressionCouleur').value = data.impression_couleur || '';
+        document.getElementById('editNbFeuillesPlastique').value = data.nb_feuilles_plastique ?? '';
+        document.getElementById('editTypeFeuille').value = data.type_feuille || '';
+        document.getElementById('editCommentaire').value = data.commentaire || '';
+
+        const referentIds = new Set((data.referent_ids || []).map(value => String(value)));
+        Array.from(document.getElementById('editReferents').options).forEach(option => {
+            option.selected = referentIds.has(option.value);
+        });
+
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('editEntryModal')).show();
+    } catch (err) {
+        console.error(err);
+        showToast('Erreur de chargement de la saisie', 'error');
+    }
+}
+
+async function submitEditEntry() {
+    const id = document.getElementById('editEntryId').value;
+    const payload = {
+        date_saisie: (document.getElementById('editDateSaisie').value || '').replace('T', ' '),
+        preparateur_id: parseInt(document.getElementById('editPreparateur').value, 10) || null,
+        type_activite_id: parseInt(document.getElementById('editTypeActivite').value, 10) || null,
+        machine_id: parseInt(document.getElementById('editMachine').value, 10) || null,
+        materiau_id: parseInt(document.getElementById('editMateriau').value, 10) || null,
+        classe_id: parseInt(document.getElementById('editClasse').value, 10) || null,
+        referent_ids: selectedMultiValues('editReferents'),
+        projet_nom: document.getElementById('editProjetNom').value.trim(),
+        projet_personnel: document.getElementById('editProjetPersonnel').checked,
+        poids_grammes: maybeNumber(document.getElementById('editPoidsGrammes').value),
+        longueur_mm: maybeNumber(document.getElementById('editLongueurMm').value),
+        largeur_mm: maybeNumber(document.getElementById('editLargeurMm').value),
+        surface_m2: maybeNumber(document.getElementById('editSurfaceM2').value),
+        epaisseur: document.getElementById('editEpaisseur').value.trim(),
+        nb_feuilles: maybeNumber(document.getElementById('editNbFeuilles').value),
+        format_papier: document.getElementById('editFormatPapier').value.trim(),
+        impression_couleur: document.getElementById('editImpressionCouleur').value,
+        nb_feuilles_plastique: maybeNumber(document.getElementById('editNbFeuillesPlastique').value),
+        type_feuille: document.getElementById('editTypeFeuille').value.trim(),
+        commentaire: document.getElementById('editCommentaire').value.trim(),
+        quantite: 0,
+        unite: '',
+    };
+
+    const res = await fetch(`/api/consommations/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+        showToast(result.error || 'Erreur de mise à jour', 'error');
+        return;
+    }
+
+    const modal = bootstrap.Modal.getInstance(document.getElementById('editEntryModal'));
+    if (modal) modal.hide();
+    showToast('Saisie mise à jour');
+    loadHistorique(currentPage);
 }
 
 function resetFilters() {
