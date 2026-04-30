@@ -219,8 +219,8 @@ class ConsumptionMultiReferentsTests(unittest.TestCase):
             machine_id = db.execute("SELECT id FROM machines WHERE nom='Traceur Test'").fetchone()['id']
 
             db.execute("UPDATE types_activite SET nom='Impression Papier', unite_defaut='feuilles' WHERE id=?", (self.type_id,))
-            db.execute("INSERT INTO materiaux (nom, unite, actif) VALUES ('Papier A4 Couleur', 'feuilles', 1)")
-            db.execute("INSERT INTO materiaux (nom, unite, actif) VALUES ('Papier A4 N&B', 'feuilles', 1)")
+            db.execute("INSERT INTO materiaux (nom, unite, count_occurrences, actif) VALUES ('Papier A4 Couleur', 'feuilles', 1, 1)")
+            db.execute("INSERT INTO materiaux (nom, unite, count_occurrences, actif) VALUES ('Papier A4 N&B', 'feuilles', 1, 1)")
             mat_rows = db.execute("SELECT id, nom FROM materiaux WHERE nom LIKE 'Papier A4 %' ORDER BY nom").fetchall()
 
             db.execute("INSERT INTO machine_type_activite (machine_id, type_activite_id) VALUES (?, ?)", (machine_id, self.type_id))
@@ -256,7 +256,7 @@ class ConsumptionMultiReferentsTests(unittest.TestCase):
         db = models.get_db()
         try:
             row = db.execute(
-                'SELECT materiau_id, nom_materiau, format_papier, impression_couleur, quantite, unite FROM consommations ORDER BY id DESC LIMIT 1'
+                'SELECT materiau_id, nom_materiau, format_papier, impression_couleur, nb_feuilles, quantite, unite FROM consommations ORDER BY id DESC LIMIT 1'
             ).fetchone()
         finally:
             db.close()
@@ -265,8 +265,9 @@ class ConsumptionMultiReferentsTests(unittest.TestCase):
         self.assertEqual(row['nom_materiau'], 'Papier A4 Couleur')
         self.assertEqual(row['format_papier'], 'A4')
         self.assertEqual(row['impression_couleur'], 'couleur')
-        self.assertEqual(row['quantite'] or 0, 0)
-        self.assertEqual(row['unite'] or '', '')
+        self.assertEqual(row['nb_feuilles'], 60)
+        self.assertEqual(row['quantite'] or 0, 5)
+        self.assertEqual(row['unite'] or '', 'occurrences')
 
     def test_3d_occurrence_multiplier_applies_to_pla_weight(self):
         db = models.get_db()
@@ -321,7 +322,7 @@ class ConsumptionMultiReferentsTests(unittest.TestCase):
             db.execute("UPDATE types_activite SET nom='Impression 3D', unite_defaut='g' WHERE id=?", (self.type_id,))
             db.execute("INSERT INTO machines (nom, type_activite_id, actif) VALUES ('Imprimante Résine', ?, 1)", (self.type_id,))
             machine_id = db.execute("SELECT id FROM machines WHERE nom='Imprimante Résine'").fetchone()['id']
-            db.execute("INSERT INTO materiaux (nom, unite, actif) VALUES ('Résine Standard', 'g', 1)")
+            db.execute("INSERT INTO materiaux (nom, unite, count_occurrences, actif) VALUES ('Résine Standard', 'g', 0, 1)")
             materiau_id = db.execute("SELECT id FROM materiaux WHERE nom='Résine Standard'").fetchone()['id']
             db.execute("INSERT INTO machine_type_activite (machine_id, type_activite_id) VALUES (?, ?)", (machine_id, self.type_id))
             db.execute(
@@ -409,6 +410,53 @@ class ConsumptionMultiReferentsTests(unittest.TestCase):
         self.assertAlmostEqual(row['surface_m2'], 0.06, places=6)
         self.assertEqual(row['quantite'], 3)
         self.assertEqual(row['unite'], 'occurrences')
+
+    def test_3d_occurrence_multiplier_can_be_disabled_per_material(self):
+        db = models.get_db()
+        try:
+            db.execute("UPDATE types_activite SET nom='Impression 3D', unite_defaut='g' WHERE id=?", (self.type_id,))
+            db.execute("INSERT INTO machines (nom, type_activite_id, actif) VALUES ('Imprimante 3D Pilotée', ?, 1)", (self.type_id,))
+            machine_id = db.execute("SELECT id FROM machines WHERE nom='Imprimante 3D Pilotée'").fetchone()['id']
+            db.execute("INSERT INTO materiaux (nom, unite, count_occurrences, actif) VALUES ('PLA Spécial', 'g', 0, 1)")
+            materiau_id = db.execute("SELECT id FROM materiaux WHERE nom='PLA Spécial'").fetchone()['id']
+            db.execute("INSERT INTO machine_type_activite (machine_id, type_activite_id) VALUES (?, ?)", (machine_id, self.type_id))
+            db.execute(
+                "INSERT INTO machine_type_materiau (machine_id, type_activite_id, materiau_id) VALUES (?, ?, ?)",
+                (machine_id, self.type_id, materiau_id),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        response = self.client.post(
+            '/api/consommations/batch',
+            json={
+                'date_saisie': '2026-04-30 10:00',
+                'preparateur_id': self.prep_id,
+                'actions': [
+                    {
+                        'type_activite_id': self.type_id,
+                        'machine_id': machine_id,
+                        'materiau_id': materiau_id,
+                        'poids_grammes': 50,
+                        'occurrence_count': 3,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        db = models.get_db()
+        try:
+            row = db.execute(
+                'SELECT poids_grammes, quantite, unite FROM consommations ORDER BY id DESC LIMIT 1'
+            ).fetchone()
+        finally:
+            db.close()
+
+        self.assertEqual(row['poids_grammes'], 50)
+        self.assertEqual(row['quantite'], 0)
+        self.assertEqual(row['unite'], '')
 
 
 if __name__ == '__main__':

@@ -335,6 +335,11 @@
                                 <option value="">Autre</option>
                             </select>
                         </div>
+                        <div class="mb-3 form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="newMatCountOccurrences" checked>
+                            <label class="form-check-label" for="newMatCountOccurrences">Comptabiliser les occurrences</label>
+                            <div class="form-text">Active le multiplicateur xN pour ce matériau quand le formulaire propose un nombre d'occurrences.</div>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Image</label>
                             <input type="file" class="form-control form-control-sm" id="matImageFile" accept="image/*" onchange="previewImg(this,'matImgPreview')">
@@ -1740,6 +1745,9 @@ function renderMateriaux() {
         const imgHtml = m.image_path
             ? `<img src="${m.image_path}" class="rounded me-2 entity-img-mat">`
             : '<span class="me-2 text-muted"><i class="bi bi-image"></i></span>';
+        const occurrenceLabel = m.count_occurrences === 0
+            ? '<span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"><i class="bi bi-x-lg me-1"></i>Occurrences: non</span>'
+            : '<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"><i class="bi bi-check2 me-1"></i>Occurrences: oui</span>';
         const linkedMachines = getLinkedMachineNames(m.id).replace(/<[^>]+>/g, ' ');
         const linkedTypes = getLinkedTypeNamesForMaterial(m.id).replace(/<[^>]+>/g, ' ');
         return `
@@ -1747,7 +1755,7 @@ function renderMateriaux() {
             <div class="d-flex align-items-center gap-2">
                 <input type="checkbox" class="form-check-input" data-entity="materiaux" data-id="${m.id}" onchange="onCheckboxChange('materiaux',${m.id},this.checked)">
                 ${imgHtml}
-                <div><strong>${m.nom}</strong>${m.unite?' • '+m.unite:''}<br><small class="text-muted"><i class="bi bi-cpu me-1"></i>${getLinkedMachineNames(m.id)}</small><br><small class="text-muted"><i class="bi bi-grid-3x3-gap me-1"></i>${getLinkedTypeNamesForMaterial(m.id)}</small></div>
+                <div><strong>${m.nom}</strong>${m.unite?' • '+m.unite:''} ${occurrenceLabel}<br><small class="text-muted"><i class="bi bi-cpu me-1"></i>${getLinkedMachineNames(m.id)}</small><br><small class="text-muted"><i class="bi bi-grid-3x3-gap me-1"></i>${getLinkedTypeNamesForMaterial(m.id)}</small></div>
             </div>
             <div class="d-flex gap-1">
                 <button class="btn btn-outline-primary btn-sm" onclick="editMateriau(${m.id})" title="Modifier"><i class="bi bi-pencil"></i></button>
@@ -1763,7 +1771,12 @@ async function saveMateriau(e) {
     let imgPath = document.getElementById('matImagePath').value;
     const fileInput = document.getElementById('matImageFile');
     if (fileInput.files.length) imgPath = await uploadImage(fileInput, 'materiaux', id || '0');
-    const body = {nom: document.getElementById('newMatName').value.trim(), unite: document.getElementById('newMatUnite').value, image_path: imgPath};
+    const body = {
+        nom: document.getElementById('newMatName').value.trim(),
+        unite: document.getElementById('newMatUnite').value,
+        count_occurrences: document.getElementById('newMatCountOccurrences').checked,
+        image_path: imgPath
+    };
     if (!body.nom) return false;
     let res;
     if (id) { res = await fetch(`/api/materiaux/${id}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()); }
@@ -1779,6 +1792,7 @@ function editMateriau(id) {
     document.getElementById('editMatId').value = m.id;
     document.getElementById('newMatName').value = m.nom;
     document.getElementById('newMatUnite').value = m.unite || '';
+    document.getElementById('newMatCountOccurrences').checked = m.count_occurrences !== 0;
     document.getElementById('matImagePath').value = m.image_path || '';
     const preview = document.getElementById('matImgPreview');
     const clearBtn = document.getElementById('matClearImgBtn');
@@ -1800,6 +1814,7 @@ function clearMatImage() {
 
 function resetMatForm() {
     document.getElementById('editMatId').value = ''; document.getElementById('matForm').reset();
+    document.getElementById('newMatCountOccurrences').checked = true;
     document.getElementById('matImagePath').value = ''; document.getElementById('matImgPreview').style.display = 'none';
     document.getElementById('matClearImgBtn').style.display = 'none';
     document.getElementById('matFormTitle').textContent = 'Ajouter un matériau';

@@ -15,7 +15,7 @@ from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DATA_DIR, 'fabtrack.db')
-FABTRACK_SCHEMA_VERSION = 2026043001
+FABTRACK_SCHEMA_VERSION = 2026050102
 
 SETUP_STATE_KEY = 'setup_state'
 SETUP_PACK_KEY = 'starter_pack'
@@ -309,6 +309,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nom TEXT NOT NULL UNIQUE,
         unite TEXT DEFAULT '',
+        count_occurrences INTEGER DEFAULT 1,
         image_path TEXT DEFAULT '',
         actif INTEGER DEFAULT 1
     );
@@ -660,6 +661,10 @@ def _migrate_db(c):
 
     # Migration matériaux : retirer type_activite_id (anciens schémas)
     matcols = [r[1] for r in c.execute("PRAGMA table_info(materiaux)").fetchall()]
+    if 'count_occurrences' not in matcols:
+        c.execute("ALTER TABLE materiaux ADD COLUMN count_occurrences INTEGER DEFAULT 1")
+    # Normalise les NULL résiduels (anciens enregistrements avant le DEFAULT 1).
+    c.execute("UPDATE materiaux SET count_occurrences=1 WHERE count_occurrences IS NULL")
     if 'type_activite_id' in matcols:
         _migrate_materiaux_to_junction(c)
 
@@ -863,13 +868,20 @@ def _migrate_materiaux_to_junction(c):
     )''')
 
     # Lire les anciens matériaux avec leur type_activite_id
-    old_mats = c.execute('SELECT id, nom, type_activite_id, unite, image_path, actif FROM materiaux').fetchall()
+    old_mats = c.execute('SELECT id, nom, type_activite_id, unite, count_occurrences, image_path, actif FROM materiaux').fetchall()
 
     # Grouper par nom → garder un seul matériau par nom, fusionner les type_activite_id
     from collections import defaultdict
     by_name = defaultdict(list)
-    for mid, nom, taid, unite, img, actif in old_mats:
-        by_name[nom].append({'id': mid, 'type_activite_id': taid, 'unite': unite, 'image_path': img, 'actif': actif})
+    for mid, nom, taid, unite, count_occurrences, img, actif in old_mats:
+        by_name[nom].append({
+            'id': mid,
+            'type_activite_id': taid,
+            'unite': unite,
+            'count_occurrences': count_occurrences,
+            'image_path': img,
+            'actif': actif,
+        })
 
     # Recréer la table materiaux sans type_activite_id
     c.execute('ALTER TABLE materiaux RENAME TO materiaux_old')
@@ -877,6 +889,7 @@ def _migrate_materiaux_to_junction(c):
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nom TEXT NOT NULL UNIQUE,
         unite TEXT DEFAULT '',
+        count_occurrences INTEGER DEFAULT 1,
         image_path TEXT DEFAULT '',
         actif INTEGER DEFAULT 1
     )''')
@@ -885,8 +898,8 @@ def _migrate_materiaux_to_junction(c):
     id_mapping = {}  # old_id → new_id
     for nom, entries in by_name.items():
         best = entries[0]
-        c.execute('INSERT INTO materiaux (nom, unite, image_path, actif) VALUES (?,?,?,?)',
-                  (nom, best['unite'], best['image_path'] or '', best['actif']))
+        c.execute('INSERT INTO materiaux (nom, unite, count_occurrences, image_path, actif) VALUES (?,?,?,?,?)',
+              (nom, best['unite'], best['count_occurrences'], best['image_path'] or '', best['actif']))
         new_id = c.lastrowid
         for e in entries:
             id_mapping[e['id']] = new_id

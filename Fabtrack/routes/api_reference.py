@@ -21,6 +21,21 @@ def _resolve_nom(db, table, id_val):
     return row['nom'] if row else ''
 
 
+def _to_nullable_bool_int(value):
+    if value is None or value == '':
+        return None
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, (int, float)):
+        return 1 if int(value) != 0 else 0
+    text = str(value).strip().lower()
+    if text in ('1', 'true', 'oui', 'yes', 'on'):
+        return 1
+    if text in ('0', 'false', 'non', 'no', 'off'):
+        return 0
+    return None
+
+
 # ── Données de référence ──
 
 @bp.route('/api/reference')
@@ -179,8 +194,15 @@ def api_delete_machine(id):
 def api_add_materiau():
     data = request.get_json(); db = get_db()
     try:
-        cur = db.execute('INSERT INTO materiaux (nom,unite,image_path) VALUES (?,?,?)',
-                         (data['nom'].strip(), data.get('unite',''), data.get('image_path','')))
+        cur = db.execute(
+            'INSERT INTO materiaux (nom,unite,count_occurrences,image_path) VALUES (?,?,?,?)',
+            (
+                data['nom'].strip(),
+                data.get('unite',''),
+                _to_nullable_bool_int(data.get('count_occurrences', True)),
+                data.get('image_path',''),
+            )
+        )
         mat_id = cur.lastrowid
         db.commit()
         return jsonify({'success':True,'id':mat_id})
@@ -204,9 +226,20 @@ def api_delete_materiau(id):
 def api_update_materiau(id):
     data = request.get_json(); db = get_db()
     try:
-        db.execute('UPDATE materiaux SET nom=?,unite=?,image_path=? WHERE id=?',
-                   (data['nom'].strip(), data.get('unite',''),
-                    data.get('image_path',''), id))
+        raw = data.get('count_occurrences')
+        count_occ = _to_nullable_bool_int(raw)
+        if count_occ is None:
+            count_occ = 1  # valeur par défaut si non fournie
+        db.execute(
+            'UPDATE materiaux SET nom=?,unite=?,count_occurrences=?,image_path=? WHERE id=?',
+            (
+                data['nom'].strip(),
+                data.get('unite',''),
+                count_occ,
+                data.get('image_path',''),
+                id,
+            )
+        )
         db.commit()
         return jsonify({'success':True})
     except Exception as e:

@@ -243,11 +243,25 @@ def _normalized_occurrence_count(action):
     return max(1, count)
 
 
-def _resolve_material_name(db, materiau_id):
+def _resolve_material_row(db, materiau_id):
     if not materiau_id:
-        return ''
-    row = db.execute('SELECT nom FROM materiaux WHERE id=?', (materiau_id,)).fetchone()
-    return str(row['nom'] or '') if row else ''
+        return None
+    return db.execute(
+        'SELECT nom, count_occurrences FROM materiaux WHERE id=?',
+        (materiau_id,),
+    ).fetchone()
+
+
+# Familles d'unités pour lesquelles les occurrences sont applicables.
+_OCCURRENCE_UNITS = ('g', 'm²', 'feuilles')
+_OCCURRENCE_TYPE_NAMES = ('impression 3d', 'découpe laser', 'cnc / fraisage', 'impression papier')
+
+
+def _type_supports_occurrences(type_row):
+    """Retourne True si le type d'activité est dans une famille qui supporte le multiplicateur."""
+    type_name = str(type_row['nom'] or '').strip().lower()
+    default_unit = str(type_row['unite_defaut'] or '').strip().lower()
+    return default_unit in _OCCURRENCE_UNITS or type_name in _OCCURRENCE_TYPE_NAMES
 
 
 def _occurrence_multiplier_allowed(db, action):
@@ -255,20 +269,17 @@ def _occurrence_multiplier_allowed(db, action):
     if not type_row:
         return False
 
-    type_name = str(type_row['nom'] or '').strip().lower()
-    default_unit = str(type_row['unite_defaut'] or '').strip().lower()
-    if default_unit == 'm²' or type_name in ('découpe laser', 'cnc / fraisage'):
-        return True
+    # Si le type ne supporte pas les occurrences, on n'applique jamais le multiplicateur.
+    if not _type_supports_occurrences(type_row):
+        return False
 
-    if default_unit == 'g' or type_name == 'impression 3d':
-        material_name = _resolve_material_name(db, action.get('materiau_id')).strip().lower()
-        if not material_name:
-            return True
-        # Règle métier: le multiplicateur s'applique aux consommations 3D usuelles (PLA/ABS/PETG...),
-        # mais pas aux résines.
-        return 'résine' not in material_name and 'resine' not in material_name
+    # Le flag matériau est prioritaire — mais seulement dans les familles autorisées.
+    material_row = _resolve_material_row(db, action.get('materiau_id'))
+    if material_row and material_row['count_occurrences'] in (0, 1):
+        return bool(material_row['count_occurrences'])
 
-    return False
+    # Défaut : activé pour toutes les familles supportées.
+    return True
 
 
 def _apply_occurrence_multiplier(db, action):
@@ -286,6 +297,14 @@ def _apply_occurrence_multiplier(db, action):
     surface = _surface_from_action(payload)
     if surface is not None:
         payload['surface_m2'] = surface * count
+
+    nb_feuilles = _to_float(payload.get('nb_feuilles'))
+    if nb_feuilles is not None:
+        payload['nb_feuilles'] = int(round(nb_feuilles * count))
+
+    nb_feuilles_plastique = _to_float(payload.get('nb_feuilles_plastique'))
+    if nb_feuilles_plastique is not None:
+        payload['nb_feuilles_plastique'] = int(round(nb_feuilles_plastique * count))
 
     payload['quantite'] = count
     payload['unite'] = 'occurrences'
