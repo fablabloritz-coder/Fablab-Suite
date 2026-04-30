@@ -187,7 +187,9 @@ def reservations():
         reservation_dt = parse_form_datetime_local(date_reservation_raw)
         reservation_end_dt = parse_form_datetime_local(date_fin_raw) if date_fin_raw else None
 
-        if not personne_id or not items or not reservation_dt:
+        if not personne_id or not personne_id.isdigit():
+            flash('Veuillez sélectionner une personne valide.', 'danger')
+        elif not items or not reservation_dt:
             flash('Veuillez renseigner la personne, ajouter au moins un objet, et la date de réservation.', 'danger')
         elif reservation_dt <= now_dt:
             flash('La date de réservation doit être dans le futur.', 'danger')
@@ -212,16 +214,23 @@ def reservations():
                     flash(msg, 'warning')
             else:
                 items_json = json.dumps(items, ensure_ascii=False)
-                conn.execute(
-                    """
-                    INSERT INTO reservations (personne_id, materiel_id, date_reservation, date_fin_reservation, statut, notes, items_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (int(personne_id), main_materiel_id, format_db_datetime(reservation_dt), format_db_datetime(reservation_end_dt), statut, notes, items_json),
-                )
-                conn.commit()
-                flash('Réservation enregistrée avec succès.', 'success')
-                return redirect(url_for('reservations.reservations'))
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO reservations (personne_id, materiel_id, date_reservation, date_fin_reservation, statut, notes, items_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (int(personne_id), main_materiel_id, format_db_datetime(reservation_dt), format_db_datetime(reservation_end_dt), statut, notes, items_json),
+                    )
+                    conn.commit()
+                    flash('Réservation enregistrée avec succès.', 'success')
+                    return redirect(url_for('reservations.reservations'))
+                except Exception as e:
+                    import sqlite3 as _sq
+                    if isinstance(e, _sq.IntegrityError):
+                        flash('Personne ou matériel invalide — vérifiez les informations saisies.', 'danger')
+                    else:
+                        raise
 
     # GET et POST-validation-échouée : afficher la page des réservations
     reservations_rows = conn.execute(
