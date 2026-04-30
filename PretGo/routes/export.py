@@ -35,6 +35,7 @@ def export_page():
         if depasse:
             nb_alertes += 1
     counts['alertes'] = nb_alertes
+    counts['reservations'] = conn.execute("SELECT COUNT(*) FROM reservations WHERE statut NOT IN ('annulee', 'expiree')").fetchone()[0]
     return render_template('export.html', counts=counts)
 
 
@@ -239,4 +240,59 @@ def export_inventaire():
 
     return csv_response(output, 'export_inventaire')
 
+
+
+@bp.route('/export-reservations')
+@admin_required
+def export_reservations():
+    """Exporter toutes les réservations avec leurs items."""
+    import json as _json
+    conn = get_app_db()
+    rows = conn.execute('''
+        SELECT r.id, r.statut, r.date_reservation, r.date_fin_reservation,
+               r.notes, r.items_json, r.materiel_id, r.created_at,
+               pe.nom, pe.prenom, pe.categorie, pe.classe,
+               inv.numero_inventaire, inv.type_materiel, inv.marque, inv.modele
+        FROM reservations r
+        JOIN personnes pe ON pe.id = r.personne_id
+        LEFT JOIN inventaire inv ON inv.id = r.materiel_id
+        ORDER BY r.date_reservation DESC
+    ''').fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow([
+        'ID', 'Statut', 'Nom', 'Prénom', 'Catégorie', 'Classe',
+        'Date réservation', 'Date fin', 'Objets réservés', 'Matériel lié',
+        'Notes', 'Créée le'
+    ])
+
+    for r in rows:
+        # Construire la description des items
+        if r['items_json']:
+            try:
+                items = _json.loads(r['items_json'])
+                objets = ' | '.join(
+                    item.get('description', '') for item in items if item.get('description')
+                )
+            except Exception:
+                objets = ''
+        elif r['materiel_id']:
+            # Ancien format : un seul matériel
+            parts = [r['type_materiel'] or '', r['marque'] or '', r['modele'] or '']
+            objets = ' '.join(p for p in parts if p).strip() or r['numero_inventaire'] or ''
+        else:
+            objets = ''
+
+        materiel_ref = r['numero_inventaire'] or ''
+
+        writer.writerow([
+            r['id'], r['statut'],
+            r['nom'], r['prenom'], r['categorie'] or '', r['classe'] or '',
+            r['date_reservation'] or '', r['date_fin_reservation'] or '',
+            objets, materiel_ref,
+            r['notes'] or '', r['created_at'] or ''
+        ])
+
+    return csv_response(output, 'export_reservations')
 

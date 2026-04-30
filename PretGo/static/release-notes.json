@@ -1,13 +1,13 @@
 {
-  "version": "1.7.0",
-  "date": "2026-04-29",
-  "title": "Rappels mail avances et suivi automatique",
+  "version": "1.7.1",
+  "date": "2026-04-30",
+  "title": "Reservations exportables et administration fiabilisee",
   "notes": [
-    "<strong>Mode de rappels configurable</strong> — choisissez desormais entre <em>retards uniquement</em>, <em>retards + retours &lt;24h</em> ou <em>retours &lt;24h uniquement</em>.",
-    "<strong>Scheduler aligne sur le mode choisi</strong> — les envois automatiques utilisent le meme mode de rappels que les envois manuels depuis l'admin.",
-    "<strong>Recapitulatif au mail de reference</strong> — lorsqu'au moins un rappel est effectivement parti, un rapport de synthese est aussi envoye a l'adresse de monitoring.",
-    "<strong>Pages admin rappels clarifiees</strong> — les ecrans Reglages et Rappel Mail exposent maintenant directement le type de rappels a envoyer.",
-    "<strong>Validation automatisee</strong> — les tests PretGo couvrent maintenant le mode <em>retours &lt;24h uniquement</em> et l'envoi du recapitulatif de monitoring."
+    "<strong>Export CSV des reservations</strong> — la page Export propose maintenant un fichier dedie avec statut, dates, objets reserves et notes.",
+    "<strong>Reset selectif etendu</strong> — les reservations sont desormais prises en charge dans la reinitialisation selective de l'administration.",
+    "<strong>Integrite des liaisons preservee</strong> — la suppression selective de prets, personnes et materiels gere maintenant correctement les references de reservations.",
+    "<strong>Compatibilite anciennes reservations verifiee</strong> — les tests couvrent explicitement les formats historiques avec <em>materiel_id</em> et <em>items_json</em>.",
+    "<strong>Validation complete</strong> — la suite PretGo passe a <em>113/113 OK</em> sur ce lot de corrections."
   ],
   "_source": "manuel"
 }

@@ -814,6 +814,7 @@ def admin_reset_db_partiel():
         'materiel': 'Matériel',
         'personnes': 'Personnes',
         'prets': 'Prêts / Historique',
+        'reservations': 'Réservations',
         'cat_materiel': 'Catégories matériel',
         'cat_personnes': 'Catégories personnes',
         'lieux': 'Lieux',
@@ -833,13 +834,28 @@ def admin_reset_db_partiel():
     conn = get_app_db()
 
     # Garde-fous de cohérence
-    if 'personnes' in selected and 'prets' not in selected:
+    if 'personnes' in selected and 'prets' not in selected and 'reservations' not in selected:
         nb_prets = conn.execute(
             'SELECT COUNT(*) FROM prets WHERE personne_id IS NOT NULL'
         ).fetchone()[0]
-        if nb_prets > 0:
-            flash('Impossible de réinitialiser "Personnes" sans "Prêts / Historique" : l\'historique des prêts référence encore des personnes.', 'danger')
+        nb_res = conn.execute(
+            'SELECT COUNT(*) FROM reservations WHERE personne_id IS NOT NULL'
+        ).fetchone()[0]
+        if nb_prets > 0 or nb_res > 0:
+            flash('Impossible de réinitialiser "Personnes" sans "Prêts / Historique" et "Réservations" : l\'historique des prêts/réservations référence encore des personnes.', 'danger')
             return redirect(url_for('admin.admin_reglages'))
+
+    if 'personnes' in selected and ('prets' not in selected or 'reservations' not in selected):
+        if 'prets' not in selected:
+            nb_prets = conn.execute('SELECT COUNT(*) FROM prets WHERE personne_id IS NOT NULL').fetchone()[0]
+            if nb_prets > 0:
+                flash('Impossible de réinitialiser "Personnes" sans "Prêts / Historique" : l\'historique des prêts référence encore des personnes.', 'danger')
+                return redirect(url_for('admin.admin_reglages'))
+        if 'reservations' not in selected:
+            nb_res = conn.execute('SELECT COUNT(*) FROM reservations WHERE personne_id IS NOT NULL').fetchone()[0]
+            if nb_res > 0:
+                flash('Impossible de réinitialiser "Personnes" sans "Réservations" : des réservations référencent encore des personnes.', 'danger')
+                return redirect(url_for('admin.admin_reglages'))
 
     if 'materiel' in selected and 'prets' not in selected:
         nb_prets_legacy = conn.execute(
@@ -873,6 +889,12 @@ def admin_reset_db_partiel():
             conn.execute('DELETE FROM pret_materiels')
             conn.execute('DELETE FROM prets')
             conn.execute("UPDATE inventaire SET etat = 'disponible' WHERE actif = 1")
+            # Déconnecter les réservations qui pointaient vers ces prêts
+            conn.execute('UPDATE reservations SET pret_id = NULL WHERE pret_id IS NOT NULL')
+
+        # 1b) Réservations
+        if 'reservations' in selected:
+            conn.execute('DELETE FROM reservations')
 
         # 2) Personnes
         if 'personnes' in selected:
@@ -889,6 +911,9 @@ def admin_reset_db_partiel():
                     SET materiel_id = NULL
                     WHERE pret_id IN (SELECT id FROM prets WHERE retour_confirme = 1)
                 ''')
+            if 'reservations' not in selected:
+                # Détacher les réservations des matériels supprimés
+                conn.execute('UPDATE reservations SET materiel_id = NULL WHERE materiel_id IS NOT NULL')
 
             conn.execute('DELETE FROM valeurs_champs_personnalises WHERE champ_id IN (SELECT id FROM champs_personnalises WHERE entite = ?)', ('materiel',))
             conn.execute('DELETE FROM inventaire')
