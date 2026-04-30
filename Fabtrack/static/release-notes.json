@@ -1,12 +1,13 @@
 {
-  "version": "2.3.2",
+  "version": "2.3.3",
   "date": "2026-05-01",
-  "title": "Correctif multiplicateur occurrences 3D",
+  "title": "Coherence occurrences par type et materiau",
   "notes": [
-    "Correctif: le nombre d'occurrences est maintenant applique aux materiaux 3D usuels (PLA, ABS, PETG...), meme si le nom ne contient pas le mot filament.",
-    "Garde-fou conserve: le multiplicateur ne s'applique pas aux saisies de resine.",
-    "Tests renforces: cas PLA sans mot filament et cas resine verifies automatiquement.",
-    "Aucun changement de comportement pour les activites en surface (m²) et impression papier."
+    "Le flag materiau count_occurrences ne s'applique plus hors des familles ciblees (g, m2, feuilles).",
+    "Migration durcie: les valeurs NULL historiques de count_occurrences sont normalisees a 1.",
+    "Edition materiau fiabilisee: si le champ est absent, la valeur par defaut reste 1 (plus de retour a NULL).",
+    "Interface parametres simplifiee: suppression du mode auto par nom, affichage explicite oui/non.",
+    "Validation complete: 25 tests unitaires passes sur la suite Fabtrack."
   ],
   "_source": "manuel"
 }
