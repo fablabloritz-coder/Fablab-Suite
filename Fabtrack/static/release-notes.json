@@ -1,13 +1,14 @@
 {
-  "version": "2.3.0",
-  "date": "2026-04-30",
-  "title": "Saisie multi-referents et edition historique",
+  "version": "2.3.1",
+  "date": "2026-05-01",
+  "title": "Validation poussee et publication release",
   "notes": [
     "Nouvelle saisie: plusieurs referents peuvent etre associes a une meme activite, avec filtrage et historique compatibles.",
     "Historique: ajout d'une modale de modification complete pour corriger une saisie existante.",
     "Impression papier: le materiau est maintenant derive automatiquement depuis format + couleur/N&B pour supprimer la double saisie.",
     "Saisie d'activite: ajout d'un multiplicateur d'occurrences applique aux cas pertinents (filament 3D et activites en surface).",
-    "Validation backend renforcee sur la matrice machine/type/materiau et couverture de tests etendue (suite FabTrack complete + smoke tests)."
+    "Validation poussee confirmee: matrice dynamique machine/type/materiau, export CSV, statistiques et smoke tests applicatifs.",
+    "Release publiee sur main avec popup Nouveautes mise a jour."
   ],
   "_source": "manuel"
 }
