@@ -19,14 +19,75 @@ from utils import get_app_db, admin_required
 bp = Blueprint('reservations', __name__)
 
 
+def _extract_reservation_items(row):
+    """Retourne la liste normalisée des items d'une réservation."""
+    items = []
+    raw = row['items_json'] if row and 'items_json' in row.keys() else None
+    if raw:
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, list):
+                for item in loaded:
+                    if not isinstance(item, dict):
+                        continue
+                    desc = (item.get('description') or '').strip()
+                    mid = item.get('materiel_id')
+                    try:
+                        mid = int(mid) if mid not in (None, '') else None
+                    except (TypeError, ValueError):
+                        mid = None
+                    if desc:
+                        items.append({'description': desc, 'materiel_id': mid})
+        except Exception:
+            items = []
+
+    if not items:
+        # Compatibilité legacy (réservation mono-matériel)
+        desc = row['numero_inventaire'] if row and 'numero_inventaire' in row.keys() else ''
+        if desc:
+            items.append({'description': desc, 'materiel_id': row['materiel_id']})
+    return items
+
+
+def _first_linked_material_id(items):
+    for item in items:
+        if item.get('materiel_id'):
+            return int(item['materiel_id'])
+    return None
+
+
+def _reservation_conflicts_for_items(conn, items, reservation_dt, reservation_end_dt, now_dt, exclude_reservation_id=None):
+    """Vérifie les conflits pour tous les matériels liés aux items."""
+    conflicts = []
+    seen_materials = set()
+    for item in items:
+        materiel_id = item.get('materiel_id')
+        if not materiel_id or materiel_id in seen_materials:
+            continue
+        seen_materials.add(materiel_id)
+        messages = find_creation_conflicts_for_reservation(
+            conn,
+            materiel_id=materiel_id,
+            reservation_dt=reservation_dt,
+            reservation_end_dt=reservation_end_dt,
+            now_dt=now_dt,
+            exclude_reservation_id=exclude_reservation_id,
+        )
+        if not messages:
+            continue
+        conflicts.extend(messages)
+    return conflicts
+
+
 @bp.route('/reservations/<int:reservation_id>/convertir')
 def convertir_reservation(reservation_id):
     conn = get_app_db()
     row = conn.execute(
         '''
-        SELECT r.id, r.statut, r.date_reservation, r.date_fin_reservation,
+        SELECT r.id, r.statut, r.date_reservation, r.date_fin_reservation, r.items_json,
                COALESCE(pe.nom, '[Inconnu]') AS nom,
                COALESCE(pe.prenom, '') AS prenom,
+               inv.id AS materiel_id,
                inv.numero_inventaire, inv.type_materiel, inv.marque, inv.modele
         FROM reservations r
         LEFT JOIN personnes pe ON pe.id = r.personne_id
@@ -86,6 +147,7 @@ def convertir_reservation(reservation_id):
     return render_template(
         'reservation_conversion.html',
         reservation=row,
+        reservation_items=_extract_reservation_items(row),
         start_dt=start_dt,
         now_dt=now_dt,
         can_convert_now=can_convert_now,
@@ -136,18 +198,14 @@ def reservations():
             if not reservation_end_dt:
                 reservation_end_dt = reservation_dt
             
-            # Utiliser le premier materiel_id pour les conflits (s'il existe)
-            main_materiel_id = next((i['materiel_id'] for i in items if i['materiel_id']), None)
-            
-            conflicts = []
-            if main_materiel_id:  # Vérifier conflits seulement si on a un ID d'inventaire
-                conflicts = find_creation_conflicts_for_reservation(
-                    conn,
-                    materiel_id=main_materiel_id,
-                    reservation_dt=reservation_dt,
-                    reservation_end_dt=reservation_end_dt,
-                    now_dt=now_dt,
-                )
+            main_materiel_id = _first_linked_material_id(items)
+            conflicts = _reservation_conflicts_for_items(
+                conn,
+                items,
+                reservation_dt,
+                reservation_end_dt,
+                now_dt,
+            )
             
             if conflicts:
                 for msg in conflicts:
@@ -165,6 +223,7 @@ def reservations():
                 flash('Réservation enregistrée avec succès.', 'success')
                 return redirect(url_for('reservations.reservations'))
 
+    # GET et POST-validation-échouée : afficher la page des réservations
     reservations_rows = conn.execute(
         """
          SELECT r.*, pe.nom, pe.prenom, pe.categorie,
@@ -256,6 +315,144 @@ def reservations():
         now_dt=now_dt,
         mode_scanner=get_setting('mode_scanner', 'les_deux'),
     )
+
+
+@bp.route('/reservations/<int:reservation_id>/modifier', methods=['GET', 'POST'])
+@admin_required
+def modifier_reservation(reservation_id):
+    conn = get_app_db()
+    now_dt = datetime.now()
+
+    row = conn.execute(
+        '''
+        SELECT r.*, pe.nom, pe.prenom, pe.categorie,
+               inv.numero_inventaire, inv.type_materiel, inv.marque, inv.modele
+        FROM reservations r
+        JOIN personnes pe ON pe.id = r.personne_id
+        LEFT JOIN inventaire inv ON inv.id = r.materiel_id
+        WHERE r.id = ?
+        ''',
+        (reservation_id,),
+    ).fetchone()
+
+    if not row:
+        flash('Réservation introuvable.', 'danger')
+        return redirect(url_for('reservations.reservations'))
+
+    if row['statut'] not in ('demande', 'confirmee'):
+        flash('Cette réservation ne peut plus être modifiée.', 'warning')
+        return redirect(url_for('reservations.reservations'))
+
+    if request.method == 'POST':
+        personne_id = (request.form.get('personne_id') or '').strip()
+        date_reservation_raw = (request.form.get('date_reservation') or '').strip()
+        date_fin_raw = (request.form.get('date_fin_reservation') or '').strip()
+        notes = (request.form.get('notes') or '').strip()
+        statut = (request.form.get('statut') or row['statut'] or 'confirmee').strip().lower()
+        if statut not in ('demande', 'confirmee'):
+            statut = 'confirmee'
+
+        items_descriptions = request.form.getlist('res_items_description[]')
+        items_materiel_ids = request.form.getlist('res_items_materiel_id[]')
+        items = []
+        for desc, mid in zip(items_descriptions, items_materiel_ids):
+            desc = (desc or '').strip()
+            mid = (mid or '').strip()
+            if desc:
+                items.append({'description': desc, 'materiel_id': int(mid) if mid else None})
+
+        reservation_dt = parse_form_datetime_local(date_reservation_raw)
+        reservation_end_dt = parse_form_datetime_local(date_fin_raw) if date_fin_raw else None
+
+        if not personne_id or not items or not reservation_dt:
+            flash('Veuillez renseigner la personne, ajouter au moins un objet, et la date de réservation.', 'danger')
+        elif reservation_end_dt and reservation_end_dt < reservation_dt:
+            flash('La date de fin doit être égale ou ultérieure à la date de début.', 'danger')
+        else:
+            if not reservation_end_dt:
+                reservation_end_dt = reservation_dt
+
+            main_materiel_id = _first_linked_material_id(items)
+            conflicts = _reservation_conflicts_for_items(
+                conn,
+                items,
+                reservation_dt,
+                reservation_end_dt,
+                now_dt,
+                exclude_reservation_id=reservation_id,
+            )
+            if conflicts:
+                for msg in conflicts:
+                    flash(msg, 'warning')
+            else:
+                conn.execute(
+                    '''
+                    UPDATE reservations
+                    SET personne_id = ?,
+                        materiel_id = ?,
+                        date_reservation = ?,
+                        date_fin_reservation = ?,
+                        statut = ?,
+                        notes = ?,
+                        items_json = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    ''',
+                    (
+                        int(personne_id),
+                        main_materiel_id,
+                        format_db_datetime(reservation_dt),
+                        format_db_datetime(reservation_end_dt),
+                        statut,
+                        notes,
+                        json.dumps(items, ensure_ascii=False),
+                        reservation_id,
+                    ),
+                )
+                conn.commit()
+                flash('Réservation modifiée avec succès.', 'success')
+                return redirect(url_for('reservations.reservations'))
+
+    personnes = conn.execute(
+        'SELECT id, nom, prenom, categorie, classe FROM personnes WHERE actif = 1 ORDER BY nom, prenom'
+    ).fetchall()
+    inventaire = conn.execute(
+        '''
+        SELECT id, numero_inventaire, type_materiel, marque, modele, etat
+        FROM inventaire
+        WHERE actif = 1 AND etat != 'hors_service'
+        ORDER BY numero_inventaire ASC
+        '''
+    ).fetchall()
+
+    return render_template(
+        'modifier_reservation.html',
+        reservation=row,
+        reservation_items=_extract_reservation_items(row),
+        personnes=personnes,
+        inventaire=inventaire,
+        now_dt=now_dt,
+        mode_scanner=get_setting('mode_scanner', 'les_deux'),
+    )
+
+
+@bp.route('/reservations/<int:reservation_id>/supprimer', methods=['POST'])
+@admin_required
+def supprimer_reservation(reservation_id):
+    conn = get_app_db()
+    row = conn.execute('SELECT id, pret_id, statut FROM reservations WHERE id = ?', (reservation_id,)).fetchone()
+    if not row:
+        flash('Réservation introuvable.', 'danger')
+        return redirect(url_for('reservations.reservations'))
+
+    if row['pret_id']:
+        flash('Impossible de supprimer une réservation liée à un prêt. Supprimez d\'abord le prêt lié.', 'warning')
+        return redirect(url_for('reservations.reservations'))
+
+    conn.execute('DELETE FROM reservations WHERE id = ?', (reservation_id,))
+    conn.commit()
+    flash('Réservation supprimée.', 'success')
+    return redirect(url_for('reservations.reservations'))
 
 
 @bp.route('/reservations/<int:reservation_id>/annuler', methods=['POST'])

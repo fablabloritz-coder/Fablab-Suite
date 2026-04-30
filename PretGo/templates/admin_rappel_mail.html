@@ -74,7 +74,8 @@
                         <option value="overdue_and_24h" {{ 'selected' if rappel_email_mode == 'overdue_and_24h' }}>Retards + retours &lt;24h</option>
                         <option value="upcoming_24h_only" {{ 'selected' if rappel_email_mode == 'upcoming_24h_only' }}>Retours &lt;24h uniquement</option>
                     </select>
-                    <div class="form-text">Le scheduler et les envois manuels utilisent ce meme mode.</div>
+                    <div class="form-text">Ce mode s'applique aux envois manuels depuis cette page.</div>
+                    <div class="form-text">Mode actuel du scheduler automatique : <strong>{{ rappel_email_scheduler_mode }}</strong> (modifiable dans Réglages).</div>
                 </div>
                 <button type="submit" class="btn btn-primary">
                     <i class="bi bi-save"></i> Enregistrer

@@ -1,4 +1,6 @@
 """PretGo — Blueprint : prets"""
+import json
+
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from database import get_setting
 from reservations_logic import (
@@ -54,10 +56,60 @@ def _material_ids_from_items(items):
     """Retourne la liste unique des IDs matériel liés aux items."""
     return sorted({mat_id for _, mat_id in items if mat_id})
 
+
+def _extract_reservation_items(row):
+    """Retourne les items d'une réservation (JSON multi-items + fallback legacy)."""
+    if not row:
+        return []
+    items = []
+    raw = row['items_json'] if 'items_json' in row.keys() else None
+    if raw:
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, list):
+                for item in loaded:
+                    if not isinstance(item, dict):
+                        continue
+                    desc = (item.get('description') or '').strip()
+                    mat_id = item.get('materiel_id')
+                    try:
+                        mat_id = int(mat_id) if mat_id not in (None, '') else None
+                    except (TypeError, ValueError):
+                        mat_id = None
+                    if desc:
+                        items.append({'description': desc, 'materiel_id': mat_id})
+        except Exception:
+            items = []
+
+    if not items:
+        desc = (row['numero_inventaire'] or '').strip() if 'numero_inventaire' in row.keys() else ''
+        if desc:
+            items.append({'description': desc, 'materiel_id': row['materiel_id']})
+    return items
+
+
+def _inventory_map(conn, material_ids):
+    """Retourne un dict inventaire par ID pour enrichir les labels en template."""
+    ids = sorted({int(mid) for mid in material_ids if mid})
+    if not ids:
+        return {}
+    placeholders = ','.join('?' for _ in ids)
+    rows = conn.execute(
+        f'''
+        SELECT id, numero_inventaire, type_materiel, marque, modele
+        FROM inventaire
+        WHERE id IN ({placeholders})
+        ''',
+        ids,
+    ).fetchall()
+    return {int(r['id']): r for r in rows}
+
 @bp.route('/nouveau-pret', methods=['GET', 'POST'])
 def nouveau_pret():
     conn = get_app_db()
     reservation_prefill = None
+    reservation_prefill_items = []
+    form_state = None
 
     reservation_id_raw = (request.values.get('reservation_id') or '').strip()
     reservation_id = int(reservation_id_raw) if reservation_id_raw.isdigit() else None
@@ -69,7 +121,7 @@ def nouveau_pret():
                    inv.numero_inventaire, inv.type_materiel, inv.marque, inv.modele
             FROM reservations r
             JOIN personnes pe ON pe.id = r.personne_id
-            JOIN inventaire inv ON inv.id = r.materiel_id
+            LEFT JOIN inventaire inv ON inv.id = r.materiel_id
             WHERE r.id = ?
             ''',
             (reservation_id,),
@@ -77,11 +129,22 @@ def nouveau_pret():
         if reservation_prefill and reservation_prefill['statut'] not in ('confirmee', 'demande'):
             flash('Cette réservation ne peut plus être convertie en prêt.', 'warning')
             return redirect(url_for('reservations.reservations'))
+        reservation_prefill_items = _extract_reservation_items(reservation_prefill)
 
     if request.method == 'POST':
         personne_id = request.form.get('personne_id')
         notes = request.form.get('notes', '').strip()
         lieu_id = request.form.get('lieu_id', '').strip() or None
+        form_state = {
+            'personne_id': personne_id,
+            'notes': notes,
+            'lieu_id': lieu_id,
+            'duree_type': request.form.get('duree_type', 'aucune'),
+            'duree_heures': request.form.get('duree_heures', '').strip(),
+            'duree_jours': request.form.get('duree_jours', '').strip(),
+            'date_retour_prevue': request.form.get('date_retour_prevue', '').strip(),
+            'pret_items': [],
+        }
 
         # ── Récupération des items (multi-matériel) ──
         items_desc = request.form.getlist('items_description[]')
@@ -94,6 +157,11 @@ def nouveau_pret():
             mat_id = items_mat[i].strip() if i < len(items_mat) else ''
             if desc:
                 items.append((desc, int(mat_id) if mat_id else None))
+
+        form_state['pret_items'] = [
+            {'description': desc, 'materiel_id': mat_id}
+            for desc, mat_id in items
+        ]
 
         # ── Gestion de la durée (heures ou jours) ──
         duree_pret_jours, duree_pret_heures, date_retour_prevue, duree_type = _parse_duree(request.form)
@@ -120,7 +188,10 @@ def nouveau_pret():
             if conflicts:
                 for conflict in conflicts:
                     flash(conflict['message'], 'warning')
-                flash('Prêt refusé: conflit avec une réservation future.', 'danger')
+                conflict_labels = sorted({conflict['material_label'] for conflict in conflicts if conflict.get('material_label')})
+                if conflict_labels:
+                    flash('Objets en conflit: ' + ', '.join(conflict_labels), 'danger')
+                flash('Prêt refusé: conflit avec une réservation future. Les informations saisies ont été conservées.', 'danger')
             else:
             # Construire le descriptif combiné
                 descriptif = ' + '.join(desc for desc, _ in items)
@@ -186,6 +257,19 @@ def nouveau_pret():
         inventaire=inventaire,
         lieux=lieux,
         reservation_prefill=reservation_prefill,
+        reservation_prefill_items=reservation_prefill_items,
+        form_state=form_state,
+        inventory_by_id=_inventory_map(
+            conn,
+            [
+                item['materiel_id']
+                for item in (
+                    (form_state or {}).get('items')
+                    or reservation_prefill_items
+                )
+                if item.get('materiel_id')
+            ],
+        ),
         duree_defaut=duree_defaut,
         unite_defaut=unite_defaut,
         heure_fin_journee=get_setting('heure_fin_journee', '17:45'),
@@ -448,6 +532,19 @@ def supprimer_pret(pret_id):
     pret = conn.execute('SELECT materiel_id, retour_confirme FROM prets WHERE id = ?', (pret_id,)).fetchone()
     if pret and not pret['retour_confirme']:
         liberer_materiels_pret(conn, pret_id, pret_row=pret)
+
+    # Evite les erreurs de contrainte FK pour les prêts issus de conversion de réservation.
+    conn.execute(
+        '''
+        UPDATE reservations
+        SET pret_id = NULL,
+            statut = CASE WHEN statut = 'convertie_en_pret' THEN 'confirmee' ELSE statut END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE pret_id = ?
+        ''',
+        (pret_id,),
+    )
+
     conn.execute('DELETE FROM pret_materiels WHERE pret_id = ?', (pret_id,))
     conn.execute('DELETE FROM prets WHERE id = ?', (pret_id,))
     conn.commit()

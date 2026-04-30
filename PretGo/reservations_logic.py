@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from datetime import datetime, timedelta
 from typing import Iterable
 
@@ -116,6 +118,36 @@ def _material_label(mat_row) -> str:
     return ident
 
 
+def _reservation_material_ids(row) -> set[int]:
+    """Retourne tous les IDs matériel portés par une réservation (legacy + items_json)."""
+    ids = set()
+    mid = row['materiel_id'] if row and 'materiel_id' in row.keys() else None
+    if mid:
+        try:
+            ids.add(int(mid))
+        except (TypeError, ValueError):
+            pass
+
+    raw = row['items_json'] if row and 'items_json' in row.keys() else None
+    if raw:
+        try:
+            payload = json.loads(raw)
+            if isinstance(payload, list):
+                for item in payload:
+                    if not isinstance(item, dict):
+                        continue
+                    item_mid = item.get('materiel_id')
+                    if item_mid in (None, ''):
+                        continue
+                    try:
+                        ids.add(int(item_mid))
+                    except (TypeError, ValueError):
+                        continue
+        except Exception:
+            pass
+    return ids
+
+
 def expire_old_reservations(conn, now_dt: datetime | None = None) -> None:
     """Marque automatiquement comme expirées les réservations passées."""
     if now_dt is None:
@@ -149,13 +181,11 @@ def find_reservation_conflicts_for_loan(
     for materiel_id in sorted(set(material_ids)):
         rows = conn.execute(
             """
-            SELECT id, date_reservation, date_fin_reservation, statut
+                        SELECT id, date_reservation, date_fin_reservation, statut, materiel_id, items_json
             FROM reservations
-            WHERE materiel_id = ?
-              AND statut IN ('demande', 'confirmee')
+                        WHERE statut IN ('demande', 'confirmee')
             ORDER BY date_reservation ASC
             """,
-            (materiel_id,),
         ).fetchall()
 
         mat = _get_material_info(conn, materiel_id)
@@ -163,6 +193,8 @@ def find_reservation_conflicts_for_loan(
 
         for row in rows:
             if exclude_reservation_id and row['id'] == exclude_reservation_id:
+                continue
+            if materiel_id not in _reservation_material_ids(row):
                 continue
             reservation_dt = parse_db_datetime(row['date_reservation'])
             reservation_end_dt = parse_db_datetime(row['date_fin_reservation']) if row['date_fin_reservation'] else reservation_dt
@@ -207,6 +239,7 @@ def find_creation_conflicts_for_reservation(
     reservation_dt: datetime,
     reservation_end_dt: datetime | None = None,
     now_dt: datetime | None = None,
+    exclude_reservation_id: int | None = None,
 ) -> list[str]:
     """Retourne des messages de conflit pour une création de réservation."""
     if now_dt is None:
@@ -221,16 +254,18 @@ def find_creation_conflicts_for_reservation(
     # 1) Conflit avec une autre réservation qui chevauche cette plage.
     existing = conn.execute(
         """
-        SELECT id, date_reservation, date_fin_reservation
+        SELECT id, date_reservation, date_fin_reservation, materiel_id, items_json
         FROM reservations
-        WHERE materiel_id = ?
-          AND statut IN ('demande', 'confirmee')
+        WHERE statut IN ('demande', 'confirmee')
         ORDER BY date_reservation ASC
-        """,
-        (materiel_id,),
+        """
     ).fetchall()
 
     for row in existing:
+        if exclude_reservation_id and row['id'] == exclude_reservation_id:
+            continue
+        if materiel_id not in _reservation_material_ids(row):
+            continue
         existing_dt = parse_db_datetime(row['date_reservation'])
         existing_end_dt = parse_db_datetime(row['date_fin_reservation']) if row['date_fin_reservation'] else existing_dt
         if not existing_dt or existing_end_dt <= now_dt:

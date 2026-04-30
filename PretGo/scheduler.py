@@ -8,6 +8,8 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 import logging
 
+from utils import resolve_rappel_email_mode
+
 _log = logging.getLogger(__name__)
 
 
@@ -52,7 +54,11 @@ class EmailReminderScheduler:
                     """Tâche de fond : envoie les rappels."""
                     try:
                         conn = get_db()
-                        stats = envoyer_rappels_alertes_email(conn)
+                        scheduler_mode = resolve_rappel_email_mode(
+                            conn,
+                            mode=get_setting('rappel_email_scheduler_mode', '', conn=conn),
+                        )
+                        stats = envoyer_rappels_alertes_email(conn, mode=scheduler_mode)
                         conn.commit()
                         conn.close()
                         

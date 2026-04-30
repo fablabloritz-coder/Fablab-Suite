@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Modifier réservation - PretGo{% endblock %}
+
+{% block content %}
+<h1 class="page-title">
+    <i class="bi bi-pencil-square text-primary"></i> Modifier une réservation
+</h1>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('reservations.modifier_reservation', reservation_id=reservation.id) }}" id="formModifierReservation">
+            <div class="mb-4">
+                <label class="form-label fw-bold">Emprunteur</label>
+                <select name="personne_id" class="form-select" required>
+                    <option value="">Choisir une personne...</option>
+                    {% for p in personnes %}
+                    <option value="{{ p.id }}" {% if p.id == reservation.personne_id %}selected{% endif %}>
+                        {{ p.nom }} {{ p.prenom }}{% if p.classe %} ({{ p.classe }}){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold">Objets réservés</label>
+                <div id="edit-items-container">
+                    {% for item in reservation_items %}
+                    <div class="row g-2 align-items-center mb-2 edit-item-row">
+                        <div class="col-12 col-md-7">
+                            <input type="text"
+                                   name="res_items_description[]"
+                                   class="form-control"
+                                   placeholder="Description de l'objet"
+                                   value="{{ item.description }}"
+                                   required>
+                        </div>
+                        <div class="col-10 col-md-4">
+                            <select name="res_items_materiel_id[]" class="form-select">
+                                <option value="">Texte libre (pas d'inventaire)</option>
+                                {% for inv in inventaire %}
+                                <option value="{{ inv.id }}" {% if item.materiel_id and inv.id == item.materiel_id %}selected{% endif %}>
+                                    {{ inv.numero_inventaire }} — {{ inv.type_materiel }}{% if inv.marque %} {{ inv.marque }}{% endif %}{% if inv.modele %} {{ inv.modele }}{% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 col-md-1">
+                            <button type="button" class="btn btn-outline-danger w-100 edit-btn-remove-item" title="Retirer">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="edit-add-item">
+                    <i class="bi bi-plus-circle"></i> Ajouter un objet
+                </button>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-bold">Date début</label>
+                    <input type="date"
+                           name="date_reservation"
+                           class="form-control"
+                           required
+                           min="{{ now_dt.strftime('%Y-%m-%d') }}"
+                           value="{{ reservation.date_reservation[:10] if reservation.date_reservation else '' }}">
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-bold">Date fin</label>
+                    <input type="date"
+                           name="date_fin_reservation"
+                           class="form-control"
+                           min="{{ now_dt.strftime('%Y-%m-%d') }}"
+                           value="{{ reservation.date_fin_reservation[:10] if reservation.date_fin_reservation else '' }}">
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-bold">Statut</label>
+                    <select name="statut" class="form-select">
+                        <option value="confirmee" {% if reservation.statut == 'confirmee' %}selected{% endif %}>Confirmée</option>
+                        <option value="demande" {% if reservation.statut == 'demande' %}selected{% endif %}>Demande</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold">Notes</label>
+                <input type="text" name="notes" class="form-control" value="{{ reservation.notes or '' }}" placeholder="Optionnel">
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check2-circle"></i> Enregistrer les modifications
+                </button>
+                <a href="{{ url_for('reservations.reservations') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Retour
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+
+    const container = document.getElementById('edit-items-container');
+    const addBtn = document.getElementById('edit-add-item');
+
+    function materialOptions() {
+        return `
+            <option value="">Texte libre (pas d'inventaire)</option>
+            {% for inv in inventaire %}
+            <option value="{{ inv.id }}">{{ inv.numero_inventaire }} — {{ inv.type_materiel }}{% if inv.marque %} {{ inv.marque }}{% endif %}{% if inv.modele %} {{ inv.modele }}{% endif %}</option>
+            {% endfor %}
+        `;
+    }
+
+    function createRow() {
+        const row = document.createElement('div');
+        row.className = 'row g-2 align-items-center mb-2 edit-item-row';
+        row.innerHTML = `
+            <div class="col-12 col-md-7">
+                <input type="text" name="res_items_description[]" class="form-control" placeholder="Description de l'objet" required>
+            </div>
+            <div class="col-10 col-md-4">
+                <select name="res_items_materiel_id[]" class="form-select">${materialOptions()}</select>
+            </div>
+            <div class="col-2 col-md-1">
+                <button type="button" class="btn btn-outline-danger w-100 edit-btn-remove-item" title="Retirer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        `;
+        return row;
+    }
+
+    addBtn.addEventListener('click', function () {
+        container.appendChild(createRow());
+    });
+
+    container.addEventListener('click', function (e) {
+        const btn = e.target.closest('.edit-btn-remove-item');
+        if (!btn) return;
+        const rows = container.querySelectorAll('.edit-item-row');
+        if (rows.length <= 1) return;
+        btn.closest('.edit-item-row').remove();
+    });
+})();
+</script>
+{% endblock %}

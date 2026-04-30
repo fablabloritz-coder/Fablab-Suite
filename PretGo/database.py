@@ -144,7 +144,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS reservations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             personne_id INTEGER NOT NULL,
-            materiel_id INTEGER NOT NULL,
+            materiel_id INTEGER DEFAULT NULL,
             date_reservation TEXT NOT NULL,
             statut TEXT NOT NULL DEFAULT 'confirmee',
             pret_id INTEGER DEFAULT NULL,
@@ -197,6 +197,39 @@ def init_db():
             FOREIGN KEY (personne_id) REFERENCES personnes(id) ON DELETE CASCADE
         );
     ''')
+
+    # ── Migration : rendre reservations.materiel_id nullable ──
+    # La colonne était NOT NULL avant l'ajout de items_json (multi-items sans lien inventaire).
+    col_info = cursor.execute("PRAGMA table_info(reservations)").fetchall()
+    mat_col = next((c for c in col_info if c[1] == 'materiel_id'), None)
+    if mat_col and mat_col[3] == 1:  # notnull=1 → besoin de migration
+        cursor.executescript('''
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE IF NOT EXISTS reservations_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                personne_id INTEGER NOT NULL,
+                materiel_id INTEGER DEFAULT NULL,
+                date_reservation TEXT NOT NULL,
+                statut TEXT NOT NULL DEFAULT 'confirmee',
+                pret_id INTEGER DEFAULT NULL,
+                notes TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                date_fin_reservation TEXT DEFAULT NULL,
+                items_json TEXT DEFAULT NULL,
+                FOREIGN KEY (personne_id) REFERENCES personnes(id),
+                FOREIGN KEY (materiel_id) REFERENCES inventaire(id),
+                FOREIGN KEY (pret_id) REFERENCES prets(id)
+            );
+            INSERT OR IGNORE INTO reservations_new
+                SELECT id, personne_id, materiel_id, date_reservation, statut,
+                       pret_id, notes, created_at, updated_at,
+                       date_fin_reservation, items_json
+                FROM reservations;
+            DROP TABLE reservations;
+            ALTER TABLE reservations_new RENAME TO reservations;
+            PRAGMA foreign_keys = ON;
+        ''')
 
     # ── Migrations colonnes prets ──
     for col, default in [
@@ -393,6 +426,7 @@ def init_db():
         'rappel_email_scheduler_heure': '09',
         'rappel_email_scheduler_minute': '00',
         'rappel_email_scheduler_jours': 'mon,tue,wed,thu,fri',
+        'rappel_email_scheduler_mode': 'overdue_and_24h',
         # ── Limite de tentatives ──
         'rappel_email_max_tentatives': '3',
         # ── Mode de rappels: retard seul | retard + <24h | <24h seul ──

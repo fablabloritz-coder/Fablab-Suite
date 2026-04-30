@@ -91,10 +91,11 @@
                     <div class="res-item-row mb-2 position-relative" data-index="0">
                         <div class="input-group">
                             <input type="text"
+                                   name="res_items_description[]"
                                    class="form-control form-control-lg res-item-input"
                                    placeholder="N° inventaire, marque, modèle ou texte libre..."
                                 autocomplete="off">
-                            <input type="hidden" class="res-item-materiel-id" value="">
+                            <input type="hidden" name="res_items_materiel_id[]" class="res-item-materiel-id" value="">
                             {% if mode_scanner != 'douchette' %}
                             <button type="button" class="btn btn-outline-info res-btn-scan-item" title="Scanner un code-barres">
                                 <i class="bi bi-upc-scan"></i>
@@ -265,6 +266,9 @@
                         <td>
                             {% if r.statut in ['confirmee', 'demande'] %}
                             <div class="d-flex flex-wrap gap-2">
+                                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reservations.modifier_reservation', reservation_id=r.id) }}" onclick="event.stopPropagation();">
+                                    <i class="bi bi-pencil-square"></i> Modifier
+                                </a>
                                 <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reservations.convertir_reservation', reservation_id=r.id) }}" onclick="event.stopPropagation();">
                                     <i class="bi bi-arrow-left-right"></i> Convertir en prêt
                                 </a>
@@ -273,9 +277,20 @@
                                         <i class="bi bi-x-circle"></i> Annuler
                                     </button>
                                 </form>
+                                <form method="POST" action="{{ url_for('reservations.supprimer_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Supprimer définitivement cette réservation ?')">
+                                    <button class="btn btn-sm btn-danger" type="submit">
+                                        <i class="bi bi-trash"></i> Supprimer
+                                    </button>
+                                </form>
                             </div>
                             {% else %}
-                            <span class="text-muted">—</span>
+                            <div class="d-flex gap-2">
+                                <form method="POST" action="{{ url_for('reservations.supprimer_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Supprimer définitivement cette réservation ?')">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">
+                                        <i class="bi bi-trash"></i> Supprimer
+                                    </button>
+                                </form>
+                            </div>
                             {% endif %}
                         </td>
                         {% endif %}

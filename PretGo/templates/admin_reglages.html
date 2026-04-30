@@ -607,10 +607,10 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Type de rappels automatiques</label>
-                                <select class="form-select" name="rappel_email_mode">
-                                    <option value="overdue_only" {{ 'selected' if rappel_email_mode == 'overdue_only' }}>Retards uniquement</option>
-                                    <option value="overdue_and_24h" {{ 'selected' if rappel_email_mode == 'overdue_and_24h' }}>Retards + retours &lt;24h</option>
-                                    <option value="upcoming_24h_only" {{ 'selected' if rappel_email_mode == 'upcoming_24h_only' }}>Retours &lt;24h uniquement</option>
+                                <select class="form-select" name="rappel_email_scheduler_mode">
+                                    <option value="overdue_only" {{ 'selected' if rappel_email_scheduler_mode == 'overdue_only' }}>Retards uniquement</option>
+                                    <option value="overdue_and_24h" {{ 'selected' if rappel_email_scheduler_mode == 'overdue_and_24h' }}>Retards + retours &lt;24h</option>
+                                    <option value="upcoming_24h_only" {{ 'selected' if rappel_email_scheduler_mode == 'upcoming_24h_only' }}>Retours &lt;24h uniquement</option>
                                 </select>
                             </div>
                         </div>

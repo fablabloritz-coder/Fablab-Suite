@@ -8,8 +8,16 @@
 
 <div class="card border-0 shadow-sm">
     <div class="card-body p-4">
+        {% set selected_person_id = form_state.personne_id if form_state else (reservation_prefill.personne_id if reservation_prefill else '') %}
+        {% set ns = namespace(selected_person=none) %}
+        {% for p in personnes %}
+            {% if selected_person_id and p.id|string == selected_person_id|string %}
+                {% set ns.selected_person = p %}
+            {% endif %}
+        {% endfor %}
+        {% set selected_items = form_state.pret_items if form_state and form_state.pret_items else reservation_prefill_items %}
         <form method="POST" action="{{ url_for('prets.nouveau_pret') }}" id="formNouveauPret">
-            <input type="hidden" id="personne_id" name="personne_id" value="{{ reservation_prefill.personne_id if reservation_prefill else '' }}">
+            <input type="hidden" id="personne_id" name="personne_id" value="{{ selected_person_id }}">
             <input type="hidden" name="reservation_id" value="{{ reservation_prefill.id if reservation_prefill else '' }}">
 
             {% if reservation_prefill %}
@@ -18,7 +26,7 @@
                 <div>
                     <strong>Conversion d'une réservation.</strong>
                     Prêt prérempli depuis la réservation du {{ reservation_prefill.date_reservation | format_date }}
-                    pour <strong>{{ reservation_prefill.numero_inventaire }}</strong>.
+                    avec <strong>{{ selected_items|length }}</strong> objet(s).
                 </div>
             </div>
             {% endif %}
@@ -29,24 +37,24 @@
                     <i class="bi bi-person-fill text-primary"></i> 1. Qui emprunte ?
                 </label>
                 <div class="position-relative">
-                    <div class="search-box" {% if reservation_prefill %}style="display:none"{% endif %}>
+                    <div class="search-box" {% if ns.selected_person %}style="display:none"{% endif %}>
                         <i class="bi bi-search"></i>
                         <input type="text"
                                id="personne-search"
                                class="form-control form-control-lg"
                                placeholder="Tapez un nom ou prénom pour rechercher..."
                                autocomplete="off"
-                               value="{{ reservation_prefill.nom ~ ' ' ~ reservation_prefill.prenom if reservation_prefill else '' }}">
+                               value="{% if ns.selected_person %}{{ ns.selected_person.nom }} {{ ns.selected_person.prenom }}{% endif %}">
                     </div>
                     <div id="autocomplete-results" class="autocomplete-results" style="display:none"></div>
                 </div>
-                <div id="personne-selected" class="mt-2" {% if not reservation_prefill %}style="display:none"{% endif %}>
-                    {% if reservation_prefill %}
+                <div id="personne-selected" class="mt-2" {% if not ns.selected_person %}style="display:none"{% endif %}>
+                    {% if ns.selected_person %}
                     <div class="alert alert-success py-2 mb-0 d-flex align-items-center">
                         <i class="bi bi-check-circle-fill me-2"></i>
-                        <span><strong>{{ reservation_prefill.nom }} {{ reservation_prefill.prenom }}</strong>
-                            <span class="cat-badge ms-2" style="{{ reservation_prefill.categorie | style_categorie }}">{{ reservation_prefill.categorie | label_categorie }}</span>
-                            {% if reservation_prefill.classe %}<small class="text-muted ms-1">({{ reservation_prefill.classe }})</small>{% endif %}
+                        <span><strong>{{ ns.selected_person.nom }} {{ ns.selected_person.prenom }}</strong>
+                            <span class="cat-badge ms-2" style="{{ ns.selected_person.categorie | style_categorie }}">{{ ns.selected_person.categorie | label_categorie }}</span>
+                            {% if ns.selected_person.classe %}<small class="text-muted ms-1">({{ ns.selected_person.classe }})</small>{% endif %}
                         </span>
                     </div>
                     {% endif %}
@@ -63,17 +71,19 @@
                 </p>
 
                 <div id="items-container">
-                    <!-- Item 1 (par défaut) -->
-                    <div class="item-row mb-2 position-relative" data-index="0">
+                    {% if selected_items %}
+                    {% for item in selected_items %}
+                    {% set inv = inventory_by_id.get(item.materiel_id) if item.materiel_id else none %}
+                    <div class="item-row mb-2 position-relative" data-index="{{ loop.index0 }}">
                         <div class="input-group">
                             <input type="text"
                                    name="items_description[]"
                                    class="form-control form-control-lg item-input"
                                    placeholder="N° inventaire, marque, modèle ou texte libre..."
                                    autocomplete="off"
-                                   value="{% if reservation_prefill %}{{ reservation_prefill.type_materiel }}{% if reservation_prefill.marque %} — {{ reservation_prefill.marque }}{% endif %}{% if reservation_prefill.modele %} {{ reservation_prefill.modele }}{% endif %} ({{ reservation_prefill.numero_inventaire }}){% endif %}"
+                                   value="{{ item.description }}"
                                    required>
-                            <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="{{ reservation_prefill.materiel_id if reservation_prefill else '' }}">
+                            <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="{{ item.materiel_id if item.materiel_id else '' }}">
                             {% if mode_scanner != 'douchette' %}
                             <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
                                 <i class="bi bi-upc-scan"></i>
@@ -83,12 +93,40 @@
                                 <i class="bi bi-x-lg"></i>
                             </button>
                         </div>
-                        <div class="item-linked mt-1" {% if not reservation_prefill %}style="display:none"{% endif %}>
-                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label">{{ reservation_prefill.numero_inventaire if reservation_prefill else '' }}</span></span>
+                        <div class="item-linked mt-1" {% if not item.materiel_id %}style="display:none"{% endif %}>
+                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label">{{ inv.numero_inventaire if inv else '' }}</span></span>
                             <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-unlink-item">délier</button>
                         </div>
                         <div class="item-suggestions autocomplete-results" style="display:none"></div>
                     </div>
+                    {% endfor %}
+                    {% else %}
+                    <!-- Item 1 (par défaut) -->
+                    <div class="item-row mb-2 position-relative" data-index="0">
+                        <div class="input-group">
+                            <input type="text"
+                                   name="items_description[]"
+                                   class="form-control form-control-lg item-input"
+                                   placeholder="N° inventaire, marque, modèle ou texte libre..."
+                                   autocomplete="off"
+                                   required>
+                            <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="">
+                            {% if mode_scanner != 'douchette' %}
+                            <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
+                                <i class="bi bi-upc-scan"></i>
+                            </button>
+                            {% endif %}
+                            <button type="button" class="btn btn-outline-danger btn-remove-item" title="Retirer" style="display:none">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        <div class="item-linked mt-1" style="display:none">
+                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> <span class="linked-label"></span></span>
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 btn-unlink-item">délier</button>
+                        </div>
+                        <div class="item-suggestions autocomplete-results" style="display:none"></div>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <div class="d-flex align-items-center gap-2 mt-2">
@@ -112,7 +150,7 @@
                 <select name="lieu_id" class="form-select">
                     <option value="">— Aucun lieu spécifié —</option>
                     {% for lieu in lieux %}
-                    <option value="{{ lieu.id }}">{{ lieu.nom }}</option>
+                    <option value="{{ lieu.id }}" {% if form_state and form_state.lieu_id and form_state.lieu_id|string == lieu.id|string %}selected{% endif %}>{{ lieu.nom }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -128,7 +166,7 @@
                     <div class="col-auto">
                         <div class="form-check form-check-inline">
                             <input class="form-check-input" type="radio" name="duree_type"
-                                   id="duree_aucune" value="aucune" checked onchange="toggleDuree()">
+                                id="duree_aucune" value="aucune" {% if not form_state or form_state.duree_type == 'aucune' %}checked{% endif %} onchange="toggleDuree()">
                             <label class="form-check-label" for="duree_aucune">
                                 Aucune durée (utilisera la durée d'alerte admin)
                             </label>
@@ -137,21 +175,21 @@
                     <div class="col-auto">
                         <div class="form-check form-check-inline">
                             <input class="form-check-input" type="radio" name="duree_type"
-                                   id="duree_type_heures" value="heures" onchange="toggleDuree()">
+                                id="duree_type_heures" value="heures" {% if form_state and form_state.duree_type == 'heures' %}checked{% endif %} onchange="toggleDuree()">
                             <label class="form-check-label" for="duree_type_heures">Heures</label>
                         </div>
                     </div>
                     <div class="col-auto">
                         <div class="form-check form-check-inline">
                             <input class="form-check-input" type="radio" name="duree_type"
-                                   id="duree_type_jours" value="jours" onchange="toggleDuree()">
+                                id="duree_type_jours" value="jours" {% if form_state and form_state.duree_type == 'jours' %}checked{% endif %} onchange="toggleDuree()">
                             <label class="form-check-label" for="duree_type_jours">Jours</label>
                         </div>
                     </div>
                     <div class="col-auto">
                         <div class="form-check form-check-inline">
                             <input class="form-check-input" type="radio" name="duree_type"
-                                   id="duree_type_fin" value="fin_journee" onchange="toggleDuree()">
+                                id="duree_type_fin" value="fin_journee" {% if form_state and form_state.duree_type == 'fin_journee' %}checked{% endif %} onchange="toggleDuree()">
                             <label class="form-check-label" for="duree_type_fin">
                                 <i class="bi bi-sunset"></i> Fin de journée ({{ heure_fin_journee | replace(':', 'h') }})
                             </label>
@@ -160,7 +198,7 @@
                     <div class="col-auto">
                         <div class="form-check form-check-inline">
                             <input class="form-check-input" type="radio" name="duree_type"
-                                   id="duree_type_date" value="date_precise" onchange="toggleDuree()">
+                                id="duree_type_date" value="date_precise" {% if form_state and form_state.duree_type == 'date_precise' %}checked{% endif %} onchange="toggleDuree()">
                             <label class="form-check-label" for="duree_type_date">
                                 <i class="bi bi-calendar-date"></i> Date précise
                             </label>
@@ -171,7 +209,7 @@
                 <div id="zone_heures" style="display:none" class="row align-items-center g-2">
                     <div class="col-auto">
                         <input type="number" name="duree_heures" class="form-control form-control-lg"
-                               min="0.5" step="0.5" placeholder="2" style="width: 120px">
+                               min="0.5" step="0.5" placeholder="2" style="width: 120px" value="{{ form_state.duree_heures if form_state else '' }}">
                     </div>
                     <div class="col-auto fs-5">heure(s)</div>
                     <div class="col-12">
@@ -191,7 +229,7 @@
                 <div id="zone_jours" style="display:none" class="row align-items-center g-2">
                     <div class="col-auto">
                         <input type="number" name="duree_jours" class="form-control form-control-lg"
-                               min="1" placeholder="7" style="width: 120px">
+                               min="1" placeholder="7" style="width: 120px" value="{{ form_state.duree_jours if form_state else '' }}">
                     </div>
                     <div class="col-auto fs-5">jour(s)</div>
                 </div>
@@ -208,7 +246,7 @@
                         <div>
                             <input type="text" name="date_retour_prevue" id="datepicker_retour"
                                    class="form-control form-control-lg" style="width: 220px"
-                               placeholder="Sélectionner une date..." readonly>
+                               placeholder="Sélectionner une date..." readonly value="{{ form_state.date_retour_prevue if form_state else '' }}">
                         </div>
                         <div id="calendrier_inline" class="border rounded"></div>
                     </div>
@@ -229,7 +267,7 @@
                        name="notes"
                        class="form-control"
                       placeholder="Informations complémentaires..."
-                      value="{{ reservation_prefill.notes if reservation_prefill and reservation_prefill.notes else '' }}">
+                        value="{{ form_state.notes if form_state else (reservation_prefill.notes if reservation_prefill and reservation_prefill.notes else '') }}">
             </div>
 
             <!-- Date et heure automatiques -->
@@ -350,13 +388,19 @@ function toggleDuree() {
     document.getElementById('zone_date_precise').style.display = (val === 'date_precise') ? '' : 'none';
 }
 
+document.addEventListener('DOMContentLoaded', toggleDuree);
+
 // ══════════════════════════════════════
 //  MULTI-MATÉRIEL : gestion des items
 // ══════════════════════════════════════
 (function() {
     const container = document.getElementById('items-container');
     const btnSimulerScan = document.getElementById('btn-simuler-scan');
-    let itemIndex = 1;
+    const existingIndexes = Array.from(container.querySelectorAll('.item-row')).map(function(row) {
+        const n = parseInt(row.dataset.index || '0', 10);
+        return Number.isNaN(n) ? 0 : n;
+    });
+    let itemIndex = (existingIndexes.length ? Math.max.apply(null, existingIndexes) : 0) + 1;
     let debounceTimers = {};
     let activeScanTarget = null;
     let html5QrCode = null;
