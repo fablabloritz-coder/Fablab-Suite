@@ -1,14 +1,12 @@
 {
-  "version": "2.3.1",
+  "version": "2.3.2",
   "date": "2026-05-01",
-  "title": "Validation poussee et publication release",
+  "title": "Correctif multiplicateur occurrences 3D",
   "notes": [
-    "Nouvelle saisie: plusieurs referents peuvent etre associes a une meme activite, avec filtrage et historique compatibles.",
-    "Historique: ajout d'une modale de modification complete pour corriger une saisie existante.",
-    "Impression papier: le materiau est maintenant derive automatiquement depuis format + couleur/N&B pour supprimer la double saisie.",
-    "Saisie d'activite: ajout d'un multiplicateur d'occurrences applique aux cas pertinents (filament 3D et activites en surface).",
-    "Validation poussee confirmee: matrice dynamique machine/type/materiau, export CSV, statistiques et smoke tests applicatifs.",
-    "Release publiee sur main avec popup Nouveautes mise a jour."
+    "Correctif: le nombre d'occurrences est maintenant applique aux materiaux 3D usuels (PLA, ABS, PETG...), meme si le nom ne contient pas le mot filament.",
+    "Garde-fou conserve: le multiplicateur ne s'applique pas aux saisies de resine.",
+    "Tests renforces: cas PLA sans mot filament et cas resine verifies automatiquement.",
+    "Aucun changement de comportement pour les activites en surface (m²) et impression papier."
   ],
   "_source": "manuel"
 }

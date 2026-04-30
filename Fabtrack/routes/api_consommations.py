@@ -261,7 +261,12 @@ def _occurrence_multiplier_allowed(db, action):
         return True
 
     if default_unit == 'g' or type_name == 'impression 3d':
-        return 'filament' in _resolve_material_name(db, action.get('materiau_id')).strip().lower()
+        material_name = _resolve_material_name(db, action.get('materiau_id')).strip().lower()
+        if not material_name:
+            return True
+        # Règle métier: le multiplicateur s'applique aux consommations 3D usuelles (PLA/ABS/PETG...),
+        # mais pas aux résines.
+        return 'résine' not in material_name and 'resine' not in material_name
 
     return False
 
