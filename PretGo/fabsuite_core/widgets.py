@@ -15,6 +15,7 @@ def counter(value, label, unit=""):
     Retourne : {"value": N, "label": "...", "unit": "..."}
     """
     return {
+        "type": "counter",
         "value": int(value) if value is not None else 0,
         "label": str(label),
         "unit": str(unit),
@@ -37,7 +38,7 @@ def status_list(items):
             "label": str(item.get("label", "")),
             "status": s,
         })
-    return {"items": clean}
+    return {"type": "status", "items": clean}
 
 
 def item_list(items):
@@ -55,7 +56,7 @@ def item_list(items):
         if "status" in item:
             entry["status"] = str(item["status"])
         clean.append(entry)
-    return {"items": clean}
+    return {"type": "list", "items": clean}
 
 
 def chart(chart_type, labels, values):
@@ -70,7 +71,8 @@ def chart(chart_type, labels, values):
     if chart_type not in _valid_types:
         chart_type = "bar"
     return {
-        "type": chart_type,
+        "type": "chart",
+        "chart_type": chart_type,
         "labels": [str(l) for l in labels],
         "values": [float(v) if v is not None else 0 for v in values],
     }
@@ -81,7 +83,7 @@ def text(content):
 
     Retourne : {"content": "..."}
     """
-    return {"content": str(content)}
+    return {"type": "text", "content": str(content)}
 
 
 def table(headers, rows):
@@ -92,6 +94,7 @@ def table(headers, rows):
     Retourne : {"headers": [...], "rows": [[...], ...]}
     """
     return {
+        "type": "table",
         "headers": [str(h) for h in headers],
         "rows": [[str(cell) for cell in row] for row in rows],
     }
