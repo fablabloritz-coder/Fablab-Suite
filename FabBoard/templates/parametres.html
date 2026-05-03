@@ -90,6 +90,24 @@
                             <label class="form-check-label" for="param-pause-enabled">Activer la pause récurrente</label>
                         </div>
 
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label for="param-pause-title" class="form-label">Titre pause</label>
+                                <input type="text" class="form-control" id="param-pause-title" value="Pause en cours" maxlength="120">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="param-pause-text-scale" class="form-label">Taille du texte pause</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="range" class="form-range" id="param-pause-text-scale" min="70" max="180" step="5" value="100">
+                                    <span class="badge text-bg-secondary" id="param-pause-text-scale-value">100%</span>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label for="param-pause-message" class="form-label">Message pause (optionnel)</label>
+                                <textarea class="form-control" id="param-pause-message" rows="2" maxlength="500" placeholder="Pause déjeuner — reprise à 14h00"></textarea>
+                            </div>
+                        </div>
+
                         <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0">
                                 <thead>
@@ -147,6 +165,13 @@
                             <div class="col-md-4">
                                 <label for="param-display-override-text-color" class="form-label">Couleur texte (mode texte)</label>
                                 <input type="color" class="form-control form-control-color" id="param-display-override-text-color" value="#f8fafc">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="param-manual-text-scale" class="form-label">Taille du texte indisponibilité</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="range" class="form-range" id="param-manual-text-scale" min="70" max="180" step="5" value="100">
+                                    <span class="badge text-bg-secondary" id="param-manual-text-scale-value">100%</span>
+                                </div>
                             </div>
 
                             <div class="col-md-6" id="display-override-text-fields">

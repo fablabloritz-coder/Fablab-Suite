@@ -122,6 +122,30 @@ function setupEventListeners() {
     if (overrideImageFile) {
         overrideImageFile.addEventListener('change', onDisplayOverrideImagePicked);
     }
+
+    const pauseScale = document.getElementById('param-pause-text-scale');
+    if (pauseScale) {
+        pauseScale.addEventListener('input', updateTextScaleBadges);
+    }
+
+    const manualScale = document.getElementById('param-manual-text-scale');
+    if (manualScale) {
+        manualScale.addEventListener('input', updateTextScaleBadges);
+    }
+}
+
+function updateTextScaleBadges() {
+    const pauseScaleEl = document.getElementById('param-pause-text-scale');
+    const pauseScaleValueEl = document.getElementById('param-pause-text-scale-value');
+    if (pauseScaleEl && pauseScaleValueEl) {
+        pauseScaleValueEl.textContent = `${pauseScaleEl.value || '100'}%`;
+    }
+
+    const manualScaleEl = document.getElementById('param-manual-text-scale');
+    const manualScaleValueEl = document.getElementById('param-manual-text-scale-value');
+    if (manualScaleEl && manualScaleValueEl) {
+        manualScaleValueEl.textContent = `${manualScaleEl.value || '100'}%`;
+    }
 }
 
 async function loadParametres() {
@@ -143,6 +167,21 @@ async function loadParametres() {
             pauseEnabledEl.checked = String(params.pause_schedule_enabled || '0') === '1';
         }
         applyPauseScheduleToForm(params.pause_weekly_schedule || '');
+
+        const pauseTitleEl = document.getElementById('param-pause-title');
+        if (pauseTitleEl) {
+            pauseTitleEl.value = params.pause_title || 'Pause en cours';
+        }
+
+        const pauseMessageEl = document.getElementById('param-pause-message');
+        if (pauseMessageEl) {
+            pauseMessageEl.value = params.pause_message || '';
+        }
+
+        const pauseScaleEl = document.getElementById('param-pause-text-scale');
+        if (pauseScaleEl) {
+            pauseScaleEl.value = params.pause_text_scale || '100';
+        }
 
         const manualEnabledEl = document.getElementById('param-manual-unavailable-enabled');
         if (manualEnabledEl) {
@@ -191,8 +230,14 @@ async function loadParametres() {
             textColorEl.value = params.manual_unavailable_text_color || params.display_override_text_color || '#f8fafc';
         }
 
+        const manualScaleEl = document.getElementById('param-manual-text-scale');
+        if (manualScaleEl) {
+            manualScaleEl.value = params.manual_unavailable_text_scale || '100';
+        }
+
         toggleDisplayOverrideMode();
         toggleManualReturnField();
+        updateTextScaleBadges();
     } catch (error) {
         console.error('Erreur chargement paramètres:', error);
     }
@@ -213,6 +258,9 @@ async function saveParametres() {
             || 'inter'),
         pause_schedule_enabled: document.getElementById('param-pause-enabled')?.checked ? '1' : '0',
         pause_weekly_schedule: JSON.stringify(readPauseScheduleFromForm()),
+        pause_title: (document.getElementById('param-pause-title')?.value || 'Pause en cours').trim(),
+        pause_message: (document.getElementById('param-pause-message')?.value || '').trim(),
+        pause_text_scale: (document.getElementById('param-pause-text-scale')?.value || '100'),
         manual_unavailable_enabled: document.getElementById('param-manual-unavailable-enabled')?.checked ? '1' : '0',
         manual_unavailable_show_return: document.getElementById('param-manual-show-return')?.checked ? '1' : '0',
         manual_unavailable_return_time: document.getElementById('param-manual-return-time')?.value || '14:00',
@@ -222,6 +270,7 @@ async function saveParametres() {
         manual_unavailable_image_url: uploadedImageUrl || document.getElementById('param-display-override-image-url')?.value || '',
         manual_unavailable_bg_color: document.getElementById('param-display-override-bg-color')?.value || '#0b1120',
         manual_unavailable_text_color: document.getElementById('param-display-override-text-color')?.value || '#f8fafc',
+        manual_unavailable_text_scale: (document.getElementById('param-manual-text-scale')?.value || '100'),
     };
 
     if (!params.manual_unavailable_title) {
@@ -264,6 +313,18 @@ async function saveParametres() {
                 method: 'PUT',
                 body: JSON.stringify({ valeur: params.pause_weekly_schedule }),
             }),
+            apiCall('/api/parametres/pause_title', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.pause_title }),
+            }),
+            apiCall('/api/parametres/pause_message', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.pause_message }),
+            }),
+            apiCall('/api/parametres/pause_text_scale', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.pause_text_scale }),
+            }),
             apiCall('/api/parametres/manual_unavailable_enabled', {
                 method: 'PUT',
                 body: JSON.stringify({ valeur: params.manual_unavailable_enabled }),
@@ -299,6 +360,10 @@ async function saveParametres() {
             apiCall('/api/parametres/manual_unavailable_text_color', {
                 method: 'PUT',
                 body: JSON.stringify({ valeur: params.manual_unavailable_text_color }),
+            }),
+            apiCall('/api/parametres/manual_unavailable_text_scale', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.manual_unavailable_text_scale }),
             }),
         ]);
 

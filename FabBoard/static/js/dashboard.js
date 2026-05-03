@@ -473,10 +473,13 @@ function renderDisplayOverride(data) {
     }
     const bgColor = data.bg_color || '#0b1120';
     const textColor = data.text_color || '#f8fafc';
+    const rawTextScale = Number(data.text_scale || 100);
+    const safeTextScale = Number.isFinite(rawTextScale) ? Math.min(180, Math.max(70, rawTextScale)) : 100;
+    const textScaleFactor = safeTextScale / 100;
 
     container.style.background = bgColor;
     container.innerHTML = `
-        <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture" style="background:${escapeHtml(bgColor)};color:${escapeHtml(textColor)};">
+        <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture" style="background:${escapeHtml(bgColor)};color:${escapeHtml(textColor)};--override-text-scale:${textScaleFactor};">
             <div class="pause-override-text">
                 <div class="pause-override-text-inner">
                     ${typeBadge}

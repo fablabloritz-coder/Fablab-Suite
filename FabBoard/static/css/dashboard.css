@@ -60,7 +60,7 @@
 
 .pause-override-title {
     margin: 0 0 1rem;
-    font-size: clamp(2.2rem, 6vw, 5.4rem);
+    font-size: clamp(calc(2.2rem * var(--override-text-scale, 1)), calc(6vw * var(--override-text-scale, 1)), calc(5.4rem * var(--override-text-scale, 1)));
     line-height: 1.08;
     font-weight: 800;
     letter-spacing: 0.02em;
@@ -71,7 +71,7 @@
     margin-bottom: 1rem;
     padding: 0.45rem 0.85rem;
     border-radius: 999px;
-    font-size: clamp(0.8rem, 1.6vw, 1.1rem);
+    font-size: clamp(calc(0.8rem * var(--override-text-scale, 1)), calc(1.6vw * var(--override-text-scale, 1)), calc(1.1rem * var(--override-text-scale, 1)));
     font-weight: 700;
     letter-spacing: 0.04em;
 }
@@ -94,14 +94,14 @@
 
 .pause-override-message {
     margin: 0;
-    font-size: clamp(1.1rem, 2.4vw, 2rem);
+    font-size: clamp(calc(1.1rem * var(--override-text-scale, 1)), calc(2.4vw * var(--override-text-scale, 1)), calc(2rem * var(--override-text-scale, 1)));
     line-height: 1.4;
     opacity: 0.95;
 }
 
 .pause-override-resume {
     margin-top: 1.25rem;
-    font-size: clamp(1rem, 2.1vw, 1.7rem);
+    font-size: clamp(calc(1rem * var(--override-text-scale, 1)), calc(2.1vw * var(--override-text-scale, 1)), calc(1.7rem * var(--override-text-scale, 1)));
     font-weight: 600;
     opacity: 0.9;
 }

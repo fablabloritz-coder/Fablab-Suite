@@ -364,11 +364,12 @@ def display_override_status():
             override_type = 'unavailable'
 
         if source == 'scheduled_pause':
-            title = 'Pause en cours'
+            title = (params.get('pause_title') or 'Pause en cours').strip()
             message = (params.get('pause_message') or '').strip()
             image_url = ''
             bg_color = '#0b1120'
             text_color = '#f8fafc'
+            text_scale = params.get('pause_text_scale', '100')
             mode = 'text'
         else:
             title = (params.get('manual_unavailable_title') or params.get('display_override_title') or 'FabLab indisponible').strip()
@@ -376,6 +377,7 @@ def display_override_status():
             image_url = (params.get('manual_unavailable_image_url') or params.get('display_override_image_url') or '').strip()
             bg_color = (params.get('manual_unavailable_bg_color') or params.get('display_override_bg_color') or '#0b1120').strip()
             text_color = (params.get('manual_unavailable_text_color') or params.get('display_override_text_color') or '#f8fafc').strip()
+            text_scale = params.get('manual_unavailable_text_scale', '100')
 
         if source == 'manual_unavailable' and not active:
             title = ''
@@ -412,6 +414,7 @@ def display_override_status():
             'image_url': image_url,
             'bg_color': bg_color,
             'text_color': text_color,
+            'text_scale': text_scale,
             'resume_at': next_end.isoformat() if next_end else None,
             'pause_schedule_enabled': pause_enabled,
             'manual_enabled': manual_enabled,
