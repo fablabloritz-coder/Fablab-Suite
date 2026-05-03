@@ -39,11 +39,38 @@ function applyFontFamily(fontFamilyKey) {
     document.documentElement.style.setProperty('--app-font-family', FONT_FAMILY_MAP[key]);
 }
 
+function getDisplayOverrideDefaults(type) {
+    if (type === 'unavailable_timed') {
+        return {
+            title: 'FabLab indisponible',
+            placeholder: 'Indisponibilité exceptionnelle — réouverture à 14h00',
+            help: 'Utiliser cette option quand le FabLab reste fermé jusqu\'à une heure connue.',
+        };
+    }
+    if (type === 'unavailable') {
+        return {
+            title: 'FabLab indisponible',
+            placeholder: 'Indisponibilité exceptionnelle. Merci de consulter l\'équipe sur place.',
+            help: 'Utiliser cette option quand aucune heure de reprise n\'est connue.',
+        };
+    }
+    return {
+        title: 'Pause en cours',
+        placeholder: 'Pause déjeuner — reprise à 14h00',
+        help: 'Utiliser "Pause" pour une interruption courte planifiée.',
+    };
+}
+
 function setupEventListeners() {
     document.getElementById('form-params-general').addEventListener('submit', (e) => {
         e.preventDefault();
         saveParametres();
     });
+
+    const saveOverrideButton = document.getElementById('btn-save-override');
+    if (saveOverrideButton) {
+        saveOverrideButton.addEventListener('click', saveParametres);
+    }
 
     document.getElementById('btn-save-source').addEventListener('click', saveSource);
     document.getElementById('btn-add-source').addEventListener('click', openCreateSourceModal);
@@ -56,6 +83,11 @@ function setupEventListeners() {
     const overrideMode = document.getElementById('param-display-override-mode');
     if (overrideMode) {
         overrideMode.addEventListener('change', toggleDisplayOverrideMode);
+    }
+
+    const overrideType = document.getElementById('param-display-override-type');
+    if (overrideType) {
+        overrideType.addEventListener('change', toggleDisplayOverrideFields);
     }
 
     const overrideImageFile = document.getElementById('param-display-override-image-file');
@@ -144,6 +176,7 @@ async function saveParametres() {
     }
 
     const params = {
+        overrideType: (document.getElementById('param-display-override-type')?.value || 'pause'),
         fablab_name: document.getElementById('param-fablab-name').value.trim(),
         refresh_interval: document.getElementById('param-refresh').value,
         theme: document.getElementById('param-theme').value,
@@ -155,12 +188,16 @@ async function saveParametres() {
         display_override_start: (document.getElementById('param-display-override-start')?.value || '12:00'),
         display_override_end: (document.getElementById('param-display-override-end')?.value || '13:00'),
         display_override_mode: (document.getElementById('param-display-override-mode')?.value || 'text'),
-        display_override_title: (document.getElementById('param-display-override-title')?.value || 'FabLab fermé').trim(),
+        display_override_title: (document.getElementById('param-display-override-title')?.value || '').trim(),
         display_override_message: (document.getElementById('param-display-override-message')?.value || '').trim(),
         display_override_image_url: uploadedImageUrl || document.getElementById('param-display-override-image-url')?.value || '',
         display_override_bg_color: document.getElementById('param-display-override-bg-color')?.value || '#0b1120',
         display_override_text_color: document.getElementById('param-display-override-text-color')?.value || '#f8fafc',
     };
+
+    if (!params.display_override_title) {
+        params.display_override_title = getDisplayOverrideDefaults(params.overrideType).title;
+    }
 
     if (!params.fablab_name) {
         showToast('Le nom du fablab est requis', 'warning');
@@ -255,8 +292,26 @@ function toggleDisplayOverrideMode() {
 function toggleDisplayOverrideFields() {
     const type = document.getElementById('param-display-override-type')?.value || 'pause';
     const endField = document.getElementById('display-override-end-field');
+    const titleField = document.getElementById('param-display-override-title');
+    const messageField = document.getElementById('param-display-override-message');
+    const typeHelp = document.getElementById('display-override-type-help');
+    const defaults = getDisplayOverrideDefaults(type);
+
     if (endField) {
         endField.classList.toggle('d-none', type === 'unavailable');
+    }
+
+    if (titleField && (!titleField.value || titleField.dataset.autofill === '1')) {
+        titleField.value = defaults.title;
+        titleField.dataset.autofill = '1';
+    }
+
+    if (messageField) {
+        messageField.placeholder = defaults.placeholder;
+    }
+
+    if (typeHelp) {
+        typeHelp.textContent = defaults.help;
     }
 }
 

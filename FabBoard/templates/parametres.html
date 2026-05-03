@@ -92,11 +92,12 @@
                         </div>
                         <div class="col-md-8">
                             <label for="param-display-override-type" class="form-label">Type d'indisponibilité</label>
-                            <select class="form-select" id="param-display-override-type" onchange="toggleDisplayOverrideFields()">
+                            <select class="form-select" id="param-display-override-type">
                                 <option value="pause">Pause (méridienne, etc.)</option>
                                 <option value="unavailable_timed">Indisponibilité (avec horaire de reprise)</option>
                                 <option value="unavailable">Indisponibilité (sans horaire de reprise)</option>
                             </select>
+                            <div class="form-text" id="display-override-type-help">Utiliser "Pause" pour une interruption courte planifiée.</div>
                         </div>
                         <div class="col-md-4">
                             <label for="param-display-override-start" class="form-label">Début</label>
@@ -128,7 +129,7 @@
                             <input type="text" class="form-control" id="param-display-override-title" value="FabLab fermé" maxlength="120">
                             <div class="mt-2">
                                 <label for="param-display-override-message" class="form-label">Message</label>
-                                <textarea class="form-control" id="param-display-override-message" rows="3" maxlength="500" placeholder="Pause déjeuner — Réouverture à 14h00"></textarea>
+                                <textarea class="form-control" id="param-display-override-message" rows="3" maxlength="500" placeholder="Pause déjeuner — reprise à 14h00"></textarea>
                             </div>
                         </div>
 
@@ -140,6 +141,12 @@
                             <div class="mt-2">
                                 <img id="display-override-image-preview" class="img-fluid rounded border d-none" alt="Aperçu image fermeture" style="max-height: 160px; object-fit: cover;">
                             </div>
+                        </div>
+
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="button" class="btn btn-danger" id="btn-save-override">
+                                <i class="bi bi-check-circle"></i> Enregistrer l'écran prioritaire
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -449,7 +449,8 @@ function renderDisplayOverride(data) {
         return;
     }
 
-    const title = data.title || 'FabLab ferme';
+    const defaultTitle = data.override_type === 'pause' ? 'Pause en cours' : 'FabLab indisponible';
+    const title = data.title || defaultTitle;
     const message = data.message || '';
     const resume = data.resume_label || formatResumeLabel(data.resume_at);
 

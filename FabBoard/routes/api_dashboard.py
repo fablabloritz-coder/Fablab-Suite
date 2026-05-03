@@ -308,7 +308,8 @@ def display_override_status():
             else:
                 active, next_end = _compute_pause_status(now, start_minutes, _parse_hhmm(end_raw))
 
-        title = (params.get('display_override_title') or 'FabLab ferme').strip()
+        default_title = 'Pause en cours' if override_type == 'pause' else 'FabLab indisponible'
+        title = (params.get('display_override_title') or default_title).strip()
         message = (params.get('display_override_message') or '').strip()
         image_url = (params.get('display_override_image_url') or '').strip()
         bg_color = (params.get('display_override_bg_color') or '#0b1120').strip()
