@@ -532,7 +532,7 @@ function startDisplayOverridePolling() {
     if (overridePollTimer) clearInterval(overridePollTimer);
     overridePollTimer = setInterval(() => {
         refreshDisplayOverride();
-    }, 15000);
+    }, 5000);
 }
 
 function renderEmptyWidget(position) {
