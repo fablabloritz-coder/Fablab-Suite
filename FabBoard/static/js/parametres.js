@@ -295,6 +295,7 @@ function toggleDisplayOverrideFields() {
     const titleField = document.getElementById('param-display-override-title');
     const messageField = document.getElementById('param-display-override-message');
     const typeHelp = document.getElementById('display-override-type-help');
+    const typeBadge = document.getElementById('display-override-type-badge');
     const defaults = getDisplayOverrideDefaults(type);
 
     if (endField) {
@@ -312,6 +313,20 @@ function toggleDisplayOverrideFields() {
 
     if (typeHelp) {
         typeHelp.textContent = defaults.help;
+    }
+
+    if (typeBadge) {
+        typeBadge.className = 'badge';
+        if (type === 'pause') {
+            typeBadge.classList.add('text-bg-warning');
+            typeBadge.textContent = 'PAUSE';
+        } else if (type === 'unavailable_timed') {
+            typeBadge.classList.add('text-bg-danger');
+            typeBadge.textContent = 'INDISPONIBILITE AVEC HORAIRE';
+        } else {
+            typeBadge.classList.add('text-bg-dark');
+            typeBadge.textContent = 'INDISPONIBILITE SANS HORAIRE';
+        }
     }
 }
 

@@ -449,15 +449,20 @@ function renderDisplayOverride(data) {
         return;
     }
 
-    const defaultTitle = data.override_type === 'pause' ? 'Pause en cours' : 'FabLab indisponible';
+    const overrideType = data.override_type || 'pause';
+    const defaultTitle = overrideType === 'pause' ? 'Pause en cours' : 'FabLab indisponible';
     const title = data.title || defaultTitle;
     const message = data.message || '';
     const resume = data.resume_label || formatResumeLabel(data.resume_at);
+    const typeBadge = overrideType === 'pause'
+        ? '<span class="pause-override-badge pause-override-badge-pause">PAUSE</span>'
+        : (overrideType === 'unavailable_timed'
+            ? '<span class="pause-override-badge pause-override-badge-unavailable">INDISPONIBILITE AVEC HORAIRE</span>'
+            : '<span class="pause-override-badge pause-override-badge-unavailable-no-time">INDISPONIBILITE SANS HORAIRE</span>');
 
     // Label de reprise selon le type d'indisponibilité
     let resumeLine = '';
     if (resume) {
-        const overrideType = data.override_type || 'pause';
         let resumePrefix;
         if (overrideType === 'unavailable_timed') {
             resumePrefix = 'Réouverture prévue à';
@@ -474,6 +479,7 @@ function renderDisplayOverride(data) {
         <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture" style="background:${escapeHtml(bgColor)};color:${escapeHtml(textColor)};">
             <div class="pause-override-text">
                 <div class="pause-override-text-inner">
+                    ${typeBadge}
                     <h1 class="pause-override-title">${escapeHtml(title)}</h1>
                     ${message ? `<p class="pause-override-message">${escapeHtml(message)}</p>` : ''}
                     ${resumeLine}
