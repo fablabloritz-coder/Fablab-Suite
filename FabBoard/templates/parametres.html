@@ -81,76 +81,99 @@
                     <h5 class="mb-0"><i class="bi bi-door-closed"></i> Écran indisponibilité prioritaire</h5>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted mb-3">Pendant la plage d'indisponibilité, cet écran plein format remplace toutes les slides.</p>
+                    <p class="text-muted mb-3">La pause hebdomadaire est récurrente. L'indisponibilité manuelle est prioritaire et prend le dessus sur toutes les slides.</p>
 
-                    <div class="row g-3">
-                        <div class="col-md-4 d-flex align-items-end">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="param-display-override-enabled">
-                                <label class="form-check-label" for="param-display-override-enabled">Activer l'écran d'indisponibilité</label>
+                    <div class="border rounded p-3 mb-3">
+                        <h6 class="mb-3"><i class="bi bi-calendar-week"></i> Pause hebdomadaire récurrente</h6>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="param-pause-enabled">
+                            <label class="form-check-label" for="param-pause-enabled">Activer la pause récurrente</label>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Jour</th>
+                                        <th class="text-center">Actif</th>
+                                        <th>Début</th>
+                                        <th>Fin</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>Lundi</td><td class="text-center"><input type="checkbox" id="pause-day-0-enabled"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-0-start" value="12:00"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-0-end" value="13:00"></td></tr>
+                                    <tr><td>Mardi</td><td class="text-center"><input type="checkbox" id="pause-day-1-enabled"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-1-start" value="12:00"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-1-end" value="13:00"></td></tr>
+                                    <tr><td>Mercredi</td><td class="text-center"><input type="checkbox" id="pause-day-2-enabled"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-2-start" value="12:00"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-2-end" value="13:00"></td></tr>
+                                    <tr><td>Jeudi</td><td class="text-center"><input type="checkbox" id="pause-day-3-enabled"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-3-start" value="12:00"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-3-end" value="13:00"></td></tr>
+                                    <tr><td>Vendredi</td><td class="text-center"><input type="checkbox" id="pause-day-4-enabled"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-4-start" value="12:00"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-4-end" value="13:00"></td></tr>
+                                    <tr><td>Samedi</td><td class="text-center"><input type="checkbox" id="pause-day-5-enabled"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-5-start" value="12:00"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-5-end" value="13:00"></td></tr>
+                                    <tr><td>Dimanche</td><td class="text-center"><input type="checkbox" id="pause-day-6-enabled"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-6-start" value="12:00"></td><td><input type="time" class="form-control form-control-sm" id="pause-day-6-end" value="13:00"></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="border rounded p-3">
+                        <h6 class="mb-3"><i class="bi bi-exclamation-triangle"></i> Indisponibilité manuelle prioritaire</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="param-manual-unavailable-enabled">
+                                    <label class="form-check-label" for="param-manual-unavailable-enabled">Afficher l'indisponibilité maintenant</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="param-manual-show-return">
+                                    <label class="form-check-label" for="param-manual-show-return">Afficher une heure de retour</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4" id="manual-return-time-field">
+                                <label for="param-manual-return-time" class="form-label">Heure de retour</label>
+                                <input type="time" class="form-control" id="param-manual-return-time" value="14:00">
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="param-display-override-mode" class="form-label">Contenu affiché</label>
+                                <select class="form-select" id="param-display-override-mode">
+                                    <option value="text">Texte</option>
+                                    <option value="image">Image plein écran</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="param-display-override-bg-color" class="form-label">Couleur fond (mode texte)</label>
+                                <input type="color" class="form-control form-control-color" id="param-display-override-bg-color" value="#0b1120">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="param-display-override-text-color" class="form-label">Couleur texte (mode texte)</label>
+                                <input type="color" class="form-control form-control-color" id="param-display-override-text-color" value="#f8fafc">
+                            </div>
+
+                            <div class="col-md-6" id="display-override-text-fields">
+                                <label for="param-display-override-title" class="form-label">Titre</label>
+                                <input type="text" class="form-control" id="param-display-override-title" value="FabLab indisponible" maxlength="120">
+                                <div class="mt-2">
+                                    <label for="param-display-override-message" class="form-label">Message</label>
+                                    <textarea class="form-control" id="param-display-override-message" rows="3" maxlength="500" placeholder="Indisponibilité exceptionnelle"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6 d-none" id="display-override-image-fields">
+                                <label for="param-display-override-image-file" class="form-label">Image JPG/PNG</label>
+                                <input type="file" class="form-control" id="param-display-override-image-file" accept="image/png,image/jpeg">
+                                <input type="hidden" id="param-display-override-image-url">
+                                <div class="form-text">L'image sera affichée en plein écran et remplacera toutes les slides pendant l'indisponibilité.</div>
+                                <div class="mt-2">
+                                    <img id="display-override-image-preview" class="img-fluid rounded border d-none" alt="Aperçu image fermeture" style="max-height: 160px; object-fit: cover;">
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-8">
-                            <label for="param-display-override-type" class="form-label">Type d'indisponibilité</label>
-                            <select class="form-select" id="param-display-override-type">
-                                <option value="pause">Pause (méridienne, etc.)</option>
-                                <option value="unavailable_timed">Indisponibilité (avec horaire de reprise)</option>
-                                <option value="unavailable">Indisponibilité (sans horaire de reprise)</option>
-                            </select>
-                            <div class="mt-2">
-                                <span class="badge text-bg-secondary" id="display-override-type-badge">PAUSE</span>
-                            </div>
-                            <div class="form-text" id="display-override-type-help">Utiliser "Pause" pour une interruption courte planifiée.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="param-display-override-start" class="form-label">Début</label>
-                            <input type="time" class="form-control" id="param-display-override-start" value="12:00">
-                        </div>
-                        <div class="col-md-4" id="display-override-end-field">
-                            <label for="param-display-override-end" class="form-label">Fin</label>
-                            <input type="time" class="form-control" id="param-display-override-end" value="13:00">
-                        </div>
+                    </div>
 
-                        <div class="col-md-4">
-                            <label for="param-display-override-mode" class="form-label">Contenu affiché</label>
-                            <select class="form-select" id="param-display-override-mode">
-                                <option value="text">Texte</option>
-                                <option value="image">Image plein écran</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="param-display-override-bg-color" class="form-label">Couleur fond (mode texte)</label>
-                            <input type="color" class="form-control form-control-color" id="param-display-override-bg-color" value="#0b1120">
-                        </div>
-                        <div class="col-md-4">
-                            <label for="param-display-override-text-color" class="form-label">Couleur texte (mode texte)</label>
-                            <input type="color" class="form-control form-control-color" id="param-display-override-text-color" value="#f8fafc">
-                        </div>
-
-                        <div class="col-md-6" id="display-override-text-fields">
-                            <label for="param-display-override-title" class="form-label">Titre</label>
-                            <input type="text" class="form-control" id="param-display-override-title" value="FabLab fermé" maxlength="120">
-                            <div class="mt-2">
-                                <label for="param-display-override-message" class="form-label">Message</label>
-                                <textarea class="form-control" id="param-display-override-message" rows="3" maxlength="500" placeholder="Pause déjeuner — reprise à 14h00"></textarea>
-                            </div>
-                        </div>
-
-                        <div class="col-md-6 d-none" id="display-override-image-fields">
-                            <label for="param-display-override-image-file" class="form-label">Image JPG/PNG</label>
-                            <input type="file" class="form-control" id="param-display-override-image-file" accept="image/png,image/jpeg">
-                            <input type="hidden" id="param-display-override-image-url">
-                            <div class="form-text">L'image sera affichée en plein écran et remplacera toutes les slides pendant l'indisponibilité.</div>
-                            <div class="mt-2">
-                                <img id="display-override-image-preview" class="img-fluid rounded border d-none" alt="Aperçu image fermeture" style="max-height: 160px; object-fit: cover;">
-                            </div>
-                        </div>
-
-                        <div class="col-12 d-flex justify-content-end">
-                            <button type="button" class="btn btn-danger" id="btn-save-override">
-                                <i class="bi bi-check-circle"></i> Enregistrer l'écran prioritaire
-                            </button>
-                        </div>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button type="button" class="btn btn-danger" id="btn-save-override">
+                            <i class="bi bi-check-circle"></i> Enregistrer pause + indisponibilité
+                        </button>
                     </div>
                 </div>
             </div>

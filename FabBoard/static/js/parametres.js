@@ -39,26 +39,54 @@ function applyFontFamily(fontFamilyKey) {
     document.documentElement.style.setProperty('--app-font-family', FONT_FAMILY_MAP[key]);
 }
 
-function getDisplayOverrideDefaults(type) {
-    if (type === 'unavailable_timed') {
-        return {
-            title: 'FabLab indisponible',
-            placeholder: 'Indisponibilité exceptionnelle — réouverture à 14h00',
-            help: 'Utiliser cette option quand le FabLab reste fermé jusqu\'à une heure connue.',
+function getDefaultPauseSchedule() {
+    const schedule = {};
+    for (let day = 0; day < 7; day += 1) {
+        schedule[String(day)] = {
+            enabled: day >= 0 && day <= 4,
+            start: '12:00',
+            end: '13:00',
         };
     }
-    if (type === 'unavailable') {
-        return {
-            title: 'FabLab indisponible',
-            placeholder: 'Indisponibilité exceptionnelle. Merci de consulter l\'équipe sur place.',
-            help: 'Utiliser cette option quand aucune heure de reprise n\'est connue.',
+    return schedule;
+}
+
+function readPauseScheduleFromForm() {
+    const schedule = {};
+    for (let day = 0; day < 7; day += 1) {
+        schedule[String(day)] = {
+            enabled: !!document.getElementById(`pause-day-${day}-enabled`)?.checked,
+            start: document.getElementById(`pause-day-${day}-start`)?.value || '12:00',
+            end: document.getElementById(`pause-day-${day}-end`)?.value || '13:00',
         };
     }
-    return {
-        title: 'Pause en cours',
-        placeholder: 'Pause déjeuner — reprise à 14h00',
-        help: 'Utiliser "Pause" pour une interruption courte planifiée.',
-    };
+    return schedule;
+}
+
+function applyPauseScheduleToForm(rawSchedule) {
+    const fallback = getDefaultPauseSchedule();
+    let schedule = fallback;
+
+    if (typeof rawSchedule === 'string' && rawSchedule.trim()) {
+        try {
+            const parsed = JSON.parse(rawSchedule);
+            if (parsed && typeof parsed === 'object') {
+                schedule = { ...fallback, ...parsed };
+            }
+        } catch (error) {
+            schedule = fallback;
+        }
+    }
+
+    for (let day = 0; day < 7; day += 1) {
+        const slot = schedule[String(day)] || fallback[String(day)];
+        const enabledEl = document.getElementById(`pause-day-${day}-enabled`);
+        const startEl = document.getElementById(`pause-day-${day}-start`);
+        const endEl = document.getElementById(`pause-day-${day}-end`);
+        if (enabledEl) enabledEl.checked = !!slot.enabled;
+        if (startEl) startEl.value = slot.start || '12:00';
+        if (endEl) endEl.value = slot.end || '13:00';
+    }
 }
 
 function setupEventListeners() {
@@ -85,9 +113,9 @@ function setupEventListeners() {
         overrideMode.addEventListener('change', toggleDisplayOverrideMode);
     }
 
-    const overrideType = document.getElementById('param-display-override-type');
-    if (overrideType) {
-        overrideType.addEventListener('change', toggleDisplayOverrideFields);
+    const manualShowReturn = document.getElementById('param-manual-show-return');
+    if (manualShowReturn) {
+        manualShowReturn.addEventListener('change', toggleManualReturnField);
     }
 
     const overrideImageFile = document.getElementById('param-display-override-image-file');
@@ -110,42 +138,43 @@ async function loadParametres() {
         if (fontFamilySelect) fontFamilySelect.value = policeValue;
         applyFontFamily(policeValue);
 
-        const enabledEl = document.getElementById('param-display-override-enabled');
-        if (enabledEl) {
-            enabledEl.checked = String(params.display_override_enabled || '0') === '1';
+        const pauseEnabledEl = document.getElementById('param-pause-enabled');
+        if (pauseEnabledEl) {
+            pauseEnabledEl.checked = String(params.pause_schedule_enabled || '0') === '1';
+        }
+        applyPauseScheduleToForm(params.pause_weekly_schedule || '');
+
+        const manualEnabledEl = document.getElementById('param-manual-unavailable-enabled');
+        if (manualEnabledEl) {
+            manualEnabledEl.checked = String(params.manual_unavailable_enabled || params.display_override_enabled || '0') === '1';
         }
 
-        const startEl = document.getElementById('param-display-override-start');
-        if (startEl) {
-            startEl.value = params.display_override_start || '12:00';
+        const manualShowReturnEl = document.getElementById('param-manual-show-return');
+        if (manualShowReturnEl) {
+            manualShowReturnEl.checked = String(params.manual_unavailable_show_return || '0') === '1';
         }
 
-        const endEl = document.getElementById('param-display-override-end');
-        if (endEl) {
-            endEl.value = params.display_override_end || '13:00';
-        }
-
-        const typeEl = document.getElementById('param-display-override-type');
-        if (typeEl) {
-            typeEl.value = params.display_override_type || 'pause';
+        const manualReturnTimeEl = document.getElementById('param-manual-return-time');
+        if (manualReturnTimeEl) {
+            manualReturnTimeEl.value = params.manual_unavailable_return_time || '14:00';
         }
 
         const modeEl = document.getElementById('param-display-override-mode');
         if (modeEl) {
-            modeEl.value = params.display_override_mode || 'text';
+            modeEl.value = params.manual_unavailable_mode || params.display_override_mode || 'text';
         }
 
         const titleEl = document.getElementById('param-display-override-title');
         if (titleEl) {
-            titleEl.value = params.display_override_title || 'FabLab fermé';
+            titleEl.value = params.manual_unavailable_title || params.display_override_title || 'FabLab indisponible';
         }
 
         const messageEl = document.getElementById('param-display-override-message');
         if (messageEl) {
-            messageEl.value = params.display_override_message || '';
+            messageEl.value = params.manual_unavailable_message || params.display_override_message || '';
         }
 
-        const imageUrl = params.display_override_image_url || '';
+        const imageUrl = params.manual_unavailable_image_url || params.display_override_image_url || '';
         const imageUrlEl = document.getElementById('param-display-override-image-url');
         if (imageUrlEl) {
             imageUrlEl.value = imageUrl;
@@ -154,16 +183,16 @@ async function loadParametres() {
 
         const bgColorEl = document.getElementById('param-display-override-bg-color');
         if (bgColorEl) {
-            bgColorEl.value = params.display_override_bg_color || '#0b1120';
+            bgColorEl.value = params.manual_unavailable_bg_color || params.display_override_bg_color || '#0b1120';
         }
 
         const textColorEl = document.getElementById('param-display-override-text-color');
         if (textColorEl) {
-            textColorEl.value = params.display_override_text_color || '#f8fafc';
+            textColorEl.value = params.manual_unavailable_text_color || params.display_override_text_color || '#f8fafc';
         }
 
         toggleDisplayOverrideMode();
-        toggleDisplayOverrideFields();
+        toggleManualReturnField();
     } catch (error) {
         console.error('Erreur chargement paramètres:', error);
     }
@@ -176,27 +205,27 @@ async function saveParametres() {
     }
 
     const params = {
-        overrideType: (document.getElementById('param-display-override-type')?.value || 'pause'),
         fablab_name: document.getElementById('param-fablab-name').value.trim(),
         refresh_interval: document.getElementById('param-refresh').value,
         theme: document.getElementById('param-theme').value,
         police_dashboard: (document.getElementById('param-police')?.value
             || document.getElementById('param-font-family')?.value
             || 'inter'),
-        display_override_enabled: document.getElementById('param-display-override-enabled')?.checked ? '1' : '0',
-        display_override_type: (document.getElementById('param-display-override-type')?.value || 'pause'),
-        display_override_start: (document.getElementById('param-display-override-start')?.value || '12:00'),
-        display_override_end: (document.getElementById('param-display-override-end')?.value || '13:00'),
-        display_override_mode: (document.getElementById('param-display-override-mode')?.value || 'text'),
-        display_override_title: (document.getElementById('param-display-override-title')?.value || '').trim(),
-        display_override_message: (document.getElementById('param-display-override-message')?.value || '').trim(),
-        display_override_image_url: uploadedImageUrl || document.getElementById('param-display-override-image-url')?.value || '',
-        display_override_bg_color: document.getElementById('param-display-override-bg-color')?.value || '#0b1120',
-        display_override_text_color: document.getElementById('param-display-override-text-color')?.value || '#f8fafc',
+        pause_schedule_enabled: document.getElementById('param-pause-enabled')?.checked ? '1' : '0',
+        pause_weekly_schedule: JSON.stringify(readPauseScheduleFromForm()),
+        manual_unavailable_enabled: document.getElementById('param-manual-unavailable-enabled')?.checked ? '1' : '0',
+        manual_unavailable_show_return: document.getElementById('param-manual-show-return')?.checked ? '1' : '0',
+        manual_unavailable_return_time: document.getElementById('param-manual-return-time')?.value || '14:00',
+        manual_unavailable_mode: (document.getElementById('param-display-override-mode')?.value || 'text'),
+        manual_unavailable_title: (document.getElementById('param-display-override-title')?.value || '').trim(),
+        manual_unavailable_message: (document.getElementById('param-display-override-message')?.value || '').trim(),
+        manual_unavailable_image_url: uploadedImageUrl || document.getElementById('param-display-override-image-url')?.value || '',
+        manual_unavailable_bg_color: document.getElementById('param-display-override-bg-color')?.value || '#0b1120',
+        manual_unavailable_text_color: document.getElementById('param-display-override-text-color')?.value || '#f8fafc',
     };
 
-    if (!params.display_override_title) {
-        params.display_override_title = getDisplayOverrideDefaults(params.overrideType).title;
+    if (!params.manual_unavailable_title) {
+        params.manual_unavailable_title = 'FabLab indisponible';
     }
 
     if (!params.fablab_name) {
@@ -227,45 +256,49 @@ async function saveParametres() {
                 method: 'PUT',
                 body: JSON.stringify({ valeur: params.police_dashboard }),
             }),
-            apiCall('/api/parametres/display_override_enabled', {
+            apiCall('/api/parametres/pause_schedule_enabled', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_enabled }),
+                body: JSON.stringify({ valeur: params.pause_schedule_enabled }),
             }),
-            apiCall('/api/parametres/display_override_type', {
+            apiCall('/api/parametres/pause_weekly_schedule', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_type }),
+                body: JSON.stringify({ valeur: params.pause_weekly_schedule }),
             }),
-            apiCall('/api/parametres/display_override_start', {
+            apiCall('/api/parametres/manual_unavailable_enabled', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_start }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_enabled }),
             }),
-            apiCall('/api/parametres/display_override_end', {
+            apiCall('/api/parametres/manual_unavailable_show_return', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_end }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_show_return }),
             }),
-            apiCall('/api/parametres/display_override_mode', {
+            apiCall('/api/parametres/manual_unavailable_return_time', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_mode }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_return_time }),
             }),
-            apiCall('/api/parametres/display_override_title', {
+            apiCall('/api/parametres/manual_unavailable_mode', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_title }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_mode }),
             }),
-            apiCall('/api/parametres/display_override_message', {
+            apiCall('/api/parametres/manual_unavailable_title', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_message }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_title }),
             }),
-            apiCall('/api/parametres/display_override_image_url', {
+            apiCall('/api/parametres/manual_unavailable_message', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_image_url }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_message }),
             }),
-            apiCall('/api/parametres/display_override_bg_color', {
+            apiCall('/api/parametres/manual_unavailable_image_url', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_bg_color }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_image_url }),
             }),
-            apiCall('/api/parametres/display_override_text_color', {
+            apiCall('/api/parametres/manual_unavailable_bg_color', {
                 method: 'PUT',
-                body: JSON.stringify({ valeur: params.display_override_text_color }),
+                body: JSON.stringify({ valeur: params.manual_unavailable_bg_color }),
+            }),
+            apiCall('/api/parametres/manual_unavailable_text_color', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.manual_unavailable_text_color }),
             }),
         ]);
 
@@ -289,44 +322,11 @@ function toggleDisplayOverrideMode() {
     }
 }
 
-function toggleDisplayOverrideFields() {
-    const type = document.getElementById('param-display-override-type')?.value || 'pause';
-    const endField = document.getElementById('display-override-end-field');
-    const titleField = document.getElementById('param-display-override-title');
-    const messageField = document.getElementById('param-display-override-message');
-    const typeHelp = document.getElementById('display-override-type-help');
-    const typeBadge = document.getElementById('display-override-type-badge');
-    const defaults = getDisplayOverrideDefaults(type);
-
-    if (endField) {
-        endField.classList.toggle('d-none', type === 'unavailable');
-    }
-
-    if (titleField && (!titleField.value || titleField.dataset.autofill === '1')) {
-        titleField.value = defaults.title;
-        titleField.dataset.autofill = '1';
-    }
-
-    if (messageField) {
-        messageField.placeholder = defaults.placeholder;
-    }
-
-    if (typeHelp) {
-        typeHelp.textContent = defaults.help;
-    }
-
-    if (typeBadge) {
-        typeBadge.className = 'badge';
-        if (type === 'pause') {
-            typeBadge.classList.add('text-bg-warning');
-            typeBadge.textContent = 'PAUSE';
-        } else if (type === 'unavailable_timed') {
-            typeBadge.classList.add('text-bg-danger');
-            typeBadge.textContent = 'INDISPONIBILITE AVEC HORAIRE';
-        } else {
-            typeBadge.classList.add('text-bg-dark');
-            typeBadge.textContent = 'INDISPONIBILITE SANS HORAIRE';
-        }
+function toggleManualReturnField() {
+    const showReturn = !!document.getElementById('param-manual-show-return')?.checked;
+    const returnField = document.getElementById('manual-return-time-field');
+    if (returnField) {
+        returnField.classList.toggle('d-none', !showReturn);
     }
 }
 

@@ -78,6 +78,45 @@ def _compute_pause_status(now, start_minutes, end_minutes):
     return True, end_dt
 
 
+def _default_pause_schedule():
+    """Planning hebdomadaire par défaut : pause du lundi au vendredi, 12:00-13:00."""
+    return {
+        str(day): {
+            'enabled': day <= 4,
+            'start': '12:00',
+            'end': '13:00',
+        }
+        for day in range(7)
+    }
+
+
+def _load_pause_schedule(raw_value):
+    """Charge un planning hebdomadaire JSON et garantit une structure saine."""
+    schedule = _default_pause_schedule()
+    if not raw_value:
+        return schedule
+
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        return schedule
+
+    if not isinstance(parsed, dict):
+        return schedule
+
+    for day in range(7):
+        key = str(day)
+        slot = parsed.get(key)
+        if not isinstance(slot, dict):
+            continue
+        schedule[key] = {
+            'enabled': bool(slot.get('enabled', schedule[key]['enabled'])),
+            'start': str(slot.get('start', schedule[key]['start'])),
+            'end': str(slot.get('end', schedule[key]['end'])),
+        }
+    return schedule
+
+
 # ============================================================
 # HEURE SERVEUR
 # ============================================================
@@ -276,63 +315,110 @@ def update_parametre(cle):
 
 @bp.route('/api/display/override-status')
 def display_override_status():
-    """Retourne l'état de l'écran d'indisponibilité plein écran."""
+    """Retourne l'état de l'écran prioritaire (indisponibilité manuelle ou pause hebdomadaire)."""
     db = get_db()
     try:
         rows = _rows_to_list(db.execute('SELECT cle, valeur FROM parametres').fetchall())
         params = {r['cle']: r['valeur'] for r in rows}
 
-        enabled = _is_truthy(params.get('display_override_enabled', '0'))
-        mode = (params.get('display_override_mode') or 'text').strip().lower()
+        manual_enabled = _is_truthy(params.get('manual_unavailable_enabled', params.get('display_override_enabled', '0')))
+        manual_show_return = _is_truthy(params.get('manual_unavailable_show_return', '0'))
+        manual_return_time = (params.get('manual_unavailable_return_time') or '').strip()
+
+        mode = (params.get('manual_unavailable_mode') or params.get('display_override_mode') or 'text').strip().lower()
         if mode not in ('text', 'image'):
             mode = 'text'
 
-        # Type d'indisponibilité : pause | unavailable_timed | unavailable
-        override_type = (params.get('display_override_type') or 'pause').strip().lower()
-        if override_type not in ('pause', 'unavailable_timed', 'unavailable'):
-            override_type = 'pause'
+        pause_enabled = _is_truthy(params.get('pause_schedule_enabled', '0'))
+        pause_schedule = _load_pause_schedule(params.get('pause_weekly_schedule', ''))
 
-        start_raw = params.get('display_override_start', '12:00')
-        end_raw = params.get('display_override_end', '13:00')
-        start_minutes = _parse_hhmm(start_raw)
-        # Pour le type "sans horaire", on ignore l'heure de fin
-        end_minutes = None if override_type == 'unavailable' else _parse_hhmm(end_raw)
+        active = False
+        next_end = None
+        resume_label = None
+        override_type = None
+        source = 'none'
 
         now = datetime.now()
-        active, next_end = (False, None)
-        if enabled:
-            if override_type == 'unavailable':
-                # Actif toute la journée dès lors que activé (pas d'heure de fin)
-                active = True
-                next_end = None
-            else:
-                active, next_end = _compute_pause_status(now, start_minutes, _parse_hhmm(end_raw))
 
-        default_title = 'Pause en cours' if override_type == 'pause' else 'FabLab indisponible'
-        title = (params.get('display_override_title') or default_title).strip()
-        message = (params.get('display_override_message') or '').strip()
-        image_url = (params.get('display_override_image_url') or '').strip()
-        bg_color = (params.get('display_override_bg_color') or '#0b1120').strip()
-        text_color = (params.get('display_override_text_color') or '#f8fafc').strip()
+        if manual_enabled:
+            source = 'manual_unavailable'
+            active = True
+            if manual_show_return and _parse_hhmm(manual_return_time) is not None:
+                override_type = 'unavailable_timed'
+                resume_label = manual_return_time
+            else:
+                override_type = 'unavailable'
+        elif pause_enabled:
+            day_slot = pause_schedule.get(str(now.weekday()), {})
+            if day_slot.get('enabled'):
+                slot_start = _parse_hhmm(day_slot.get('start'))
+                slot_end = _parse_hhmm(day_slot.get('end'))
+                active, next_end = _compute_pause_status(now, slot_start, slot_end)
+            if active:
+                source = 'scheduled_pause'
+                override_type = 'pause'
+                if next_end:
+                    resume_label = next_end.strftime('%H:%M')
+
+        if override_type is None:
+            override_type = 'unavailable'
+
+        if source == 'scheduled_pause':
+            title = 'Pause en cours'
+            message = (params.get('pause_message') or '').strip()
+            image_url = ''
+            bg_color = '#0b1120'
+            text_color = '#f8fafc'
+            mode = 'text'
+        else:
+            title = (params.get('manual_unavailable_title') or params.get('display_override_title') or 'FabLab indisponible').strip()
+            message = (params.get('manual_unavailable_message') or params.get('display_override_message') or '').strip()
+            image_url = (params.get('manual_unavailable_image_url') or params.get('display_override_image_url') or '').strip()
+            bg_color = (params.get('manual_unavailable_bg_color') or params.get('display_override_bg_color') or '#0b1120').strip()
+            text_color = (params.get('manual_unavailable_text_color') or params.get('display_override_text_color') or '#f8fafc').strip()
+
+        if source == 'manual_unavailable' and not active:
+            title = ''
+            message = ''
+            image_url = ''
+
+        if source == 'manual_unavailable' and not manual_show_return:
+            resume_label = None
+            next_end = None
+
+        if source == 'manual_unavailable' and manual_show_return and _parse_hhmm(manual_return_time) is not None:
+            next_end = None
+
+        if source == 'scheduled_pause' and not active:
+            resume_label = None
+            next_end = None
+
+        if source == 'none':
+            bg_color = '#0b1120'
+            text_color = '#f8fafc'
+            title = ''
+            message = ''
+            image_url = ''
 
         payload = {
             'success': True,
-            'enabled': enabled,
+            'enabled': manual_enabled or pause_enabled,
             'active': active,
+            'source': source,
             'override_type': override_type,
             'mode': mode,
-            'start': start_raw,
-            'end': end_raw,
             'title': title,
             'message': message,
             'image_url': image_url,
             'bg_color': bg_color,
             'text_color': text_color,
             'resume_at': next_end.isoformat() if next_end else None,
+            'pause_schedule_enabled': pause_enabled,
+            'manual_enabled': manual_enabled,
         }
 
-        if next_end:
-            payload['resume_label'] = next_end.strftime('%H:%M')
+        if resume_label:
+            payload['resume_label'] = resume_label
 
         # Sécurité : fallback texte si mode image sans URL.
         if payload['mode'] == 'image' and not payload['image_url']:
