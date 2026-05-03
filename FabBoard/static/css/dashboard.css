@@ -23,6 +23,63 @@
     position: relative;
 }
 
+.dashboard-full.override-active {
+    background: #0b1120;
+}
+
+.pause-override {
+    position: absolute;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.pause-override-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.pause-override-text {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 4vw;
+}
+
+.pause-override-text-inner {
+    max-width: min(90vw, 1400px);
+}
+
+.pause-override-title {
+    margin: 0 0 1rem;
+    font-size: clamp(2.2rem, 6vw, 5.4rem);
+    line-height: 1.08;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.pause-override-message {
+    margin: 0;
+    font-size: clamp(1.1rem, 2.4vw, 2rem);
+    line-height: 1.4;
+    opacity: 0.95;
+}
+
+.pause-override-resume {
+    margin-top: 1.25rem;
+    font-size: clamp(1rem, 2.1vw, 1.7rem);
+    font-weight: 600;
+    opacity: 0.9;
+}
+
 /* ========== LOADING ========== */
 .loading-state {
     display: flex;

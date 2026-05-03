@@ -52,6 +52,16 @@ function setupEventListeners() {
     document.getElementById('btn-test-source-modal').addEventListener('click', testSourceFromModal);
     document.getElementById('sources-table-body').addEventListener('click', onSourcesTableClick);
     document.getElementById('modalSource').addEventListener('hidden.bs.modal', openCreateSourceModal);
+
+    const overrideMode = document.getElementById('param-display-override-mode');
+    if (overrideMode) {
+        overrideMode.addEventListener('change', toggleDisplayOverrideMode);
+    }
+
+    const overrideImageFile = document.getElementById('param-display-override-image-file');
+    if (overrideImageFile) {
+        overrideImageFile.addEventListener('change', onDisplayOverrideImagePicked);
+    }
 }
 
 async function loadParametres() {
@@ -67,12 +77,72 @@ async function loadParametres() {
         if (policeSelect) policeSelect.value = policeValue;
         if (fontFamilySelect) fontFamilySelect.value = policeValue;
         applyFontFamily(policeValue);
+
+        const enabledEl = document.getElementById('param-display-override-enabled');
+        if (enabledEl) {
+            enabledEl.checked = String(params.display_override_enabled || '0') === '1';
+        }
+
+        const startEl = document.getElementById('param-display-override-start');
+        if (startEl) {
+            startEl.value = params.display_override_start || '12:00';
+        }
+
+        const endEl = document.getElementById('param-display-override-end');
+        if (endEl) {
+            endEl.value = params.display_override_end || '13:00';
+        }
+
+        const typeEl = document.getElementById('param-display-override-type');
+        if (typeEl) {
+            typeEl.value = params.display_override_type || 'pause';
+        }
+
+        const modeEl = document.getElementById('param-display-override-mode');
+        if (modeEl) {
+            modeEl.value = params.display_override_mode || 'text';
+        }
+
+        const titleEl = document.getElementById('param-display-override-title');
+        if (titleEl) {
+            titleEl.value = params.display_override_title || 'FabLab fermé';
+        }
+
+        const messageEl = document.getElementById('param-display-override-message');
+        if (messageEl) {
+            messageEl.value = params.display_override_message || '';
+        }
+
+        const imageUrl = params.display_override_image_url || '';
+        const imageUrlEl = document.getElementById('param-display-override-image-url');
+        if (imageUrlEl) {
+            imageUrlEl.value = imageUrl;
+        }
+        updateDisplayOverrideImagePreview(imageUrl);
+
+        const bgColorEl = document.getElementById('param-display-override-bg-color');
+        if (bgColorEl) {
+            bgColorEl.value = params.display_override_bg_color || '#0b1120';
+        }
+
+        const textColorEl = document.getElementById('param-display-override-text-color');
+        if (textColorEl) {
+            textColorEl.value = params.display_override_text_color || '#f8fafc';
+        }
+
+        toggleDisplayOverrideMode();
+        toggleDisplayOverrideFields();
     } catch (error) {
         console.error('Erreur chargement paramètres:', error);
     }
 }
 
 async function saveParametres() {
+    const uploadedImageUrl = await uploadDisplayOverrideImageIfNeeded();
+    if (uploadedImageUrl === null) {
+        return;
+    }
+
     const params = {
         fablab_name: document.getElementById('param-fablab-name').value.trim(),
         refresh_interval: document.getElementById('param-refresh').value,
@@ -80,6 +150,16 @@ async function saveParametres() {
         police_dashboard: (document.getElementById('param-police')?.value
             || document.getElementById('param-font-family')?.value
             || 'inter'),
+        display_override_enabled: document.getElementById('param-display-override-enabled')?.checked ? '1' : '0',
+        display_override_type: (document.getElementById('param-display-override-type')?.value || 'pause'),
+        display_override_start: (document.getElementById('param-display-override-start')?.value || '12:00'),
+        display_override_end: (document.getElementById('param-display-override-end')?.value || '13:00'),
+        display_override_mode: (document.getElementById('param-display-override-mode')?.value || 'text'),
+        display_override_title: (document.getElementById('param-display-override-title')?.value || 'FabLab fermé').trim(),
+        display_override_message: (document.getElementById('param-display-override-message')?.value || '').trim(),
+        display_override_image_url: uploadedImageUrl || document.getElementById('param-display-override-image-url')?.value || '',
+        display_override_bg_color: document.getElementById('param-display-override-bg-color')?.value || '#0b1120',
+        display_override_text_color: document.getElementById('param-display-override-text-color')?.value || '#f8fafc',
     };
 
     if (!params.fablab_name) {
@@ -110,12 +190,137 @@ async function saveParametres() {
                 method: 'PUT',
                 body: JSON.stringify({ valeur: params.police_dashboard }),
             }),
+            apiCall('/api/parametres/display_override_enabled', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_enabled }),
+            }),
+            apiCall('/api/parametres/display_override_type', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_type }),
+            }),
+            apiCall('/api/parametres/display_override_start', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_start }),
+            }),
+            apiCall('/api/parametres/display_override_end', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_end }),
+            }),
+            apiCall('/api/parametres/display_override_mode', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_mode }),
+            }),
+            apiCall('/api/parametres/display_override_title', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_title }),
+            }),
+            apiCall('/api/parametres/display_override_message', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_message }),
+            }),
+            apiCall('/api/parametres/display_override_image_url', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_image_url }),
+            }),
+            apiCall('/api/parametres/display_override_bg_color', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_bg_color }),
+            }),
+            apiCall('/api/parametres/display_override_text_color', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.display_override_text_color }),
+            }),
         ]);
 
         applyFontFamily(params.police_dashboard);
         showToast('Paramètres enregistrés', 'success');
     } catch (error) {
         showToast(`Erreur sauvegarde: ${error.message}`, 'error');
+    }
+}
+
+function toggleDisplayOverrideMode() {
+    const mode = document.getElementById('param-display-override-mode')?.value || 'text';
+    const textFields = document.getElementById('display-override-text-fields');
+    const imageFields = document.getElementById('display-override-image-fields');
+
+    if (textFields) {
+        textFields.classList.toggle('d-none', mode !== 'text');
+    }
+    if (imageFields) {
+        imageFields.classList.toggle('d-none', mode !== 'image');
+    }
+}
+
+function toggleDisplayOverrideFields() {
+    const type = document.getElementById('param-display-override-type')?.value || 'pause';
+    const endField = document.getElementById('display-override-end-field');
+    if (endField) {
+        endField.classList.toggle('d-none', type === 'unavailable');
+    }
+}
+
+function updateDisplayOverrideImagePreview(url) {
+    const preview = document.getElementById('display-override-image-preview');
+    if (!preview) return;
+
+    if (!url) {
+        preview.classList.add('d-none');
+        preview.removeAttribute('src');
+        return;
+    }
+
+    preview.src = url;
+    preview.classList.remove('d-none');
+}
+
+function onDisplayOverrideImagePicked(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const preview = document.getElementById('display-override-image-preview');
+    if (!preview) return;
+
+    const objectUrl = URL.createObjectURL(file);
+    preview.src = objectUrl;
+    preview.classList.remove('d-none');
+}
+
+async function uploadDisplayOverrideImageIfNeeded() {
+    const mode = document.getElementById('param-display-override-mode')?.value || 'text';
+    if (mode !== 'image') {
+        return document.getElementById('param-display-override-image-url')?.value || '';
+    }
+
+    const fileInput = document.getElementById('param-display-override-image-file');
+    const file = fileInput?.files?.[0];
+    if (!file) {
+        return document.getElementById('param-display-override-image-url')?.value || '';
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result.success || !result.url) {
+            throw new Error(result.error || 'Upload image impossible');
+        }
+
+        const imageUrlEl = document.getElementById('param-display-override-image-url');
+        if (imageUrlEl) {
+            imageUrlEl.value = result.url;
+        }
+        updateDisplayOverrideImagePreview(result.url);
+        return result.url;
+    } catch (error) {
+        showToast(`Erreur upload image: ${error.message}`, 'error');
+        return null;
     }
 }
 

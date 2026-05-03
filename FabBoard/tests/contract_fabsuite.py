@@ -149,6 +149,18 @@ class FabBoardFabSuiteContractTests(unittest.TestCase):
         resp = self.client.get('/api/sources')
         self.assertEqual(resp.status_code, 200)
 
+    # ── Override affichage fermeture (smoke) ────────────────
+    def test_display_override_status_returns_json(self):
+        data = self._json('/api/display/override-status')
+        self.assertIn('success', data)
+        self.assertIn('enabled', data)
+        self.assertIn('active', data)
+        self.assertIn('mode', data)
+
+    def test_display_override_status_mode_valid(self):
+        data = self._json('/api/display/override-status')
+        self.assertIn(data.get('mode'), ('text', 'image'))
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

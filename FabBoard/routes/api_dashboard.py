@@ -28,6 +28,56 @@ def _rows_to_list(rows):
     return [dict(r) for r in rows]
 
 
+def _parse_hhmm(value):
+    """Parse une heure HH:MM en minutes depuis minuit."""
+    if not value:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    parts = value.strip().split(':')
+    if len(parts) != 2:
+        return None
+    try:
+        hours = int(parts[0])
+        minutes = int(parts[1])
+    except (TypeError, ValueError):
+        return None
+    if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+        return None
+    return (hours * 60) + minutes
+
+
+def _is_truthy(value):
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _compute_pause_status(now, start_minutes, end_minutes):
+    """Retourne (active, next_end_datetime) pour une plage d'indisponibilité quotidienne."""
+    if start_minutes is None or end_minutes is None:
+        return False, None
+    if start_minutes == end_minutes:
+        return False, None
+
+    now_minutes = (now.hour * 60) + now.minute
+
+    if start_minutes < end_minutes:
+        active = start_minutes <= now_minutes < end_minutes
+        if not active:
+            return False, None
+        end_dt = now.replace(hour=end_minutes // 60, minute=end_minutes % 60, second=0, microsecond=0)
+        return True, end_dt
+
+    # Plage traversant minuit (ex: 22:00 -> 06:00)
+    active = (now_minutes >= start_minutes) or (now_minutes < end_minutes)
+    if not active:
+        return False, None
+
+    end_dt = now.replace(hour=end_minutes // 60, minute=end_minutes % 60, second=0, microsecond=0)
+    if now_minutes >= start_minutes:
+        end_dt = end_dt + timedelta(days=1)
+    return True, end_dt
+
+
 # ============================================================
 # HEURE SERVEUR
 # ============================================================
@@ -220,6 +270,74 @@ def update_parametre(cle):
     except Exception as e:
         db.rollback()
         return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+
+@bp.route('/api/display/override-status')
+def display_override_status():
+    """Retourne l'état de l'écran d'indisponibilité plein écran."""
+    db = get_db()
+    try:
+        rows = _rows_to_list(db.execute('SELECT cle, valeur FROM parametres').fetchall())
+        params = {r['cle']: r['valeur'] for r in rows}
+
+        enabled = _is_truthy(params.get('display_override_enabled', '0'))
+        mode = (params.get('display_override_mode') or 'text').strip().lower()
+        if mode not in ('text', 'image'):
+            mode = 'text'
+
+        # Type d'indisponibilité : pause | unavailable_timed | unavailable
+        override_type = (params.get('display_override_type') or 'pause').strip().lower()
+        if override_type not in ('pause', 'unavailable_timed', 'unavailable'):
+            override_type = 'pause'
+
+        start_raw = params.get('display_override_start', '12:00')
+        end_raw = params.get('display_override_end', '13:00')
+        start_minutes = _parse_hhmm(start_raw)
+        # Pour le type "sans horaire", on ignore l'heure de fin
+        end_minutes = None if override_type == 'unavailable' else _parse_hhmm(end_raw)
+
+        now = datetime.now()
+        active, next_end = (False, None)
+        if enabled:
+            if override_type == 'unavailable':
+                # Actif toute la journée dès lors que activé (pas d'heure de fin)
+                active = True
+                next_end = None
+            else:
+                active, next_end = _compute_pause_status(now, start_minutes, _parse_hhmm(end_raw))
+
+        title = (params.get('display_override_title') or 'FabLab ferme').strip()
+        message = (params.get('display_override_message') or '').strip()
+        image_url = (params.get('display_override_image_url') or '').strip()
+        bg_color = (params.get('display_override_bg_color') or '#0b1120').strip()
+        text_color = (params.get('display_override_text_color') or '#f8fafc').strip()
+
+        payload = {
+            'success': True,
+            'enabled': enabled,
+            'active': active,
+            'override_type': override_type,
+            'mode': mode,
+            'start': start_raw,
+            'end': end_raw,
+            'title': title,
+            'message': message,
+            'image_url': image_url,
+            'bg_color': bg_color,
+            'text_color': text_color,
+            'resume_at': next_end.isoformat() if next_end else None,
+        }
+
+        if next_end:
+            payload['resume_label'] = next_end.strftime('%H:%M')
+
+        # Sécurité : fallback texte si mode image sans URL.
+        if payload['mode'] == 'image' and not payload['image_url']:
+            payload['mode'] = 'text'
+
+        return jsonify(payload)
     finally:
         db.close()
 

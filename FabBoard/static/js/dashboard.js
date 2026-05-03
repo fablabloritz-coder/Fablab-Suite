@@ -9,6 +9,9 @@ let currentSlideIndex = 0;
 let slideTimer = null;
 let clockTimer = null;
 let serverTimeOffset = 0;  // ms: serverTime - clientTime
+let isOverrideActive = false;
+let overrideState = null;
+let overridePollTimer = null;
 
 // ========== SHARED DATA STORE ==========
 const FabBoardStore = {
@@ -139,11 +142,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         FabBoardStore.collectFromSlides(slides);
         await FabBoardStore.init();
 
-        // Démarrer le cycle de slides
-        await startSlideCycle();
+        // Vérifier l'override plein écran avant de lancer le cycle.
+        await refreshDisplayOverride();
+        if (!isOverrideActive) {
+            await startSlideCycle();
+        }
     } else {
         showEmptyState();
+        await refreshDisplayOverride();
     }
+
+    startDisplayOverridePolling();
 });
 
 function startClockTimer() {
@@ -244,6 +253,10 @@ function showEmptyState() {
 
 // ========== CYCLE DES SLIDES ==========
 async function startSlideCycle() {
+    if (isOverrideActive) {
+        return;
+    }
+    if (slideTimer) clearTimeout(slideTimer);
     await displayCurrentSlide();
 
     const currentSlide = slides[currentSlideIndex] || { temps_affichage: 30 };
@@ -281,6 +294,10 @@ async function reloadSlidesAfterCycle() {
 async function nextSlide() {
     if (slideTimer) clearTimeout(slideTimer);
 
+    if (isOverrideActive) {
+        return;
+    }
+
     if (slides.length === 0) {
         showEmptyState();
         return;
@@ -314,6 +331,9 @@ async function nextSlide() {
 
 // ========== AFFICHAGE DE LA SLIDE ==========
 async function displayCurrentSlide() {
+    if (isOverrideActive) {
+        return;
+    }
     const slide = slides[currentSlideIndex];
     const container = document.getElementById('dashboard-container');
     
@@ -404,6 +424,108 @@ async function displayCurrentSlide() {
     
     // Mettre à jour l'horloge immédiatement
     updateClock();
+}
+
+function formatResumeLabel(isoDate) {
+    if (!isoDate) return '';
+    const d = new Date(isoDate);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderDisplayOverride(data) {
+    const container = document.getElementById('dashboard-container');
+    if (!container) return;
+
+    container.classList.add('override-active');
+
+    if (data.mode === 'image' && data.image_url) {
+        container.style.background = '#000';
+        container.innerHTML = `
+            <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture">
+                <img class="pause-override-image" src="${escapeHtml(data.image_url)}" alt="FabLab ferme">
+            </div>
+        `;
+        return;
+    }
+
+    const title = data.title || 'FabLab ferme';
+    const message = data.message || '';
+    const resume = data.resume_label || formatResumeLabel(data.resume_at);
+
+    // Label de reprise selon le type d'indisponibilité
+    let resumeLine = '';
+    if (resume) {
+        const overrideType = data.override_type || 'pause';
+        let resumePrefix;
+        if (overrideType === 'unavailable_timed') {
+            resumePrefix = 'Réouverture prévue à';
+        } else {
+            resumePrefix = 'Reprise prévue à';
+        }
+        resumeLine = `<p class="pause-override-resume">${resumePrefix} ${escapeHtml(resume)}</p>`;
+    }
+    const bgColor = data.bg_color || '#0b1120';
+    const textColor = data.text_color || '#f8fafc';
+
+    container.style.background = bgColor;
+    container.innerHTML = `
+        <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture" style="background:${escapeHtml(bgColor)};color:${escapeHtml(textColor)};">
+            <div class="pause-override-text">
+                <div class="pause-override-text-inner">
+                    <h1 class="pause-override-title">${escapeHtml(title)}</h1>
+                    ${message ? `<p class="pause-override-message">${escapeHtml(message)}</p>` : ''}
+                    ${resumeLine}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function refreshDisplayOverride() {
+    try {
+        const response = await fetch('/api/display/override-status', {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+        const data = await response.json();
+        overrideState = data;
+
+        if (data.active) {
+            if (slideTimer) {
+                clearTimeout(slideTimer);
+                slideTimer = null;
+            }
+            isOverrideActive = true;
+            renderDisplayOverride(data);
+            return;
+        }
+
+        if (isOverrideActive) {
+            isOverrideActive = false;
+            const container = document.getElementById('dashboard-container');
+            if (container) {
+                container.classList.remove('override-active');
+                container.style.removeProperty('background');
+            }
+            if (slides.length > 0) {
+                await startSlideCycle();
+            } else {
+                showEmptyState();
+            }
+        }
+    } catch (error) {
+        console.error('Erreur verification override affichage:', error);
+    }
+}
+
+function startDisplayOverridePolling() {
+    if (overridePollTimer) clearInterval(overridePollTimer);
+    overridePollTimer = setInterval(() => {
+        refreshDisplayOverride();
+    }, 15000);
 }
 
 function renderEmptyWidget(position) {
