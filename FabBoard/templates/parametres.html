@@ -106,6 +106,22 @@
                                 <label for="param-pause-message" class="form-label">Message pause (optionnel)</label>
                                 <textarea class="form-control" id="param-pause-message" rows="2" maxlength="500" placeholder="Pause déjeuner — reprise à 14h00"></textarea>
                             </div>
+                            <div class="col-md-4">
+                                <label for="param-pause-mode" class="form-label">Affichage pause</label>
+                                <select class="form-select" id="param-pause-mode">
+                                    <option value="text">Texte</option>
+                                    <option value="image">Image plein écran</option>
+                                </select>
+                            </div>
+                            <div class="col-md-8 d-none" id="pause-image-fields">
+                                <label for="param-pause-image-file" class="form-label">Image pause JPG/PNG</label>
+                                <input type="file" class="form-control" id="param-pause-image-file" accept="image/png,image/jpeg">
+                                <input type="hidden" id="param-pause-image-url">
+                                <div class="form-text">Cette image remplace le texte pendant la pause récurrente.</div>
+                                <div class="mt-2">
+                                    <img id="pause-image-preview" class="img-fluid rounded border d-none" alt="Aperçu image pause" style="max-height: 160px; object-fit: cover;">
+                                </div>
+                            </div>
                         </div>
 
                         <div class="table-responsive">

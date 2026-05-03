@@ -366,11 +366,15 @@ def display_override_status():
         if source == 'scheduled_pause':
             title = (params.get('pause_title') or 'Pause en cours').strip()
             message = (params.get('pause_message') or '').strip()
-            image_url = ''
+            pause_mode = (params.get('pause_mode') or 'text').strip().lower()
+            if pause_mode not in ('text', 'image'):
+                pause_mode = 'text'
+            pause_image_url = (params.get('pause_image_url') or '').strip()
+            image_url = pause_image_url
             bg_color = '#0b1120'
             text_color = '#f8fafc'
             text_scale = params.get('pause_text_scale', '100')
-            mode = 'text'
+            mode = pause_mode
         else:
             title = (params.get('manual_unavailable_title') or params.get('display_override_title') or 'FabLab indisponible').strip()
             message = (params.get('manual_unavailable_message') or params.get('display_override_message') or '').strip()

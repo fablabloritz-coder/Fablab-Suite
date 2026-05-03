@@ -113,6 +113,11 @@ function setupEventListeners() {
         overrideMode.addEventListener('change', toggleDisplayOverrideMode);
     }
 
+    const pauseMode = document.getElementById('param-pause-mode');
+    if (pauseMode) {
+        pauseMode.addEventListener('change', togglePauseMode);
+    }
+
     const manualShowReturn = document.getElementById('param-manual-show-return');
     if (manualShowReturn) {
         manualShowReturn.addEventListener('change', toggleManualReturnField);
@@ -121,6 +126,11 @@ function setupEventListeners() {
     const overrideImageFile = document.getElementById('param-display-override-image-file');
     if (overrideImageFile) {
         overrideImageFile.addEventListener('change', onDisplayOverrideImagePicked);
+    }
+
+    const pauseImageFile = document.getElementById('param-pause-image-file');
+    if (pauseImageFile) {
+        pauseImageFile.addEventListener('change', onPauseImagePicked);
     }
 
     const pauseScale = document.getElementById('param-pause-text-scale');
@@ -183,6 +193,18 @@ async function loadParametres() {
             pauseScaleEl.value = params.pause_text_scale || '100';
         }
 
+        const pauseModeEl = document.getElementById('param-pause-mode');
+        if (pauseModeEl) {
+            pauseModeEl.value = params.pause_mode || 'text';
+        }
+
+        const pauseImageUrl = params.pause_image_url || '';
+        const pauseImageUrlEl = document.getElementById('param-pause-image-url');
+        if (pauseImageUrlEl) {
+            pauseImageUrlEl.value = pauseImageUrl;
+        }
+        updatePauseImagePreview(pauseImageUrl);
+
         const manualEnabledEl = document.getElementById('param-manual-unavailable-enabled');
         if (manualEnabledEl) {
             manualEnabledEl.checked = String(params.manual_unavailable_enabled || params.display_override_enabled || '0') === '1';
@@ -236,6 +258,7 @@ async function loadParametres() {
         }
 
         toggleDisplayOverrideMode();
+        togglePauseMode();
         toggleManualReturnField();
         updateTextScaleBadges();
     } catch (error) {
@@ -244,8 +267,13 @@ async function loadParametres() {
 }
 
 async function saveParametres() {
-    const uploadedImageUrl = await uploadDisplayOverrideImageIfNeeded();
-    if (uploadedImageUrl === null) {
+    const uploadedManualImageUrl = await uploadDisplayOverrideImageIfNeeded();
+    if (uploadedManualImageUrl === null) {
+        return;
+    }
+
+    const uploadedPauseImageUrl = await uploadPauseImageIfNeeded();
+    if (uploadedPauseImageUrl === null) {
         return;
     }
 
@@ -261,13 +289,15 @@ async function saveParametres() {
         pause_title: (document.getElementById('param-pause-title')?.value || 'Pause en cours').trim(),
         pause_message: (document.getElementById('param-pause-message')?.value || '').trim(),
         pause_text_scale: (document.getElementById('param-pause-text-scale')?.value || '100'),
+        pause_mode: (document.getElementById('param-pause-mode')?.value || 'text'),
+        pause_image_url: uploadedPauseImageUrl || document.getElementById('param-pause-image-url')?.value || '',
         manual_unavailable_enabled: document.getElementById('param-manual-unavailable-enabled')?.checked ? '1' : '0',
         manual_unavailable_show_return: document.getElementById('param-manual-show-return')?.checked ? '1' : '0',
         manual_unavailable_return_time: document.getElementById('param-manual-return-time')?.value || '14:00',
         manual_unavailable_mode: (document.getElementById('param-display-override-mode')?.value || 'text'),
         manual_unavailable_title: (document.getElementById('param-display-override-title')?.value || '').trim(),
         manual_unavailable_message: (document.getElementById('param-display-override-message')?.value || '').trim(),
-        manual_unavailable_image_url: uploadedImageUrl || document.getElementById('param-display-override-image-url')?.value || '',
+        manual_unavailable_image_url: uploadedManualImageUrl || document.getElementById('param-display-override-image-url')?.value || '',
         manual_unavailable_bg_color: document.getElementById('param-display-override-bg-color')?.value || '#0b1120',
         manual_unavailable_text_color: document.getElementById('param-display-override-text-color')?.value || '#f8fafc',
         manual_unavailable_text_scale: (document.getElementById('param-manual-text-scale')?.value || '100'),
@@ -324,6 +354,14 @@ async function saveParametres() {
             apiCall('/api/parametres/pause_text_scale', {
                 method: 'PUT',
                 body: JSON.stringify({ valeur: params.pause_text_scale }),
+            }),
+            apiCall('/api/parametres/pause_mode', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.pause_mode }),
+            }),
+            apiCall('/api/parametres/pause_image_url', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.pause_image_url }),
             }),
             apiCall('/api/parametres/manual_unavailable_enabled', {
                 method: 'PUT',
@@ -387,6 +425,14 @@ function toggleDisplayOverrideMode() {
     }
 }
 
+function togglePauseMode() {
+    const mode = document.getElementById('param-pause-mode')?.value || 'text';
+    const imageFields = document.getElementById('pause-image-fields');
+    if (imageFields) {
+        imageFields.classList.toggle('d-none', mode !== 'image');
+    }
+}
+
 function toggleManualReturnField() {
     const showReturn = !!document.getElementById('param-manual-show-return')?.checked;
     const returnField = document.getElementById('manual-return-time-field');
@@ -414,6 +460,32 @@ function onDisplayOverrideImagePicked(event) {
     if (!file) return;
 
     const preview = document.getElementById('display-override-image-preview');
+    if (!preview) return;
+
+    const objectUrl = URL.createObjectURL(file);
+    preview.src = objectUrl;
+    preview.classList.remove('d-none');
+}
+
+function updatePauseImagePreview(url) {
+    const preview = document.getElementById('pause-image-preview');
+    if (!preview) return;
+
+    if (!url) {
+        preview.classList.add('d-none');
+        preview.removeAttribute('src');
+        return;
+    }
+
+    preview.src = url;
+    preview.classList.remove('d-none');
+}
+
+function onPauseImagePicked(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const preview = document.getElementById('pause-image-preview');
     if (!preview) return;
 
     const objectUrl = URL.createObjectURL(file);
@@ -455,6 +527,44 @@ async function uploadDisplayOverrideImageIfNeeded() {
         return result.url;
     } catch (error) {
         showToast(`Erreur upload image: ${error.message}`, 'error');
+        return null;
+    }
+}
+
+async function uploadPauseImageIfNeeded() {
+    const mode = document.getElementById('param-pause-mode')?.value || 'text';
+    if (mode !== 'image') {
+        return document.getElementById('param-pause-image-url')?.value || '';
+    }
+
+    const fileInput = document.getElementById('param-pause-image-file');
+    const file = fileInput?.files?.[0];
+    if (!file) {
+        return document.getElementById('param-pause-image-url')?.value || '';
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result.success || !result.url) {
+            throw new Error(result.error || 'Upload image pause impossible');
+        }
+
+        const imageUrlEl = document.getElementById('param-pause-image-url');
+        if (imageUrlEl) {
+            imageUrlEl.value = result.url;
+        }
+        updatePauseImagePreview(result.url);
+        return result.url;
+    } catch (error) {
+        showToast(`Erreur upload image pause: ${error.message}`, 'error');
         return null;
     }
 }
