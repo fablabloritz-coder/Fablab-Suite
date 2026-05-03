@@ -1,13 +1,14 @@
 {
-  "version": "3.2.0",
-  "date": "2026-04-28",
-  "title": "Fiabilite popup et robustesse base locale",
+  "version": "3.3.0",
+  "date": "2026-05-03",
+  "title": "Pause hebdomadaire et indisponibilite prioritaire",
   "notes": [
-    "Popup Nouveautes fiabilisee: memoire basee sur signature complete de release.",
-    "Chargement des notes de version via URL statique Flask pour plus de robustesse.",
-    "Migrations SQLite durcies: version de schema tracee et controlee en init et migration.",
-    "Historique de migration idempotent ajoute pour les mises a jour incrementales.",
-    "Log de validation schema au demarrage pour faciliter le support en production."
+    "Nouvelle pause hebdomadaire recurrente configurable jour par jour (lundi a dimanche) avec horaires debut/fin.",
+    "Indisponibilite manuelle prioritaire ajoutee: prend le dessus sur toutes les slides tant qu'elle est active.",
+    "Option d'heure de retour sur l'indisponibilite: affichable ou masquable via un simple switch.",
+    "Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITE (reglages independants).",
+    "Texte de pause personnalise: titre et message configurables dans les parametres.",
+    "Nouveau mode image pour la pause recurrente (JPG/PNG) avec upload et apercu."
   ],
   "_source": "manuel"
 }
