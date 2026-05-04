@@ -1,13 +1,28 @@
 {
-  "version": "1.7.1",
-  "date": "2026-04-30",
-  "title": "Reservations exportables et administration fiabilisee",
-  "notes": [
-    "<strong>Export CSV des reservations</strong> — la page Export propose maintenant un fichier dedie avec statut, dates, objets reserves et notes.",
-    "<strong>Reset selectif etendu</strong> — les reservations sont desormais prises en charge dans la reinitialisation selective de l'administration.",
-    "<strong>Integrite des liaisons preservee</strong> — la suppression selective de prets, personnes et materiels gere maintenant correctement les references de reservations.",
-    "<strong>Compatibilite anciennes reservations verifiee</strong> — les tests couvrent explicitement les formats historiques avec <em>materiel_id</em> et <em>items_json</em>.",
-    "<strong>Validation complete</strong> — la suite PretGo passe a <em>113/113 OK</em> sur ce lot de corrections."
+  "history": [
+    {
+      "version": "1.7.4",
+      "date": "2026-05-04",
+      "title": "Reservations hybrides et alertes capacitaires",
+      "notes": [
+        "<strong>Reservation categorie seule autorisee</strong> — une reservation peut maintenant etre enregistree avec categorie(s) et/ou objet(s) scanne(s).",
+        "<strong>Conflits hybrides verifies</strong> — couverture renforcee sur les cas categorie, objet exact et texte libre.",
+        "<strong>Alertes categorie basees sur la capacite reelle</strong> — les alertes ne remontent que si le stock devient insuffisant apres cumul des prets a risque et reservations chevauchantes.",
+        "<strong>Tests admin en conditions reelles</strong> — scenarios admin durcis pour conversion, annulation et suppression de reservations."
+      ]
+    },
+    {
+      "version": "1.7.1",
+      "date": "2026-04-30",
+      "title": "Reservations exportables et administration fiabilisee",
+      "notes": [
+        "<strong>Export CSV des reservations</strong> — la page Export propose maintenant un fichier dedie avec statut, dates, objets reserves et notes.",
+        "<strong>Reset selectif etendu</strong> — les reservations sont desormais prises en charge dans la reinitialisation selective de l'administration.",
+        "<strong>Integrite des liaisons preservee</strong> — la suppression selective de prets, personnes et materiels gere maintenant correctement les references de reservations.",
+        "<strong>Compatibilite anciennes reservations verifiee</strong> — les tests couvrent explicitement les formats historiques avec <em>materiel_id</em> et <em>items_json</em>.",
+        "<strong>Validation complete</strong> — la suite PretGo passe a <em>113/113 OK</em> sur ce lot de corrections."
+      ]
+    }
   ],
   "_source": "manuel"
 }
