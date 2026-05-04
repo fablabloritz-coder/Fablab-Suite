@@ -151,6 +151,7 @@ def init_db():
             notes TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            demande_categories_json TEXT DEFAULT NULL,
             FOREIGN KEY (personne_id) REFERENCES personnes(id),
             FOREIGN KEY (materiel_id) REFERENCES inventaire(id),
             FOREIGN KEY (pret_id) REFERENCES prets(id)
@@ -217,6 +218,7 @@ def init_db():
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 date_fin_reservation TEXT DEFAULT NULL,
                 items_json TEXT DEFAULT NULL,
+                demande_categories_json TEXT DEFAULT NULL,
                 FOREIGN KEY (personne_id) REFERENCES personnes(id),
                 FOREIGN KEY (materiel_id) REFERENCES inventaire(id),
                 FOREIGN KEY (pret_id) REFERENCES prets(id)
@@ -224,7 +226,7 @@ def init_db():
             INSERT OR IGNORE INTO reservations_new
                 SELECT id, personne_id, materiel_id, date_reservation, statut,
                        pret_id, notes, created_at, updated_at,
-                       date_fin_reservation, items_json
+                       date_fin_reservation, items_json, NULL
                 FROM reservations;
             DROP TABLE reservations;
             ALTER TABLE reservations_new RENAME TO reservations;
@@ -273,6 +275,7 @@ def init_db():
         ('updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
         ('date_fin_reservation', 'TEXT DEFAULT NULL'),
         ('items_json', 'TEXT DEFAULT NULL'),
+        ('demande_categories_json', 'TEXT DEFAULT NULL'),
     ]:
         try:
             cursor.execute(f'ALTER TABLE reservations ADD COLUMN {col} {default}')

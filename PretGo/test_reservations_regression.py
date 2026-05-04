@@ -35,6 +35,7 @@ def _ensure_admin_session():
 
 
 def _insert_person_and_material(tag):
+    category_name = f'REGCAT-{tag}'
     with app.app_context():
         conn = get_db()
         cur = conn.execute(
@@ -51,7 +52,7 @@ def _insert_person_and_material(tag):
             INSERT INTO inventaire (type_materiel, marque, modele, numero_inventaire, numero_serie, etat, actif)
             VALUES (?, ?, ?, ?, ?, 'disponible', 1)
             """,
-            ('Informatique', 'Reg', 'Tester', f'REGTEST-{tag}', f'SN-{tag}'),
+            (category_name, 'Reg', 'Tester', f'REGTEST-{tag}', f'SN-{tag}'),
         )
         material_id = int(cur.lastrowid)
         conn.commit()

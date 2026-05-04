@@ -22,7 +22,57 @@
             </div>
 
             <div class="mb-4">
-                <label class="form-label fw-bold">Objets réservés</label>
+                <label class="form-label fw-bold">Demandes par catégorie</label>
+                <div id="edit-categories-container">
+                    {% if reservation_category_demands %}
+                        {% for demand in reservation_category_demands %}
+                        <div class="row g-2 align-items-center mb-2 edit-category-row">
+                            <div class="col-7 col-md-8">
+                                <select name="res_category_name[]" class="form-select">
+                                    <option value="">Choisir une catégorie...</option>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat.nom }}" {% if cat.nom == demand.category %}selected{% endif %}>{{ cat.nom }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-4 col-md-3">
+                                <input type="number" name="res_category_qty[]" class="form-control" min="1" step="1" value="{{ demand.quantity }}">
+                            </div>
+                            <div class="col-1">
+                                <button type="button" class="btn btn-outline-danger w-100 edit-btn-remove-category" title="Retirer">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="row g-2 align-items-center mb-2 edit-category-row">
+                            <div class="col-7 col-md-8">
+                                <select name="res_category_name[]" class="form-select">
+                                    <option value="">Choisir une catégorie...</option>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat.nom }}">{{ cat.nom }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-4 col-md-3">
+                                <input type="number" name="res_category_qty[]" class="form-control" min="1" step="1" value="1">
+                            </div>
+                            <div class="col-1">
+                                <button type="button" class="btn btn-outline-danger w-100 edit-btn-remove-category" title="Retirer">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="edit-add-category">
+                    <i class="bi bi-plus-circle"></i> Ajouter une catégorie
+                </button>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold">Objets libres / précisions</label>
                 <div id="edit-items-container">
                     {% for item in reservation_items %}
                     <div class="row g-2 align-items-center mb-2 edit-item-row">
@@ -31,8 +81,7 @@
                                    name="res_items_description[]"
                                    class="form-control"
                                    placeholder="Description de l'objet"
-                                   value="{{ item.description }}"
-                                   required>
+                                value="{{ item.description }}">
                         </div>
                         <div class="col-10 col-md-4">
                             <select name="res_items_materiel_id[]" class="form-select">
@@ -109,6 +158,58 @@
 
     const container = document.getElementById('edit-items-container');
     const addBtn = document.getElementById('edit-add-item');
+    const categoriesContainer = document.getElementById('edit-categories-container');
+    const addCategoryBtn = document.getElementById('edit-add-category');
+
+    function categoryOptions() {
+        return `
+            <option value="">Choisir une catégorie...</option>
+            {% for cat in categories %}
+            <option value="{{ cat.nom }}">{{ cat.nom }}</option>
+            {% endfor %}
+        `;
+    }
+
+    function createCategoryRow() {
+        const row = document.createElement('div');
+        row.className = 'row g-2 align-items-center mb-2 edit-category-row';
+        row.innerHTML = `
+            <div class="col-7 col-md-8">
+                <select name="res_category_name[]" class="form-select">${categoryOptions()}</select>
+            </div>
+            <div class="col-4 col-md-3">
+                <input type="number" name="res_category_qty[]" class="form-control" min="1" step="1" value="1">
+            </div>
+            <div class="col-1">
+                <button type="button" class="btn btn-outline-danger w-100 edit-btn-remove-category" title="Retirer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        `;
+        return row;
+    }
+
+    function updateCategoryRemoveButtons() {
+        const rows = categoriesContainer.querySelectorAll('.edit-category-row');
+        rows.forEach((row) => {
+            const btn = row.querySelector('.edit-btn-remove-category');
+            if (btn) btn.style.display = rows.length > 1 ? '' : 'none';
+        });
+    }
+
+    addCategoryBtn.addEventListener('click', function () {
+        categoriesContainer.appendChild(createCategoryRow());
+        updateCategoryRemoveButtons();
+    });
+
+    categoriesContainer.addEventListener('click', function (e) {
+        const btn = e.target.closest('.edit-btn-remove-category');
+        if (!btn) return;
+        const rows = categoriesContainer.querySelectorAll('.edit-category-row');
+        if (rows.length <= 1) return;
+        btn.closest('.edit-category-row').remove();
+        updateCategoryRemoveButtons();
+    });
 
     function materialOptions() {
         return `
@@ -124,7 +225,7 @@
         row.className = 'row g-2 align-items-center mb-2 edit-item-row';
         row.innerHTML = `
             <div class="col-12 col-md-7">
-                <input type="text" name="res_items_description[]" class="form-control" placeholder="Description de l'objet" required>
+                <input type="text" name="res_items_description[]" class="form-control" placeholder="Description de l'objet">
             </div>
             <div class="col-10 col-md-4">
                 <select name="res_items_materiel_id[]" class="form-select">${materialOptions()}</select>
@@ -149,6 +250,8 @@
         if (rows.length <= 1) return;
         btn.closest('.edit-item-row').remove();
     });
+
+    updateCategoryRemoveButtons();
 })();
 </script>
 {% endblock %}

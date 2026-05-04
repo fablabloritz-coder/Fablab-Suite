@@ -83,8 +83,37 @@
                     <i class="bi bi-box-fill text-primary"></i> 2. Quel(s) matériel(s) ?
                 </label>
                 <p class="text-muted small mb-2">
-                    Tapez pour chercher dans l'inventaire, scannez un code-barres, ou saisissez du texte libre. Ajoutez plusieurs lignes si nécessaire.
+                    Réservez en priorité par <strong>catégorie + quantité</strong>. Vous pouvez aussi ajouter du texte libre.
                 </p>
+
+                <div class="card border-0 bg-light-subtle mb-3">
+                    <div class="card-body p-3">
+                        <label class="form-label fw-semibold mb-2">Demandes par catégorie</label>
+                        <div id="res-categories-container">
+                            <div class="row g-2 align-items-center mb-2 res-category-row">
+                                <div class="col-7 col-md-8">
+                                    <select name="res_category_name[]" class="form-select">
+                                        <option value="">Choisir une catégorie...</option>
+                                        {% for cat in categories %}
+                                        <option value="{{ cat.nom }}">{{ cat.nom }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-4 col-md-3">
+                                    <input type="number" name="res_category_qty[]" class="form-control" min="1" step="1" value="1">
+                                </div>
+                                <div class="col-1">
+                                    <button type="button" class="btn btn-outline-danger w-100 res-btn-remove-category" title="Retirer">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="res-add-category">
+                            <i class="bi bi-plus-circle"></i> Ajouter une catégorie
+                        </button>
+                    </div>
+                </div>
 
                 <div id="res-items-container">
                     <!-- Item 1 (par défaut) -->
@@ -212,6 +241,20 @@
                             </div>
                         </td>
                         <td>
+                            {% if r.demande_categories_json %}
+                                {% set cat_demands = r.demande_categories_json|fromjson %}
+                                {% if cat_demands %}
+                                <ul class="list-unstyled mb-1">
+                                {% for demand in cat_demands %}
+                                    {% if demand.category and demand.quantity %}
+                                    <li>
+                                        <span class="badge bg-info text-dark">{{ demand.quantity }} × {{ demand.category }}</span>
+                                    </li>
+                                    {% endif %}
+                                {% endfor %}
+                                </ul>
+                                {% endif %}
+                            {% endif %}
                             {% if r.items_json %}
                                 {% set items = r.items_json|fromjson %}
                                 <ul class="list-unstyled mb-0">
@@ -332,6 +375,63 @@
     'use strict';
 
     const planningItems = {{ planning_items|tojson }};
+    const categoriesContainer = document.getElementById('res-categories-container');
+    const addCategoryBtn = document.getElementById('res-add-category');
+
+    function buildCategoryOptions() {
+        return `
+            <option value="">Choisir une catégorie...</option>
+            {% for cat in categories %}
+            <option value="{{ cat.nom }}">{{ cat.nom }}</option>
+            {% endfor %}
+        `;
+    }
+
+    function createCategoryRow() {
+        const row = document.createElement('div');
+        row.className = 'row g-2 align-items-center mb-2 res-category-row';
+        row.innerHTML = `
+            <div class="col-7 col-md-8">
+                <select name="res_category_name[]" class="form-select">
+                    ${buildCategoryOptions()}
+                </select>
+            </div>
+            <div class="col-4 col-md-3">
+                <input type="number" name="res_category_qty[]" class="form-control" min="1" step="1" value="1">
+            </div>
+            <div class="col-1">
+                <button type="button" class="btn btn-outline-danger w-100 res-btn-remove-category" title="Retirer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        `;
+        return row;
+    }
+
+    function updateCategoryRemoveButtons() {
+        if (!categoriesContainer) return;
+        const rows = categoriesContainer.querySelectorAll('.res-category-row');
+        rows.forEach((row) => {
+            const btn = row.querySelector('.res-btn-remove-category');
+            if (btn) btn.style.display = rows.length > 1 ? '' : 'none';
+        });
+    }
+
+    if (addCategoryBtn && categoriesContainer) {
+        addCategoryBtn.addEventListener('click', function () {
+            categoriesContainer.appendChild(createCategoryRow());
+            updateCategoryRemoveButtons();
+        });
+        categoriesContainer.addEventListener('click', function (e) {
+            const btn = e.target.closest('.res-btn-remove-category');
+            if (!btn) return;
+            const rows = categoriesContainer.querySelectorAll('.res-category-row');
+            if (rows.length <= 1) return;
+            btn.closest('.res-category-row').remove();
+            updateCategoryRemoveButtons();
+        });
+        updateCategoryRemoveButtons();
+    }
 
     // ── Tooltips Bootstrap ──
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {

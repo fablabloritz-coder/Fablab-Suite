@@ -8,6 +8,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from reservations_logic import (
     compute_expected_return_datetime,
     expire_old_reservations,
+    find_creation_conflicts_for_category_reservation,
     find_creation_conflicts_for_reservation,
     format_db_datetime,
     parse_db_datetime,
@@ -56,6 +57,31 @@ def _first_linked_material_id(items):
     return None
 
 
+def _extract_reservation_category_demands(row):
+    """Retourne les demandes de catégories d'une réservation."""
+    demands = []
+    raw = row['demande_categories_json'] if row and 'demande_categories_json' in row.keys() else None
+    if not raw:
+        return demands
+
+    try:
+        loaded = json.loads(raw)
+        if isinstance(loaded, list):
+            for item in loaded:
+                if not isinstance(item, dict):
+                    continue
+                cat = (item.get('category') or item.get('categorie') or '').strip()
+                try:
+                    qty = int(item.get('quantity', 0))
+                except (TypeError, ValueError):
+                    qty = 0
+                if cat and qty > 0:
+                    demands.append({'category': cat, 'quantity': qty})
+    except Exception:
+        pass
+    return demands
+
+
 def _reservation_conflicts_for_items(conn, items, reservation_dt, reservation_end_dt, now_dt, exclude_reservation_id=None):
     """Vérifie les conflits pour tous les matériels liés aux items."""
     conflicts = []
@@ -79,12 +105,31 @@ def _reservation_conflicts_for_items(conn, items, reservation_dt, reservation_en
     return conflicts
 
 
+def _reservation_conflicts_for_categories(conn, category_demands, reservation_dt, reservation_end_dt, now_dt, exclude_reservation_id=None):
+    """Vérifie les conflits de capacité pour des demandes par catégorie."""
+    conflicts = []
+    for demand in category_demands:
+        messages = find_creation_conflicts_for_category_reservation(
+            conn,
+            category_name=demand['category'],
+            quantity=demand['quantity'],
+            reservation_dt=reservation_dt,
+            reservation_end_dt=reservation_end_dt,
+            now_dt=now_dt,
+            exclude_reservation_id=exclude_reservation_id,
+        )
+        if messages:
+            conflicts.extend(messages)
+    return conflicts
+
+
 @bp.route('/reservations/<int:reservation_id>/convertir')
 def convertir_reservation(reservation_id):
     conn = get_app_db()
     row = conn.execute(
         '''
         SELECT r.id, r.statut, r.date_reservation, r.date_fin_reservation, r.items_json,
+             r.demande_categories_json,
                COALESCE(pe.nom, '[Inconnu]') AS nom,
                COALESCE(pe.prenom, '') AS prenom,
                inv.id AS materiel_id,
@@ -140,14 +185,21 @@ def convertir_reservation(reservation_id):
         flash('Action de conversion invalide.', 'warning')
         return redirect(url_for('reservations.convertir_reservation', reservation_id=reservation_id))
 
-    material_label = row['numero_inventaire'] or 'Objet non lié à l\'inventaire'
-    if row['marque'] or row['modele']:
-        material_label = f"{material_label} — {' '.join(p for p in [row['marque'], row['modele']] if p)}"
+    category_demands = _extract_reservation_category_demands(row)
+    if category_demands:
+        material_label = ' + '.join(
+            f"{d['quantity']} × {d['category']}" for d in category_demands
+        )
+    else:
+        material_label = row['numero_inventaire'] or 'Objet non lié à l\'inventaire'
+        if row['marque'] or row['modele']:
+            material_label = f"{material_label} — {' '.join(p for p in [row['marque'], row['modele']] if p)}"
 
     return render_template(
         'reservation_conversion.html',
         reservation=row,
         reservation_items=_extract_reservation_items(row),
+        reservation_category_demands=category_demands,
         start_dt=start_dt,
         now_dt=now_dt,
         can_convert_now=can_convert_now,
@@ -172,7 +224,7 @@ def reservations():
         if statut not in ('demande', 'confirmee'):
             statut = 'confirmee'
 
-        # Multi-items
+        # Multi-items (texte libre et/ou matériel précis legacy)
         items_descriptions = request.form.getlist('res_items_description[]')
         items_materiel_ids = request.form.getlist('res_items_materiel_id[]')
         
@@ -184,13 +236,29 @@ def reservations():
             if desc:  # Au moins description requise (mid peut être vide = texte libre)
                 items.append({'description': desc, 'materiel_id': int(mid) if mid else None})
         
+        # Nouvelles demandes par catégorie (quantité)
+        cat_names = request.form.getlist('res_category_name[]')
+        cat_qtys = request.form.getlist('res_category_qty[]')
+        category_demands = []
+        for cat, qty in zip(cat_names, cat_qtys):
+            cat = (cat or '').strip()
+            qty_raw = (qty or '').strip()
+            if not cat:
+                continue
+            try:
+                qty_val = int(qty_raw)
+            except (TypeError, ValueError):
+                qty_val = 0
+            if qty_val > 0:
+                category_demands.append({'category': cat, 'quantity': qty_val})
+
         reservation_dt = parse_form_datetime_local(date_reservation_raw)
         reservation_end_dt = parse_form_datetime_local(date_fin_raw) if date_fin_raw else None
 
         if not personne_id or not personne_id.isdigit():
             flash('Veuillez sélectionner une personne valide.', 'danger')
-        elif not items or not reservation_dt:
-            flash('Veuillez renseigner la personne, ajouter au moins un objet, et la date de réservation.', 'danger')
+        elif (not items and not category_demands) or not reservation_dt:
+            flash('Veuillez renseigner la personne, ajouter au moins une catégorie (ou un objet libre), et la date de réservation.', 'danger')
         elif reservation_dt <= now_dt:
             flash('La date de réservation doit être dans le futur.', 'danger')
         elif reservation_end_dt and reservation_end_dt < reservation_dt:
@@ -201,26 +269,44 @@ def reservations():
                 reservation_end_dt = reservation_dt
             
             main_materiel_id = _first_linked_material_id(items)
-            conflicts = _reservation_conflicts_for_items(
+            conflicts = []
+            conflicts.extend(_reservation_conflicts_for_items(
                 conn,
                 items,
                 reservation_dt,
                 reservation_end_dt,
                 now_dt,
-            )
+            ))
+            conflicts.extend(_reservation_conflicts_for_categories(
+                conn,
+                category_demands,
+                reservation_dt,
+                reservation_end_dt,
+                now_dt,
+            ))
             
             if conflicts:
                 for msg in conflicts:
                     flash(msg, 'warning')
             else:
                 items_json = json.dumps(items, ensure_ascii=False)
+                categories_json = json.dumps(category_demands, ensure_ascii=False)
                 try:
                     conn.execute(
                         """
-                        INSERT INTO reservations (personne_id, materiel_id, date_reservation, date_fin_reservation, statut, notes, items_json)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO reservations (personne_id, materiel_id, date_reservation, date_fin_reservation, statut, notes, items_json, demande_categories_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (int(personne_id), main_materiel_id, format_db_datetime(reservation_dt), format_db_datetime(reservation_end_dt), statut, notes, items_json),
+                        (
+                            int(personne_id),
+                            main_materiel_id,
+                            format_db_datetime(reservation_dt),
+                            format_db_datetime(reservation_end_dt),
+                            statut,
+                            notes,
+                            items_json,
+                            categories_json,
+                        ),
                     )
                     conn.commit()
                     flash('Réservation enregistrée avec succès.', 'success')
@@ -259,6 +345,10 @@ def reservations():
         """
     ).fetchall()
 
+    categories = conn.execute(
+        'SELECT nom FROM categories_materiel ORDER BY nom'
+    ).fetchall()
+
     prets_actifs = conn.execute(
         """
         SELECT p.id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
@@ -280,11 +370,17 @@ def reservations():
         if not end_dt or end_dt < start_dt:
             end_dt = start_dt
 
+        cat_demands = _extract_reservation_category_demands(r)
+        if cat_demands:
+            item_title = ' + '.join(f"{d['quantity']}×{d['category']}" for d in cat_demands)
+        else:
+            item_title = r['numero_inventaire'] or 'Objet libre'
+
         planning_items.append({
             'kind': 'reservation',
             'id': int(r['id']),
             'status': r['statut'],
-            'title': f"{r['nom']} {r['prenom']} — {r['numero_inventaire'] or 'Objet libre'}",
+            'title': f"{r['nom']} {r['prenom']} — {item_title}",
             'start': format_db_datetime(start_dt),
             'end': format_db_datetime(end_dt),
             'url': url_for('reservations.convertir_reservation', reservation_id=r['id'])
@@ -320,6 +416,7 @@ def reservations():
         reservations=reservations_rows,
         personnes=personnes,
         inventaire=inventaire,
+        categories=categories,
         planning_items=planning_items,
         now_dt=now_dt,
         mode_scanner=get_setting('mode_scanner', 'les_deux'),
@@ -370,11 +467,26 @@ def modifier_reservation(reservation_id):
             if desc:
                 items.append({'description': desc, 'materiel_id': int(mid) if mid else None})
 
+        cat_names = request.form.getlist('res_category_name[]')
+        cat_qtys = request.form.getlist('res_category_qty[]')
+        category_demands = []
+        for cat, qty in zip(cat_names, cat_qtys):
+            cat = (cat or '').strip()
+            qty_raw = (qty or '').strip()
+            if not cat:
+                continue
+            try:
+                qty_val = int(qty_raw)
+            except (TypeError, ValueError):
+                qty_val = 0
+            if qty_val > 0:
+                category_demands.append({'category': cat, 'quantity': qty_val})
+
         reservation_dt = parse_form_datetime_local(date_reservation_raw)
         reservation_end_dt = parse_form_datetime_local(date_fin_raw) if date_fin_raw else None
 
-        if not personne_id or not items or not reservation_dt:
-            flash('Veuillez renseigner la personne, ajouter au moins un objet, et la date de réservation.', 'danger')
+        if not personne_id or (not items and not category_demands) or not reservation_dt:
+            flash('Veuillez renseigner la personne, ajouter au moins une catégorie (ou un objet libre), et la date de réservation.', 'danger')
         elif reservation_end_dt and reservation_end_dt < reservation_dt:
             flash('La date de fin doit être égale ou ultérieure à la date de début.', 'danger')
         else:
@@ -382,14 +494,23 @@ def modifier_reservation(reservation_id):
                 reservation_end_dt = reservation_dt
 
             main_materiel_id = _first_linked_material_id(items)
-            conflicts = _reservation_conflicts_for_items(
+            conflicts = []
+            conflicts.extend(_reservation_conflicts_for_items(
                 conn,
                 items,
                 reservation_dt,
                 reservation_end_dt,
                 now_dt,
                 exclude_reservation_id=reservation_id,
-            )
+            ))
+            conflicts.extend(_reservation_conflicts_for_categories(
+                conn,
+                category_demands,
+                reservation_dt,
+                reservation_end_dt,
+                now_dt,
+                exclude_reservation_id=reservation_id,
+            ))
             if conflicts:
                 for msg in conflicts:
                     flash(msg, 'warning')
@@ -404,6 +525,7 @@ def modifier_reservation(reservation_id):
                         statut = ?,
                         notes = ?,
                         items_json = ?,
+                        demande_categories_json = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     ''',
@@ -415,6 +537,7 @@ def modifier_reservation(reservation_id):
                         statut,
                         notes,
                         json.dumps(items, ensure_ascii=False),
+                        json.dumps(category_demands, ensure_ascii=False),
                         reservation_id,
                     ),
                 )
@@ -433,13 +556,18 @@ def modifier_reservation(reservation_id):
         ORDER BY numero_inventaire ASC
         '''
     ).fetchall()
+    categories = conn.execute(
+        'SELECT nom FROM categories_materiel ORDER BY nom'
+    ).fetchall()
 
     return render_template(
         'modifier_reservation.html',
         reservation=row,
         reservation_items=_extract_reservation_items(row),
+        reservation_category_demands=_extract_reservation_category_demands(row),
         personnes=personnes,
         inventaire=inventaire,
+        categories=categories,
         now_dt=now_dt,
         mode_scanner=get_setting('mode_scanner', 'les_deux'),
     )
