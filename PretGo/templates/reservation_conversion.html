@@ -60,6 +60,24 @@
             <a class="btn btn-outline-secondary" href="{{ url_for('reservations.reservations') }}#planning-reservations">
                 Annuler
             </a>
+            {% if is_admin and reservation.statut in ['confirmee', 'demande'] %}
+            <form method="POST"
+                  action="{{ url_for('reservations.annuler_reservation', reservation_id=reservation.id) }}"
+                  onsubmit="return confirm('Annuler cette réservation ?')"
+                  class="d-inline">
+                <button class="btn btn-outline-danger" type="submit">
+                    <i class="bi bi-x-circle"></i> Annuler la réservation
+                </button>
+            </form>
+            <form method="POST"
+                  action="{{ url_for('reservations.supprimer_reservation', reservation_id=reservation.id) }}"
+                  onsubmit="return confirm('Supprimer définitivement cette réservation ?')"
+                  class="d-inline">
+                <button class="btn btn-danger" type="submit">
+                    <i class="bi bi-trash"></i> Supprimer la réservation
+                </button>
+            </form>
+            {% endif %}
         </div>
     </div>
 </div>

@@ -198,11 +198,7 @@
                 <tbody>
                     {% for r in reservations %}
                     {% set is_past = (r.date_fin_reservation or r.date_reservation) < now_dt.strftime('%Y-%m-%d %H:%M:%S') %}
-                    <tr class="{% if is_past %}table-light{% endif %}"
-                        {% if r.statut in ['confirmee', 'demande'] %}
-                        onclick="window.location='{{ url_for('reservations.convertir_reservation', reservation_id=r.id) }}'"
-                        style="cursor:pointer"
-                        {% endif %}>
+                    <tr class="{% if is_past %}table-light{% endif %}">
                         <td>
                             {{ r.date_reservation | format_date }}
                             {% if r.date_fin_reservation and r.date_fin_reservation != r.date_reservation %}
@@ -272,12 +268,12 @@
                                 <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reservations.convertir_reservation', reservation_id=r.id) }}" onclick="event.stopPropagation();">
                                     <i class="bi bi-arrow-left-right"></i> Convertir en prêt
                                 </a>
-                                <form method="POST" action="{{ url_for('reservations.annuler_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Annuler cette réservation ?')">
+                                <form method="POST" action="{{ url_for('reservations.annuler_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Annuler cette réservation ?')" onclick="event.stopPropagation();">
                                     <button class="btn btn-sm btn-outline-danger" type="submit">
                                         <i class="bi bi-x-circle"></i> Annuler
                                     </button>
                                 </form>
-                                <form method="POST" action="{{ url_for('reservations.supprimer_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Supprimer définitivement cette réservation ?')">
+                                <form method="POST" action="{{ url_for('reservations.supprimer_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Supprimer définitivement cette réservation ?')" onclick="event.stopPropagation();">
                                     <button class="btn btn-sm btn-danger" type="submit">
                                         <i class="bi bi-trash"></i> Supprimer
                                     </button>
@@ -285,7 +281,7 @@
                             </div>
                             {% else %}
                             <div class="d-flex gap-2">
-                                <form method="POST" action="{{ url_for('reservations.supprimer_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Supprimer définitivement cette réservation ?')">
+                                <form method="POST" action="{{ url_for('reservations.supprimer_reservation', reservation_id=r.id) }}" onsubmit="event.stopPropagation(); return confirm('Supprimer définitivement cette réservation ?')" onclick="event.stopPropagation();">
                                     <button class="btn btn-sm btn-outline-danger" type="submit">
                                         <i class="bi bi-trash"></i> Supprimer
                                     </button>
