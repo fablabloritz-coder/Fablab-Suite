@@ -583,9 +583,6 @@ async function refreshDisplayOverride() {
     }
 }
 
-    }
-}
-
 function startDisplayOverridePolling() {
     if (overridePollTimer) clearInterval(overridePollTimer);
     overridePollTimer = setInterval(() => {
