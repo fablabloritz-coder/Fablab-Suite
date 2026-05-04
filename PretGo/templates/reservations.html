@@ -656,9 +656,24 @@
     formRes.addEventListener('submit', function(e) {
         const pid = document.getElementById('personne_id').value;
         let hasItem = false;
+        let hasCategoryDemand = false;
         container.querySelectorAll('.res-item-input').forEach(i => { if (i.value.trim()) hasItem = true; });
+        if (categoriesContainer) {
+            categoriesContainer.querySelectorAll('.res-category-row').forEach((row) => {
+                const cat = (row.querySelector('select[name="res_category_name[]"]')?.value || '').trim();
+                const qtyRaw = (row.querySelector('input[name="res_category_qty[]"]')?.value || '').trim();
+                const qty = Number.parseInt(qtyRaw, 10);
+                if (cat && Number.isFinite(qty) && qty > 0) {
+                    hasCategoryDemand = true;
+                }
+            });
+        }
         if (!pid) { e.preventDefault(); alert('Veuillez sélectionner un emprunteur.'); return; }
-        if (!hasItem) { e.preventDefault(); alert('Veuillez ajouter au moins un objet.'); return; }
+        if (!hasItem && !hasCategoryDemand) {
+            e.preventDefault();
+            alert('Veuillez ajouter au moins une catégorie et/ou un objet.');
+            return;
+        }
         // Vérifier doublons d'inventaire
         const ids = [];
         for (const r of container.querySelectorAll('.res-item-row')) {
