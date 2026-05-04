@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-<!-- Conteneur principal du dashboard -->
+<!-- Conteneur principal du dashboard (slides) -->
 <div id="dashboard-container" class="dashboard-full" data-bs-theme="dark">
     <!-- Contenu généré dynamiquement par dashboard.js -->
     <div class="loading-state">
@@ -21,6 +21,22 @@
             <span class="visually-hidden">Chargement...</span>
         </div>
         <p class="mt-3">Chargement du dashboard...</p>
+    </div>
+</div>
+
+<!-- Overlay override persistant — fixed au-dessus de tout, jamais détruit -->
+<div id="override-overlay" class="override-overlay" role="alert" aria-live="assertive" aria-atomic="true">
+    <!-- Média : vidéo et image partagent le même espace, seul l'un est visible -->
+    <video id="override-video" class="pause-override-video" autoplay loop muted playsinline preload="auto"></video>
+    <img id="override-img" class="pause-override-image" alt="FabLab fermé">
+    <!-- Texte -->
+    <div id="override-text-wrapper" class="pause-override-text">
+        <div class="pause-override-text-inner">
+            <span id="override-badge" class="pause-override-badge"></span>
+            <h1 id="override-title" class="pause-override-title"></h1>
+            <p id="override-msg" class="pause-override-message"></p>
+            <p id="override-resume" class="pause-override-resume"></p>
+        </div>
     </div>
 </div>
 {% endblock %}

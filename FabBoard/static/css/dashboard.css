@@ -27,14 +27,37 @@
     background: #0b1120;
 }
 
-.pause-override {
-    position: absolute;
+/* ========== OVERLAY OVERRIDE PERSISTANT ========== */
+/*
+ * L'overlay est un élément FIXED qui vit en dehors du container de slides.
+ * La <video> et le <img> ne sont jamais détruits → aucun flash, aucun redémarrage.
+ */
+.override-overlay {
+    display: none;
+    position: fixed;
     inset: 0;
     z-index: 1000;
+    overflow: hidden;
+    background: #000;
+}
+
+/* Mode image/vidéo : bloc, l'enfant occupe 100% */
+.override-overlay.active {
+    display: block;
+}
+
+/* Mode texte : flex centré */
+.override-overlay.active.text-mode {
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
+}
+
+/* Masquer par défaut les enfants — JS les affiche individuellement */
+#override-video,
+#override-img,
+#override-text-wrapper {
+    display: none;
 }
 
 .pause-override-image {

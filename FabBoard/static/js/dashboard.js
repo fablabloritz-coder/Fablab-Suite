@@ -12,7 +12,6 @@ let serverTimeOffset = 0;  // ms: serverTime - clientTime
 let isOverrideActive = false;
 let overrideState = null;
 let overridePollTimer = null;
-let overrideRenderKey = null;
 
 // ========== SHARED DATA STORE ==========
 const FabBoardStore = {
@@ -434,68 +433,119 @@ function formatResumeLabel(isoDate) {
     return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
-function renderDisplayOverride(data) {
-    const container = document.getElementById('dashboard-container');
-    if (!container) return;
+function showOverrideOverlay(data) {
+    const overlay = document.getElementById('override-overlay');
+    const videoEl = document.getElementById('override-video');
+    const imgEl = document.getElementById('override-img');
+    const textWrapper = document.getElementById('override-text-wrapper');
+    if (!overlay) return;
 
-    container.classList.add('override-active');
+    overlay.classList.remove('text-mode');
 
     if (data.mode === 'image' && data.image_url) {
-        container.style.background = '#000';
-        const safeUrl = escapeHtml(data.image_url);
         const isVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(data.image_url);
-        const mediaEl = isVideo
-            ? `<video class="pause-override-video" src="${safeUrl}" autoplay loop muted playsinline preload="auto"></video>`
-            : `<img class="pause-override-image" src="${safeUrl}" alt="FabLab ferme">`;
-        container.innerHTML = `
-            <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture">
-                ${mediaEl}
-            </div>
-        `;
-        return;
-    }
+        overlay.style.background = '#000';
 
-    const overrideType = data.override_type || 'pause';
-    const defaultTitle = overrideType === 'pause' ? 'Pause en cours' : 'FabLab indisponible';
-    const title = data.title || defaultTitle;
-    const message = data.message || '';
-    const resume = data.resume_label || formatResumeLabel(data.resume_at);
-    const typeBadge = overrideType === 'pause'
-        ? '<span class="pause-override-badge pause-override-badge-pause">PAUSE</span>'
-        : (overrideType === 'unavailable_timed'
-            ? '<span class="pause-override-badge pause-override-badge-unavailable">INDISPONIBILITE AVEC HORAIRE</span>'
-            : '<span class="pause-override-badge pause-override-badge-unavailable-no-time">INDISPONIBILITE SANS HORAIRE</span>');
-
-    // Label de reprise selon le type d'indisponibilité
-    let resumeLine = '';
-    if (resume) {
-        let resumePrefix;
-        if (overrideType === 'unavailable_timed') {
-            resumePrefix = 'Réouverture prévue à';
+        if (isVideo) {
+            // Ne mettre à jour src QUE si l'URL change → la vidéo ne redémarre jamais inutilement
+            if (videoEl.dataset.overrideSrc !== data.image_url) {
+                videoEl.dataset.overrideSrc = data.image_url;
+                videoEl.src = data.image_url;
+                videoEl.load();
+                videoEl.play().catch(() => {});
+            }
+            videoEl.style.display = 'block';
+            imgEl.style.display = 'none';
         } else {
-            resumePrefix = 'Reprise prévue à';
+            if (imgEl.dataset.overrideSrc !== data.image_url) {
+                imgEl.dataset.overrideSrc = data.image_url;
+                imgEl.src = data.image_url;
+            }
+            imgEl.style.display = 'block';
+            videoEl.style.display = 'none';
         }
-        resumeLine = `<p class="pause-override-resume">${resumePrefix} ${escapeHtml(resume)}</p>`;
-    }
-    const bgColor = data.bg_color || '#0b1120';
-    const textColor = data.text_color || '#f8fafc';
-    const rawTextScale = Number(data.text_scale || 100);
-    const safeTextScale = Number.isFinite(rawTextScale) ? Math.min(180, Math.max(70, rawTextScale)) : 100;
-    const textScaleFactor = safeTextScale / 100;
+        if (textWrapper) textWrapper.style.display = 'none';
 
-    container.style.background = bgColor;
-    container.innerHTML = `
-        <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture" style="background:${escapeHtml(bgColor)};color:${escapeHtml(textColor)};--override-text-scale:${textScaleFactor};">
-            <div class="pause-override-text">
-                <div class="pause-override-text-inner">
-                    ${typeBadge}
-                    <h1 class="pause-override-title">${escapeHtml(title)}</h1>
-                    ${message ? `<p class="pause-override-message">${escapeHtml(message)}</p>` : ''}
-                    ${resumeLine}
-                </div>
-            </div>
-        </div>
-    `;
+    } else {
+        // Mode texte
+        videoEl.style.display = 'none';
+        imgEl.style.display = 'none';
+        if (textWrapper) textWrapper.style.display = 'flex';
+        overlay.classList.add('text-mode');
+
+        const bgColor = data.bg_color || '#0b1120';
+        const textColor = data.text_color || '#f8fafc';
+        const rawTextScale = Number(data.text_scale || 100);
+        const safeTextScale = Number.isFinite(rawTextScale) ? Math.min(180, Math.max(70, rawTextScale)) : 100;
+        const textScaleFactor = safeTextScale / 100;
+
+        overlay.style.background = bgColor;
+        if (textWrapper) {
+            textWrapper.style.color = textColor;
+            textWrapper.style.setProperty('--override-text-scale', textScaleFactor);
+        }
+
+        const overrideType = data.override_type || 'pause';
+        const defaultTitle = overrideType === 'pause' ? 'Pause en cours' : 'FabLab indisponible';
+
+        const badgeEl = document.getElementById('override-badge');
+        const titleEl = document.getElementById('override-title');
+        const msgEl = document.getElementById('override-msg');
+        const resumeEl = document.getElementById('override-resume');
+
+        if (badgeEl) {
+            badgeEl.className = 'pause-override-badge';
+            if (overrideType === 'pause') {
+                badgeEl.classList.add('pause-override-badge-pause');
+                badgeEl.textContent = 'PAUSE';
+            } else if (overrideType === 'unavailable_timed') {
+                badgeEl.classList.add('pause-override-badge-unavailable');
+                badgeEl.textContent = 'INDISPONIBILITE AVEC HORAIRE';
+            } else {
+                badgeEl.classList.add('pause-override-badge-unavailable-no-time');
+                badgeEl.textContent = 'INDISPONIBILITE SANS HORAIRE';
+            }
+        }
+
+        if (titleEl) titleEl.textContent = data.title || defaultTitle;
+
+        if (msgEl) {
+            if (data.message) {
+                msgEl.textContent = data.message;
+                msgEl.style.display = '';
+            } else {
+                msgEl.textContent = '';
+                msgEl.style.display = 'none';
+            }
+        }
+
+        if (resumeEl) {
+            const resume = data.resume_label || formatResumeLabel(data.resume_at);
+            if (resume) {
+                const prefix = overrideType === 'unavailable_timed' ? 'Réouverture prévue à' : 'Reprise prévue à';
+                resumeEl.textContent = `${prefix} ${resume}`;
+                resumeEl.style.display = '';
+            } else {
+                resumeEl.textContent = '';
+                resumeEl.style.display = 'none';
+            }
+        }
+    }
+
+    overlay.classList.add('active');
+}
+
+function hideOverrideOverlay() {
+    const overlay = document.getElementById('override-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('active', 'text-mode');
+
+    // Mettre la vidéo en pause (économie CPU), mais NE PAS effacer src
+    // → si même vidéo au prochain affichage, pas de rechargement réseau
+    const videoEl = document.getElementById('override-video');
+    if (videoEl && !videoEl.paused) {
+        videoEl.pause();
+    }
 }
 
 async function refreshDisplayOverride() {
@@ -514,42 +564,14 @@ async function refreshDisplayOverride() {
                 clearTimeout(slideTimer);
                 slideTimer = null;
             }
-
-            // On compare uniquement les champs visuels effectivement rendus.
-            // `resume_at` peut varier sans changer le texte affiché (HH:MM),
-            // ce qui provoquerait un rerender inutile et relancerait la vidéo.
-            const renderedResume = data.resume_label || formatResumeLabel(data.resume_at);
-
-            const renderKey = JSON.stringify({
-                active: !!data.active,
-                source: data.source || '',
-                override_type: data.override_type || '',
-                mode: data.mode || '',
-                image_url: data.image_url || '',
-                title: data.title || '',
-                message: data.message || '',
-                resume: renderedResume || '',
-                bg_color: data.bg_color || '',
-                text_color: data.text_color || '',
-                text_scale: data.text_scale || '',
-            });
-
             isOverrideActive = true;
-            if (overrideRenderKey !== renderKey) {
-                overrideRenderKey = renderKey;
-                renderDisplayOverride(data);
-            }
+            showOverrideOverlay(data);
             return;
         }
 
         if (isOverrideActive) {
             isOverrideActive = false;
-            overrideRenderKey = null;
-            const container = document.getElementById('dashboard-container');
-            if (container) {
-                container.classList.remove('override-active');
-                container.style.removeProperty('background');
-            }
+            hideOverrideOverlay();
             if (slides.length > 0) {
                 await startSlideCycle();
             } else {
@@ -558,6 +580,9 @@ async function refreshDisplayOverride() {
         }
     } catch (error) {
         console.error('Erreur verification override affichage:', error);
+    }
+}
+
     }
 }
 
