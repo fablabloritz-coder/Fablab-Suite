@@ -34,8 +34,9 @@ def _ensure_admin_session():
         sess['admin_logged_in'] = True
 
 
-def _insert_person_and_material(tag):
+def _insert_person_and_materials(tag):
     category_name = f'REGCAT-{tag}'
+    hybrid_category_name = f'REGHYB-{tag}'
     with app.app_context():
         conn = get_db()
         cur = conn.execute(
@@ -55,9 +56,27 @@ def _insert_person_and_material(tag):
             (category_name, 'Reg', 'Tester', f'REGTEST-{tag}', f'SN-{tag}'),
         )
         material_id = int(cur.lastrowid)
+
+        cur = conn.execute(
+            """
+            INSERT INTO inventaire (type_materiel, marque, modele, numero_inventaire, numero_serie, etat, actif)
+            VALUES (?, ?, ?, ?, ?, 'disponible', 1)
+            """,
+            (hybrid_category_name, 'Reg', 'HybridA', f'REGTEST-{tag}-A', f'SN-{tag}-A'),
+        )
+        hybrid_material_a = int(cur.lastrowid)
+
+        cur = conn.execute(
+            """
+            INSERT INTO inventaire (type_materiel, marque, modele, numero_inventaire, numero_serie, etat, actif)
+            VALUES (?, ?, ?, ?, ?, 'disponible', 1)
+            """,
+            (hybrid_category_name, 'Reg', 'HybridB', f'REGTEST-{tag}-B', f'SN-{tag}-B'),
+        )
+        hybrid_material_b = int(cur.lastrowid)
         conn.commit()
         conn.close()
-    return person_id, material_id
+    return person_id, material_id, category_name, hybrid_material_a, hybrid_material_b
 
 
 def _cleanup(tag):
@@ -75,7 +94,7 @@ def _cleanup(tag):
             conn.execute(f"DELETE FROM prets WHERE id IN ({placeholders})", loan_ids)
 
         conn.execute("DELETE FROM reservations WHERE notes LIKE ?", (f'REGTEST-{tag}%',))
-        conn.execute("DELETE FROM inventaire WHERE numero_inventaire = ?", (f'REGTEST-{tag}',))
+        conn.execute("DELETE FROM inventaire WHERE numero_inventaire LIKE ?", (f'REGTEST-{tag}%',))
         conn.execute("DELETE FROM personnes WHERE nom = ?", (f'REGTEST_{tag}',))
         conn.commit()
         conn.close()
@@ -87,7 +106,7 @@ def run():
     tag = _now_tag()
 
     _ensure_admin_session()
-    person_id, material_id = _insert_person_and_material(tag)
+    person_id, material_id, category_name, hybrid_material_a, hybrid_material_b = _insert_person_and_materials(tag)
 
     try:
         # 1) reservations page should load and not include legacy row-level redirect onclick.
@@ -102,7 +121,7 @@ def run():
         else:
             checks_ok += 1
 
-        # 2) create a near reservation linked to material (inside lock window).
+        # 2) create a near reservation by category (inside lock window).
         start_date = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
         end_date = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
         note_lock = f'REGTEST-{tag}-lock'
@@ -111,8 +130,10 @@ def run():
             '/reservations',
             data={
                 'personne_id': str(person_id),
-                'res_items_description[]': [f'REGTEST-{tag}-item'],
-                'res_items_materiel_id[]': [str(material_id)],
+                'res_items_description[]': [''],
+                'res_items_materiel_id[]': [''],
+                'res_category_name[]': [category_name],
+                'res_category_qty[]': ['1'],
                 'date_reservation': start_date,
                 'date_fin_reservation': end_date,
                 'statut': 'confirmee',
@@ -227,7 +248,84 @@ def run():
         else:
             errors.append('Loan was not created after reservation cancellation')
 
-        # 6) create and delete reservation to validate delete flow.
+        # 6) hybrid behavior: exact reservation blocks only the exact object, not another object of same category.
+        note_exact = f'REGTEST-{tag}-exact'
+        resp = client.post(
+            '/reservations',
+            data={
+                'personne_id': str(person_id),
+                'res_items_description[]': [f'REGTEST-{tag}-exact-item'],
+                'res_items_materiel_id[]': [str(hybrid_material_a)],
+                'res_category_name[]': [''],
+                'res_category_qty[]': ['1'],
+                'date_reservation': start_date,
+                'date_fin_reservation': end_date,
+                'statut': 'confirmee',
+                'notes': note_exact,
+            },
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            errors.append(f'Create exact reservation status={resp.status_code}')
+
+        other_desc = f'REGTEST-{tag}-hybrid-other'
+        resp = client.post(
+            '/nouveau-pret',
+            data={
+                'personne_id': str(person_id),
+                'items_description[]': [other_desc],
+                'items_materiel_id[]': [str(hybrid_material_b)],
+                'duree_type': 'jours',
+                'duree_jours': '1',
+            },
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            errors.append(f'Create other-material loan request status={resp.status_code}')
+
+        with app.app_context():
+            conn = get_db()
+            other_loan = conn.execute(
+                "SELECT id FROM prets WHERE descriptif_objets = ? ORDER BY id DESC LIMIT 1",
+                (other_desc,),
+            ).fetchone()
+            conn.close()
+
+        if other_loan:
+            checks_ok += 1
+            client.post(f"/retour/{int(other_loan['id'])}", data={'signature': ''}, follow_redirects=True)
+        else:
+            errors.append('Other object in same category should remain loanable under exact reservation')
+
+        exact_blocked_desc = f'REGTEST-{tag}-hybrid-blocked'
+        resp = client.post(
+            '/nouveau-pret',
+            data={
+                'personne_id': str(person_id),
+                'items_description[]': [exact_blocked_desc],
+                'items_materiel_id[]': [str(hybrid_material_a)],
+                'duree_type': 'jours',
+                'duree_jours': '1',
+            },
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            errors.append(f'Create exact-blocked loan request status={resp.status_code}')
+
+        with app.app_context():
+            conn = get_db()
+            exact_blocked = conn.execute(
+                "SELECT id FROM prets WHERE descriptif_objets = ?",
+                (exact_blocked_desc,),
+            ).fetchone()
+            conn.close()
+
+        if exact_blocked:
+            errors.append('Exact reserved object was still loanable in hybrid mode')
+        else:
+            checks_ok += 1
+
+        # 7) create and delete reservation to validate delete flow.
         note_delete = f'REGTEST-{tag}-delete'
         resp = client.post(
             '/reservations',

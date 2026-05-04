@@ -27,6 +27,16 @@
                     <strong>Conversion d'une réservation.</strong>
                     Prêt prérempli depuis la réservation du {{ reservation_prefill.date_reservation | format_date }}
                     avec <strong>{{ selected_items|length }}</strong> objet(s).
+                    {% if reservation_prefill_categories %}
+                    <div class="mt-2 d-flex flex-wrap gap-2">
+                        {% for demand in reservation_prefill_categories %}
+                        <span class="badge bg-info text-dark">{{ demand.quantity }} × {{ demand.category }}</span>
+                        {% endfor %}
+                    </div>
+                    <div class="small mt-2">
+                        Scannez maintenant les objets réels correspondant à ces catégories.
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}

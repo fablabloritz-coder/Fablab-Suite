@@ -88,6 +88,32 @@ def _extract_reservation_items(row):
     return items
 
 
+def _extract_reservation_category_demands(row):
+    """Retourne les demandes explicites par catégorie d'une réservation."""
+    if not row:
+        return []
+    demands = []
+    raw = row['demande_categories_json'] if 'demande_categories_json' in row.keys() else None
+    if not raw:
+        return demands
+    try:
+        loaded = json.loads(raw)
+        if isinstance(loaded, list):
+            for item in loaded:
+                if not isinstance(item, dict):
+                    continue
+                category = (item.get('category') or item.get('categorie') or '').strip()
+                try:
+                    quantity = int(item.get('quantity', 0))
+                except (TypeError, ValueError):
+                    quantity = 0
+                if category and quantity > 0:
+                    demands.append({'category': category, 'quantity': quantity})
+    except Exception:
+        return []
+    return demands
+
+
 def _inventory_map(conn, material_ids):
     """Retourne un dict inventaire par ID pour enrichir les labels en template."""
     ids = sorted({int(mid) for mid in material_ids if mid})
@@ -109,6 +135,7 @@ def nouveau_pret():
     conn = get_app_db()
     reservation_prefill = None
     reservation_prefill_items = []
+    reservation_prefill_categories = []
     form_state = None
 
     reservation_id_raw = (request.values.get('reservation_id') or '').strip()
@@ -130,6 +157,7 @@ def nouveau_pret():
             flash('Cette réservation ne peut plus être convertie en prêt.', 'warning')
             return redirect(url_for('reservations.reservations'))
         reservation_prefill_items = _extract_reservation_items(reservation_prefill)
+        reservation_prefill_categories = _extract_reservation_category_demands(reservation_prefill)
 
     if request.method == 'POST':
         personne_id = request.form.get('personne_id')
@@ -258,6 +286,7 @@ def nouveau_pret():
         lieux=lieux,
         reservation_prefill=reservation_prefill,
         reservation_prefill_items=reservation_prefill_items,
+        reservation_prefill_categories=reservation_prefill_categories,
         form_state=form_state,
         inventory_by_id=_inventory_map(
             conn,

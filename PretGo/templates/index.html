@@ -131,8 +131,19 @@
                         <td>{{ r.date_reservation | format_date }}</td>
                         <td>{{ r.nom }} {{ r.prenom }}</td>
                         <td>
-                            <strong>{{ r.numero_inventaire }}</strong>
-                            <div class="small text-muted">{{ r.type_materiel }}</div>
+                            {% if r.demande_categories_json %}
+                                {% set cat_d = r.demande_categories_json|fromjson %}
+                                {% if cat_d %}
+                                    {% for d in cat_d %}
+                                    <span class="badge bg-info text-dark">{{ d.quantity }} × {{ d.category }}</span>
+                                    {% endfor %}
+                                {% endif %}
+                            {% elif r.numero_inventaire %}
+                                <strong>{{ r.numero_inventaire }}</strong>
+                                <div class="small text-muted">{{ r.type_materiel }}</div>
+                            {% else %}
+                                <em class="text-muted">—</em>
+                            {% endif %}
                         </td>
                         <td>
                             {% if r.statut == 'confirmee' %}

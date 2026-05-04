@@ -263,6 +263,60 @@ def find_reservation_conflicts_for_loan(
     lock_deadline = now_dt + timedelta(hours=lock_hours)
     conflicts = []
 
+    rows = conn.execute(
+        """
+        SELECT id, date_reservation, date_fin_reservation, statut, materiel_id, items_json, demande_categories_json
+        FROM reservations
+        WHERE statut IN ('demande', 'confirmee')
+        ORDER BY date_reservation ASC
+        """,
+    ).fetchall()
+
+    # 1) Verrou exact: un objet réservé précisément reste bloquant pour ce même objet.
+    for materiel_id in sorted(set(material_ids)):
+        mat = _get_material_info(conn, materiel_id)
+        material_label = _material_label(mat)
+
+        for row in rows:
+            if exclude_reservation_id and row['id'] == exclude_reservation_id:
+                continue
+            if materiel_id not in _reservation_material_ids(row):
+                continue
+
+            reservation_dt = parse_db_datetime(row['date_reservation'])
+            reservation_end_dt = parse_db_datetime(row['date_fin_reservation']) if row['date_fin_reservation'] else reservation_dt
+            if not reservation_dt or reservation_end_dt <= now_dt:
+                continue
+
+            if reservation_dt <= lock_deadline:
+                conflicts.append({
+                    'materiel_id': materiel_id,
+                    'materiel_label': material_label,
+                    'reservation_id': row['id'],
+                    'reservation_dt': reservation_dt,
+                    'reason': 'exact_lock_window',
+                    'message': (
+                        f"{material_label} est réservé précisément et bloqué pour la réservation du "
+                        f"{reservation_dt.strftime('%d/%m/%Y %H:%M')}."
+                    ),
+                })
+                break
+
+            safe_latest_return = reservation_dt - timedelta(hours=buffer_hours)
+            if expected_return_dt > safe_latest_return:
+                conflicts.append({
+                    'materiel_id': materiel_id,
+                    'materiel_label': material_label,
+                    'reservation_id': row['id'],
+                    'reservation_dt': reservation_dt,
+                    'reason': 'exact_buffer_window',
+                    'message': (
+                        f"{material_label} est réservé précisément pour le "
+                        f"{reservation_dt.strftime('%d/%m/%Y %H:%M')} et ne peut pas être prêté si tard."
+                    ),
+                })
+                break
+
     # Le prêt en cours de création occupe X unités par catégorie.
     demanded_by_category: dict[str, int] = {}
     for materiel_id in sorted(set(material_ids)):
@@ -276,15 +330,6 @@ def find_reservation_conflicts_for_loan(
 
     if not demanded_by_category:
         return conflicts
-
-    rows = conn.execute(
-        """
-        SELECT id, date_reservation, date_fin_reservation, statut, materiel_id, items_json, demande_categories_json
-        FROM reservations
-        WHERE statut IN ('demande', 'confirmee')
-        ORDER BY date_reservation ASC
-        """,
-    ).fetchall()
 
     for row in rows:
         if exclude_reservation_id and row['id'] == exclude_reservation_id:
@@ -509,7 +554,7 @@ def get_upcoming_reservations(conn, now_dt: datetime | None = None, limit: int =
                inv.numero_inventaire, inv.type_materiel, inv.marque, inv.modele
         FROM reservations r
         JOIN personnes pe ON pe.id = r.personne_id
-        JOIN inventaire inv ON inv.id = r.materiel_id
+        LEFT JOIN inventaire inv ON inv.id = r.materiel_id
         WHERE r.statut IN ('demande', 'confirmee')
           AND r.date_reservation >= ?
         ORDER BY r.date_reservation ASC
@@ -618,5 +663,112 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
 
         if limit is not None and len(risks) >= limit:
             break
+
+    # 2ème passe : réservations par catégorie
+    cat_reservations = conn.execute(
+        """
+        SELECT r.id AS reservation_id, r.date_reservation, r.statut, r.demande_categories_json,
+               pe.nom AS reservation_nom, pe.prenom AS reservation_prenom
+        FROM reservations r
+        JOIN personnes pe ON pe.id = r.personne_id
+        WHERE r.statut IN ('demande', 'confirmee')
+          AND r.demande_categories_json IS NOT NULL
+          AND r.demande_categories_json != '[]'
+          AND r.date_reservation >= ?
+        ORDER BY r.date_reservation ASC
+        """,
+        (format_db_datetime(now_dt),),
+    ).fetchall()
+
+    for cat_row in cat_reservations:
+        if limit is not None and len(risks) >= limit:
+            break
+        reservation_dt2 = parse_db_datetime(cat_row['date_reservation'])
+        if not reservation_dt2:
+            continue
+        try:
+            cat_demands = json.loads(cat_row['demande_categories_json'])
+        except Exception:
+            continue
+        if not isinstance(cat_demands, list):
+            continue
+
+        for demand in cat_demands:
+            if limit is not None and len(risks) >= limit:
+                break
+            if not isinstance(demand, dict):
+                continue
+            category = (demand.get('category') or '').strip()
+            if not category:
+                continue
+
+            loans_in_cat = conn.execute(
+                """
+                SELECT DISTINCT p.id AS pret_id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
+                       p.date_retour_prevue, p.descriptif_objets,
+                       pe2.nom, pe2.prenom, pe2.categorie,
+                       inv2.id AS materiel_id, inv2.numero_inventaire, inv2.type_materiel,
+                       inv2.marque, inv2.modele
+                FROM prets p
+                JOIN personnes pe2 ON pe2.id = p.personne_id
+                JOIN pret_materiels pm ON pm.pret_id = p.id
+                JOIN inventaire inv2 ON inv2.id = pm.materiel_id
+                WHERE p.retour_confirme = 0
+                  AND inv2.type_materiel = ?
+                  AND inv2.actif = 1
+                """,
+                (category,),
+            ).fetchall()
+
+            latest_return_allowed2 = reservation_dt2 - timedelta(hours=buffer_hours)
+
+            for loan in loans_in_cat:
+                if limit is not None and len(risks) >= limit:
+                    break
+                key = (loan['pret_id'], cat_row['reservation_id'])
+                if key in seen:
+                    continue
+                base_dt2 = parse_db_datetime(loan['date_emprunt'])
+                if not base_dt2:
+                    continue
+                expected_return2 = compute_expected_return_datetime(
+                    conn,
+                    base_dt2,
+                    loan['duree_pret_heures'],
+                    loan['duree_pret_jours'],
+                    loan['date_retour_prevue'],
+                )
+                if reservation_dt2 <= lock_deadline:
+                    risk_reason2 = 'lock_window'
+                    risk_message2 = (
+                        f"Catégorie {category} : réservation imminente le "
+                        f"{reservation_dt2.strftime('%d/%m/%Y %H:%M')}"
+                    )
+                elif expected_return2 > latest_return_allowed2:
+                    risk_reason2 = 'buffer_window'
+                    risk_message2 = (
+                        f"Catégorie {category} : retour théorique "
+                        f"{expected_return2.strftime('%d/%m/%Y %H:%M')} trop tard "
+                        f"pour la marge de {buffer_hours:.0f}h"
+                    )
+                else:
+                    continue
+                seen.add(key)
+                risks.append({
+                    'pret_id': loan['pret_id'],
+                    'pret_nom': loan['nom'],
+                    'pret_prenom': loan['prenom'],
+                    'pret_categorie': loan['categorie'],
+                    'descriptif_objets': loan['descriptif_objets'],
+                    'materiel_id': loan['materiel_id'],
+                    'materiel_label': _material_label(loan),
+                    'reservation_id': cat_row['reservation_id'],
+                    'reservation_dt': reservation_dt2,
+                    'reservation_nom': cat_row['reservation_nom'],
+                    'reservation_prenom': cat_row['reservation_prenom'],
+                    'expected_return_dt': expected_return2,
+                    'risk_reason': risk_reason2,
+                    'risk_message': risk_message2,
+                })
 
     return risks

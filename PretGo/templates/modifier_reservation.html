@@ -23,6 +23,7 @@
 
             <div class="mb-4">
                 <label class="form-label fw-bold">Demandes par catégorie</label>
+                <div class="small text-muted mb-2">Utilisez cette zone pour les matériels interchangeables (ex. 5 PC, 3 chargeurs).</div>
                 <div id="edit-categories-container">
                     {% if reservation_category_demands %}
                         {% for demand in reservation_category_demands %}
@@ -72,7 +73,8 @@
             </div>
 
             <div class="mb-4">
-                <label class="form-label fw-bold">Objets libres / précisions</label>
+                <label class="form-label fw-bold">Objets précis / texte libre</label>
+                <div class="small text-muted mb-2">Utilisez cette zone pour réserver un matériel exact ou noter un besoin libre hors inventaire.</div>
                 <div id="edit-items-container">
                     {% for item in reservation_items %}
                     <div class="row g-2 align-items-center mb-2 edit-item-row">
