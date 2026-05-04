@@ -114,12 +114,13 @@
                                 </select>
                             </div>
                             <div class="col-md-8 d-none" id="pause-image-fields">
-                                <label for="param-pause-image-file" class="form-label">Image pause JPG/PNG</label>
-                                <input type="file" class="form-control" id="param-pause-image-file" accept="image/png,image/jpeg">
+                                <label for="param-pause-image-file" class="form-label">Média pause (JPG, PNG, GIF, MP4, WebM)</label>
+                                <input type="file" class="form-control" id="param-pause-image-file" accept="image/png,image/jpeg,image/gif,.mp4,.webm,video/mp4,video/webm">
                                 <input type="hidden" id="param-pause-image-url">
-                                <div class="form-text">Cette image remplace le texte pendant la pause récurrente.</div>
+                                <div class="form-text">Image statique, GIF animé ou vidéo MP4/WebM — joué en boucle pendant la pause.</div>
                                 <div class="mt-2">
-                                    <img id="pause-image-preview" class="img-fluid rounded border d-none" alt="Aperçu image pause" style="max-height: 160px; object-fit: cover;">
+                                    <img id="pause-image-preview" class="img-fluid rounded border d-none" alt="Aperçu média pause" style="max-height: 160px; object-fit: cover;">
+                                    <video id="pause-video-preview" class="img-fluid rounded border d-none" style="max-height: 160px; object-fit: cover;" muted controls></video>
                                 </div>
                             </div>
                         </div>
@@ -200,12 +201,13 @@
                             </div>
 
                             <div class="col-md-6 d-none" id="display-override-image-fields">
-                                <label for="param-display-override-image-file" class="form-label">Image JPG/PNG</label>
-                                <input type="file" class="form-control" id="param-display-override-image-file" accept="image/png,image/jpeg">
+                                <label for="param-display-override-image-file" class="form-label">Média (JPG, PNG, GIF, MP4, WebM)</label>
+                                <input type="file" class="form-control" id="param-display-override-image-file" accept="image/png,image/jpeg,image/gif,.mp4,.webm,video/mp4,video/webm">
                                 <input type="hidden" id="param-display-override-image-url">
-                                <div class="form-text">L'image sera affichée en plein écran et remplacera toutes les slides pendant l'indisponibilité.</div>
+                                <div class="form-text">Image, GIF animé ou vidéo MP4/WebM — joué en boucle plein écran pendant l'indisponibilité.</div>
                                 <div class="mt-2">
-                                    <img id="display-override-image-preview" class="img-fluid rounded border d-none" alt="Aperçu image fermeture" style="max-height: 160px; object-fit: cover;">
+                                    <img id="display-override-image-preview" class="img-fluid rounded border d-none" alt="Aperçu média fermeture" style="max-height: 160px; object-fit: cover;">
+                                    <video id="display-override-video-preview" class="img-fluid rounded border d-none" style="max-height: 160px; object-fit: cover;" muted controls></video>
                                 </div>
                             </div>
                         </div>

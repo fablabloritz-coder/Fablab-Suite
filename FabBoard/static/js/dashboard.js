@@ -441,9 +441,14 @@ function renderDisplayOverride(data) {
 
     if (data.mode === 'image' && data.image_url) {
         container.style.background = '#000';
+        const safeUrl = escapeHtml(data.image_url);
+        const isVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(data.image_url);
+        const mediaEl = isVideo
+            ? `<video class="pause-override-video" src="${safeUrl}" autoplay loop muted playsinline></video>`
+            : `<img class="pause-override-image" src="${safeUrl}" alt="FabLab ferme">`;
         container.innerHTML = `
             <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture">
-                <img class="pause-override-image" src="${escapeHtml(data.image_url)}" alt="FabLab ferme">
+                ${mediaEl}
             </div>
         `;
         return;

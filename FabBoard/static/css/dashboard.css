@@ -44,6 +44,13 @@
     display: block;
 }
 
+.pause-override-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
 .pause-override-text {
     width: 100%;
     height: 100%;

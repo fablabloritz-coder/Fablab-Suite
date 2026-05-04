@@ -1,5 +1,19 @@
 // FabBoard — Paramètres (Phase 2)
 
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogg']);
+
+function _isVideoFile(file) {
+    if (!file || !file.name) return false;
+    const ext = file.name.split('.').pop().toLowerCase();
+    return VIDEO_EXTENSIONS.has(ext);
+}
+
+function _isVideoUrl(url) {
+    if (!url) return false;
+    const ext = url.split('?')[0].split('.').pop().toLowerCase();
+    return VIDEO_EXTENSIONS.has(ext);
+}
+
 let sourceTypes = [];
 let sources = [];
 let sourceModal = null;
@@ -442,55 +456,83 @@ function toggleManualReturnField() {
 }
 
 function updateDisplayOverrideImagePreview(url) {
-    const preview = document.getElementById('display-override-image-preview');
-    if (!preview) return;
+    const imgPreview = document.getElementById('display-override-image-preview');
+    const vidPreview = document.getElementById('display-override-video-preview');
+    if (!imgPreview) return;
 
     if (!url) {
-        preview.classList.add('d-none');
-        preview.removeAttribute('src');
+        imgPreview.classList.add('d-none');
+        imgPreview.removeAttribute('src');
+        if (vidPreview) { vidPreview.classList.add('d-none'); vidPreview.removeAttribute('src'); }
         return;
     }
 
-    preview.src = url;
-    preview.classList.remove('d-none');
+    if (_isVideoUrl(url)) {
+        imgPreview.classList.add('d-none');
+        imgPreview.removeAttribute('src');
+        if (vidPreview) { vidPreview.src = url; vidPreview.classList.remove('d-none'); }
+    } else {
+        if (vidPreview) { vidPreview.classList.add('d-none'); vidPreview.removeAttribute('src'); }
+        imgPreview.src = url;
+        imgPreview.classList.remove('d-none');
+    }
 }
 
 function onDisplayOverrideImagePicked(event) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const preview = document.getElementById('display-override-image-preview');
-    if (!preview) return;
-
+    const imgPreview = document.getElementById('display-override-image-preview');
+    const vidPreview = document.getElementById('display-override-video-preview');
     const objectUrl = URL.createObjectURL(file);
-    preview.src = objectUrl;
-    preview.classList.remove('d-none');
+
+    if (_isVideoFile(file)) {
+        if (imgPreview) { imgPreview.classList.add('d-none'); imgPreview.removeAttribute('src'); }
+        if (vidPreview) { vidPreview.src = objectUrl; vidPreview.classList.remove('d-none'); }
+    } else {
+        if (vidPreview) { vidPreview.classList.add('d-none'); vidPreview.removeAttribute('src'); }
+        if (imgPreview) { imgPreview.src = objectUrl; imgPreview.classList.remove('d-none'); }
+    }
 }
 
 function updatePauseImagePreview(url) {
-    const preview = document.getElementById('pause-image-preview');
-    if (!preview) return;
+    const imgPreview = document.getElementById('pause-image-preview');
+    const vidPreview = document.getElementById('pause-video-preview');
+    if (!imgPreview) return;
 
     if (!url) {
-        preview.classList.add('d-none');
-        preview.removeAttribute('src');
+        imgPreview.classList.add('d-none');
+        imgPreview.removeAttribute('src');
+        if (vidPreview) { vidPreview.classList.add('d-none'); vidPreview.removeAttribute('src'); }
         return;
     }
 
-    preview.src = url;
-    preview.classList.remove('d-none');
+    if (_isVideoUrl(url)) {
+        imgPreview.classList.add('d-none');
+        imgPreview.removeAttribute('src');
+        if (vidPreview) { vidPreview.src = url; vidPreview.classList.remove('d-none'); }
+    } else {
+        if (vidPreview) { vidPreview.classList.add('d-none'); vidPreview.removeAttribute('src'); }
+        imgPreview.src = url;
+        imgPreview.classList.remove('d-none');
+    }
 }
 
 function onPauseImagePicked(event) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const preview = document.getElementById('pause-image-preview');
-    if (!preview) return;
-
+    const imgPreview = document.getElementById('pause-image-preview');
+    const vidPreview = document.getElementById('pause-video-preview');
     const objectUrl = URL.createObjectURL(file);
-    preview.src = objectUrl;
-    preview.classList.remove('d-none');
+
+    if (_isVideoFile(file)) {
+        if (imgPreview) { imgPreview.classList.add('d-none'); imgPreview.removeAttribute('src'); }
+        if (vidPreview) { vidPreview.src = objectUrl; vidPreview.classList.remove('d-none'); }
+    } else {
+        if (vidPreview) { vidPreview.classList.add('d-none'); vidPreview.removeAttribute('src'); }
+        if (imgPreview) { imgPreview.src = objectUrl; imgPreview.classList.remove('d-none'); }
+    }
 }
 
 async function uploadDisplayOverrideImageIfNeeded() {
@@ -505,18 +547,20 @@ async function uploadDisplayOverrideImageIfNeeded() {
         return document.getElementById('param-display-override-image-url')?.value || '';
     }
 
+    const isVideo = _isVideoFile(file);
+    const endpoint = isVideo ? '/api/upload-video' : '/api/upload';
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-        const response = await fetch('/api/upload', {
+        const response = await fetch(endpoint, {
             method: 'POST',
             body: formData,
         });
 
         const result = await response.json();
         if (!response.ok || !result.success || !result.url) {
-            throw new Error(result.error || 'Upload image impossible');
+            throw new Error(result.error || 'Upload média impossible');
         }
 
         const imageUrlEl = document.getElementById('param-display-override-image-url');
@@ -526,7 +570,7 @@ async function uploadDisplayOverrideImageIfNeeded() {
         updateDisplayOverrideImagePreview(result.url);
         return result.url;
     } catch (error) {
-        showToast(`Erreur upload image: ${error.message}`, 'error');
+        showToast(`Erreur upload média: ${error.message}`, 'error');
         return null;
     }
 }
@@ -543,18 +587,20 @@ async function uploadPauseImageIfNeeded() {
         return document.getElementById('param-pause-image-url')?.value || '';
     }
 
+    const isVideo = _isVideoFile(file);
+    const endpoint = isVideo ? '/api/upload-video' : '/api/upload';
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-        const response = await fetch('/api/upload', {
+        const response = await fetch(endpoint, {
             method: 'POST',
             body: formData,
         });
 
         const result = await response.json();
         if (!response.ok || !result.success || !result.url) {
-            throw new Error(result.error || 'Upload image pause impossible');
+            throw new Error(result.error || 'Upload média pause impossible');
         }
 
         const imageUrlEl = document.getElementById('param-pause-image-url');
@@ -564,7 +610,7 @@ async function uploadPauseImageIfNeeded() {
         updatePauseImagePreview(result.url);
         return result.url;
     } catch (error) {
-        showToast(`Erreur upload image pause: ${error.message}`, 'error');
+        showToast(`Erreur upload média pause: ${error.message}`, 'error');
         return null;
     }
 }
