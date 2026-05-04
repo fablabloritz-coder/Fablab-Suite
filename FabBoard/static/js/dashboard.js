@@ -515,6 +515,11 @@ async function refreshDisplayOverride() {
                 slideTimer = null;
             }
 
+            // On compare uniquement les champs visuels effectivement rendus.
+            // `resume_at` peut varier sans changer le texte affiché (HH:MM),
+            // ce qui provoquerait un rerender inutile et relancerait la vidéo.
+            const renderedResume = data.resume_label || formatResumeLabel(data.resume_at);
+
             const renderKey = JSON.stringify({
                 active: !!data.active,
                 source: data.source || '',
@@ -523,8 +528,7 @@ async function refreshDisplayOverride() {
                 image_url: data.image_url || '',
                 title: data.title || '',
                 message: data.message || '',
-                resume_label: data.resume_label || '',
-                resume_at: data.resume_at || '',
+                resume: renderedResume || '',
                 bg_color: data.bg_color || '',
                 text_color: data.text_color || '',
                 text_scale: data.text_scale || '',
