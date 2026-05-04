@@ -228,7 +228,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="small text-muted mb-3">
-                        Historique des evolutions PretGo (de la plus recente a la plus ancienne).
+                        Historique des evolutions (de la plus recente a la plus ancienne).
                     </div>
                     <div id="updatesTimeline"></div>
                 </div>
@@ -315,7 +315,7 @@
             }
 
             timeline.innerHTML = entries.map((entry) => {
-                const title = entry.title ? ` — ${entry.title}` : '';
+                const title = entry.title ? ` - ${entry.title}` : '';
                 const versionPart = entry.version ? `Version ${entry.version}` : 'Mise a jour';
                 const datePart = entry.date || 'Date non renseignee';
                 const notes = Array.isArray(entry.notes) ? entry.notes : [];
@@ -323,9 +323,11 @@
                     ? notes.map(n => `<li class="mb-2">${n}</li>`).join('')
                     : '<li class="text-muted">Aucun detail fourni.</li>';
                 return `
-                    <section class="border rounded p-3 mb-3">
-                        <div class="fw-semibold">${datePart}</div>
-                        <div class="small text-muted mb-2">${versionPart}${title}</div>
+                    <section class="border-start border-4 border-primary-subtle bg-light-subtle rounded-3 p-3 mb-3">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                            <span class="badge text-bg-primary">${datePart}</span>
+                            <span class="small text-muted">${versionPart}${title}</span>
+                        </div>
                         <ul class="mb-0">${notesHtml}</ul>
                     </section>
                 `;

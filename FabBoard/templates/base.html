@@ -219,8 +219,10 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-2 small text-muted" id="updatesVersionLine"></div>
-                    <ul class="mb-0" id="updatesList"></ul>
+                    <div class="small text-muted mb-3">
+                        Historique des evolutions (de la plus recente a la plus ancienne).
+                    </div>
+                    <div id="updatesTimeline"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-primary" data-bs-dismiss="modal">J'ai compris</button>
@@ -241,17 +243,58 @@
     (function() {
         const STORAGE_KEY = 'fabboard:last_seen_release';
 
+        function releaseEntries(info) {
+            if (Array.isArray(info.history) && info.history.length) {
+                return info.history;
+            }
+            if (info.version || info.date || info.title || Array.isArray(info.notes)) {
+                return [{
+                    version: info.version || '',
+                    date: info.date || '',
+                    title: info.title || '',
+                    notes: Array.isArray(info.notes) ? info.notes : [],
+                }];
+            }
+            return [];
+        }
+
         function releaseSignature(info) {
-            const notes = Array.isArray(info.notes) ? info.notes.join('||') : '';
-            return `${info.version || ''}|${info.date || ''}|${info.title || ''}|${notes}`;
+            const entries = releaseEntries(info);
+            return entries.map((entry) => {
+                const notes = Array.isArray(entry.notes) ? entry.notes.join('||') : '';
+                return `${entry.version || ''}|${entry.date || ''}|${entry.title || ''}|${notes}`;
+            }).join('###');
         }
 
         function fillModal(info) {
-            const versionLine = document.getElementById('updatesVersionLine');
-            const updatesList = document.getElementById('updatesList');
-            if (!versionLine || !updatesList) return false;
-            versionLine.textContent = `Version ${info.version} — ${info.date} — ${info.title}`;
-            updatesList.innerHTML = info.notes.map(n => `<li class="mb-2">${n}</li>`).join('');
+            const timeline = document.getElementById('updatesTimeline');
+            if (!timeline) return false;
+
+            const entries = releaseEntries(info);
+            if (!entries.length) {
+                timeline.innerHTML = '<div class="alert alert-light mb-0">Aucune note de mise a jour disponible.</div>';
+                return true;
+            }
+
+            timeline.innerHTML = entries.map((entry) => {
+                const datePart = entry.date || 'Date non renseignee';
+                const versionPart = entry.version ? `Version ${entry.version}` : 'Mise a jour';
+                const titlePart = entry.title ? ` - ${entry.title}` : '';
+                const notes = Array.isArray(entry.notes) ? entry.notes : [];
+                const notesHtml = notes.length
+                    ? notes.map(n => `<li class="mb-2">${n}</li>`).join('')
+                    : '<li class="text-muted">Aucun detail fourni.</li>';
+
+                return `
+                    <section class="border-start border-4 border-primary-subtle bg-light-subtle rounded-3 p-3 mb-3">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                            <span class="badge text-bg-primary">${datePart}</span>
+                            <span class="small text-muted">${versionPart}${titlePart}</span>
+                        </div>
+                        <ul class="mb-0">${notesHtml}</ul>
+                    </section>
+                `;
+            }).join('');
             return true;
         }
 

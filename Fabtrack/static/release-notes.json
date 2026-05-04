@@ -1,13 +1,17 @@
 {
-  "version": "2.3.3",
-  "date": "2026-05-01",
-  "title": "Coherence occurrences par type et materiau",
-  "notes": [
-    "Le flag materiau count_occurrences ne s'applique plus hors des familles ciblees (g, m2, feuilles).",
-    "Migration durcie: les valeurs NULL historiques de count_occurrences sont normalisees a 1.",
-    "Edition materiau fiabilisee: si le champ est absent, la valeur par defaut reste 1 (plus de retour a NULL).",
-    "Interface parametres simplifiee: suppression du mode auto par nom, affichage explicite oui/non.",
-    "Validation complete: 25 tests unitaires passes sur la suite Fabtrack."
+  "history": [
+    {
+      "version": "2.3.3",
+      "date": "2026-05-01",
+      "title": "Coherence occurrences par type et materiau",
+      "notes": [
+        "Le flag materiau count_occurrences ne s'applique plus hors des familles ciblees (g, m2, feuilles).",
+        "Migration durcie: les valeurs NULL historiques de count_occurrences sont normalisees a 1.",
+        "Edition materiau fiabilisee: si le champ est absent, la valeur par defaut reste 1 (plus de retour a NULL).",
+        "Interface parametres simplifiee: suppression du mode auto par nom, affichage explicite oui/non.",
+        "Validation complete: 25 tests unitaires passes sur la suite Fabtrack."
+      ]
+    }
   ],
   "_source": "manuel"
 }

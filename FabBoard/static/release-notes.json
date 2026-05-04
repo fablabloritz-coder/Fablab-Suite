@@ -1,14 +1,18 @@
 {
-  "version": "3.3.0",
-  "date": "2026-05-03",
-  "title": "Pause hebdomadaire et indisponibilite prioritaire",
-  "notes": [
-    "Nouvelle pause hebdomadaire recurrente configurable jour par jour (lundi a dimanche) avec horaires debut/fin.",
-    "Indisponibilite manuelle prioritaire ajoutee: prend le dessus sur toutes les slides tant qu'elle est active.",
-    "Option d'heure de retour sur l'indisponibilite: affichable ou masquable via un simple switch.",
-    "Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITE (reglages independants).",
-    "Texte de pause personnalise: titre et message configurables dans les parametres.",
-    "Nouveau mode image pour la pause recurrente (JPG/PNG) avec upload et apercu."
+  "history": [
+    {
+      "version": "3.3.0",
+      "date": "2026-05-03",
+      "title": "Pause hebdomadaire et indisponibilite prioritaire",
+      "notes": [
+        "Nouvelle pause hebdomadaire recurrente configurable jour par jour (lundi a dimanche) avec horaires debut/fin.",
+        "Indisponibilite manuelle prioritaire ajoutee: prend le dessus sur toutes les slides tant qu'elle est active.",
+        "Option d'heure de retour sur l'indisponibilite: affichable ou masquable via un simple switch.",
+        "Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITE (reglages independants).",
+        "Texte de pause personnalise: titre et message configurables dans les parametres.",
+        "Nouveau mode image pour la pause recurrente (JPG/PNG) avec upload et apercu."
+      ]
+    }
   ],
   "_source": "manuel"
 }
