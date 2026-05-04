@@ -12,6 +12,7 @@ let serverTimeOffset = 0;  // ms: serverTime - clientTime
 let isOverrideActive = false;
 let overrideState = null;
 let overridePollTimer = null;
+let overrideRenderKey = null;
 
 // ========== SHARED DATA STORE ==========
 const FabBoardStore = {
@@ -444,7 +445,7 @@ function renderDisplayOverride(data) {
         const safeUrl = escapeHtml(data.image_url);
         const isVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(data.image_url);
         const mediaEl = isVideo
-            ? `<video class="pause-override-video" src="${safeUrl}" autoplay loop muted playsinline></video>`
+            ? `<video class="pause-override-video" src="${safeUrl}" autoplay loop muted playsinline preload="auto"></video>`
             : `<img class="pause-override-image" src="${safeUrl}" alt="FabLab ferme">`;
         container.innerHTML = `
             <div class="pause-override" aria-live="polite" aria-label="Affichage fermeture">
@@ -513,13 +514,33 @@ async function refreshDisplayOverride() {
                 clearTimeout(slideTimer);
                 slideTimer = null;
             }
+
+            const renderKey = JSON.stringify({
+                active: !!data.active,
+                source: data.source || '',
+                override_type: data.override_type || '',
+                mode: data.mode || '',
+                image_url: data.image_url || '',
+                title: data.title || '',
+                message: data.message || '',
+                resume_label: data.resume_label || '',
+                resume_at: data.resume_at || '',
+                bg_color: data.bg_color || '',
+                text_color: data.text_color || '',
+                text_scale: data.text_scale || '',
+            });
+
             isOverrideActive = true;
-            renderDisplayOverride(data);
+            if (overrideRenderKey !== renderKey) {
+                overrideRenderKey = renderKey;
+                renderDisplayOverride(data);
+            }
             return;
         }
 
         if (isOverrideActive) {
             isOverrideActive = false;
+            overrideRenderKey = null;
             const container = document.getElementById('dashboard-container');
             if (container) {
                 container.classList.remove('override-active');
