@@ -18,6 +18,7 @@ sys.path.insert(0, '.')
 
 from app import app  # noqa: E402
 from database import get_db  # noqa: E402
+from reservations_logic import get_reservation_risks  # noqa: E402
 
 app.config['TESTING'] = True
 app.config['SECRET_KEY'] = 'test'
@@ -367,6 +368,80 @@ def run():
                 errors.append('Reservation still exists after delete')
             else:
                 checks_ok += 1
+
+        # 8) alerting by category should stay quiet when stock remains sufficient.
+        capacity_category = f'REGCAP-{tag}'
+        with app.app_context():
+            conn = get_db()
+            cap_ids = []
+            for suffix in ('A', 'B', 'C'):
+                cur = conn.execute(
+                    """
+                    INSERT INTO inventaire (type_materiel, marque, modele, numero_inventaire, numero_serie, etat, actif)
+                    VALUES (?, ?, ?, ?, ?, 'disponible', 1)
+                    """,
+                    (capacity_category, 'Reg', f'Cap{suffix}', f'REGTEST-{tag}-CAP-{suffix}', f'SN-{tag}-CAP-{suffix}'),
+                )
+                cap_ids.append(int(cur.lastrowid))
+            conn.commit()
+            conn.close()
+
+        note_stock = f'REGTEST-{tag}-stock-alert'
+        resp = client.post(
+            '/reservations',
+            data={
+                'personne_id': str(person_id),
+                'res_items_description[]': [''],
+                'res_items_materiel_id[]': [''],
+                'res_category_name[]': [capacity_category],
+                'res_category_qty[]': ['1'],
+                'date_reservation': (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d'),
+                'date_fin_reservation': (datetime.now() + timedelta(days=4)).strftime('%Y-%m-%d'),
+                'statut': 'confirmee',
+                'notes': note_stock,
+            },
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            errors.append(f'Create stock-capacity reservation status={resp.status_code}')
+
+        stock_loan_desc = f'REGTEST-{tag}-stock-risk-loan'
+        resp = client.post(
+            '/nouveau-pret',
+            data={
+                'personne_id': str(person_id),
+                'items_description[]': [stock_loan_desc],
+                'items_materiel_id[]': [str(cap_ids[0])],
+                'duree_type': 'jours',
+                'duree_jours': '30',
+            },
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            errors.append(f'Create stock-risk loan request status={resp.status_code}')
+
+        with app.app_context():
+            conn = get_db()
+            stock_res_row = conn.execute(
+                "SELECT id FROM reservations WHERE notes = ? ORDER BY id DESC LIMIT 1",
+                (note_stock,),
+            ).fetchone()
+            stock_res_id = int(stock_res_row['id']) if stock_res_row else None
+            stock_risks = get_reservation_risks(conn)
+            conn.close()
+
+        if not stock_res_id:
+            errors.append('Stock-capacity reservation row not found for risk check')
+            stock_res_id = -1
+
+        category_capacity_false_positive = any(
+            (r.get('risk_reason') or '').endswith('_capacity') and r.get('reservation_id') == stock_res_id
+            for r in stock_risks
+        )
+        if category_capacity_false_positive:
+            errors.append('Category risk alert was raised even though effective stock remained sufficient')
+        else:
+            checks_ok += 1
 
     finally:
         _cleanup(tag)

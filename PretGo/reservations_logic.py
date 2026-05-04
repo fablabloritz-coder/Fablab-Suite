@@ -664,43 +664,58 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
         if limit is not None and len(risks) >= limit:
             break
 
-    # 2ème passe : réservations par catégorie
-    cat_reservations = conn.execute(
+    # 2ème passe : réservations par catégorie (alerte seulement si capacité réellement insuffisante)
+    active_reservations = conn.execute(
         """
-        SELECT r.id AS reservation_id, r.date_reservation, r.statut, r.demande_categories_json,
+        SELECT r.id AS reservation_id, r.date_reservation, r.date_fin_reservation, r.statut,
+               r.materiel_id, r.items_json, r.demande_categories_json,
                pe.nom AS reservation_nom, pe.prenom AS reservation_prenom
         FROM reservations r
         JOIN personnes pe ON pe.id = r.personne_id
         WHERE r.statut IN ('demande', 'confirmee')
-          AND r.demande_categories_json IS NOT NULL
-          AND r.demande_categories_json != '[]'
-          AND r.date_reservation >= ?
+          AND COALESCE(r.date_fin_reservation, r.date_reservation) >= ?
         ORDER BY r.date_reservation ASC
         """,
         (format_db_datetime(now_dt),),
     ).fetchall()
 
-    for cat_row in cat_reservations:
+    for cat_row in active_reservations:
         if limit is not None and len(risks) >= limit:
             break
+
         reservation_dt2 = parse_db_datetime(cat_row['date_reservation'])
-        if not reservation_dt2:
-            continue
-        try:
-            cat_demands = json.loads(cat_row['demande_categories_json'])
-        except Exception:
-            continue
-        if not isinstance(cat_demands, list):
+        reservation_end_dt2 = parse_db_datetime(cat_row['date_fin_reservation']) if cat_row['date_fin_reservation'] else reservation_dt2
+        if not reservation_dt2 or not reservation_end_dt2 or reservation_end_dt2 <= now_dt:
             continue
 
-        for demand in cat_demands:
+        row_demands = _reservation_category_demands(conn, cat_row)
+        if not row_demands:
+            continue
+
+        latest_return_allowed2 = reservation_dt2 - timedelta(hours=buffer_hours)
+
+        for category, requested_qty in row_demands.items():
             if limit is not None and len(risks) >= limit:
                 break
-            if not isinstance(demand, dict):
+            if requested_qty <= 0:
                 continue
-            category = (demand.get('category') or '').strip()
-            if not category:
+
+            stock_total = _stock_capacity_for_category(conn, category)
+            if stock_total <= 0:
                 continue
+
+            # Cumuler les autres réservations chevauchantes sur la même catégorie.
+            reserved_overlap = 0
+            for other in active_reservations:
+                if other['reservation_id'] == cat_row['reservation_id']:
+                    continue
+                other_dt = parse_db_datetime(other['date_reservation'])
+                other_end_dt = parse_db_datetime(other['date_fin_reservation']) if other['date_fin_reservation'] else other_dt
+                if not other_dt or not other_end_dt or other_end_dt <= now_dt:
+                    continue
+                if reservation_dt2 < other_end_dt and reservation_end_dt2 > other_dt:
+                    other_demands = _reservation_category_demands(conn, other)
+                    reserved_overlap += int(other_demands.get(category, 0) or 0)
 
             loans_in_cat = conn.execute(
                 """
@@ -720,14 +735,8 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
                 (category,),
             ).fetchall()
 
-            latest_return_allowed2 = reservation_dt2 - timedelta(hours=buffer_hours)
-
+            risky_loans = []
             for loan in loans_in_cat:
-                if limit is not None and len(risks) >= limit:
-                    break
-                key = (loan['pret_id'], cat_row['reservation_id'])
-                if key in seen:
-                    continue
                 base_dt2 = parse_db_datetime(loan['date_emprunt'])
                 if not base_dt2:
                     continue
@@ -738,22 +747,39 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
                     loan['duree_pret_jours'],
                     loan['date_retour_prevue'],
                 )
-                if reservation_dt2 <= lock_deadline:
-                    risk_reason2 = 'lock_window'
-                    risk_message2 = (
-                        f"Catégorie {category} : réservation imminente le "
-                        f"{reservation_dt2.strftime('%d/%m/%Y %H:%M')}"
-                    )
-                elif expected_return2 > latest_return_allowed2:
-                    risk_reason2 = 'buffer_window'
-                    risk_message2 = (
-                        f"Catégorie {category} : retour théorique "
-                        f"{expected_return2.strftime('%d/%m/%Y %H:%M')} trop tard "
-                        f"pour la marge de {buffer_hours:.0f}h"
-                    )
-                else:
+                if expected_return2 > latest_return_allowed2:
+                    risky_loans.append((loan, expected_return2))
+
+            available_effective = stock_total - reserved_overlap - len(risky_loans)
+            shortage = requested_qty - available_effective
+            if shortage <= 0:
+                continue
+
+            # Ne remonter que les prêts "en trop" par rapport à la capacité réelle.
+            risky_loans.sort(key=lambda pair: pair[1], reverse=True)
+            overflow_count = min(shortage, len(risky_loans))
+            if overflow_count <= 0:
+                continue
+
+            for loan, expected_return2 in risky_loans[:overflow_count]:
+                if limit is not None and len(risks) >= limit:
+                    break
+                key = (loan['pret_id'], cat_row['reservation_id'])
+                if key in seen:
                     continue
                 seen.add(key)
+
+                if reservation_dt2 <= lock_deadline:
+                    risk_reason2 = 'lock_window_capacity'
+                else:
+                    risk_reason2 = 'buffer_window_capacity'
+
+                risk_message2 = (
+                    f"Catégorie {category} : capacité insuffisante "
+                    f"({available_effective}/{requested_qty} dispo après cumul prêts/réservations). "
+                    f"Retour théorique {expected_return2.strftime('%d/%m/%Y %H:%M')}"
+                )
+
                 risks.append({
                     'pret_id': loan['pret_id'],
                     'pret_nom': loan['nom'],
