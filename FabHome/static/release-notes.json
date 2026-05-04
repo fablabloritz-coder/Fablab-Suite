@@ -11,6 +11,34 @@
         "Suivi centralise des migrations avec historique idempotent pour limiter les regressions de mise a jour.",
         "Validation de compatibilite schema au boot du hub avant activation complete des services."
       ]
+    },
+    {
+      "version": "1.5.0",
+      "date": "2026-04-11",
+      "title": "Popup de nouveautes centralisee",
+      "notes": [
+        "Ajout de la popup de nouveautes basee sur fichier JSON.",
+        "Ajout d'un lien footer pour reconsulter les mises a jour a tout moment.",
+        "Affichage conditionnel une fois par release via signature stockee localement."
+      ]
+    },
+    {
+      "version": "1.4.2",
+      "date": "2026-03-21",
+      "title": "Confort de navigation et UX d'accueil",
+      "notes": [
+        "Autofocus automatique sur la barre de recherche au chargement de la page.",
+        "Amelioration de la fluidite du flux de recherche pour un usage quotidien plus rapide."
+      ]
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-03-15",
+      "title": "Personnalisation des groupes et widgets",
+      "notes": [
+        "Ajout de la couleur de fond par groupe pour differencier visuellement les zones.",
+        "Ajout d'un widget dedie pour enrichir le tableau de bord FabHome."
+      ]
     }
   ],
   "_source": "manuel"

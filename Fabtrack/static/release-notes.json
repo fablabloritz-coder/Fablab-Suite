@@ -11,6 +11,44 @@
         "Interface parametres simplifiee: suppression du mode auto par nom, affichage explicite oui/non.",
         "Validation complete: 25 tests unitaires passes sur la suite Fabtrack."
       ]
+    },
+    {
+      "version": "2.3.1",
+      "date": "2026-05-01",
+      "title": "Occurrences 3D fiabilisees",
+      "notes": [
+        "Correction du pilotage des occurrences pour les entrees PLA/ABS 3D.",
+        "Mise a jour du popup de release pour aligner les notes de cette iteration."
+      ]
+    },
+    {
+      "version": "2.3.0",
+      "date": "2026-04-30",
+      "title": "Multi-referents et edition d'historique",
+      "notes": [
+        "Support des multi-referents dans les flux de suivi.",
+        "Edition de l'historique amelioree pour corriger les entrees plus facilement.",
+        "Securisation du flux de saisie pour reduire les erreurs operateur."
+      ]
+    },
+    {
+      "version": "2.2.0",
+      "date": "2026-04-10",
+      "title": "Assistant de setup et bibliotheque d'images",
+      "notes": [
+        "Ajout d'un assistant de configuration initiale.",
+        "Ajout d'une bibliotheque d'images pour simplifier l'illustration des fiches.",
+        "Ameliorations UX successives sur le selecteur d'images."
+      ]
+    },
+    {
+      "version": "2.1.0",
+      "date": "2026-04-11",
+      "title": "Popup de nouveautes centralisee",
+      "notes": [
+        "Popup Nouveautes chargee depuis release-notes.json.",
+        "Lien footer pour consulter l'historique a tout moment."
+      ]
     }
   ],
   "_source": "manuel"

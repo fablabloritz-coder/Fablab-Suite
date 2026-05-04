@@ -22,6 +22,33 @@
         "<strong>Compatibilite anciennes reservations verifiee</strong> — les tests couvrent explicitement les formats historiques avec <em>materiel_id</em> et <em>items_json</em>.",
         "<strong>Validation complete</strong> — la suite PretGo passe a <em>113/113 OK</em> sur ce lot de corrections."
       ]
+    },
+    {
+      "version": "1.7.0",
+      "date": "2026-04-29",
+      "title": "Rappels avances et pilotage des notifications",
+      "notes": [
+        "<strong>Nouveaux modes de rappel</strong> — gestion plus fine des relances selon le contexte de pret.",
+        "<strong>Stabilite operationnelle</strong> — renforcement du comportement des rappels en execution reelle."
+      ]
+    },
+    {
+      "version": "1.6.2",
+      "date": "2026-04-28",
+      "title": "Fiabilite popup et migrations SQLite",
+      "notes": [
+        "<strong>Popup de nouveautes robuste</strong> — rafraichissement fiable du contenu release-notes.",
+        "<strong>Migrations durcies</strong> — suivi schema SQLite plus strict pour eviter les regressions de MAJ."
+      ]
+    },
+    {
+      "version": "1.6.0",
+      "date": "2026-04-28",
+      "title": "Conversion reservation et calendrier",
+      "notes": [
+        "<strong>Conversion reservation vers pret</strong> — flux de transformation clarifie pour l'admin.",
+        "<strong>Vue calendrier reservation</strong> — meilleure visualisation des periodes et conflits potentiels."
+      ]
     }
   ],
   "_source": "manuel"

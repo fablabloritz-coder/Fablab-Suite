@@ -12,6 +12,33 @@
         "Texte de pause personnalise: titre et message configurables dans les parametres.",
         "Nouveau mode image pour la pause recurrente (JPG/PNG) avec upload et apercu."
       ]
+    },
+    {
+      "version": "3.2.0",
+      "date": "2026-04-11",
+      "title": "Popup de nouveautes et trace des evolutions",
+      "notes": [
+        "Ajout de la popup Nouveautes pilotee par release-notes.json.",
+        "Lien footer admin pour ouvrir l'historique des MAJ a la demande.",
+        "Gestion du 'vu' local pour eviter les reaffichages repetes."
+      ]
+    },
+    {
+      "version": "3.1.0",
+      "date": "2026-04-10",
+      "title": "Lisibilite dashboard horloge/timer",
+      "notes": [
+        "Difference visuelle renforcee entre mode Horloge et mode Timer.",
+        "Ajustement de hauteur pour le layout 'Large + 2/3 blocs' afin d'ameliorer la lisibilite."
+      ]
+    },
+    {
+      "version": "3.0.2",
+      "date": "2026-03-21",
+      "title": "Amelioration visuelle des missions",
+      "notes": [
+        "Ajout de fonds couleurs pour les missions afin de clarifier l'etat des cartes et leur priorite."
+      ]
     }
   ],
   "_source": "manuel"
