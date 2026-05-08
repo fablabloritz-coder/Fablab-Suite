@@ -575,6 +575,41 @@ Depuis la page **Export** :
 
 ---
 
-## 📝 Licence
+## � Changelog
+
+### v2.1.0 — 2026-05-08
+
+#### Missions — Catégories avec définitions, exports enrichis et statistiques
+
+**Nouvelles fonctionnalités :**
+
+- **Définitions de catégories** : chaque catégorie de mission peut désormais recevoir un texte de définition décrivant les types de missions qui la composent. Ce champ s'affiche :
+  - dans la modale de gestion des catégories (création et modification)
+  - dans la liste des catégories (sous le nom)
+  - en infobulle (`title`) sur les badges de catégorie dans les cartes kanban
+  - dans tous les formats d'export
+
+- **Exports enrichis** (CSV, HTML, PDF) :
+  - **CSV** : nouvelle colonne *Définition catégorie* ; bloc légende `# LEGENDES CATEGORIES` en tête de fichier avec nom + définition de chaque catégorie ; encodage `UTF-8 BOM` pour compatibilité Excel
+  - **HTML** : légende colorée (pastille + nom + définition) affichée avant le tableau ; description des missions inline sous le titre ; couleurs de priorité distinctives
+  - **PDF** : section `--- Categories ---` avec les définitions avant la liste des missions
+
+- **Panneau statistiques** (bouton *Stats* dans la barre d'actions) :
+  - 6 indicateurs : total, à faire, en cours, terminées, en retard, durée moyenne de completion (sur les 30 dernières missions terminées)
+  - Répartition par catégorie avec barres de progression, compteurs par statut et définition affichée
+  - Répartition par priorité (Normale / Haute / Urgente)
+
+**Endpoint API ajouté :**
+
+| Méthode | Endpoint | Description |
+|---------|----------|-------------|
+| `GET` | `/missions/api/stats` | Statistiques globales : `total`, `by_statut`, `by_prio`, `by_category` (avec description), `overdue`, `avg_completion_days` |
+
+**Migration de base de données :**
+- Ajout de la colonne `description TEXT DEFAULT ''` sur la table `mission_categories` (migration automatique idempotente au démarrage)
+
+---
+
+## �📝 Licence
 
 MIT — © 2025-2026
