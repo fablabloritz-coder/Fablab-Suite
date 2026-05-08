@@ -551,6 +551,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nom TEXT NOT NULL UNIQUE,
         couleur TEXT NOT NULL DEFAULT '#6b7280',
+        description TEXT DEFAULT '',
         ordre INTEGER DEFAULT 0,
         actif INTEGER NOT NULL DEFAULT 1 CHECK(actif IN (0,1)),
         created_at TEXT DEFAULT (datetime('now','localtime')),
@@ -756,6 +757,11 @@ def _ensure_mission_categories_schema(c):
     if 'category_id' not in mcols:
         c.execute("ALTER TABLE missions ADD COLUMN category_id INTEGER")
     c.execute('CREATE INDEX IF NOT EXISTS idx_missions_category ON missions(category_id)')
+
+    # Migration idempotente : champ description sur les catégories
+    catcols = [r[1] for r in c.execute("PRAGMA table_info(mission_categories)").fetchall()]
+    if 'description' not in catcols:
+        c.execute("ALTER TABLE mission_categories ADD COLUMN description TEXT DEFAULT ''")
 
     _insert_mission_categories_seed(c)
 

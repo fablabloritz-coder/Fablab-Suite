@@ -123,21 +123,34 @@ def _fmt_dt(value):
     return value
 
 
-def _build_history_csv(rows):
+def _build_history_csv(rows, categories=None):
     """Construit le CSV export des missions terminées."""
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
+
+    # En-tête du fichier avec légende des catégories
+    if categories:
+        writer.writerow(['# LEGENDES CATEGORIES'])
+        for cat in categories:
+            desc = cat.get('description') or ''
+            writer.writerow([f"# {cat['nom']}", desc])
+        writer.writerow([])
+
     writer.writerow([
-        'ID', 'Titre', 'Description', 'Categorie', 'Priorite', 'Creee le', 'Debut', 'Terminee le',
+        'ID', 'Titre', 'Description', 'Categorie', 'Definition categorie',
+        'Priorite', 'Creee le', 'Debut', 'Terminee le',
     ])
 
+    cat_map = {c['nom']: c.get('description', '') for c in (categories or [])}
     prio_labels = {0: 'Normale', 1: 'Haute', 2: 'Urgente'}
     for r in rows:
+        cat_nom = r['categorie_nom'] or ''
         writer.writerow([
             r['id'],
             r['titre'] or '',
             r['description'] or '',
-            r['categorie_nom'] or '',
+            cat_nom,
+            cat_map.get(cat_nom, ''),
             prio_labels.get(r['priorite'], str(r['priorite'])),
             _fmt_dt(r['timeline_created_at'] or r['created_at']),
             _fmt_dt(r['timeline_started_at']),
@@ -146,47 +159,86 @@ def _build_history_csv(rows):
     return output.getvalue()
 
 
-def _build_history_html(rows):
-    """Construit un HTML autonome exportable/imprimable."""
+def _build_history_html(rows, categories=None):
+    """Construit un HTML autonome exportable/imprimable avec légende des catégories."""
     prio_labels = {0: 'Normale', 1: 'Haute', 2: 'Urgente'}
+    prio_colors = {0: '#374151', 1: '#d97706', 2: '#dc2626'}
+    cat_map = {}
+    if categories:
+        cat_map = {c['nom']: c for c in categories}
+
     tr_rows = []
     for r in rows:
+        cat_nom = r['categorie_nom'] or ''
+        cat_info = cat_map.get(cat_nom, {})
+        cat_color = cat_info.get('couleur', '#6b7280')
+        cat_desc = cat_info.get('description', '')
+        cat_cell = (
+            f'<span style="display:inline-flex;align-items:center;gap:4px;">'
+            f'<span style="width:9px;height:9px;border-radius:50%;background:{html.escape(cat_color)};flex-shrink:0;"></span>'
+            f'{html.escape(cat_nom or "—")}'
+            f'</span>'
+            + (f'<br><small style="color:#6b7280">{html.escape(cat_desc)}</small>' if cat_desc else '')
+        )
+        prio = r['priorite']
+        prio_label = prio_labels.get(prio, str(prio))
+        prio_color = prio_colors.get(prio, '#374151')
+        desc_cell = html.escape(r['description'] or '').replace('\n', '<br>')
         tr_rows.append(
             '<tr>'
-            f"<td>{int(r['id'])}</td>"
-            f"<td>{html.escape(r['titre'] or '')}</td>"
-            f"<td>{html.escape(r['categorie_nom'] or '—')}</td>"
-            f"<td>{html.escape(prio_labels.get(r['priorite'], str(r['priorite'])))}</td>"
+            f"<td style='color:#6b7280'>{int(r['id'])}</td>"
+            f"<td><strong>{html.escape(r['titre'] or '')}</strong>" + (f"<br><small style='color:#6b7280'>{desc_cell}</small>" if desc_cell else '') + '</td>'
+            f"<td>{cat_cell}</td>"
+            f"<td style='color:{prio_color};font-weight:600'>{html.escape(prio_label)}</td>"
             f"<td>{html.escape(_fmt_dt(r['timeline_created_at'] or r['created_at']))}</td>"
             f"<td>{html.escape(_fmt_dt(r['timeline_started_at']))}</td>"
             f"<td>{html.escape(_fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at']))}</td>"
             '</tr>'
         )
 
-    body_rows = ''.join(tr_rows) if tr_rows else '<tr><td colspan="7">Aucune mission terminée.</td></tr>'
+    body_rows = ''.join(tr_rows) if tr_rows else '<tr><td colspan="7" style="text-align:center;color:#6b7280">Aucune mission terminée.</td></tr>'
     generated = datetime.now().strftime('%d/%m/%Y %H:%M')
+
+    # Bloc légende des catégories
+    legend_html = ''
+    if categories:
+        cat_items = ''.join(
+            f'<li><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{html.escape(c["couleur"])};margin-right:6px;vertical-align:middle;"></span>'
+            f'<strong>{html.escape(c["nom"])}</strong>'
+            + (f' — <span style="color:#555">{html.escape(c["description"])}</span>' if c.get('description') else '')
+            + '</li>'
+            for c in categories
+        )
+        legend_html = f'<section class="legend"><h2>Légende des catégories</h2><ul>{cat_items}</ul></section>'
+
     return f'''<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <title>Export missions terminées</title>
   <style>
-    body {{ font-family: Arial, sans-serif; margin: 24px; color: #111; }}
-    h1 {{ margin: 0 0 6px 0; font-size: 22px; }}
-    .meta {{ color: #555; margin-bottom: 16px; }}
-    table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }}
-    th {{ background: #f3f4f6; }}
+    body {{ font-family: Arial, sans-serif; margin: 24px; color: #111; font-size: 14px; }}
+    h1 {{ margin: 0 0 4px 0; font-size: 22px; }}
+    h2 {{ font-size: 15px; margin: 0 0 8px 0; }}
+    .meta {{ color: #555; margin-bottom: 20px; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 32px; }}
+    th, td {{ border: 1px solid #ddd; padding: 8px 10px; text-align: left; vertical-align: top; }}
+    th {{ background: #f3f4f6; font-weight: 700; }}
     tr:nth-child(even) td {{ background: #fafafa; }}
+    .legend {{ background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; }}
+    .legend ul {{ margin: 0; padding-left: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; }}
+    .legend li {{ font-size: 13px; }}
+    @media print {{ .legend {{ break-inside: avoid; }} }}
   </style>
 </head>
 <body>
   <h1>Missions terminées</h1>
-  <div class="meta">Généré le {generated} • Total: {len(rows)}</div>
+  <div class="meta">Généré le {generated} &nbsp;•&nbsp; Total&nbsp;: {len(rows)}</div>
+  {legend_html}
   <table>
     <thead>
       <tr>
-        <th>ID</th><th>Titre</th><th>Catégorie</th><th>Priorité</th><th>Créée</th><th>Début</th><th>Terminée</th>
+        <th>#</th><th>Titre / Description</th><th>Catégorie</th><th>Priorité</th><th>Créée</th><th>Début</th><th>Terminée</th>
       </tr>
     </thead>
     <tbody>{body_rows}</tbody>
@@ -280,21 +332,38 @@ def _build_simple_pdf(lines):
     return ''.join(pdf_parts + xref + [trailer]).encode('latin-1', 'replace')
 
 
-def _build_history_pdf(rows):
-    """Construit un PDF texte pour les missions terminées."""
+def _build_history_pdf(rows, categories=None):
+    """Construit un PDF texte pour les missions terminées avec légende des catégories."""
     prio_labels = {0: 'Normale', 1: 'Haute', 2: 'Urgente'}
+    cat_map = {c['nom']: c.get('description', '') for c in (categories or [])}
     lines = [
         'Export missions terminees',
         f"Genere le {datetime.now().strftime('%d/%m/%Y %H:%M')}",
         f'Total: {len(rows)}',
         '',
     ]
+
+    # Légende catégories
+    if categories:
+        lines.append('--- Categories ---')
+        for cat in categories:
+            desc = cat.get('description', '')
+            lines.append(f"{cat['nom']}" + (f': {desc}' if desc else ''))
+        lines.append('')
+
+    lines.append('--- Missions ---')
+    lines.append('')
     for r in rows:
+        cat_nom = r['categorie_nom'] or '—'
+        cat_def = cat_map.get(cat_nom, '')
         lines.append(f"[{r['id']}] {r['titre'] or ''}")
-        lines.append(f"Categorie: {r['categorie_nom'] or '—'} | Priorite: {prio_labels.get(r['priorite'], str(r['priorite']))}")
-        lines.append(f"Creee: {_fmt_dt(r['timeline_created_at'] or r['created_at'])}")
-        lines.append(f"Debut: {_fmt_dt(r['timeline_started_at'])}")
-        lines.append(f"Terminee: {_fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at'])}")
+        if r.get('description'):
+            lines.append(f"  Description: {r['description']}")
+        lines.append(f"  Categorie: {cat_nom}" + (f' ({cat_def})' if cat_def else ''))
+        lines.append(f"  Priorite: {prio_labels.get(r['priorite'], str(r['priorite']))}")
+        lines.append(f"  Creee: {_fmt_dt(r['timeline_created_at'] or r['created_at'])}")
+        lines.append(f"  Debut: {_fmt_dt(r['timeline_started_at'])}")
+        lines.append(f"  Terminee: {_fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at'])}")
         lines.append('')
 
     return _build_simple_pdf(lines)
@@ -347,7 +416,8 @@ def api_categories():
     try:
         rows = db.execute(
             '''
-            SELECT id, nom, couleur, ordre
+            SELECT id, nom, couleur, ordre,
+                   COALESCE(description, '') AS description
             FROM mission_categories
             WHERE actif = 1
             ORDER BY ordre, nom, id
@@ -364,6 +434,7 @@ def api_create_category():
     data = request.get_json() or {}
     nom = str(data.get('nom', '')).strip()
     couleur = _parse_color(data.get('couleur'), '#6b7280')
+    description = str(data.get('description', '')).strip()
 
     if not nom:
         return jsonify({'success': False, 'error': 'Le nom est requis'}), 400
@@ -375,13 +446,13 @@ def api_create_category():
         ).fetchone()
         ordre = int((max_ordre['max_ordre'] if max_ordre else 0) or 0) + 10
         cur = db.execute(
-            '''INSERT INTO mission_categories (nom, couleur, ordre)
-               VALUES (?, ?, ?)''',
-            (nom, couleur, ordre),
+            '''INSERT INTO mission_categories (nom, couleur, description, ordre)
+               VALUES (?, ?, ?, ?)''',
+            (nom, couleur, description, ordre),
         )
         db.commit()
         created = db.execute(
-            'SELECT id, nom, couleur, ordre FROM mission_categories WHERE id = ?',
+            'SELECT id, nom, couleur, ordre, COALESCE(description,\'\') AS description FROM mission_categories WHERE id = ?',
             (cur.lastrowid,),
         ).fetchone()
         return jsonify({'success': True, 'data': dict(created)}), 201
@@ -397,6 +468,7 @@ def api_update_category(category_id):
     data = request.get_json() or {}
     nom = str(data.get('nom', '')).strip()
     couleur = _parse_color(data.get('couleur'), '#6b7280')
+    description = str(data.get('description', '')).strip()
 
     if not nom:
         return jsonify({'success': False, 'error': 'Le nom est requis'}), 400
@@ -412,13 +484,13 @@ def api_update_category(category_id):
 
         db.execute(
             '''UPDATE mission_categories
-               SET nom = ?, couleur = ?, updated_at = datetime('now','localtime')
+               SET nom = ?, couleur = ?, description = ?, updated_at = datetime('now','localtime')
                WHERE id = ?''',
-            (nom, couleur, category_id),
+            (nom, couleur, description, category_id),
         )
         db.commit()
         updated = db.execute(
-            'SELECT id, nom, couleur, ordre FROM mission_categories WHERE id = ?',
+            'SELECT id, nom, couleur, ordre, COALESCE(description,\'\') AS description FROM mission_categories WHERE id = ?',
             (category_id,),
         ).fetchone()
         return jsonify({'success': True, 'data': dict(updated)})
@@ -506,19 +578,24 @@ def api_history_export():
     db = get_db()
     try:
         rows = _fetch_completed_missions(db)
+        categories = [
+            dict(r) for r in db.execute(
+                "SELECT nom, couleur, COALESCE(description,'') AS description FROM mission_categories WHERE actif=1 ORDER BY ordre, nom"
+            ).fetchall()
+        ]
         stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
 
         if export_format == 'csv':
-            payload = _build_history_csv(rows)
+            payload = _build_history_csv(rows, categories)
             filename = f'missions-terminees-{stamp}.csv'
             return Response(
                 payload,
-                mimetype='text/csv; charset=utf-8',
+                mimetype='text/csv; charset=utf-8-sig',
                 headers={'Content-Disposition': f'attachment; filename="{filename}"'},
             )
 
         if export_format == 'html':
-            payload = _build_history_html(rows)
+            payload = _build_history_html(rows, categories)
             filename = f'missions-terminees-{stamp}.html'
             return Response(
                 payload,
@@ -526,13 +603,92 @@ def api_history_export():
                 headers={'Content-Disposition': f'attachment; filename="{filename}"'},
             )
 
-        payload = _build_history_pdf(rows)
+        payload = _build_history_pdf(rows, categories)
         filename = f'missions-terminees-{stamp}.pdf'
         return Response(
             payload,
             mimetype='application/pdf',
             headers={'Content-Disposition': f'attachment; filename="{filename}"'},
         )
+    finally:
+        db.close()
+
+
+@bp.route('/api/stats')
+def api_stats():
+    """Statistiques globales des missions."""
+    db = get_db()
+    try:
+        # Totaux par statut
+        statut_rows = db.execute(
+            "SELECT statut, COUNT(*) AS cnt FROM missions GROUP BY statut"
+        ).fetchall()
+        by_statut = {r['statut']: r['cnt'] for r in statut_rows}
+
+        # Totaux par priorité
+        prio_rows = db.execute(
+            "SELECT priorite, COUNT(*) AS cnt FROM missions GROUP BY priorite"
+        ).fetchall()
+        prio_labels = {0: 'normale', 1: 'haute', 2: 'urgente'}
+        by_prio = {prio_labels.get(r['priorite'], str(r['priorite'])): r['cnt'] for r in prio_rows}
+
+        # Totaux par catégorie (toutes missions)
+        cat_rows = db.execute(
+            '''
+            SELECT mc.nom, mc.couleur, COALESCE(mc.description,'') AS description,
+                   COUNT(m.id) AS total,
+                   SUM(CASE WHEN m.statut='a_faire' THEN 1 ELSE 0 END) AS a_faire,
+                   SUM(CASE WHEN m.statut='en_cours' THEN 1 ELSE 0 END) AS en_cours,
+                   SUM(CASE WHEN m.statut='termine' THEN 1 ELSE 0 END) AS termine
+            FROM mission_categories mc
+            LEFT JOIN missions m ON m.category_id = mc.id
+            WHERE mc.actif = 1
+            GROUP BY mc.id
+            ORDER BY mc.ordre, mc.nom
+            '''
+        ).fetchall()
+
+        # Missions en retard (date_echeance dépassée, non terminées)
+        overdue_count = db.execute(
+            "SELECT COUNT(*) AS cnt FROM missions WHERE statut != 'termine' AND date_echeance IS NOT NULL AND date_echeance < date('now')"
+        ).fetchone()['cnt']
+
+        # Durée moyenne en jours (créée → terminée) sur les 30 dernières terminées
+        avg_duration_row = db.execute(
+            f'''
+            SELECT AVG(
+                julianday(COALESCE(
+                    (SELECT MIN(e.created_at) FROM mission_events e
+                     WHERE e.mission_id = m.id AND e.to_statut = 'termine'),
+                    m.updated_at
+                )) -
+                julianday(COALESCE(
+                    (SELECT MIN(e.created_at) FROM mission_events e
+                     WHERE e.mission_id = m.id AND e.event_type = 'created'),
+                    m.created_at
+                ))
+            ) AS avg_days
+            FROM missions m
+            WHERE m.statut = 'termine'
+            ORDER BY m.id DESC
+            LIMIT 30
+            '''
+        ).fetchone()
+        avg_days = round(float(avg_duration_row['avg_days']), 1) if avg_duration_row and avg_duration_row['avg_days'] is not None else None
+
+        total = sum(by_statut.values())
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'total': total,
+                'by_statut': by_statut,
+                'by_prio': by_prio,
+                'by_category': [dict(r) for r in cat_rows],
+                'overdue': overdue_count,
+                'avg_completion_days': avg_days,
+            },
+        })
     finally:
         db.close()
 

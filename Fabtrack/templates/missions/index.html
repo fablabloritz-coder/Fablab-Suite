@@ -216,7 +216,7 @@
     border-radius: 8px;
     padding: 0.5rem 0.65rem;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.6rem;
 }
 .category-color-swatch {
@@ -224,11 +224,68 @@
     height: 1rem;
     border-radius: 50%;
     border: 1px solid rgba(0,0,0,0.2);
+    flex-shrink: 0;
+    margin-top: 3px;
 }
 .category-item-actions {
     margin-left: auto;
     display: flex;
     gap: 0.35rem;
+    flex-shrink: 0;
+}
+.category-desc {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    margin-top: 0.1rem;
+    line-height: 1.35;
+}
+/* Stats */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+}
+.stat-card {
+    background: var(--bs-tertiary-bg);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    text-align: center;
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.stat-value {
+    font-size: 1.7rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.stat-label {
+    font-size: 0.72rem;
+    color: var(--bs-secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.2rem;
+}
+.cat-stats-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    border: 1px solid var(--bs-border-color-translucent);
+    margin-bottom: 0.35rem;
+    font-size: 0.82rem;
+}
+.cat-stats-row:last-child { margin-bottom: 0; }
+.cat-stats-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--bs-border-color);
+    border-radius: 9999px;
+    overflow: hidden;
+}
+.cat-stats-bar-fill {
+    height: 100%;
+    border-radius: 9999px;
+    transition: width 0.4s;
 }
 </style>
 {% endblock %}
@@ -240,12 +297,28 @@
         <small class="text-muted">Gestion des tâches et missions du FabLab</small>
     </div>
     <div class="d-flex gap-2">
+        <button class="btn btn-outline-info" onclick="loadStats()" title="Statistiques missions">
+            <i class="bi bi-bar-chart me-1"></i>Stats
+        </button>
         <button class="btn btn-outline-secondary" onclick="openCategoriesModal()">
             <i class="bi bi-tags me-1"></i>Catégories
         </button>
         <button class="btn btn-success" onclick="openCreateModal()">
             <i class="bi bi-plus-lg me-1"></i>Nouvelle mission
         </button>
+    </div>
+</div>
+
+<!-- Panneau statistiques (masqué par défaut) -->
+<div class="card mt-3 d-none" id="statsPanel">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Statistiques des missions</h6>
+        <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('statsPanel').classList.add('d-none')">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+    <div class="card-body" id="statsBody">
+        <div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>
     </div>
 </div>
 
@@ -380,11 +453,11 @@
             <div class="modal-body">
                 <input type="hidden" id="categoryId">
                 <div class="row g-2 align-items-end mb-3">
-                    <div class="col-md-7">
+                    <div class="col-md-5">
                         <label class="form-label fw-semibold">Nom</label>
                         <input type="text" class="form-control" id="categoryName" maxlength="80" placeholder="Ex: Maintenance">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label fw-semibold">Couleur</label>
                         <input type="color" class="form-control form-control-color w-100" id="categoryColor" value="#6b7280">
                     </div>
@@ -393,6 +466,12 @@
                             <i class="bi bi-check-lg me-1"></i>Enregistrer
                         </button>
                     </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Définition <small class="text-muted fw-normal">(optionnelle)</small></label>
+                    <textarea class="form-control" id="categoryDesc" rows="2" maxlength="500"
+                        placeholder="Décrivez les types de missions qui appartiennent à cette catégorie…"></textarea>
+                    <div class="form-text">Cette définition apparaîtra en infobulle sur les cartes et dans les exports.</div>
                 </div>
                 <div class="category-list" id="categoryList"></div>
             </div>
@@ -454,9 +533,9 @@ function renderCategoryList() {
     list.innerHTML = missionCategories.map((c) => `
         <div class="category-item">
             <span class="category-color-swatch" style="background:${c.couleur};"></span>
-            <div>
+            <div class="flex-grow-1">
                 <div class="fw-semibold">${escapeHtml(c.nom)}</div>
-                <small class="text-muted">${escapeHtml(c.couleur)}</small>
+                ${c.description ? `<div class="category-desc">${escapeHtml(c.description)}</div>` : '<div class="category-desc text-muted fst-italic">Aucune définition</div>'}
             </div>
             <div class="category-item-actions">
                 <button class="btn btn-sm btn-outline-secondary" onclick="editCategory(${c.id})" title="Modifier">
@@ -480,6 +559,7 @@ function resetCategoryForm() {
     document.getElementById('categoryId').value = '';
     document.getElementById('categoryName').value = '';
     document.getElementById('categoryColor').value = '#6b7280';
+    document.getElementById('categoryDesc').value = '';
 }
 
 function editCategory(id) {
@@ -488,18 +568,21 @@ function editCategory(id) {
     document.getElementById('categoryId').value = c.id;
     document.getElementById('categoryName').value = c.nom;
     document.getElementById('categoryColor').value = c.couleur || '#6b7280';
+    document.getElementById('categoryDesc').value = c.description || '';
+    document.getElementById('categoryName').focus();
 }
 
 async function saveCategory() {
     const id = document.getElementById('categoryId').value;
     const nom = document.getElementById('categoryName').value.trim();
     const couleur = document.getElementById('categoryColor').value;
+    const description = document.getElementById('categoryDesc').value.trim();
     if (!nom) {
         showToast('Le nom de catégorie est requis', 'warning');
         return;
     }
 
-    const payload = { nom, couleur };
+    const payload = { nom, couleur, description };
     const url = id ? `${API}/categories/${id}` : `${API}/categories`;
     const method = id ? 'PUT' : 'POST';
 
@@ -675,7 +758,7 @@ function cardHtml(m) {
 
     const desc = m.description ? `<div class="mission-desc">${escapeHtml(m.description)}</div>` : '';
     const category = m.categorie_nom
-        ? `<span class="mission-category"><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
+        ? `<span class="mission-category" ${m.categorie_couleur ? '' : ''} ${getCategoryTitle(m.categorie_nom)}><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
         : '';
     const footer = footerBadges ? `<div class="mission-footer">${footerBadges}${actions}</div>` : `<div class="mission-footer">${actions}</div>`;
     const cardStyle = m.categorie_couleur && isHexColor(m.categorie_couleur)
@@ -839,5 +922,88 @@ function escapeHtml(s) {
     d.textContent = s;
     return d.innerHTML;
 }
-</script>
+
+function getCategoryTitle(nom) {
+    if (!nom) return '';
+    const cat = missionCategories.find((c) => c.nom === nom);
+    if (!cat || !cat.description) return '';
+    return `title="${escapeHtml(cat.description)}"`;
+}
+
+async function loadStats() {
+    const panel = document.getElementById('statsPanel');
+    const body = document.getElementById('statsBody');
+    panel.classList.remove('d-none');
+    body.innerHTML = '<div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>';
+    try {
+        const r = await fetch(`${API}/stats`);
+        const j = await r.json();
+        if (!j.success) { body.innerHTML = '<div class="text-danger p-3">Erreur de chargement.</div>'; return; }
+        renderStats(j.data);
+    } catch (e) {
+        body.innerHTML = '<div class="text-danger p-3">Erreur réseau.</div>';
+    }
+}
+
+function renderStats(data) {
+    const body = document.getElementById('statsBody');
+    const bs = data.by_statut || {};
+    const bp = data.by_prio || {};
+    const total = data.total || 0;
+    const overdue = data.overdue || 0;
+    const avgDays = data.avg_completion_days;
+
+    const statCards = [
+        { value: total, label: 'Total missions', color: '#6366f1' },
+        { value: bs.a_faire || 0, label: 'À faire', color: '#6366f1' },
+        { value: bs.en_cours || 0, label: 'En cours', color: '#ea580c' },
+        { value: bs.termine || 0, label: 'Terminées', color: '#16a34a' },
+        { value: overdue, label: 'En retard', color: '#dc2626' },
+        { value: avgDays !== null && avgDays !== undefined ? avgDays + 'j' : '—', label: 'Durée moyenne', color: '#0ea5e9' },
+    ];
+
+    const statsGrid = statCards.map(s =>
+        `<div class="stat-card"><div class="stat-value" style="color:${s.color}">${s.value}</div><div class="stat-label">${s.label}</div></div>`
+    ).join('');
+
+    const catRows = (data.by_category || []).map(cat => {
+        const catTotal = cat.total || 0;
+        const pct = total > 0 ? Math.round((catTotal / total) * 100) : 0;
+        const descHtml = cat.description
+            ? `<div style="font-size:0.72rem;color:var(--bs-secondary-color);line-height:1.3;margin-top:1px">${escapeHtml(cat.description)}</div>`
+            : '';
+        return `
+        <div class="cat-stats-row">
+            <span style="width:10px;height:10px;border-radius:50%;background:${cat.couleur};flex-shrink:0"></span>
+            <div style="min-width:110px">
+                <span class="fw-semibold">${escapeHtml(cat.nom)}</span>${descHtml}
+            </div>
+            <div class="cat-stats-bar"><div class="cat-stats-bar-fill" style="width:${pct}%;background:${cat.couleur}"></div></div>
+            <span style="min-width:28px;text-align:right;font-weight:700">${catTotal}</span>
+            <span style="font-size:0.72rem;color:var(--bs-secondary-color);min-width:60px">
+                ✅${cat.termine} 🔄${cat.en_cours} ⬜${cat.a_faire}
+            </span>
+        </div>`;
+    }).join('');
+
+    const prioHtml = [
+        { key: 'urgente', label: 'Urgente', color: '#dc2626' },
+        { key: 'haute', label: 'Haute', color: '#d97706' },
+        { key: 'normale', label: 'Normale', color: '#6b7280' },
+    ].map(p => `<span class="badge" style="background:${p.color};margin-right:4px">${p.label}: ${bp[p.key] || 0}</span>`).join('');
+
+    body.innerHTML = `
+        <div class="stats-grid mb-3">${statsGrid}</div>
+        <div class="row g-3">
+            <div class="col-md-7">
+                <div class="fw-semibold mb-2 small text-uppercase text-muted">Par catégorie</div>
+                ${catRows || '<div class="text-muted">Aucune catégorie.</div>'}
+            </div>
+            <div class="col-md-5">
+                <div class="fw-semibold mb-2 small text-uppercase text-muted">Par priorité</div>
+                <div>${prioHtml}</div>
+            </div>
+        </div>
+    `;
+}</script>
 {% endblock %}
