@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "2.3.4",
+      "date": "2026-05-08",
+      "title": "Missions enrichies: definitions, exports et statistiques",
+      "notes": [
+        "Chaque categorie de mission peut maintenant avoir une definition editable pour clarifier son usage.",
+        "Les badges de categorie affichent cette definition en infobulle dans le kanban.",
+        "Les exports CSV, HTML et PDF incluent des legendes de categories et des details enrichis.",
+        "Un nouveau panneau Stats resume les missions par statut, priorite, categorie, retard et duree moyenne de completion."
+      ]
+    },
+    {
       "version": "2.3.3",
       "date": "2026-05-01",
       "title": "Coherence occurrences par type et materiau",
