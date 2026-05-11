@@ -547,6 +547,7 @@ def get_upcoming_reservations(conn, now_dt: datetime | None = None, limit: int =
         JOIN personnes pe ON pe.id = r.personne_id
         LEFT JOIN inventaire inv ON inv.id = r.materiel_id
                 WHERE r.statut IN ('demande', 'confirmee', 'expiree')
+                    AND r.pret_id IS NULL
                 ORDER BY
                     CASE WHEN r.date_reservation <= ? THEN 0 ELSE 1 END ASC,
                     CASE WHEN r.date_reservation <= ? THEN r.date_reservation END DESC,
