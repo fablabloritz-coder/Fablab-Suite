@@ -70,7 +70,7 @@
             <a class="btn btn-outline-secondary" href="{{ url_for('reservations.reservations') }}#planning-reservations">
                 Annuler
             </a>
-            {% if is_admin and reservation.statut in ['confirmee', 'demande'] %}
+            {% if is_admin and reservation.statut in ['confirmee', 'demande', 'expiree'] %}
             <form method="POST"
                   action="{{ url_for('reservations.annuler_reservation', reservation_id=reservation.id) }}"
                   onsubmit="return confirm('Annuler cette réservation ?')"

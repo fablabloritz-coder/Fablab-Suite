@@ -1,5 +1,6 @@
 """PretGo — Blueprint : core"""
 from flask import Blueprint, render_template, request
+from datetime import datetime
 from database import get_setting
 from reservations_logic import get_reservation_risks, get_upcoming_reservations
 from utils import get_app_db, calcul_depassement_heures
@@ -9,6 +10,7 @@ bp = Blueprint('core', __name__)
 @bp.route('/')
 def index():
     conn = get_app_db()
+    now_dt = datetime.now()
     upcoming_reservations = get_upcoming_reservations(conn, limit=5)
     reservation_risks = get_reservation_risks(conn, limit=5)
 
@@ -40,7 +42,7 @@ def index():
             'SELECT COUNT(*) FROM personnes WHERE actif = 1'
         ).fetchone()[0],
         'reservations': conn.execute(
-            "SELECT COUNT(*) FROM reservations WHERE statut IN ('demande', 'confirmee')"
+            "SELECT COUNT(*) FROM reservations WHERE statut IN ('demande', 'confirmee', 'expiree')"
         ).fetchone()[0],
     }
 
@@ -60,6 +62,7 @@ def index():
         reservation_risks=reservation_risks,
         stats=stats,
         derniers_retours=derniers_retours,
+        now_dt=now_dt,
         page=page,
         total_pages=total_pages
     )

@@ -146,7 +146,7 @@ def convertir_reservation(reservation_id):
         flash('Réservation introuvable.', 'danger')
         return redirect(url_for('reservations.reservations'))
 
-    if row['statut'] not in ('confirmee', 'demande'):
+    if row['statut'] not in ('confirmee', 'demande', 'expiree'):
         flash('Cette réservation ne peut plus être convertie en prêt.', 'warning')
         return redirect(url_for('reservations.reservations'))
 
@@ -445,7 +445,7 @@ def modifier_reservation(reservation_id):
         flash('Réservation introuvable.', 'danger')
         return redirect(url_for('reservations.reservations'))
 
-    if row['statut'] not in ('demande', 'confirmee'):
+    if row['statut'] not in ('demande', 'confirmee', 'expiree'):
         flash('Cette réservation ne peut plus être modifiée.', 'warning')
         return redirect(url_for('reservations.reservations'))
 
@@ -601,7 +601,7 @@ def annuler_reservation(reservation_id):
         flash('Réservation introuvable.', 'danger')
         return redirect(url_for('reservations.reservations'))
 
-    if row['statut'] in ('annulee', 'expiree'):
+    if row['statut'] in ('annulee',):
         flash('Cette réservation est déjà clôturée.', 'warning')
         return redirect(url_for('reservations.reservations'))
 
