@@ -172,13 +172,11 @@ def _build_history_html(rows, categories=None):
         cat_nom = r['categorie_nom'] or ''
         cat_info = cat_map.get(cat_nom, {})
         cat_color = cat_info.get('couleur', '#6b7280')
-        cat_desc = cat_info.get('description', '')
         cat_cell = (
             f'<span style="display:inline-flex;align-items:center;gap:4px;">'
             f'<span style="width:9px;height:9px;border-radius:50%;background:{html.escape(cat_color)};flex-shrink:0;"></span>'
             f'{html.escape(cat_nom or "—")}'
             f'</span>'
-            + (f'<br><small style="color:#6b7280">{html.escape(cat_desc)}</small>' if cat_desc else '')
         )
         prio = r['priorite']
         prio_label = prio_labels.get(prio, str(prio))
