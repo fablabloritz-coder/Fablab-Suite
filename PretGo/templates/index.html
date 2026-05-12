@@ -146,7 +146,9 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if r.statut == 'confirmee' %}
+                            {% if r.date_reservation <= now_dt.strftime('%Y-%m-%d %H:%M:%S') %}
+                            <span class="badge bg-success">Disponible</span>
+                            {% elif r.statut == 'confirmee' %}
                             <span class="badge bg-primary">Confirmée</span>
                             {% else %}
                             <span class="badge bg-warning text-dark">Demande</span>

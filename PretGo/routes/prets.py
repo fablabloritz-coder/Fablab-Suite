@@ -153,7 +153,7 @@ def nouveau_pret():
             ''',
             (reservation_id,),
         ).fetchone()
-        if reservation_prefill and reservation_prefill['statut'] not in ('confirmee', 'demande'):
+        if reservation_prefill and reservation_prefill['statut'] not in ('confirmee', 'demande', 'expiree'):
             flash('Cette réservation ne peut plus être convertie en prêt.', 'warning')
             return redirect(url_for('reservations.reservations'))
         reservation_prefill_items = _extract_reservation_items(reservation_prefill)

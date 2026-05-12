@@ -304,7 +304,7 @@
                         <td>{{ r.notes or '—' }}</td>
                         {% if is_admin %}
                         <td>
-                            {% if r.statut in ['confirmee', 'demande'] %}
+                            {% if r.statut in ['confirmee', 'demande', 'expiree'] %}
                             <div class="d-flex flex-wrap gap-2">
                                 <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reservations.modifier_reservation', reservation_id=r.id) }}" onclick="event.stopPropagation();">
                                     <i class="bi bi-pencil-square"></i> Modifier

@@ -234,18 +234,8 @@ def _risk_active_loan_count_for_category(conn, category: str, latest_return_allo
 
 
 def expire_old_reservations(conn, now_dt: datetime | None = None) -> None:
-    """Marque automatiquement comme expirées les réservations passées."""
-    if now_dt is None:
-        now_dt = datetime.now()
-    conn.execute(
-        """
-        UPDATE reservations
-        SET statut = 'expiree', updated_at = CURRENT_TIMESTAMP
-        WHERE statut IN ('demande', 'confirmee')
-          AND COALESCE(date_fin_reservation, date_reservation) < ?
-        """,
-        (format_db_datetime(now_dt),),
-    )
+    """Conservé pour compatibilité: plus d'expiration automatique des réservations."""
+    return None
 
 
 def find_reservation_conflicts_for_loan(
@@ -548,6 +538,7 @@ def get_upcoming_reservations(conn, now_dt: datetime | None = None, limit: int =
     """Retourne les prochaines réservations actives."""
     if now_dt is None:
         now_dt = datetime.now()
+        now_str = format_db_datetime(now_dt)
     return conn.execute(
         """
         SELECT r.*, pe.nom, pe.prenom, pe.categorie,
@@ -555,12 +546,15 @@ def get_upcoming_reservations(conn, now_dt: datetime | None = None, limit: int =
         FROM reservations r
         JOIN personnes pe ON pe.id = r.personne_id
         LEFT JOIN inventaire inv ON inv.id = r.materiel_id
-        WHERE r.statut IN ('demande', 'confirmee')
-          AND r.date_reservation >= ?
-        ORDER BY r.date_reservation ASC
+                WHERE r.statut IN ('demande', 'confirmee', 'expiree')
+                    AND r.pret_id IS NULL
+                ORDER BY
+                    CASE WHEN r.date_reservation <= ? THEN 0 ELSE 1 END ASC,
+                    CASE WHEN r.date_reservation <= ? THEN r.date_reservation END DESC,
+                    CASE WHEN r.date_reservation > ? THEN r.date_reservation END ASC
         LIMIT ?
         """,
-        (format_db_datetime(now_dt), limit),
+                (now_str, now_str, now_str, limit),
     ).fetchall()
 
 
