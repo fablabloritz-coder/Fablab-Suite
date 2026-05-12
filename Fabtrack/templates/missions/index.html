@@ -265,9 +265,10 @@
     margin-top: 0.2rem;
 }
 .cat-stats-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 12px minmax(180px, 1.6fr) minmax(200px, 2.4fr) 42px 110px;
     align-items: center;
-    gap: 0.5rem;
+    column-gap: 0.6rem;
     padding: 0.4rem 0.6rem;
     border-radius: 6px;
     border: 1px solid var(--bs-border-color-translucent);
@@ -275,6 +276,15 @@
     font-size: 0.82rem;
 }
 .cat-stats-row:last-child { margin-bottom: 0; }
+.cat-stats-label {
+    min-width: 0;
+}
+.cat-stats-name {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .cat-stats-bar {
     flex: 1;
     height: 6px;
@@ -286,6 +296,86 @@
     height: 100%;
     border-radius: 9999px;
     transition: width 0.4s;
+}
+.stats-split {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+}
+.stats-donut-wrap {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    gap: 0.75rem;
+}
+.stats-donut-svg {
+    width: 160px;
+    height: 160px;
+}
+.stats-donut-center {
+    font-size: 1.15rem;
+    font-weight: 800;
+    fill: var(--bs-body-color);
+    text-anchor: middle;
+    dominant-baseline: middle;
+}
+.stats-donut-sub {
+    font-size: 0.62rem;
+    font-weight: 600;
+    fill: var(--bs-secondary-color);
+    text-anchor: middle;
+}
+.stats-donut-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.stats-donut-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 8px;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+}
+.stats-donut-item-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+}
+.stats-donut-item-label span:last-child {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.stats-donut-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: 0 0 9px;
+}
+.stats-donut-item-value {
+    font-weight: 700;
+    white-space: nowrap;
+}
+@media (max-width: 992px) {
+    .cat-stats-row {
+        grid-template-columns: 12px minmax(120px, 1fr) 1fr 36px;
+        row-gap: 0.25rem;
+    }
+    .cat-stats-row .cat-stats-detail {
+        grid-column: 2 / span 3;
+    }
+    .stats-donut-wrap {
+        grid-template-columns: 1fr;
+        justify-items: center;
+    }
+    .stats-donut-legend {
+        width: 100%;
+    }
 }
 </style>
 {% endblock %}
@@ -975,12 +1065,12 @@ function renderStats(data) {
         return `
         <div class="cat-stats-row">
             <span style="width:10px;height:10px;border-radius:50%;background:${cat.couleur};flex-shrink:0"></span>
-            <div style="min-width:110px">
-                <span class="fw-semibold">${escapeHtml(cat.nom)}</span>${descHtml}
+            <div class="cat-stats-label" title="${escapeHtml(cat.nom)}">
+                <span class="fw-semibold cat-stats-name">${escapeHtml(cat.nom)}</span>${descHtml}
             </div>
             <div class="cat-stats-bar"><div class="cat-stats-bar-fill" style="width:${pct}%;background:${cat.couleur}"></div></div>
             <span style="min-width:28px;text-align:right;font-weight:700">${catTotal}</span>
-            <span style="font-size:0.72rem;color:var(--bs-secondary-color);min-width:60px">
+            <span class="cat-stats-detail" style="font-size:0.72rem;color:var(--bs-secondary-color);min-width:60px">
                 ✅${cat.termine} 🔄${cat.en_cours} ⬜${cat.a_faire}
             </span>
         </div>`;
@@ -992,6 +1082,8 @@ function renderStats(data) {
         { key: 'normale', label: 'Normale', color: '#6b7280' },
     ].map(p => `<span class="badge" style="background:${p.color};margin-right:4px">${p.label}: ${bp[p.key] || 0}</span>`).join('');
 
+    const donut = buildStatsDonut(bs, total);
+
     body.innerHTML = `
         <div class="stats-grid mb-3">${statsGrid}</div>
         <div class="row g-3">
@@ -1000,10 +1092,71 @@ function renderStats(data) {
                 ${catRows || '<div class="text-muted">Aucune catégorie.</div>'}
             </div>
             <div class="col-md-5">
-                <div class="fw-semibold mb-2 small text-uppercase text-muted">Par priorité</div>
-                <div>${prioHtml}</div>
+                <div class="stats-split">
+                    <div>
+                        <div class="fw-semibold mb-2 small text-uppercase text-muted">Par priorité</div>
+                        <div>${prioHtml}</div>
+                    </div>
+                    <div>
+                        <div class="fw-semibold mb-2 small text-uppercase text-muted">Répartition missions (camembert)</div>
+                        ${donut}
+                    </div>
+                </div>
             </div>
         </div>
     `;
-}</script>
+}
+
+function buildStatsDonut(byStatut, total) {
+    const slices = [
+        { label: 'Terminées', value: Number(byStatut.termine || 0), color: '#16a34a' },
+        { label: 'En cours', value: Number(byStatut.en_cours || 0), color: '#ea580c' },
+        { label: 'À faire', value: Number(byStatut.a_faire || 0), color: '#6366f1' },
+    ];
+
+    if (!total) {
+        return '<div class="text-muted">Aucune mission à afficher.</div>';
+    }
+
+    const cx = 52;
+    const cy = 52;
+    const r = 38;
+    const c = 2 * Math.PI * r;
+    let offset = 0;
+
+    const circles = slices.map((s) => {
+        const ratio = s.value / total;
+        const len = c * ratio;
+        const dash = `${len} ${Math.max(c - len, 0)}`;
+        const circle = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="14" stroke-dasharray="${dash}" stroke-dashoffset="${-offset}" stroke-linecap="butt" transform="rotate(-90 ${cx} ${cy})"></circle>`;
+        offset += len;
+        return circle;
+    }).join('');
+
+    const legend = slices.map((s) => {
+        const pct = total > 0 ? Math.round((s.value / total) * 100) : 0;
+        return `
+            <div class="stats-donut-item">
+                <div class="stats-donut-item-label">
+                    <span class="stats-donut-dot" style="background:${s.color}"></span>
+                    <span>${s.label}</span>
+                </div>
+                <div class="stats-donut-item-value">${s.value} (${pct}%)</div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="stats-donut-wrap">
+            <svg viewBox="0 0 104 104" class="stats-donut-svg" role="img" aria-label="Répartition des missions">
+                <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bs-border-color)" stroke-width="14"></circle>
+                ${circles}
+                <text x="${cx}" y="${cy}" class="stats-donut-center">${total}</text>
+                <text x="${cx}" y="${cy + 13}" class="stats-donut-sub">missions</text>
+            </svg>
+            <div class="stats-donut-legend">${legend}</div>
+        </div>
+    `;
+}
+</script>
 {% endblock %}
