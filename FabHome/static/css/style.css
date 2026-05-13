@@ -1101,10 +1101,10 @@ body.edit-mode .group-card {
     border: 1px solid var(--fh-card-border);
     border-radius: 16px;
     backdrop-filter: blur(12px);
-    padding: 16px;
+    padding: clamp(6px, calc(var(--grid-cell-size, 104px) * 0.12), 16px);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    overflow: auto;
+    overflow: hidden;
     transition: box-shadow 0.2s;
 }
 .grid-widget-card:hover {
@@ -1220,7 +1220,7 @@ body.edit-mode .group-card {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: clamp(2px, calc(var(--grid-cell-size, 104px) * 0.04), 8px);
     text-decoration: none;
     color: var(--fh-text);
     width: 100%;
@@ -1228,22 +1228,24 @@ body.edit-mode .group-card {
 }
 .gw-shortcut-link:hover { color: var(--fh-text); }
 .gw-shortcut-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 14px;
+    width: clamp(28px, calc(var(--grid-cell-size, 104px) * 0.48), 56px);
+    height: clamp(28px, calc(var(--grid-cell-size, 104px) * 0.48), 56px);
+    border-radius: clamp(7px, calc(var(--grid-cell-size, 104px) * 0.12), 14px);
     border: 1px solid var(--fh-card-border);
     background: rgba(255,255,255,0.06);
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--fh-accent);
+    flex-shrink: 0;
 }
 .gw-shortcut-icon i,
-.gw-shortcut-icon span { font-size: 1.5rem; line-height: 1; }
-.gw-shortcut-icon img { width: 30px; height: 30px; object-fit: contain; }
+.gw-shortcut-icon span { font-size: clamp(0.9rem, calc(var(--grid-cell-size, 104px) * 0.22), 1.5rem); line-height: 1; }
+.gw-shortcut-icon img { width: clamp(14px, calc(var(--grid-cell-size, 104px) * 0.26), 30px); height: clamp(14px, calc(var(--grid-cell-size, 104px) * 0.26), 30px); object-fit: contain; }
 .gw-shortcut-label {
     text-align: center;
     font-weight: 500;
+    font-size: clamp(0.55rem, calc(var(--grid-cell-size, 104px) * 0.1), 0.85rem);
     line-height: 1.25;
     max-width: 100%;
     white-space: nowrap;
@@ -1332,11 +1334,19 @@ body.edit-mode .group-card {
 
 /* ── FabLab Suite Widget ─────────────── */
 
+.gw-fabsuite {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-align: left;
+}
 .gw-fabsuite-header {
     display: flex; align-items: center; gap: 0.5rem;
     padding: 0.5rem 0.75rem;
     font-weight: 600; font-size: 0.95rem;
     border-bottom: 1px solid var(--fh-border);
+    flex-shrink: 0;
 }
 .gw-fabsuite-header i { color: var(--fh-accent); font-size: 1.1rem; }
 .gw-fabsuite-header span { flex: 1; }
@@ -1346,7 +1356,7 @@ body.edit-mode .group-card {
 .gw-fabsuite-apps {
     display: flex; flex-direction: column; gap: 0.35rem;
     padding: 0.5rem 0.75rem;
-    overflow-y: auto; max-height: calc(100% - 3rem);
+    overflow-y: auto; flex: 1;
 }
 
 .suite-app-card {
