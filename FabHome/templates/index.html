@@ -336,17 +336,18 @@
             </div>
 
             <div class="palette-section">
-                <div class="palette-label">Taille de la grille</div>
+                <div class="palette-label">Taille de la grille <span class="badge bg-secondary ms-1" style="font-size:.65rem">16:9</span></div>
                 <div class="grid-size-ctrl">
                     <label>Col</label>
-                    <input type="number" id="gridColsInput" min="2" max="24"
-                           value="{{ settings.get('grid_cols', '4') }}" class="form-control form-control-sm">
+                    <input type="number" id="gridColsInput" min="16" max="64" step="16"
+                           value="{{ settings.get('grid_cols', '16') }}" class="form-control form-control-sm">
                 </div>
                 <div class="grid-size-ctrl">
                     <label>Lig</label>
-                    <input type="number" id="gridRowsInput" min="1" max="16"
-                           value="{{ settings.get('grid_rows', '3') }}" class="form-control form-control-sm">
+                    <input type="number" id="gridRowsInput" readonly
+                           value="{{ settings.get('grid_rows', '9') }}" class="form-control form-control-sm" style="opacity:.6;cursor:default;">
                 </div>
+                <div id="gridSizeInfo" class="text-center mt-1" style="font-size:.7rem;opacity:.6">{{ settings.get('grid_cols', '16') }}×{{ settings.get('grid_rows', '9') }} cellules</div>
                 <button class="btn btn-sm btn-outline-light w-100 mt-2" id="applyGridSize">
                     <i class="bi bi-check-lg"></i> Appliquer
                 </button>

@@ -114,9 +114,29 @@
        ══════════════════════════════════════ */
     var gridBoard = qs('#gridBoard');
     var highlight = qs('#gridHighlight');
-    var gridCols = parseInt(PAGE_DATA.settings.grid_cols) || 4;
-    var gridRows = parseInt(PAGE_DATA.settings.grid_rows) || 3;
+    var gridCols = parseInt(PAGE_DATA.settings.grid_cols) || 16;
+    var gridRows = parseInt(PAGE_DATA.settings.grid_rows) || 9;
     var occupiedMap = {};
+    /* ── Cellules carrées : min(largeur, hauteur) pour tenir dans la fenêtre ── */
+    function updateSquareCells() {
+        if (!gridBoard) return;
+        var gapPx = parseFloat(getComputedStyle(gridBoard).columnGap) || 16;
+        /* Taille basée sur la largeur disponible */
+        var byWidth  = Math.floor((gridBoard.offsetWidth  - (gridCols - 1) * gapPx) / gridCols);
+        /* Taille basée sur la hauteur viewport (88 % pour laisser place navbar + palette) */
+        var vhAvail  = Math.floor(window.innerHeight * 0.88 - (gridRows - 1) * gapPx);
+        var byHeight = Math.floor(vhAvail / gridRows);
+        var cellSize = Math.min(byWidth, byHeight);
+        if (cellSize > 0) gridBoard.style.setProperty('--grid-cell-size', cellSize + 'px');
+    }
+    if (gridBoard) {
+        if (typeof ResizeObserver !== 'undefined') {
+            new ResizeObserver(updateSquareCells).observe(gridBoard);
+        } else {
+            window.addEventListener('resize', updateSquareCells);
+        }
+        updateSquareCells();
+    }
     function buildOccupiedMap() {
         occupiedMap = {};
         PAGE_DATA.groups.forEach(function (g) {
@@ -1111,13 +1131,29 @@
     /* ══════════════════════════════════════
        TAILLE DE LA GRILLE (palette)
        ══════════════════════════════════════ */
+    var gridColsInput = qs('#gridColsInput');
+    var gridRowsInput = qs('#gridRowsInput');
+    /* Recalcul auto lignes = round(cols × 9/16) */
+    function syncGridRatio() {
+        if (!gridColsInput || !gridRowsInput) return;
+        var cols = parseInt(gridColsInput.value) || 16;
+        cols = Math.max(16, Math.min(64, cols));
+        var rows = Math.round(cols * 9 / 16);
+        gridRowsInput.value = rows;
+        var info = qs('#gridSizeInfo');
+        if (info) info.textContent = cols + '\u00d7' + rows + ' cellules';
+    }
+    if (gridColsInput) {
+        gridColsInput.addEventListener('input', syncGridRatio);
+        syncGridRatio();
+    }
     var applyBtn = qs('#applyGridSize');
     if (applyBtn) {
         applyBtn.addEventListener('click', function () {
-            var newCols = parseInt(qs('#gridColsInput').value) || 4;
-            var newRows = parseInt(qs('#gridRowsInput').value) || 3;
-            newCols = Math.max(2, Math.min(24, newCols));
-            newRows = Math.max(1, Math.min(16, newRows));
+            var newCols = parseInt(qs('#gridColsInput').value) || 16;
+            var newRows = Math.round(newCols * 9 / 16);
+            newCols = Math.max(16, Math.min(64, newCols));
+            newRows = Math.max(9, Math.min(36, newRows));
             api('PUT', '/api/settings', { grid_cols: String(newCols), grid_rows: String(newRows) })
                 .then(function () { location.href = editUrl(); })
                 .catch(function (err) { showToast(err.message, 'error'); });

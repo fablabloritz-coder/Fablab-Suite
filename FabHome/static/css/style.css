@@ -761,8 +761,8 @@ button.page-tab { border: 1px dashed var(--fh-card-border); }
    ══════════════════════════════════════════ */
 .grid-board {
     display: grid;
-    grid-template-columns: repeat(var(--grid-cols, 4), 1fr);
-    grid-auto-rows: 104px;
+    grid-template-columns: repeat(var(--grid-cols, 16), 1fr);
+    grid-auto-rows: var(--grid-cell-size, 104px);
     gap: 1rem;
     flex: 1;
     min-width: 0;
