@@ -127,7 +127,11 @@
         var vhAvail  = Math.floor(window.innerHeight * 0.88 - (gridRows - 1) * gapPx);
         var byHeight = Math.floor(vhAvail / gridRows);
         var cellSize = Math.min(byWidth, byHeight);
-        if (cellSize > 0) gridBoard.style.setProperty('--grid-cell-size', cellSize + 'px');
+        if (cellSize > 0) {
+            gridBoard.style.setProperty('--grid-cell-size', cellSize + 'px');
+            /* Expose aussi sur :root pour les éléments hors gridBoard (modales etc.) */
+            document.documentElement.style.setProperty('--grid-cell-size', cellSize + 'px');
+        }
     }
     if (gridBoard) {
         if (typeof ResizeObserver !== 'undefined') {
