@@ -1174,12 +1174,25 @@ body.edit-mode .group-card {
     flex-shrink: 0;
 }
 .gw-calendar .widget-cal-header i { font-size: clamp(0.8rem, 10cqb, 1.1rem); color: var(--fh-accent); }
-.gw-calendar .calendar-events { display: flex; flex-direction: column; gap: clamp(3px, 3cqb, 6px); overflow: hidden; flex: 1; }
+.gw-calendar .calendar-events {
+    display: flex; flex-direction: column; gap: clamp(3px, 3cqb, 6px);
+    overflow: hidden; flex: 1;
+    position: relative;
+}
+.gw-calendar .calendar-events::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, transparent, var(--fh-card-bg));
+    pointer-events: none;
+    opacity: 0; transition: opacity 0.2s;
+}
+.gw-calendar .calendar-events.has-overflow::after { opacity: 1; }
 .gw-calendar .calendar-event {
     background: rgba(255,255,255,0.05);
     border-left: 3px solid var(--fh-accent);
     padding: clamp(3px, 4cqb, 6px) clamp(6px, 5cqi, 10px); border-radius: 4px; transition: background 0.2s;
-    flex-shrink: 0;
+    flex-shrink: 0; /* ne se compresse pas */
 }
 .gw-calendar .calendar-event:hover { background: rgba(255,255,255,0.08); }
 .gw-calendar .calendar-event-title { font-weight: 500; font-size: clamp(0.6rem, 7cqb, 0.85rem); margin-bottom: 2px; }
@@ -1188,10 +1201,6 @@ body.edit-mode .group-card {
 .gw-calendar .calendar-event-location i { font-size: clamp(0.45rem, 5cqb, 0.62rem); margin-right: 3px; }
 .gw-calendar .calendar-event-location { font-size: clamp(0.45rem, 5cqb, 0.62rem); color: var(--fh-text-muted); margin-top: 1px; }
 .gw-calendar .calendar-empty { text-align: center; color: var(--fh-text-muted); font-size: clamp(0.6rem, 7cqb, 0.75rem); padding: clamp(8px, 10cqb, 16px); }
-/* Masquer les événements en surplus selon la hauteur disponible */
-@container widget (max-height: 140px) { .gw-calendar .calendar-event:nth-child(n+2) { display: none; } }
-@container widget (min-height: 141px) and (max-height: 230px) { .gw-calendar .calendar-event:nth-child(n+3) { display: none; } }
-@container widget (min-height: 231px) and (max-height: 320px) { .gw-calendar .calendar-event:nth-child(n+4) { display: none; } }
 
 .gw-service { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .gw-service-header {
@@ -1276,6 +1285,10 @@ body.edit-mode .group-card {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* Label caché sur carte trop petite : @container sur UN élément = fiable */
+@container widget (max-height: 85px) { .gw-shortcut-label { display: none; } }
+/* Badges cachés sur carte très petite */
+@container widget (max-height: 100px) { .gw-fabsuite-widgets { display: none; } }
 .gw-generic { display: flex; align-items: center; gap: 10px; justify-content: center; color: var(--fh-text-muted); }
 .edit-mode .grid-widget-card:hover .group-overlay { display: flex; }
 
@@ -1381,12 +1394,19 @@ body.edit-mode .group-card {
     display: flex; flex-direction: column; gap: clamp(2px, 2cqb, 6px);
     padding: clamp(4px, 3cqb, 8px) clamp(8px, 5cqi, 12px);
     overflow: hidden; flex: 1;
+    position: relative;
 }
-/* Masquer les apps en surplus selon la hauteur disponible */
-@container widget (max-height: 110px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+2) { display: none; } }
-@container widget (min-height: 111px) and (max-height: 195px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+3) { display: none; } }
-@container widget (min-height: 196px) and (max-height: 280px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+4) { display: none; } }
-@container widget (min-height: 281px) and (max-height: 365px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+5) { display: none; } }
+/* Gradient fade pour signaler du contenu hors-vue (masquage géré par JS) */
+.gw-fabsuite-apps::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, transparent, var(--fh-card-bg));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.gw-fabsuite-apps.has-overflow::after { opacity: 1; }
 
 .suite-app-card {
     display: flex; align-items: center; gap: clamp(4px, 4cqi, 10px);
@@ -1395,7 +1415,7 @@ body.edit-mode .group-card {
     background: var(--fh-card-bg);
     border: 1px solid var(--fh-border);
     transition: border-color 0.2s;
-    flex-shrink: 0;
+    flex-shrink: 0; /* ne se compresse pas : le JS décide combien d'items montrer */
 }
 .suite-app-card:hover { border-color: var(--fh-accent); }
 
@@ -1434,8 +1454,11 @@ body.edit-mode .group-card {
 .suite-empty i { font-size: 1.5rem; opacity: 0.5; }
 
 .gw-fabsuite-widgets {
-    padding: 0 0.75rem 0.5rem;
+    padding: 0 clamp(6px, 4cqi, 12px) clamp(3px, 3cqb, 8px);
     display: flex; flex-wrap: wrap; gap: 0.35rem;
+    flex-shrink: 0;
+    overflow: hidden;
+    max-height: 52px; /* une ligne de badges max */
 }
 
 .suite-widget-badge {

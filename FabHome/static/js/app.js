@@ -131,7 +131,56 @@
             gridBoard.style.setProperty('--grid-cell-size', cellSize + 'px');
             /* Expose aussi sur :root pour les éléments hors gridBoard (modales etc.) */
             document.documentElement.style.setProperty('--grid-cell-size', cellSize + 'px');
+            /* Après reflow CSS, ajuster les listes (fabsuite, calendar) */
+            requestAnimationFrame(clampAllListWidgets);
         }
+    }
+    /**
+     * Mesure la hauteur réelle disponible dans un conteneur de liste et masque
+     * les items qui déborderaient. Solution universelle : précise quelle que soit
+     * la résolution ou le span du widget.
+     */
+    function clampListWidget(listEl, itemSel) {
+        if (!listEl) return;
+        var items = Array.prototype.slice.call(listEl.querySelectorAll(itemSel));
+        if (!items.length) return;
+        /* Rétablir tout avant de mesurer */
+        items.forEach(function(it) { it.style.display = ''; });
+        var avail  = listEl.clientHeight;
+        var styles = getComputedStyle(listEl);
+        var gap    = parseFloat(styles.gap || styles.rowGap) || 4;
+        var maxShow = 0;
+        var used    = 0;
+        for (var i = 0; i < items.length; i++) {
+            var h = items[i].offsetHeight;
+            if (h <= 0) continue; /* item invisible (masqué par CSS) */
+            var needed = (maxShow === 0) ? h : used + gap + h;
+            if (needed <= avail) {
+                maxShow++;
+                used = needed;
+            } else {
+                break;
+            }
+        }
+        maxShow = Math.max(1, maxShow); /* montrer au moins 1 item */
+        var hasOverflow = false;
+        items.forEach(function(it, i) {
+            if (i < maxShow) {
+                it.style.display = '';
+            } else {
+                it.style.display = 'none';
+                hasOverflow = true;
+            }
+        });
+        listEl.classList.toggle('has-overflow', hasOverflow);
+    }
+    function clampAllListWidgets() {
+        qsa('.gw-fabsuite-apps').forEach(function(el) {
+            clampListWidget(el, '.suite-app-card');
+        });
+        qsa('.gw-calendar .calendar-events').forEach(function(el) {
+            clampListWidget(el, '.calendar-event');
+        });
     }
     if (gridBoard) {
         if (typeof ResizeObserver !== 'undefined') {
@@ -1947,6 +1996,8 @@
                     });
                     widgetArea.innerHTML = html;
                 }
+                /* Après mise à jour du DOM, recalculer combien d'items sont visibles */
+                requestAnimationFrame(clampAllListWidgets);
             }).catch(() => {});
         });
     }
