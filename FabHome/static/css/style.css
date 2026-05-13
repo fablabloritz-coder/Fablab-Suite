@@ -762,7 +762,7 @@ button.page-tab { border: 1px dashed var(--fh-card-border); }
 .grid-board {
     display: grid;
     grid-template-columns: repeat(var(--grid-cols, 4), 1fr);
-    grid-auto-rows: 120px;
+    grid-auto-rows: 104px;
     gap: 1rem;
     flex: 1;
     min-width: 0;
@@ -1163,11 +1163,77 @@ body.edit-mode .group-card {
     font-size: 0.78rem; color: var(--fh-text);
     display: flex; flex-wrap: wrap; gap: 0.5rem;
 }
-.gw-camera { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; overflow: hidden; }
-.gw-camera-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.gw-camera {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+.gw-camera-frame {
+    width: 100%;
+    max-height: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.gw-camera-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #000;
+}
 .gw-camera-placeholder { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--fh-text-muted); }
 .gw-camera-placeholder i { font-size: 1.8rem; color: var(--fh-accent); }
 .gw-camera i { font-size: 1.8rem; color: var(--fh-accent); }
+.gw-shortcut {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+.gw-shortcut-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: var(--fh-text);
+    width: 100%;
+    height: 100%;
+}
+.gw-shortcut-link:hover { color: var(--fh-text); }
+.gw-shortcut-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    border: 1px solid var(--fh-card-border);
+    background: rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fh-accent);
+}
+.gw-shortcut-icon i,
+.gw-shortcut-icon span { font-size: 1.5rem; line-height: 1; }
+.gw-shortcut-icon img { width: 30px; height: 30px; object-fit: contain; }
+.gw-shortcut-label {
+    text-align: center;
+    font-weight: 500;
+    line-height: 1.25;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .gw-generic { display: flex; align-items: center; gap: 10px; justify-content: center; color: var(--fh-text-muted); }
 .edit-mode .grid-widget-card:hover .group-overlay { display: flex; }
 

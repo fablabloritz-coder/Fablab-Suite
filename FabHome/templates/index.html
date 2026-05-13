@@ -244,10 +244,32 @@
                 {% set cam_url = gw.config.get('camera_url', '') %}
                 <div class="gw-card-body gw-camera" data-camera-url="{{ cam_url }}">
                     {% if cam_url %}
-                    <img class="gw-camera-img" src="{{ cam_url }}" alt="Caméra" loading="lazy">
+                    <div class="gw-camera-frame">
+                        <img class="gw-camera-img" src="{{ cam_url }}" alt="Caméra" loading="lazy">
+                    </div>
                     {% else %}
                     <div class="gw-camera-placeholder"><i class="bi bi-camera-video"></i><span>Aucune URL configurée</span></div>
                     {% endif %}
+                </div>
+                {% elif gw.type == 'shortcut' %}
+                {% set sc_name = gw.config.get('name', 'Raccourci') %}
+                {% set sc_url = gw.config.get('url', '') %}
+                {% set sc_icon = gw.config.get('icon', 'bi-box-arrow-up-right') %}
+                <div class="gw-card-body gw-shortcut">
+                    <a href="{{ sc_url if sc_url else '#' }}" class="gw-shortcut-link"
+                       {% if sc_url %}target="_blank" rel="noopener noreferrer"{% endif %}
+                       title="{{ sc_name }}">
+                        <div class="gw-shortcut-icon" aria-hidden="true">
+                            {% if sc_icon.startswith('http') or sc_icon.startswith('/') %}
+                            <img src="{{ sc_icon }}" alt="">
+                            {% elif sc_icon|length <= 2 %}
+                            <span>{{ sc_icon }}</span>
+                            {% else %}
+                            <i class="bi {{ sc_icon }}"></i>
+                            {% endif %}
+                        </div>
+                        <div class="gw-shortcut-label">{{ sc_name }}</div>
+                    </a>
                 </div>
                 {% elif gw.type == 'fabsuite' %}
                 <div class="gw-card-body gw-fabsuite" data-gw-id="{{ gw.id }}">
@@ -317,12 +339,12 @@
                 <div class="palette-label">Taille de la grille</div>
                 <div class="grid-size-ctrl">
                     <label>Col</label>
-                    <input type="number" id="gridColsInput" min="2" max="16"
+                    <input type="number" id="gridColsInput" min="2" max="24"
                            value="{{ settings.get('grid_cols', '4') }}" class="form-control form-control-sm">
                 </div>
                 <div class="grid-size-ctrl">
                     <label>Lig</label>
-                    <input type="number" id="gridRowsInput" min="1" max="12"
+                    <input type="number" id="gridRowsInput" min="1" max="16"
                            value="{{ settings.get('grid_rows', '3') }}" class="form-control form-control-sm">
                 </div>
                 <button class="btn btn-sm btn-outline-light w-100 mt-2" id="applyGridSize">
@@ -591,6 +613,7 @@
                             <option value="calendar">📅 Calendrier</option>
                             <option value="camera">📷 Caméra</option>
                             <option value="service">🔌 Service</option>
+                            <option value="shortcut">🖇️ Icône lien</option>
                             <option value="fabsuite">🔗 FabLab Suite</option>
                         </select>
                     </div>
@@ -638,6 +661,17 @@
                             {% endfor %}
                         </select>
                         <small class="form-text text-muted">Ajoutez vos services dans Réglages > Services</small>
+                    </div>
+
+                    <div class="mb-3" id="widgetConfigShortcut" style="display: none;">
+                        <label class="form-label">Nom affiché</label>
+                        <input type="text" class="form-control" name="shortcut_name" maxlength="80" placeholder="Ex: Caméra Atelier">
+                        <label class="form-label mt-2">Lien</label>
+                        <input type="text" class="form-control" name="shortcut_url" maxlength="2000" placeholder="https://exemple.local">
+                        <label class="form-label mt-2">Icône</label>
+                        <input type="text" class="form-control" name="shortcut_icon" maxlength="500" value="bi-box-arrow-up-right"
+                               placeholder="Bootstrap Icon (bi-globe), emoji, URL image ou /static/...">
+                        <small class="form-text text-muted">Style bureau: icône au centre, texte en dessous, clic pour ouvrir le lien.</small>
                     </div>
                     
                     <hr>

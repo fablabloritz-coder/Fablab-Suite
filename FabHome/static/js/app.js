@@ -624,6 +624,11 @@
                 if (existing.type === 'camera' && form.elements.camera_url) {
                     form.elements.camera_url.value = (existing.config || {}).camera_url || '';
                 }
+                if (existing.type === 'shortcut') {
+                    if (form.elements.shortcut_name) form.elements.shortcut_name.value = (existing.config || {}).name || '';
+                    if (form.elements.shortcut_url) form.elements.shortcut_url.value = (existing.config || {}).url || '';
+                    if (form.elements.shortcut_icon) form.elements.shortcut_icon.value = (existing.config || {}).icon || 'bi-box-arrow-up-right';
+                }
                 form.elements.icon_size.value = existing.icon_size || 'medium';
                 form.elements.text_size.value = existing.text_size || 'medium';
                 qs('#gridWidgetColSpan').value = existing.col_span || 1;
@@ -642,6 +647,9 @@
             title.textContent = 'Ajouter un widget';
             delete form.dataset.editId;
             form.reset();
+            if (form.elements.shortcut_icon) {
+                form.elements.shortcut_icon.value = 'bi-box-arrow-up-right';
+            }
             if (form.elements.use_custom_background) {
                 form.elements.use_custom_background.checked = false;
             }
@@ -671,6 +679,8 @@
             if (camCfg) camCfg.style.display = type === 'camera' ? '' : 'none';
             var svcCfg = qs('#widgetConfigService');
             if (svcCfg) svcCfg.style.display = type === 'service' ? '' : 'none';
+            var shortcutCfg = qs('#widgetConfigShortcut');
+            if (shortcutCfg) shortcutCfg.style.display = type === 'shortcut' ? '' : 'none';
             var suiteCfg = qs('#widgetConfigFabsuite');
             if (suiteCfg) suiteCfg.style.display = type === 'fabsuite' ? '' : 'none';
         });
@@ -695,6 +705,10 @@
                 config.service_id = parseInt(f.elements.service_id.value) || 0;
             } else if (type === 'camera') {
                 config.camera_url = f.elements.camera_url ? f.elements.camera_url.value.trim() : '';
+            } else if (type === 'shortcut') {
+                config.name = f.elements.shortcut_name ? f.elements.shortcut_name.value.trim() : '';
+                config.url = f.elements.shortcut_url ? f.elements.shortcut_url.value.trim() : '';
+                config.icon = f.elements.shortcut_icon ? f.elements.shortcut_icon.value.trim() : 'bi-box-arrow-up-right';
             }
             
             var body = {
@@ -1102,8 +1116,8 @@
         applyBtn.addEventListener('click', function () {
             var newCols = parseInt(qs('#gridColsInput').value) || 4;
             var newRows = parseInt(qs('#gridRowsInput').value) || 3;
-            newCols = Math.max(2, Math.min(16, newCols));
-            newRows = Math.max(1, Math.min(12, newRows));
+            newCols = Math.max(2, Math.min(24, newCols));
+            newRows = Math.max(1, Math.min(16, newRows));
             api('PUT', '/api/settings', { grid_cols: String(newCols), grid_rows: String(newRows) })
                 .then(function () { location.href = editUrl(); })
                 .catch(function (err) { showToast(err.message, 'error'); });
