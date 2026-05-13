@@ -1101,11 +1101,23 @@ body.edit-mode .group-card {
     border: 1px solid var(--fh-card-border);
     border-radius: 16px;
     backdrop-filter: blur(12px);
-    padding: clamp(6px, calc(var(--grid-cell-size, 104px) * 0.12), 16px);
+    /* padding géré par le widget via :has() ou padding par défaut */
+    padding: clamp(6px, 8cqb, 16px);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     overflow: hidden;
     transition: box-shadow 0.2s;
+    /* Container queries : chaque widget s'adapte à sa propre taille (1×1, 2×3, etc.) */
+    container-type: size;
+    container-name: widget;
+}
+/* Les widgets plein-hauteur gèrent leur propre layout interne */
+.grid-widget-card:has(.gw-fabsuite),
+.grid-widget-card:has(.gw-calendar),
+.grid-widget-card:has(.gw-camera) {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
 }
 .grid-widget-card:hover {
     box-shadow: 0 8px 24px rgba(0,0,0,0.15);
@@ -1139,35 +1151,47 @@ body.edit-mode .group-card {
 .group-card.size-text-large .link-desc { font-size: 0.88rem; }
 .group-card.size-text-large .group-header { font-size: 0.95rem; }
 .gw-card-body { width: 100%; text-align: center; color: var(--fh-text); }
-.gw-clock .gw-clock-time { font-size: 2rem; font-weight: 600; color: var(--fh-text); }
-.gw-clock .gw-clock-date { font-size: 0.8rem; color: var(--fh-text-muted); margin-top: 4px; }
-.gw-weather { display: flex; align-items: center; gap: 10px; justify-content: center; }
-.gw-weather i { font-size: 2rem; color: var(--fh-accent); }
-.gw-temp { font-size: 1.4rem; font-weight: 600; }
-.gw-note .gw-note-content { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; text-align: left; }
-.gw-health { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.gw-health-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
-.gw-health-item i { font-size: 1.1rem; color: var(--fh-accent); }
+/* Toutes les tailles utilisent cqb (container query block = hauteur de la carte) */
+.gw-clock .gw-clock-time { font-size: clamp(1rem, 28cqb, 2.5rem); font-weight: 600; color: var(--fh-text); }
+.gw-clock .gw-clock-date { font-size: clamp(0.55rem, 8cqb, 0.85rem); color: var(--fh-text-muted); margin-top: 4px; }
+.gw-weather { display: flex; align-items: center; gap: clamp(6px, 6cqb, 10px); justify-content: center; }
+.gw-weather i { font-size: clamp(1rem, 28cqb, 2.5rem); color: var(--fh-accent); }
+.gw-temp { font-size: clamp(0.9rem, 20cqb, 1.6rem); font-weight: 600; }
+.gw-note .gw-note-content { font-size: clamp(0.65rem, 8cqb, 0.9rem); line-height: 1.5; white-space: pre-wrap; text-align: left; }
+.gw-health { display: flex; flex-direction: column; gap: clamp(3px, 4cqb, 8px); width: 100%; }
+.gw-health-item { display: flex; align-items: center; gap: clamp(4px, 4cqi, 8px); font-size: clamp(0.65rem, 7cqb, 0.9rem); }
+.gw-health-item i { font-size: clamp(0.8rem, 9cqb, 1.1rem); color: var(--fh-accent); }
 .gw-health-value { font-weight: 600; color: var(--fh-text); }
-.gw-calendar { display: flex; flex-direction: column; width: 100%; overflow: auto; }
-.gw-calendar .widget-cal-header {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 15px; font-weight: 600; margin-bottom: 10px; color: var(--fh-text);
+.gw-calendar {
+    display: flex; flex-direction: column;
+    width: 100%; height: 100%;
+    overflow: hidden; padding: clamp(6px, 8cqb, 16px);
 }
-.gw-calendar .widget-cal-header i { font-size: 18px; color: var(--fh-accent); }
-.gw-calendar .calendar-events { display: flex; flex-direction: column; gap: 6px; }
+.gw-calendar .widget-cal-header {
+    display: flex; align-items: center; gap: clamp(4px, 4cqi, 8px);
+    font-size: clamp(0.7rem, 8cqb, 0.95rem); font-weight: 600;
+    margin-bottom: clamp(4px, 5cqb, 10px); color: var(--fh-text);
+    flex-shrink: 0;
+}
+.gw-calendar .widget-cal-header i { font-size: clamp(0.8rem, 10cqb, 1.1rem); color: var(--fh-accent); }
+.gw-calendar .calendar-events { display: flex; flex-direction: column; gap: clamp(3px, 3cqb, 6px); overflow: hidden; flex: 1; }
 .gw-calendar .calendar-event {
     background: rgba(255,255,255,0.05);
     border-left: 3px solid var(--fh-accent);
-    padding: 6px 10px; border-radius: 4px; transition: background 0.2s;
+    padding: clamp(3px, 4cqb, 6px) clamp(6px, 5cqi, 10px); border-radius: 4px; transition: background 0.2s;
+    flex-shrink: 0;
 }
 .gw-calendar .calendar-event:hover { background: rgba(255,255,255,0.08); }
-.gw-calendar .calendar-event-title { font-weight: 500; font-size: 13px; margin-bottom: 2px; }
-.gw-calendar .calendar-event-time { font-size: 11px; color: var(--fh-text-muted); }
+.gw-calendar .calendar-event-title { font-weight: 500; font-size: clamp(0.6rem, 7cqb, 0.85rem); margin-bottom: 2px; }
+.gw-calendar .calendar-event-time { font-size: clamp(0.5rem, 6cqb, 0.7rem); color: var(--fh-text-muted); }
 .gw-calendar .calendar-event-time i,
-.gw-calendar .calendar-event-location i { font-size: 10px; margin-right: 3px; }
-.gw-calendar .calendar-event-location { font-size: 10px; color: var(--fh-text-muted); margin-top: 1px; }
-.gw-calendar .calendar-empty { text-align: center; color: var(--fh-text-muted); font-size: 12px; padding: 16px; }
+.gw-calendar .calendar-event-location i { font-size: clamp(0.45rem, 5cqb, 0.62rem); margin-right: 3px; }
+.gw-calendar .calendar-event-location { font-size: clamp(0.45rem, 5cqb, 0.62rem); color: var(--fh-text-muted); margin-top: 1px; }
+.gw-calendar .calendar-empty { text-align: center; color: var(--fh-text-muted); font-size: clamp(0.6rem, 7cqb, 0.75rem); padding: clamp(8px, 10cqb, 16px); }
+/* Masquer les événements en surplus selon la hauteur disponible */
+@container widget (max-height: 140px) { .gw-calendar .calendar-event:nth-child(n+2) { display: none; } }
+@container widget (min-height: 141px) and (max-height: 230px) { .gw-calendar .calendar-event:nth-child(n+3) { display: none; } }
+@container widget (min-height: 231px) and (max-height: 320px) { .gw-calendar .calendar-event:nth-child(n+4) { display: none; } }
 
 .gw-service { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .gw-service-header {
@@ -1220,7 +1244,7 @@ body.edit-mode .group-card {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: clamp(2px, calc(var(--grid-cell-size, 104px) * 0.04), 8px);
+    gap: clamp(2px, 5cqb, 10px);
     text-decoration: none;
     color: var(--fh-text);
     width: 100%;
@@ -1228,9 +1252,9 @@ body.edit-mode .group-card {
 }
 .gw-shortcut-link:hover { color: var(--fh-text); }
 .gw-shortcut-icon {
-    width: clamp(28px, calc(var(--grid-cell-size, 104px) * 0.48), 56px);
-    height: clamp(28px, calc(var(--grid-cell-size, 104px) * 0.48), 56px);
-    border-radius: clamp(7px, calc(var(--grid-cell-size, 104px) * 0.12), 14px);
+    width: clamp(24px, 40cqb, 60px);
+    height: clamp(24px, 40cqb, 60px);
+    border-radius: clamp(6px, 9cqb, 14px);
     border: 1px solid var(--fh-card-border);
     background: rgba(255,255,255,0.06);
     display: flex;
@@ -1240,12 +1264,12 @@ body.edit-mode .group-card {
     flex-shrink: 0;
 }
 .gw-shortcut-icon i,
-.gw-shortcut-icon span { font-size: clamp(0.9rem, calc(var(--grid-cell-size, 104px) * 0.22), 1.5rem); line-height: 1; }
-.gw-shortcut-icon img { width: clamp(14px, calc(var(--grid-cell-size, 104px) * 0.26), 30px); height: clamp(14px, calc(var(--grid-cell-size, 104px) * 0.26), 30px); object-fit: contain; }
+.gw-shortcut-icon span { font-size: clamp(0.8rem, 22cqb, 1.6rem); line-height: 1; }
+.gw-shortcut-icon img { width: clamp(14px, 28cqb, 36px); height: clamp(14px, 28cqb, 36px); object-fit: contain; }
 .gw-shortcut-label {
     text-align: center;
     font-weight: 500;
-    font-size: clamp(0.55rem, calc(var(--grid-cell-size, 104px) * 0.1), 0.85rem);
+    font-size: clamp(0.5rem, 11cqb, 0.85rem);
     line-height: 1.25;
     max-width: 100%;
     white-space: nowrap;
@@ -1335,55 +1359,63 @@ body.edit-mode .group-card {
 /* ── FabLab Suite Widget ─────────────── */
 
 .gw-fabsuite {
-    align-self: stretch;
+    width: 100%; height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     text-align: left;
 }
 .gw-fabsuite-header {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    font-weight: 600; font-size: 0.95rem;
+    display: flex; align-items: center; gap: clamp(4px, 4cqi, 8px);
+    padding: clamp(4px, 4cqb, 8px) clamp(8px, 5cqi, 12px);
+    font-weight: 600; font-size: clamp(0.72rem, 7cqb, 0.95rem);
     border-bottom: 1px solid var(--fh-border);
     flex-shrink: 0;
 }
-.gw-fabsuite-header i { color: var(--fh-accent); font-size: 1.1rem; }
+.gw-fabsuite-header i { color: var(--fh-accent); font-size: clamp(0.8rem, 8cqb, 1.1rem); }
 .gw-fabsuite-header span { flex: 1; }
 .gw-suite-refresh { padding: 0.15rem 0.4rem; font-size: 0.75rem; border-color: var(--fh-text-muted); color: var(--fh-text-muted); }
 .gw-suite-refresh:hover { color: var(--fh-accent); border-color: var(--fh-accent); }
 
 .gw-fabsuite-apps {
-    display: flex; flex-direction: column; gap: 0.35rem;
-    padding: 0.5rem 0.75rem;
-    overflow-y: auto; flex: 1;
+    display: flex; flex-direction: column; gap: clamp(2px, 2cqb, 6px);
+    padding: clamp(4px, 3cqb, 8px) clamp(8px, 5cqi, 12px);
+    overflow: hidden; flex: 1;
 }
+/* Masquer les apps en surplus selon la hauteur disponible */
+@container widget (max-height: 110px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+2) { display: none; } }
+@container widget (min-height: 111px) and (max-height: 195px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+3) { display: none; } }
+@container widget (min-height: 196px) and (max-height: 280px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+4) { display: none; } }
+@container widget (min-height: 281px) and (max-height: 365px) { .gw-fabsuite-apps .suite-app-card:nth-child(n+5) { display: none; } }
 
 .suite-app-card {
-    display: flex; align-items: center; gap: 0.6rem;
-    padding: 0.45rem 0.5rem;
+    display: flex; align-items: center; gap: clamp(4px, 4cqi, 10px);
+    padding: clamp(3px, 3cqb, 7px) clamp(4px, 4cqi, 8px);
     border-radius: 0.5rem;
     background: var(--fh-card-bg);
     border: 1px solid var(--fh-border);
     transition: border-color 0.2s;
+    flex-shrink: 0;
 }
 .suite-app-card:hover { border-color: var(--fh-accent); }
 
 .suite-app-icon {
-    width: 2.2rem; height: 2.2rem; border-radius: 0.5rem;
+    width: clamp(1.4rem, 14cqb, 2.2rem);
+    height: clamp(1.4rem, 14cqb, 2.2rem);
+    border-radius: 0.5rem;
     display: flex; align-items: center; justify-content: center;
-    color: #fff; font-size: 1rem; flex-shrink: 0;
+    color: #fff; font-size: clamp(0.65rem, 7cqb, 1rem); flex-shrink: 0;
 }
 
 .suite-app-info { flex: 1; min-width: 0; }
 .suite-app-name {
-    font-weight: 600; font-size: 0.85rem;
+    font-weight: 600; font-size: clamp(0.65rem, 7cqb, 0.85rem);
     color: var(--fh-text); text-decoration: none;
     display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .suite-app-name:hover { color: var(--fh-accent); }
 .suite-app-desc {
-    font-size: 0.7rem; color: var(--fh-text-muted);
+    font-size: clamp(0.55rem, 5cqb, 0.7rem); color: var(--fh-text-muted);
     display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
