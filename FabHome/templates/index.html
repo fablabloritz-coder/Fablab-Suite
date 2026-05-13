@@ -336,24 +336,6 @@
             </div>
 
             <div class="palette-section">
-                <div class="palette-label">Taille de la grille <span class="badge bg-secondary ms-1" style="font-size:.65rem">16:9</span></div>
-                <div class="grid-size-ctrl">
-                    <label>Col</label>
-                    <input type="number" id="gridColsInput" min="16" max="64" step="16"
-                           value="{{ settings.get('grid_cols', '16') }}" class="form-control form-control-sm">
-                </div>
-                <div class="grid-size-ctrl">
-                    <label>Lig</label>
-                    <input type="number" id="gridRowsInput" readonly
-                           value="{{ settings.get('grid_rows', '9') }}" class="form-control form-control-sm" style="opacity:.6;cursor:default;">
-                </div>
-                <div id="gridSizeInfo" class="text-center mt-1" style="font-size:.7rem;opacity:.6">{{ settings.get('grid_cols', '16') }}×{{ settings.get('grid_rows', '9') }} cellules</div>
-                <button class="btn btn-sm btn-outline-light w-100 mt-2" id="applyGridSize">
-                    <i class="bi bi-check-lg"></i> Appliquer
-                </button>
-            </div>
-
-            <div class="palette-section">
                 <button class="btn-palette" data-action="new-group">
                     <i class="bi bi-plus-lg"></i> Nouveau groupe
                 </button>
@@ -670,9 +652,32 @@
                         <label class="form-label mt-2">Lien</label>
                         <input type="text" class="form-control" name="shortcut_url" maxlength="2000" placeholder="https://exemple.local">
                         <label class="form-label mt-2">Icône</label>
-                        <input type="text" class="form-control" name="shortcut_icon" maxlength="500" value="bi-box-arrow-up-right"
-                               placeholder="Bootstrap Icon (bi-globe), emoji, URL image ou /static/...">
-                        <small class="form-text text-muted">Style bureau: icône au centre, texte en dessous, clic pour ouvrir le lien.</small>
+                        <!-- Prévisualisation -->
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div id="shortcutIconPreview" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:var(--fh-card-bg,#1e2533);font-size:28px;flex-shrink:0;border:1px solid var(--fh-card-border,#333);">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control" name="shortcut_icon" maxlength="500" value="bi-box-arrow-up-right"
+                                           placeholder="bi-globe, emoji, URL ou /uploads/icons/…" id="shortcutIconInput">
+                                    <button type="button" class="btn btn-outline-secondary" id="fetchShortcutFavicon" title="Extraire l'icône du site renseigné dans Lien">
+                                        <i class="bi bi-globe2"></i>
+                                    </button>
+                                    <label class="btn btn-outline-secondary" title="Uploader une image">
+                                        <i class="bi bi-upload"></i>
+                                        <input type="file" accept="image/*" class="d-none icon-upload-input" data-target="shortcut_icon_field" id="shortcutIconUpload">
+                                    </label>
+                                </div>
+                                <div class="form-text">Classe Bootstrap (bi-globe), emoji, URL image ou fichier uploadé</div>
+                            </div>
+                        </div>
+                        <!-- Bibliothèque icônes uploadées -->
+                        <div id="shortcutIconLibrary" class="mt-1" style="display:none">
+                            <div class="form-text mb-1">Icônes uploadées — cliquer pour sélectionner :</div>
+                            <div id="shortcutIconLibraryGrid" class="icon-grid"></div>
+                        </div>
+                        <small class="form-text text-muted">Style bureau : icône au centre, texte en dessous, clic pour ouvrir le lien.</small>
                     </div>
                     
                     <hr>
@@ -760,6 +765,9 @@
                         </li>
                         <li class="nav-item">
                             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stData" type="button">Données</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stIcons" type="button">Icônes</button>
                         </li>
                     </ul>
                     <div class="tab-content">
@@ -1058,6 +1066,20 @@
                                     <i class="bi bi-file-earmark-arrow-up"></i> Importer
                                     <input type="file" accept=".json" id="importConfigInput" class="d-none">
                                 </label>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="stIcons">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <strong><i class="bi bi-images"></i> Bibliothèque d'icônes</strong>
+                                <label class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-plus-lg"></i> Ajouter
+                                    <input type="file" accept="image/*" class="d-none" id="libraryIconUpload">
+                                </label>
+                            </div>
+                            <p class="text-muted small mb-2">Images uploadées utilisables comme icônes dans les widgets Raccourci.</p>
+                            <div id="iconLibraryGrid" class="row g-2" style="max-height:340px;overflow-y:auto">
+                                <div class="text-muted small text-center py-3"><i class="bi bi-arrow-clockwise"></i> Chargement...</div>
                             </div>
                         </div>
                     </div>

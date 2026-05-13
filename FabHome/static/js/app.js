@@ -647,7 +647,10 @@
                 if (existing.type === 'shortcut') {
                     if (form.elements.shortcut_name) form.elements.shortcut_name.value = (existing.config || {}).name || '';
                     if (form.elements.shortcut_url) form.elements.shortcut_url.value = (existing.config || {}).url || '';
-                    if (form.elements.shortcut_icon) form.elements.shortcut_icon.value = (existing.config || {}).icon || 'bi-box-arrow-up-right';
+                    var scIcon = (existing.config || {}).icon || 'bi-box-arrow-up-right';
+                    if (form.elements.shortcut_icon) form.elements.shortcut_icon.value = scIcon;
+                    updateShortcutPreview(scIcon);
+                    loadShortcutIconLibrary();
                 }
                 form.elements.icon_size.value = existing.icon_size || 'medium';
                 form.elements.text_size.value = existing.text_size || 'medium';
@@ -669,6 +672,7 @@
             form.reset();
             if (form.elements.shortcut_icon) {
                 form.elements.shortcut_icon.value = 'bi-box-arrow-up-right';
+                updateShortcutPreview('bi-box-arrow-up-right');
             }
             if (form.elements.use_custom_background) {
                 form.elements.use_custom_background.checked = false;
@@ -842,6 +846,162 @@
             })
             .catch(function (err) { showToast('Erreur upload : ' + err.message, 'error'); });
         e.target.value = '';
+    });
+    /* -- Fetch favicon shortcut widget -- */
+    var fetchShortcutFavBtn = qs('#fetchShortcutFavicon');
+    if (fetchShortcutFavBtn) {
+        fetchShortcutFavBtn.addEventListener('click', function () {
+            var urlInput = qs('#gridWidgetModal input[name="shortcut_url"]');
+            var iconInput = qs('#shortcutIconInput');
+            if (!urlInput || !urlInput.value.trim()) {
+                showToast("Renseignez d'abord le Lien du raccourci", 'error');
+                return;
+            }
+            fetchShortcutFavBtn.disabled = true;
+            fetch('/api/favicon?url=' + encodeURIComponent(urlInput.value.trim()))
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.error) { showToast(d.error, 'error'); return; }
+                    if (iconInput) { iconInput.value = d.icon; updateShortcutPreview(d.icon); }
+                })
+                .catch(function (err) { showToast('Erreur : ' + err.message, 'error'); })
+                .finally(function () { fetchShortcutFavBtn.disabled = false; });
+        });
+    }
+    /* -- Upload icône shortcut -- */
+    var shortcutUpload = qs('#shortcutIconUpload');
+    if (shortcutUpload) {
+        shortcutUpload.addEventListener('change', function () {
+            var file = shortcutUpload.files[0];
+            if (!file) return;
+            var formData = new FormData();
+            formData.append('file', file);
+            fetch('/api/upload/icon', { method: 'POST', body: formData })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.error) { showToast(d.error, 'error'); return; }
+                    var iconInput = qs('#shortcutIconInput');
+                    if (iconInput) { iconInput.value = d.url; updateShortcutPreview(d.url); }
+                    loadShortcutIconLibrary();
+                })
+                .catch(function (err) { showToast('Erreur upload : ' + err.message, 'error'); });
+            shortcutUpload.value = '';
+        });
+    }
+    /* -- Prévisualisation icône shortcut -- */
+    function updateShortcutPreview(val) {
+        var prev = qs('#shortcutIconPreview');
+        if (!prev) return;
+        val = (val || '').trim();
+        if (val.startsWith('http') || val.startsWith('/')) {
+            prev.innerHTML = '<img src="' + escHtml(val) + '" style="width:40px;height:40px;object-fit:contain;border-radius:6px">';
+        } else if (val.length <= 2) {
+            prev.innerHTML = '<span style="font-size:32px">' + escHtml(val) + '</span>';
+        } else if (val.startsWith('bi-')) {
+            prev.innerHTML = '<i class="bi ' + escHtml(val) + '" style="font-size:28px"></i>';
+        } else {
+            prev.innerHTML = '<i class="bi bi-box-arrow-up-right" style="font-size:28px"></i>';
+        }
+    }
+    var shortcutIconInput = qs('#shortcutIconInput');
+    if (shortcutIconInput) {
+        shortcutIconInput.addEventListener('input', function () { updateShortcutPreview(this.value); });
+    }
+    /* -- Bibliothèque icônes dans la modale shortcut -- */
+    function loadShortcutIconLibrary() {
+        fetch('/api/icons')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var lib = qs('#shortcutIconLibrary');
+                var grid = qs('#shortcutIconLibraryGrid');
+                if (!grid) return;
+                if (!d.icons || d.icons.length === 0) {
+                    if (lib) lib.style.display = 'none';
+                    return;
+                }
+                if (lib) lib.style.display = 'block';
+                grid.innerHTML = d.icons.map(function (ic) {
+                    return '<span class="ig" data-v="' + escHtml(ic.url) + '" title="' + escHtml(ic.name) + '">' +
+                           '<img src="' + escHtml(ic.url) + '" style="width:28px;height:28px;object-fit:contain"></span>';
+                }).join('');
+            })
+            .catch(function () {});
+    }
+    /* Ouvrir la modale shortcut → charger la bibliothèque + preview */
+    var gwModal = qs('#gridWidgetModal');
+    if (gwModal) {
+        gwModal.addEventListener('shown.bs.modal', function () {
+            var typeEl = qs('#gridWidgetModal select[name="type"]');
+            if (typeEl && typeEl.value === 'shortcut') {
+                loadShortcutIconLibrary();
+                var iconInput = qs('#shortcutIconInput');
+                if (iconInput) updateShortcutPreview(iconInput.value);
+            }
+        });
+    }
+    /* -- Bibliothèque icônes dans les Réglages (onglet Icônes) -- */
+    function renderIconLibrarySettings(icons) {
+        var grid = qs('#iconLibraryGrid');
+        if (!grid) return;
+        if (!icons || icons.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-muted small text-center py-3">Aucune icône uploadée.</div>';
+            return;
+        }
+        grid.innerHTML = icons.map(function (ic) {
+            return '<div class="col-3 col-md-2" style="text-align:center">' +
+                   '<div style="position:relative;display:inline-block">' +
+                   '<img src="' + escHtml(ic.url) + '" style="width:48px;height:48px;object-fit:contain;border-radius:8px;background:var(--fh-card-bg,#1e2533)">' +
+                   '<button type="button" class="btn btn-danger btn-sm icon-lib-delete" ' +
+                   'data-name="' + escHtml(ic.name) + '" ' +
+                   'style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;padding:0;font-size:10px;line-height:1;border-radius:50%">' +
+                   '\u00d7</button>' +
+                   '</div>' +
+                   '<div class="text-muted" style="font-size:.6rem;word-break:break-all;margin-top:2px">' + escHtml(ic.name) + '</div>' +
+                   '</div>';
+        }).join('');
+    }
+    var stIconsTab = qs('[data-bs-target="#stIcons"]');
+    if (stIconsTab) {
+        stIconsTab.addEventListener('shown.bs.tab', function () {
+            fetch('/api/icons')
+                .then(function (r) { return r.json(); })
+                .then(function (d) { renderIconLibrarySettings(d.icons); })
+                .catch(function () {});
+        });
+    }
+    /* Upload depuis l'onglet Icônes des Réglages */
+    var libUpload = qs('#libraryIconUpload');
+    if (libUpload) {
+        libUpload.addEventListener('change', function () {
+            var file = libUpload.files[0];
+            if (!file) return;
+            var formData = new FormData();
+            formData.append('file', file);
+            fetch('/api/upload/icon', { method: 'POST', body: formData })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.error) { showToast(d.error, 'error'); return; }
+                    showToast('Icône ajoutée', 'success');
+                    fetch('/api/icons').then(function (r) { return r.json(); }).then(function (d2) { renderIconLibrarySettings(d2.icons); });
+                })
+                .catch(function (err) { showToast('Erreur : ' + err.message, 'error'); });
+            libUpload.value = '';
+        });
+    }
+    /* Suppression depuis l'onglet Icônes */
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.icon-lib-delete');
+        if (!btn) return;
+        var name = btn.dataset.name;
+        if (!name || !confirm('Supprimer cette icône ?')) return;
+        fetch('/api/icons/' + encodeURIComponent(name), { method: 'DELETE' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.error) { showToast(d.error, 'error'); return; }
+                showToast('Icône supprimée', 'success');
+                fetch('/api/icons').then(function (r) { return r.json(); }).then(function (d2) { renderIconLibrarySettings(d2.icons); });
+            })
+            .catch(function (err) { showToast('Erreur : ' + err.message, 'error'); });
     });
     /* -- Fetch favicon -- */
     var fetchFavBtn = qs('#fetchFavicon');
@@ -1127,37 +1287,6 @@
             });
         }
         el.innerHTML = html;
-    }
-    /* ══════════════════════════════════════
-       TAILLE DE LA GRILLE (palette)
-       ══════════════════════════════════════ */
-    var gridColsInput = qs('#gridColsInput');
-    var gridRowsInput = qs('#gridRowsInput');
-    /* Recalcul auto lignes = round(cols × 9/16) */
-    function syncGridRatio() {
-        if (!gridColsInput || !gridRowsInput) return;
-        var cols = parseInt(gridColsInput.value) || 16;
-        cols = Math.max(16, Math.min(64, cols));
-        var rows = Math.round(cols * 9 / 16);
-        gridRowsInput.value = rows;
-        var info = qs('#gridSizeInfo');
-        if (info) info.textContent = cols + '\u00d7' + rows + ' cellules';
-    }
-    if (gridColsInput) {
-        gridColsInput.addEventListener('input', syncGridRatio);
-        syncGridRatio();
-    }
-    var applyBtn = qs('#applyGridSize');
-    if (applyBtn) {
-        applyBtn.addEventListener('click', function () {
-            var newCols = parseInt(qs('#gridColsInput').value) || 16;
-            var newRows = Math.round(newCols * 9 / 16);
-            newCols = Math.max(16, Math.min(64, newCols));
-            newRows = Math.max(9, Math.min(36, newRows));
-            api('PUT', '/api/settings', { grid_cols: String(newCols), grid_rows: String(newRows) })
-                .then(function () { location.href = editUrl(); })
-                .catch(function (err) { showToast(err.message, 'error'); });
-        });
     }
     /* ══════════════════════════════════════
        DRAG & DROP — GROUPES (grille + palette)

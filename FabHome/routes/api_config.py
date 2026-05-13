@@ -50,8 +50,37 @@ def api_upload_icon():
     if ext not in ALLOWED_IMG:
         return jsonify(error='Format non supporté'), 400
     name = uuid.uuid4().hex[:12] + ext
+    os.makedirs(ICON_DIR, exist_ok=True)
     f.save(os.path.join(ICON_DIR, name))
     return jsonify(url='/uploads/icons/' + name), 201
+
+
+# Liste des icônes uploadées
+@bp.route('/api/icons', methods=['GET'])
+def api_list_icons():
+    os.makedirs(ICON_DIR, exist_ok=True)
+    files = []
+    for fname in sorted(os.listdir(ICON_DIR)):
+        ext = os.path.splitext(fname)[1].lower()
+        if ext in ALLOWED_IMG:
+            files.append({'name': fname, 'url': '/uploads/icons/' + fname})
+    return jsonify(icons=files)
+
+
+# Suppression d'une icône uploadée
+@bp.route('/api/icons/<name>', methods=['DELETE'])
+def api_delete_icon(name):
+    # Sécurité : pas de traversal de répertoire
+    safe = os.path.basename(name)
+    path = os.path.join(ICON_DIR, safe)
+    if not os.path.isfile(path):
+        return jsonify(error='Fichier introuvable'), 404
+    try:
+        os.remove(path)
+    except OSError as e:
+        logger.error(f"Erreur suppression icône {safe}: {e}")
+        return jsonify(error='Suppression impossible'), 500
+    return jsonify(ok=True)
 
 
 # Upload de fond d'écran (remplace l'ancien)
