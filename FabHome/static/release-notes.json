@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "1.7.0",
+      "date": "2026-05-13",
+      "title": "Grille 16:9, cellules carrées et bibliothèque d'icônes",
+      "notes": [
+        "Grille fixe 16×9 cellules carrées : les cellules s'adaptent automatiquement à la résolution de l'écran sans jamais déborder (calcul min largeur / hauteur viewport).",
+        "Widget Raccourci enrichi : prévisualisation de l'icône en temps réel, extraction automatique du favicon depuis l'URL du lien, upload d'une image personnalisée.",
+        "Bibliothèque d'icônes intégrée : retrouvez directement dans la modale toutes les images que vous avez uploadées pour les sélectionner en un clic.",
+        "Onglet Icônes dans les Réglages : gérez votre bibliothèque d'icônes (ajout et suppression) sans quitter FabHome."
+      ]
+    },
+    {
       "version": "1.6.0",
       "date": "2026-04-28",
       "title": "Fiabilite popup et robustesse des mises a jour",
