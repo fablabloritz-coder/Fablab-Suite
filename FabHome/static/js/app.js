@@ -117,28 +117,11 @@
     var gridCols = parseInt(PAGE_DATA.settings.grid_cols) || 16;
     var gridRows = parseInt(PAGE_DATA.settings.grid_rows) || 9;
     var occupiedMap = {};
-    /* ── Cellules carrées : min(largeur, hauteur) pour tenir dans la fenêtre ── */
-    function updateSquareCells() {
-        if (!gridBoard) return;
-        var gapPx = parseFloat(getComputedStyle(gridBoard).columnGap) || 16;
-        /* Taille basée sur la largeur disponible */
-        var byWidth  = Math.floor((gridBoard.offsetWidth  - (gridCols - 1) * gapPx) / gridCols);
-        /* Taille basée sur la hauteur viewport (88 % pour laisser place navbar + palette) */
-        var vhAvail  = Math.floor(window.innerHeight * 0.88 - (gridRows - 1) * gapPx);
-        var byHeight = Math.floor(vhAvail / gridRows);
-        var cellSize = Math.min(byWidth, byHeight);
-        if (cellSize > 0) {
-            gridBoard.style.setProperty('--grid-cell-size', cellSize + 'px');
-            /* Expose aussi sur :root pour les éléments hors gridBoard (modales etc.) */
-            document.documentElement.style.setProperty('--grid-cell-size', cellSize + 'px');
-            /* Après reflow CSS, ajuster les listes (fabsuite, calendar) */
-            requestAnimationFrame(clampAllListWidgets);
-        }
-    }
+    /* ── Le sizing de la grille est désormais 100% CSS (grid-template-rows:repeat(N,1fr))
+       Plus aucun calcul JS de taille de cellule. clampListWidget gère l'overflow des listes. ── */
     /**
      * Mesure la hauteur réelle disponible dans un conteneur de liste et masque
-     * les items qui déborderaient. Solution universelle : précise quelle que soit
-     * la résolution ou le span du widget.
+     * les items qui déborderaient.
      */
     function clampListWidget(listEl, itemSel) {
         if (!listEl) return;
@@ -183,12 +166,15 @@
         });
     }
     if (gridBoard) {
+        /* Recalcule les listes (fabsuite, calendar) après tout redimensionnement de la grille */
         if (typeof ResizeObserver !== 'undefined') {
-            new ResizeObserver(updateSquareCells).observe(gridBoard);
+            new ResizeObserver(function() { requestAnimationFrame(clampAllListWidgets); })
+                .observe(gridBoard);
         } else {
-            window.addEventListener('resize', updateSquareCells);
+            window.addEventListener('resize', function() { requestAnimationFrame(clampAllListWidgets); });
         }
-        updateSquareCells();
+        /* Premier rendu */
+        requestAnimationFrame(clampAllListWidgets);
     }
     function buildOccupiedMap() {
         occupiedMap = {};
