@@ -768,14 +768,16 @@ button.page-tab { border: 1px dashed var(--fh-card-border); }
 .grid-board {
     display: grid;
     grid-template-columns: repeat(var(--grid-cols, 16), 1fr);
-    /* Lignes = CSS pur. Chaque ligne prend 1/N de la hauteur disponible.
-       Plus de variable JS --grid-cell-size, plus d'approximation 88vh. */
-    grid-template-rows: repeat(var(--grid-rows, 9), 1fr);
+    /* Hauteur de ligne = JS calcule min(col-width, row-height) → cellules carrées.
+       La variable --grid-cell-size est maintenant mesurée sur gridBoard.offsetHeight
+       (précis, car la chaîne flex 100vh est en place), plus d'approximation 88vh. */
+    grid-auto-rows: var(--grid-cell-size, 104px);
     gap: 1rem;
     flex: 1;
     min-width: 0;
     height: 100%;    /* hérite de main-container (flex:1 + min-height:0) */
     overflow: hidden;
+    align-content: start; /* ancre les lignes en haut, le vide va en bas */
 }
 
 /* ── Carte de groupe ──────────────────── */

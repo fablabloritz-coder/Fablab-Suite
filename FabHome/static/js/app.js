@@ -117,11 +117,28 @@
     var gridCols = parseInt(PAGE_DATA.settings.grid_cols) || 16;
     var gridRows = parseInt(PAGE_DATA.settings.grid_rows) || 9;
     var occupiedMap = {};
-    /* ── Le sizing de la grille est désormais 100% CSS (grid-template-rows:repeat(N,1fr))
-       Plus aucun calcul JS de taille de cellule. clampListWidget gère l'overflow des listes. ── */
     /**
-     * Mesure la hauteur réelle disponible dans un conteneur de liste et masque
-     * les items qui déborderaient.
+     * Calcule la taille d'une cellule carrée en mesurant les dimensions
+     * RÉELLES de gridBoard après layout CSS (flex:1 + height:100% = exact).
+     * Plus d'approximation 88%vh — on lit offsetHeight directement.
+     */
+    function updateSquareCells() {
+        if (!gridBoard) return;
+        var gapPx = parseFloat(getComputedStyle(gridBoard).columnGap) || 16;
+        /* Colonnes : largeur réelle de la grille */
+        var byWidth  = Math.floor((gridBoard.offsetWidth  - (gridCols - 1) * gapPx) / gridCols);
+        /* Lignes : hauteur réelle de la grille (mesurée après layout, exacte) */
+        var byHeight = Math.floor((gridBoard.offsetHeight - (gridRows - 1) * gapPx) / gridRows);
+        var cellSize = Math.min(byWidth, byHeight);
+        if (cellSize > 0) {
+            gridBoard.style.setProperty('--grid-cell-size', cellSize + 'px');
+            document.documentElement.style.setProperty('--grid-cell-size', cellSize + 'px');
+            requestAnimationFrame(clampAllListWidgets);
+        }
+    }
+    /**
+     * Masque les items de liste qui déborderaient de leur conteneur.
+     * Appelée après chaque updateSquareCells() via requestAnimationFrame.
      */
     function clampListWidget(listEl, itemSel) {
         if (!listEl) return;
@@ -166,15 +183,12 @@
         });
     }
     if (gridBoard) {
-        /* Recalcule les listes (fabsuite, calendar) après tout redimensionnement de la grille */
         if (typeof ResizeObserver !== 'undefined') {
-            new ResizeObserver(function() { requestAnimationFrame(clampAllListWidgets); })
-                .observe(gridBoard);
+            new ResizeObserver(updateSquareCells).observe(gridBoard);
         } else {
-            window.addEventListener('resize', function() { requestAnimationFrame(clampAllListWidgets); });
+            window.addEventListener('resize', updateSquareCells);
         }
-        /* Premier rendu */
-        requestAnimationFrame(clampAllListWidgets);
+        updateSquareCells();
     }
     function buildOccupiedMap() {
         occupiedMap = {};
