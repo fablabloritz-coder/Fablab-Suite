@@ -1272,9 +1272,9 @@ body.edit-mode .group-card {
 }
 .gw-shortcut-link:hover { color: var(--fh-text); }
 .gw-shortcut-icon {
-    width: clamp(24px, 40cqb, 60px);
-    height: clamp(24px, 40cqb, 60px);
-    border-radius: clamp(6px, 9cqb, 14px);
+    width: clamp(20px, 32cqb, 52px);
+    height: clamp(20px, 32cqb, 52px);
+    border-radius: clamp(5px, 7cqb, 12px);
     border: 1px solid var(--fh-card-border);
     background: rgba(255,255,255,0.06);
     display: flex;
@@ -1284,22 +1284,20 @@ body.edit-mode .group-card {
     flex-shrink: 0;
 }
 .gw-shortcut-icon i,
-.gw-shortcut-icon span { font-size: clamp(0.8rem, 22cqb, 1.6rem); line-height: 1; }
-.gw-shortcut-icon img { width: clamp(14px, 28cqb, 36px); height: clamp(14px, 28cqb, 36px); object-fit: contain; }
+.gw-shortcut-icon span { font-size: clamp(0.7rem, 17cqb, 1.4rem); line-height: 1; }
+.gw-shortcut-icon img { width: clamp(12px, 22cqb, 30px); height: clamp(12px, 22cqb, 30px); object-fit: contain; }
 .gw-shortcut-label {
     text-align: center;
     font-weight: 500;
-    font-size: clamp(0.5rem, 11cqb, 0.85rem);
+    font-size: clamp(0.5rem, 9cqb, 0.82rem);
     line-height: 1.25;
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-/* Label caché sur carte trop petite : @container sur UN élément = fiable */
-@container widget (max-height: 85px) { .gw-shortcut-label { display: none; } }
-/* Badges cachés sur carte très petite */
-@container widget (max-height: 100px) { .gw-fabsuite-widgets { display: none; } }
+/* Badges FabSuite cachés sur carte très petite (moins de 80px) */
+@container widget (max-height: 80px) { .gw-fabsuite-widgets { display: none; } }
 .gw-generic { display: flex; align-items: center; gap: 10px; justify-content: center; color: var(--fh-text-muted); }
 .edit-mode .grid-widget-card:hover .group-overlay { display: flex; }
 
