@@ -472,6 +472,7 @@ def api_get_consommations():
         preparateur_id   = request.args.get('preparateur_id','')
         classe_id  = request.args.get('classe_id','')
         referent_id= request.args.get('referent_id','')
+        q          = request.args.get('q','').strip()
         page     = max(1, int(request.args.get('page',1) or 1))
         per_page = min(max(1, int(request.args.get('per_page',50) or 50)), 10000)
 
@@ -529,6 +530,10 @@ def api_get_consommations():
             params.extend([ref_val, ref_val])
             count_q += ' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf WHERE crf.consommation_id = c.id AND crf.referent_id = ?))'
             cp.extend([ref_val, ref_val])
+
+        if q:
+            query   += ' AND c.projet_nom LIKE ?'; params.append(f'%{q}%')
+            count_q += ' AND c.projet_nom LIKE ?'; cp.append(f'%{q}%')
 
         total = db.execute(count_q, cp).fetchone()['total']
         query += ' ORDER BY c.date_saisie DESC, c.created_at DESC LIMIT ? OFFSET ?'

@@ -58,6 +58,28 @@
                 </button>
             </div>
         </div>
+        <!-- Filtres affinage export CSV -->
+        <div class="row g-2 align-items-end mt-2 pt-2 border-top">
+            <div class="col-12 col-md-auto d-flex align-items-end pb-1">
+                <small class="text-muted fw-semibold"><i class="bi bi-funnel me-1"></i>Affiner l'export CSV</small>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold mb-1">Référent</label>
+                <select id="exportFilterReferent" class="form-select form-select-sm">
+                    <option value="">Tous les référents</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold mb-1">Classe</label>
+                <select id="exportFilterClasse" class="form-select form-select-sm">
+                    <option value="">Toutes les classes</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold mb-1">Mot-clé projet</label>
+                <input type="text" id="exportFilterKeyword" class="form-control form-control-sm" placeholder="ex: BTS, maquette…">
+            </div>
+        </div>
     </div>
 </div>
 
@@ -246,6 +268,15 @@ function onReferenceDataLoaded() {
     const machSel = document.getElementById('actFilterMachine');
     REF_DATA.machines.forEach(m => {
         machSel.innerHTML += `<option value="${m.id}">${m.nom}</option>`;
+    });
+    // Populate export CSV filters
+    const refSel = document.getElementById('exportFilterReferent');
+    REF_DATA.referents.forEach(r => {
+        refSel.innerHTML += `<option value="${r.id}">${r.nom}</option>`;
+    });
+    const claSel = document.getElementById('exportFilterClasse');
+    REF_DATA.classes.forEach(cl => {
+        claSel.innerHTML += `<option value="${cl.id}">${cl.nom}</option>`;
     });
 
     setPreset('all', document.querySelector('.filter-tab.active'));
@@ -846,10 +877,16 @@ function exportStatsHTML() {
 }
 
 async function exportStatsCSV() {
+    const referentId = document.getElementById('exportFilterReferent').value;
+    const classeId   = document.getElementById('exportFilterClasse').value;
+    const keyword    = document.getElementById('exportFilterKeyword').value.trim();
     const params = new URLSearchParams({
         date_debut: document.getElementById('statDateDebut').value,
         date_fin: document.getElementById('statDateFin').value,
     });
+    if (referentId) params.set('referent_id', referentId);
+    if (classeId)   params.set('classe_id', classeId);
+    if (keyword)    params.set('q', keyword);
     try {
         const res = await fetch(`/api/consommations?per_page=99999&page=1&${params}`);
         const result = await res.json();
@@ -857,11 +894,11 @@ async function exportStatsCSV() {
             showToast('Aucune donnée à exporter', 'info');
             return;
         }
-        const headers = ['Date', 'Projet', 'Type activité', 'Machine', 'Matériau', 'Poids (g)', 'Surface (m²)', 'Nb feuilles', 'Préparateur', 'Classe', 'Commentaire'];
+        const headers = ['Date', 'Projet', 'Type activité', 'Machine', 'Matériau', 'Poids (g)', 'Surface (m²)', 'Nb feuilles', 'Préparateur', 'Classe', 'Référent', 'Commentaire'];
         const rows = result.data.map(r => [
             r.date_saisie, r.projet_nom || '', r.type_activite_nom || '', r.machine_nom || '',
             r.materiau_nom || '', r.poids_grammes || '', r.surface_m2 || '', r.nb_feuilles || '',
-            r.preparateur_nom || '', r.classe_nom || '', r.commentaire || ''
+            r.preparateur_nom || '', r.classe_nom || '', r.referent_nom || '', r.commentaire || ''
         ]);
         const csvContent = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
         const bom = '\uFEFF';
@@ -869,7 +906,19 @@ async function exportStatsCSV() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `FabTrack_Export_${new Date().toISOString().slice(0,10)}.csv`;
+        // Nom de fichier avec les filtres actifs
+        let suffix = '';
+        if (referentId) {
+            const opt = document.getElementById('exportFilterReferent').options;
+            suffix += '_Ref-' + (opt[opt.selectedIndex]?.text || referentId).replace(/\s+/g,'_');
+        }
+        if (classeId) {
+            const opt = document.getElementById('exportFilterClasse').options;
+            suffix += '_Cl-' + (opt[opt.selectedIndex]?.text || classeId).replace(/\s+/g,'_');
+        }
+        if (keyword) suffix += '_kw-' + keyword.replace(/\s+/g,'_').slice(0,20);
+        const today = new Date().toISOString().slice(0,10);
+        a.download = `FabTrack_Export${suffix}_${today}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         showToast('Export CSV téléchargé', 'info');
