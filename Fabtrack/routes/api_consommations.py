@@ -801,9 +801,18 @@ def api_stats_summary():
     try:
         dd = request.args.get('date_debut','')
         df = request.args.get('date_fin','')
+        referent_id = request.args.get('referent_id','')
+        classe_id   = request.args.get('classe_id','')
+        q           = request.args.get('q','').strip()
         w = '1=1'; p = []
         if dd: w+=' AND c.date_saisie >= ?'; p.append(dd)
         if df: w+=' AND c.date_saisie <= ?'; p.append(df + ' 23:59:59' if df and len(df) == 10 else df)
+        if referent_id:
+            ref_val = int(referent_id)
+            w += ' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf WHERE crf.consommation_id = c.id AND crf.referent_id = ?))'
+            p.extend([ref_val, ref_val])
+        if classe_id: w += ' AND c.classe_id = ?'; p.append(int(classe_id))
+        if q: w += ' AND c.projet_nom LIKE ?'; p.append(f'%{q}%')
 
         total = db.execute(f'SELECT COUNT(*) as n FROM consommations c WHERE {w}', p).fetchone()['n']
 
@@ -906,9 +915,18 @@ def api_stats_timeline():
         dd = request.args.get('date_debut','')
         df = request.args.get('date_fin','')
         gb = request.args.get('group_by','month')
+        referent_id = request.args.get('referent_id','')
+        classe_id   = request.args.get('classe_id','')
+        q           = request.args.get('q','').strip()
         w = '1=1'; p = []
         if dd: w+=' AND c.date_saisie >= ?'; p.append(dd)
         if df: w+=' AND c.date_saisie <= ?'; p.append(df + ' 23:59:59' if df and len(df) == 10 else df)
+        if referent_id:
+            ref_val = int(referent_id)
+            w += ' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf WHERE crf.consommation_id = c.id AND crf.referent_id = ?))'
+            p.extend([ref_val, ref_val])
+        if classe_id: w += ' AND c.classe_id = ?'; p.append(int(classe_id))
+        if q: w += ' AND c.projet_nom LIKE ?'; p.append(f'%{q}%')
 
         dex = {"day":"strftime('%Y-%m-%d',c.date_saisie)","week":"strftime('%Y-W%W',c.date_saisie)","month":"strftime('%Y-%m',c.date_saisie)"}.get(gb,"strftime('%Y-%m',c.date_saisie)")
 
