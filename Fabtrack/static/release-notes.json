@@ -1,6 +1,20 @@
 {
   "history": [
     {
+      "version": "2.4.0",
+      "date": "2026-05-16",
+      "title": "Filtres avances dans les statistiques et les exports",
+      "notes": [
+        "Trois nouveaux filtres dans la page Statistiques : Referent, Classe et Mot-cle projet.",
+        "Les filtres s'appliquent a la fois aux graphiques (actualisation) et aux exports.",
+        "Export CSV : lignes de metadonnees en tete de fichier indiquant les filtres actifs.",
+        "Export HTML : encart 'Filtres appliques' integre dans le fichier exporte.",
+        "Export PDF (impression) : recapitulatif des filtres affiche uniquement a l'impression.",
+        "Nom de fichier enrichi selon les filtres actifs (ex: FabTrack_Export_Ref-Martin_2026-05-16.csv).",
+        "Preset 'Annee scolaire' : periode du 1er septembre a aujourd'hui en un clic."
+      ]
+    },
+    {
       "version": "2.3.4",
       "date": "2026-05-08",
       "title": "Missions enrichies: definitions, exports et statistiques",
