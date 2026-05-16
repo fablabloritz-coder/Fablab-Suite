@@ -48,6 +48,7 @@
                     <button class="filter-tab" onclick="setPreset('month', this)">30j</button>
                     <button class="filter-tab" onclick="setPreset('semester', this)">Semestre</button>
                     <button class="filter-tab" onclick="setPreset('year', this)">Année</button>
+                    <button class="filter-tab" onclick="setPreset('schoolyear', this)" title="Du 1er septembre jusqu'à aujourd'hui">Année scol.</button>
                     <button class="filter-tab active" onclick="setPreset('all', this)">Tout</button>
                 </div>
             </div>
@@ -276,6 +277,13 @@ function setPreset(preset, btn) {
             debut = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
             document.getElementById('statGroupBy').value = 'month';
             break;
+        case 'schoolyear': {
+            // 1er sept de l'année scolaire en cours (si on est avant sept, on recule d'un an)
+            const sepYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+            debut = new Date(sepYear, 8, 1).toISOString().split('T')[0];
+            document.getElementById('statGroupBy').value = 'month';
+            break;
+        }
         case 'all':
             debut = '';
             fin = '';
@@ -829,7 +837,9 @@ function exportStatsHTML() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FabTrack_Stats_${new Date().toISOString().slice(0,10)}.html`;
+    const exportDebut = document.getElementById('statDateDebut').value || 'debut';
+    const exportFin = new Date().toISOString().slice(0, 10);
+    a.download = `FabTrack_Stats_${exportDebut}_${exportFin}.html`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Export HTML téléchargé', 'info');
