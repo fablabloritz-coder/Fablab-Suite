@@ -743,6 +743,7 @@ body {
    ============================================ */
 @media print {
     .navbar, .btn, .no-print, footer, .toast-container-ft { display: none !important; }
+    .print-only { display: block !important; }
     .card { box-shadow: none !important; border: 1px solid #ddd !important; }
     body { background: #fff; }
     .chart-card { page-break-inside: avoid; margin-bottom: 1rem; }
@@ -750,3 +751,4 @@ body {
     .filter-tabs, .filter-tab { display: none !important; }
     main { padding: 0 !important; }
 }
+.print-only { display: none; }

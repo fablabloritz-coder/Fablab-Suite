@@ -83,6 +83,9 @@
     </div>
 </div>
 
+<!-- Résumé filtres (impression uniquement) -->
+<div id="printFilterSummary" class="print-only mb-3"></div>
+
 <!-- Summary Cards -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
@@ -800,7 +803,31 @@ function renderHourPrep(data) {
 }
 
 /* ===== Export Functions ===== */
+
+/** Retourne les filtres actifs sous forme de tableau {label, value}. */
+function buildFilterInfo() {
+    const debut  = document.getElementById('statDateDebut').value;
+    const fin    = document.getElementById('statDateFin').value;
+    const refSel = document.getElementById('exportFilterReferent');
+    const claSel = document.getElementById('exportFilterClasse');
+    const kw     = document.getElementById('exportFilterKeyword').value.trim();
+    const f = [];
+    f.push({ label: 'Période', value: `${debut || 'début'} → ${fin || "aujourd'hui"}` });
+    if (refSel.value) f.push({ label: 'Référent', value: refSel.options[refSel.selectedIndex].text });
+    if (claSel.value) f.push({ label: 'Classe',   value: claSel.options[claSel.selectedIndex].text });
+    if (kw)           f.push({ label: 'Mot-clé projet', value: kw });
+    return f;
+}
+
 function exportStatsPDF() {
+    const filters = buildFilterInfo();
+    const el = document.getElementById('printFilterSummary');
+    if (el) {
+        el.innerHTML = `<div style="border:1px solid #dee2e6;border-radius:8px;padding:0.6rem 1rem;font-size:0.82rem;background:#f8f9fa;">
+            <strong>Filtres appliqués :</strong>
+            ${filters.map(f => `<span style="margin-left:0.75rem;"><strong>${f.label} :</strong> ${f.value}</span>`).join('')}
+        </div>`;
+    }
     window.print();
 }
 
@@ -816,6 +843,14 @@ function exportStatsHTML() {
             ${fablabInfo.adresse ? `<p style="margin:0;color:#888;font-size:0.85rem;">${fablabInfo.adresse}</p>` : ''}
         </div>
     ` : '';
+
+    // Filtres actifs
+    const filters = buildFilterInfo();
+    const filtersHtml = `
+        <div style="border:1px solid #dee2e6;border-radius:8px;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.82rem;background:#f8f9fa;">
+            <strong>Filtres appliqués :</strong>
+            ${filters.map(f => `<span style="margin-left:0.75rem;"><strong>${f.label} :</strong> ${f.value}</span>`).join('')}
+        </div>`;
 
     // Convert all visible canvases to images
     const canvases = document.querySelectorAll('canvas');
@@ -851,13 +886,16 @@ function exportStatsHTML() {
         .summary-card .number { font-size: 2rem; font-weight: 800; }
         .summary-card .label { font-size: 0.85rem; color: #666; }
         .period { color: #666; font-size: 0.9rem; margin-bottom: 1rem; }
+        .filters { font-size: 0.82rem; border: 1px solid #dee2e6; border-radius: 8px; padding: 0.6rem 1rem; background: #f8f9fa; margin-bottom: 1rem; }
+        .filters strong { margin-right: 0.25rem; }
+        .filters span { margin-left: 0.75rem; }
         footer { margin-top: 3rem; text-align: center; color: #999; font-size: 0.8rem; }
     </style>
 </head>
 <body>
     <h1>📊 FabTrack — Statistiques</h1>
     ${fablabHeader}
-    <p class="period">Période : ${debut} → ${fin}</p>
+    ${filtersHtml}
     <div class="summary">
         <div class="summary-card"><div class="number" style="color:#3b82f6">${total}</div><div class="label">Interventions</div></div>
         <div class="summary-card"><div class="number" style="color:#f59e0b">${filament}</div><div class="label">Filament 3D</div></div>
@@ -874,9 +912,17 @@ function exportStatsHTML() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
+    // Nom de fichier avec les filtres actifs
+    let suffix = '';
+    const refSelH = document.getElementById('exportFilterReferent');
+    const claSelH = document.getElementById('exportFilterClasse');
+    const kwH     = document.getElementById('exportFilterKeyword').value.trim();
+    if (refSelH.value) suffix += '_Ref-' + (refSelH.options[refSelH.selectedIndex]?.text || '').replace(/\s+/g,'_');
+    if (claSelH.value) suffix += '_Cl-'  + (claSelH.options[claSelH.selectedIndex]?.text || '').replace(/\s+/g,'_');
+    if (kwH) suffix += '_kw-' + kwH.replace(/\s+/g,'_').slice(0,20);
     const exportDebut = document.getElementById('statDateDebut').value || 'debut';
-    const exportFin = new Date().toISOString().slice(0, 10);
-    a.download = `FabTrack_Stats_${exportDebut}_${exportFin}.html`;
+    const exportFin   = new Date().toISOString().slice(0, 10);
+    a.download = `FabTrack_Stats${suffix}_${exportDebut}_${exportFin}.html`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Export HTML téléchargé', 'info');
@@ -900,13 +946,26 @@ async function exportStatsCSV() {
             showToast('Aucune donnée à exporter', 'info');
             return;
         }
+        // Lignes de métadonnées filtres
+        const filters = buildFilterInfo();
+        const q = v => `"${String(v).replace(/"/g,'""')}"`;
+        const metaRows = [
+            [q('Export FabTrack'), q(new Date().toLocaleDateString('fr-FR'))],
+            [q('Filtres appliqués'), q('')],
+            ...filters.map(f => [q(f.label), q(f.value)]),
+            [q(''), q('')],  // ligne vide séparateur
+        ];
         const headers = ['Date', 'Projet', 'Type activité', 'Machine', 'Matériau', 'Poids (g)', 'Surface (m²)', 'Nb feuilles', 'Préparateur', 'Classe', 'Référent', 'Commentaire'];
         const rows = result.data.map(r => [
             r.date_saisie, r.projet_nom || '', r.type_activite_nom || '', r.machine_nom || '',
             r.materiau_nom || '', r.poids_grammes || '', r.surface_m2 || '', r.nb_feuilles || '',
             r.preparateur_nom || '', r.classe_nom || '', r.referent_nom || '', r.commentaire || ''
         ]);
-        const csvContent = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
+        const csvContent = [
+            ...metaRows,
+            headers.map(q),
+            ...rows.map(row => row.map(v => q(v))),
+        ].map(row => row.join(';')).join('\n');
         const bom = '\uFEFF';
         const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8' });
         const url = URL.createObjectURL(blob);
