@@ -1,6 +1,14 @@
 {
   "history": [
     {
+      "version": "1.7.5",
+      "date": "2026-05-18",
+      "title": "Protection contre le double pret",
+      "notes": [
+        "<strong>Verification de disponibilite au moment de la soumission</strong> — un objet deja emprunte entre l'affichage du formulaire et sa validation est maintenant detecte et le pret est refuse avec un message explicite."
+      ]
+    },
+    {
       "version": "1.7.4",
       "date": "2026-05-04",
       "title": "Reservations hybrides et alertes capacitaires",

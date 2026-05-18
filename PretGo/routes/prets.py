@@ -197,71 +197,86 @@ def nouveau_pret():
         if not personne_id or not items:
             flash('Veuillez sélectionner une personne et ajouter au moins un objet.', 'danger')
         else:
-            now_dt = datetime.now()
-            expected_return_dt = compute_expected_return_datetime(
-                conn,
-                now_dt,
-                duree_pret_heures,
-                duree_pret_jours,
-                date_retour_prevue,
-            )
-            conflicts = find_reservation_conflicts_for_loan(
-                conn,
-                _material_ids_from_items(items),
-                expected_return_dt,
-                now_dt=now_dt,
-                exclude_reservation_id=reservation_id,
-            )
+            # Protection contre la double soumission : vérification de disponibilité au moment de la soumission
+            mat_ids = [mid for _, mid in items if mid]
+            already_loaned = []
+            if mat_ids:
+                ph = ','.join('?' * len(mat_ids))
+                already_loaned = conn.execute(
+                    f"SELECT type_materiel, numero_inventaire FROM inventaire "
+                    f"WHERE id IN ({ph}) AND etat != 'disponible'",
+                    mat_ids
+                ).fetchall()
 
-            if conflicts:
-                for conflict in conflicts:
-                    flash(conflict['message'], 'warning')
-                conflict_labels = sorted({conflict['material_label'] for conflict in conflicts if conflict.get('material_label')})
-                if conflict_labels:
-                    flash('Objets en conflit: ' + ', '.join(conflict_labels), 'danger')
-                flash('Prêt refusé: conflit avec une réservation future. Les informations saisies ont été conservées.', 'danger')
+            if already_loaned:
+                labels = [f"{r['type_materiel']} {r['numero_inventaire']}".strip() for r in already_loaned]
+                flash(f"Prêt refusé : objet(s) déjà emprunté(s) ou indisponible(s) : {', '.join(labels)}", 'danger')
             else:
-            # Construire le descriptif combiné
-                descriptif = ' + '.join(desc for desc, _ in items)
-                now = now_dt.strftime('%Y-%m-%d %H:%M:%S')
-
-            # Snapshot de la classe au moment du prêt
-                pers = conn.execute('SELECT classe FROM personnes WHERE id = ?', (personne_id,)).fetchone()
-                classe_snap = pers['classe'] if pers else ''
-                annee_scol = calculer_annee_scolaire()
-
-                cursor = conn.execute(
-                    '''INSERT INTO prets (personne_id, descriptif_objets, date_emprunt,
-                       notes, duree_pret_jours, duree_pret_heures, type_duree, date_retour_prevue,
-                       classe_snapshot, annee_scolaire, lieu_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                    (personne_id, descriptif, now, notes, duree_pret_jours, duree_pret_heures,
-                     duree_type, date_retour_prevue, classe_snap, annee_scol, lieu_id)
+                now_dt = datetime.now()
+                expected_return_dt = compute_expected_return_datetime(
+                    conn,
+                    now_dt,
+                    duree_pret_heures,
+                    duree_pret_jours,
+                    date_retour_prevue,
                 )
-                pret_id = cursor.lastrowid
+                conflicts = find_reservation_conflicts_for_loan(
+                    conn,
+                    _material_ids_from_items(items),
+                    expected_return_dt,
+                    now_dt=now_dt,
+                    exclude_reservation_id=reservation_id,
+                )
 
-            # Insérer chaque item dans pret_materiels
-                for desc, mat_id in items:
-                    conn.execute(
-                        'INSERT INTO pret_materiels (pret_id, materiel_id, description) VALUES (?, ?, ?)',
-                        (pret_id, mat_id, desc)
+                if conflicts:
+                    for conflict in conflicts:
+                        flash(conflict['message'], 'warning')
+                    conflict_labels = sorted({conflict['material_label'] for conflict in conflicts if conflict.get('material_label')})
+                    if conflict_labels:
+                        flash('Objets en conflit: ' + ', '.join(conflict_labels), 'danger')
+                    flash('Prêt refusé: conflit avec une réservation future. Les informations saisies ont été conservées.', 'danger')
+                else:
+                    # Construire le descriptif combiné
+                    descriptif = ' + '.join(desc for desc, _ in items)
+                    now = now_dt.strftime('%Y-%m-%d %H:%M:%S')
+
+                    # Snapshot de la classe au moment du prêt
+                    pers = conn.execute('SELECT classe FROM personnes WHERE id = ?', (personne_id,)).fetchone()
+                    classe_snap = pers['classe'] if pers else ''
+                    annee_scol = calculer_annee_scolaire()
+
+                    cursor = conn.execute(
+                        '''INSERT INTO prets (personne_id, descriptif_objets, date_emprunt,
+                           notes, duree_pret_jours, duree_pret_heures, type_duree, date_retour_prevue,
+                           classe_snapshot, annee_scolaire, lieu_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        (personne_id, descriptif, now, notes, duree_pret_jours, duree_pret_heures,
+                         duree_type, date_retour_prevue, classe_snap, annee_scol, lieu_id)
                     )
-                    if mat_id:
-                        conn.execute("UPDATE inventaire SET etat = 'prete' WHERE id = ?", (mat_id,))
+                    pret_id = cursor.lastrowid
 
-                if reservation_id:
-                    conn.execute(
-                        '''
-                        UPDATE reservations
-                        SET statut = 'convertie_en_pret', pret_id = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                        ''',
-                        (pret_id, reservation_id),
-                    )
+                    # Insérer chaque item dans pret_materiels
+                    for desc, mat_id in items:
+                        conn.execute(
+                            'INSERT INTO pret_materiels (pret_id, materiel_id, description) VALUES (?, ?, ?)',
+                            (pret_id, mat_id, desc)
+                        )
+                        if mat_id:
+                            conn.execute("UPDATE inventaire SET etat = 'prete' WHERE id = ?", (mat_id,))
 
-                conn.commit()
-                flash('Prêt enregistré avec succès !', 'success')
-                return redirect(url_for('core.index'))
+                    if reservation_id:
+                        conn.execute(
+                            '''
+                            UPDATE reservations
+                            SET statut = 'convertie_en_pret', pret_id = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                            ''',
+                            (pret_id, reservation_id),
+                        )
+
+                    conn.commit()
+                    flash('Prêt enregistré avec succès !', 'success')
+                    return redirect(url_for('core.index'))
 
     personnes = conn.execute(
         'SELECT * FROM personnes WHERE actif = 1 ORDER BY nom, prenom'
