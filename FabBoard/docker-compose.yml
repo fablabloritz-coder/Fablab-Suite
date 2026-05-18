@@ -6,6 +6,7 @@ services:
       - "${FABBOARD_PORT:-5580}:5580"
     volumes:
       - ${FABBOARD_DATA_PATH:-./docker-data/data}:/app/data
+      - ${FABBOARD_UPLOADS_PATH:-./docker-data/uploads}:/app/static/uploads
     restart: unless-stopped
     stop_grace_period: 20s
     environment:
