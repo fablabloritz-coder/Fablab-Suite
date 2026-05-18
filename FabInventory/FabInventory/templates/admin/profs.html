@@ -1,0 +1,122 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Professeurs — Admin FabInventory{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="fw-bold mb-0"><i class="bi bi-people me-2 text-primary"></i>Professeurs</h3>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAjoutProf">
+    <i class="bi bi-plus-lg me-1"></i>Ajouter
+  </button>
+</div>
+
+{% if profs %}
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Nom</th>
+          <th>Email</th>
+          <th>Lien d'accès</th>
+          <th>Statut</th>
+          <th>Demandes</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in profs %}
+        <tr>
+          <td class="fw-semibold">{{ p.nom }}</td>
+          <td class="text-muted small">{{ p.email }}</td>
+          <td>
+            {% if p.actif %}
+            {% set lien = url_for('prof_catalogue', token=p.token) %}
+            <div class="input-group input-group-sm" style="max-width:260px;">
+              <input type="text" class="form-control form-control-sm font-monospace small" id="lien-{{ p.id }}"
+                     value="{{ request.host_url.rstrip('/') }}{{ lien }}" readonly>
+              <button class="btn btn-outline-secondary btn-sm" onclick="copier('lien-{{ p.id }}')" title="Copier">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            {% else %}
+            <span class="text-muted small">Token révoqué</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if p.actif %}
+            <span class="badge bg-success">Actif</span>
+            {% else %}
+            <span class="badge bg-secondary">Révoqué</span>
+            {% endif %}
+          </td>
+          <td><span class="badge bg-light text-dark border">{{ p.nb_demandes }}</span></td>
+          <td class="d-flex gap-1">
+            {% if p.actif %}
+            <form method="POST" action="/admin/profs/{{ p.id }}/revoke">
+              <button class="btn btn-warning btn-sm" title="Révoquer" onclick="return confirm('Révoquer ce token ?')">
+                <i class="bi bi-lock"></i>
+              </button>
+            </form>
+            {% else %}
+            <form method="POST" action="/admin/profs/{{ p.id }}/activate">
+              <button class="btn btn-success btn-sm" title="Réactiver">
+                <i class="bi bi-unlock"></i>
+              </button>
+            </form>
+            {% endif %}
+            <form method="POST" action="/admin/profs/{{ p.id }}/regen">
+              <button class="btn btn-info btn-sm text-white" title="Regénérer le token" onclick="return confirm('Générer un nouveau lien ? L\'ancien sera invalidé.')">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-people fs-1 d-block mb-2"></i>
+  Aucun professeur enregistré.
+</div>
+{% endif %}
+
+<!-- Modal ajout prof -->
+<div class="modal fade" id="modalAjoutProf" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="POST" action="/admin/profs/add" class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Ajouter un professeur</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Nom complet *</label>
+          <input type="text" name="nom" class="form-control" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email *</label>
+          <input type="email" name="email" class="form-control" required>
+        </div>
+        <p class="small text-muted">Un lien d'accès unique sera généré automatiquement.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="submit" class="btn btn-primary">Créer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copier(id) {
+  const el = document.getElementById(id);
+  navigator.clipboard.writeText(el.value).then(() => {
+    const btn = el.nextElementSibling;
+    btn.innerHTML = '<i class="bi bi-check"></i>';
+    setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+  });
+}
+</script>
+{% endblock %}

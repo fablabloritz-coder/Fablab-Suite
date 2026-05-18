@@ -1,0 +1,180 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Demandes — Admin FabInventory{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="fw-bold mb-0"><i class="bi bi-inbox me-2 text-primary"></i>Demandes</h3>
+</div>
+
+<!-- Filtres -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-sm-4">
+        <label class="form-label small fw-semibold">Statut</label>
+        <select name="statut" class="form-select form-select-sm">
+          <option value="">Tous les statuts</option>
+          {% for s in STATUTS_DEMANDE %}
+          <option value="{{ s }}" {% if s == filtre_statut %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-4">
+        <label class="form-label small fw-semibold">Logiciel</label>
+        <select name="logiciel" class="form-select form-select-sm">
+          <option value="">Tous les logiciels</option>
+          {% for l in logiciels %}
+          <option value="{{ l.nom }}" {% if l.nom == filtre_logiciel %}selected{% endif %}>{{ l.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-4">
+        <button type="submit" class="btn btn-primary btn-sm">Filtrer</button>
+        <a href="/admin/demandes" class="btn btn-outline-secondary btn-sm ms-1">Réinitialiser</a>
+        <a href="/admin/export-pdf{% if filtre_statut %}?statut={{ filtre_statut }}{% endif %}" class="btn btn-outline-danger btn-sm ms-1" target="_blank">
+          <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if demandes %}
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Prof</th>
+          <th>Logiciel</th>
+          <th>Version</th>
+          <th>Date</th>
+          <th>Statut</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in demandes %}
+        <tr id="row-{{ d.id }}">
+          <td class="text-muted small">{{ d.id }}</td>
+          <td>
+            <div class="fw-semibold">{{ d.prof_nom }}</div>
+            <div class="small text-muted">{{ d.prof_email }}</div>
+          </td>
+          <td>
+            <div class="fw-semibold">{{ d.logiciel_nom }}</div>
+            {% if d.precisions %}
+            <div class="small text-muted text-truncate" style="max-width:180px;" title="{{ d.precisions }}">{{ d.precisions }}</div>
+            {% endif %}
+          </td>
+          <td class="small">{{ d.numero_version or '—' }}</td>
+          <td class="small text-muted">{{ d.date_demande[:10] }}</td>
+          <td>
+            <span class="badge bg-{{ STATUT_BADGE[d.statut] }} text-{{ 'dark' if d.statut == 'Demandé' else 'white' }} statut-badge" id="badge-{{ d.id }}">
+              {{ d.statut }}
+            </span>
+          </td>
+          <td>
+            <button class="btn btn-outline-secondary btn-sm" onclick="ouvrirDetail({{ d.id }})">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+  Aucune demande {% if filtre_statut %}avec le statut « {{ filtre_statut }} »{% endif %}
+</div>
+{% endif %}
+
+<!-- Modal édition -->
+<div class="modal fade" id="modalDemande" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Demande #<span id="modalId"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-3" id="modalDetails">
+          <dt class="col-4">Professeur</dt><dd class="col-8" id="mProf">—</dd>
+          <dt class="col-4">Email</dt><dd class="col-8" id="mEmail">—</dd>
+          <dt class="col-4">Logiciel</dt><dd class="col-8" id="mLogiciel">—</dd>
+          <dt class="col-4">Version</dt><dd class="col-8" id="mVersion">—</dd>
+          <dt class="col-4">Précisions</dt><dd class="col-8" id="mPrecisions">—</dd>
+          <dt class="col-4">Plugins</dt><dd class="col-8" id="mPlugins">—</dd>
+        </dl>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Statut</label>
+          <select id="modalStatut" class="form-select">
+            {% for s in STATUTS_DEMANDE %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Notes internes</label>
+          <textarea id="modalNotes" class="form-control" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary" onclick="sauverDemande()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUT_BADGE = {{ STATUT_BADGE | tojson }};
+let currentDemandeId = null;
+const modal = new bootstrap.Modal(document.getElementById('modalDemande'));
+
+async function ouvrirDetail(id) {
+  currentDemandeId = id;
+  document.getElementById('modalId').textContent = id;
+  try {
+    const r = await fetch(`/api/admin/demandes/${id}/details`);
+    const d = await r.json();
+    document.getElementById('mProf').textContent = d.prof_nom || '—';
+    document.getElementById('mEmail').textContent = d.prof_email || '—';
+    document.getElementById('mLogiciel').textContent = d.logiciel_nom || '—';
+    document.getElementById('mVersion').textContent = d.numero_version || '—';
+    document.getElementById('mPrecisions').textContent = d.precisions || '—';
+    document.getElementById('mPlugins').textContent = (d.plugins && d.plugins.length) ? d.plugins.map(p => p.nom).join(', ') : '—';
+    document.getElementById('modalStatut').value = d.statut;
+    document.getElementById('modalNotes').value = d.notes_internes || '';
+  } catch(e) {
+    console.error(e);
+  }
+  modal.show();
+}
+
+async function sauverDemande() {
+  const statut = document.getElementById('modalStatut').value;
+  const notes = document.getElementById('modalNotes').value;
+  const r = await fetch(`/api/admin/demandes/${currentDemandeId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({statut, notes_internes: notes})
+  });
+  if (r.ok) {
+    const badge = document.getElementById('badge-' + currentDemandeId);
+    if (badge) {
+      const cls = STATUT_BADGE[statut] || 'secondary';
+      badge.className = `badge bg-${cls} ${statut === 'Demandé' ? 'text-dark' : 'text-white'} statut-badge`;
+      badge.textContent = statut;
+    }
+    modal.hide();
+  }
+}
+</script>
+{% endblock %}

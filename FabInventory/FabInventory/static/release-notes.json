@@ -1,0 +1,21 @@
+[
+  {
+    "version": "2.0.0",
+    "date": "2026-05-19",
+    "summary": "Portail demandes logiciels — refonte majeure",
+    "changes": [
+      "Portail professeurs : accès via token UUID unique (sans mot de passe), catalogue logiciels, soumission de demandes",
+      "Espace admin sécurisé : login/password, dashboard agrégé, gestion des demandes (statuts : Demandé → Validé → En cours → Installé → Refusé)",
+      "Catalogue logiciels : CRUD complet (nom, catégorie, description, pack de base, actif/inactif)",
+      "Versions par logiciel : numéro, type licence, gratuit éducation, URL de téléchargement",
+      "Plugins/options par logiciel : sélectionnables par le prof lors de la demande",
+      "Guides / Wiki : éditeur Markdown par logiciel (guide principal, comptes/licences, dépannage JSON)",
+      "Gestion professeurs : création, révocation, regénération de token, lien copiable",
+      "Export PDF des demandes pour préparer les installations masters",
+      "Anti-doublon demandes : pas de 2ème demande en cours pour le même logiciel",
+      "Seed automatique : compte admin par défaut (admin/admin), pack de base (VLC, 7-Zip, SumatraPDF)",
+      "Migrations DB idempotentes : 8 nouvelles tables sans rupture de la base existante",
+      "Navigation : lien Admin ajouté dans la navbar de l'inventaire"
+    ]
+  }
+]

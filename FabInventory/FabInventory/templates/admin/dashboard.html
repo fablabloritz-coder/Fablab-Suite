@@ -1,0 +1,126 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Dashboard Admin — FabInventory{% endblock %}
+
+{% block content %}
+<h3 class="fw-bold mb-4"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h3>
+
+<!-- KPIs -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-primary bg-opacity-10" style="width:52px;height:52px;">
+          <i class="bi bi-inbox text-primary fs-4"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold">{{ total_demandes }}</div>
+          <div class="small text-muted">Demandes totales</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning bg-opacity-10" style="width:52px;height:52px;">
+          <i class="bi bi-hourglass-split text-warning fs-4"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold">{{ statuts_dict.get('Demandé', 0) + statuts_dict.get('Validé', 0) + statuts_dict.get('En cours', 0) }}</div>
+          <div class="small text-muted">En attente</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-success bg-opacity-10" style="width:52px;height:52px;">
+          <i class="bi bi-grid text-success fs-4"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold">{{ nb_logiciels }}</div>
+          <div class="small text-muted">Logiciels actifs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-info bg-opacity-10" style="width:52px;height:52px;">
+          <i class="bi bi-people text-info fs-4"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold">{{ nb_profs }}</div>
+          <div class="small text-muted">Professeurs actifs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Statuts -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Demandes par statut</div>
+      <div class="card-body">
+        {% set statuts_ordre = ['Demandé','Validé','En cours','Installé','Refusé'] %}
+        {% for s in statuts_ordre %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="badge bg-{{ STATUT_BADGE[s] }} text-{{ 'dark' if s == 'Demandé' else 'white' }}">{{ s }}</span>
+          <span class="fw-bold">{{ statuts_dict.get(s, 0) }}</span>
+        </div>
+        {% endfor %}
+        {% if total_demandes %}
+        <a href="/admin/demandes" class="btn btn-outline-primary btn-sm mt-2 w-100">Voir toutes</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Top logiciels -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Top logiciels demandés</div>
+      <div class="card-body">
+        {% if top_logiciels %}
+        {% for item in top_logiciels %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="small">{{ item.nom }}</span>
+          <span class="badge bg-secondary">{{ item.nb }}</span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-0">Aucune demande pour l'instant.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Demandes récentes -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Demandes récentes</div>
+      <div class="card-body p-0">
+        {% if recentes %}
+        <ul class="list-group list-group-flush">
+          {% for d in recentes %}
+          <li class="list-group-item px-3 py-2">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="small fw-semibold">{{ d.logiciel_nom }}</span>
+              <span class="badge bg-{{ STATUT_BADGE[d.statut] }} text-{{ 'dark' if d.statut == 'Demandé' else 'white' }} ms-2">{{ d.statut }}</span>
+            </div>
+            <div class="text-muted" style="font-size:.75rem;">{{ d.prof_nom }} — {{ d.date_demande[:10] }}</div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small px-3 py-2 mb-0">Aucune demande.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

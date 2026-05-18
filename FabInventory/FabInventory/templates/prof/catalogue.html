@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catalogue logiciels — FabInventory</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+  :root { --fi-blue: #2563eb; }
+  .navbar-fi { background: var(--fi-blue); }
+  .badge-statut-Demandé { background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
+  .badge-statut-Validé { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+  .badge-statut-En\ cours { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
+  .badge-statut-Installé { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+  .badge-statut-Refusé { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+  .logiciel-card { cursor: pointer; transition: box-shadow .15s; }
+  .logiciel-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+  .pack-base-badge { background: #2563eb; color: #fff; font-size:.7rem; }
+</style>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-dark navbar-fi px-3 py-2">
+  <span class="navbar-brand fw-bold"><i class="bi bi-hdd-stack-fill me-2"></i>FabInventory</span>
+  <span class="text-light small">
+    <i class="bi bi-person-circle me-1"></i>{{ prof.nom }}
+    <span class="text-white-50 mx-2">|</span>
+    <a href="#mes-demandes" class="text-light">Mes demandes
+      {% if mes_demandes %}<span class="badge bg-white text-primary ms-1">{{ mes_demandes|length }}</span>{% endif %}
+    </a>
+  </span>
+</nav>
+
+<div class="container py-4">
+
+  <!-- Bannière info -->
+  <div class="alert alert-info d-flex align-items-start gap-3 mb-4" role="alert">
+    <i class="bi bi-info-circle-fill fs-4 flex-shrink-0 mt-1"></i>
+    <div>
+      <strong>Bienvenue, {{ prof.nom }} !</strong><br>
+      Consultez le catalogue et soumettez vos demandes d'installation logiciels.
+      Les demandes seront traitées par l'équipe FabLab.
+    </div>
+  </div>
+
+  <!-- Filtres -->
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <button class="btn btn-outline-primary btn-sm active" id="btn-all" onclick="filtrerCategorie(null)">
+      Tous <span class="badge bg-primary ms-1">{{ logiciels|length }}</span>
+    </button>
+    {% for cat in categories %}
+    <button class="btn btn-outline-secondary btn-sm" id="btn-{{ loop.index }}" onclick="filtrerCategorie('{{ cat }}')">
+      {{ cat }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- Catalogue -->
+  <div class="row g-3 mb-5" id="catalogue">
+    {% for l in logiciels %}
+    <div class="col-sm-6 col-lg-4 logiciel-item" data-cat="{{ l.categorie }}">
+      <div class="card border-0 shadow-sm logiciel-card h-100" onclick="ouvrirLogiciel({{ l.id }})">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <h6 class="fw-bold mb-0">{{ l.nom }}</h6>
+            <div class="d-flex gap-1 flex-shrink-0">
+              {% if l.dans_pack_base %}<span class="badge pack-base-badge">Pack de base</span>{% endif %}
+              {% if l.versions %}<span class="badge bg-light text-dark border small">{{ l.versions[0].numero_version }}</span>{% endif %}
+            </div>
+          </div>
+          {% if l.categorie %}<div class="text-muted small mb-2">{{ l.categorie }}</div>{% endif %}
+          {% if l.description %}<p class="small text-muted mb-0 text-truncate">{{ l.description }}</p>{% endif %}
+        </div>
+        <div class="card-footer bg-transparent border-top-0 d-flex justify-content-between align-items-center">
+          <span class="small text-muted">
+            {% if l.plugins|selectattr('optionnel','equalto',0)|list %}
+            <i class="bi bi-puzzle me-1"></i>{{ l.plugins|selectattr('optionnel','equalto',0)|list|length }} plugin(s) inclus
+            {% endif %}
+          </span>
+          <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); ouvrirLogiciel({{ l.id }})">
+            <i class="bi bi-plus-lg me-1"></i>Demander
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Mes demandes -->
+  <a id="mes-demandes"></a>
+  <h5 class="fw-bold mb-3"><i class="bi bi-inbox me-2"></i>Mes demandes</h5>
+  {% if mes_demandes %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr><th>Logiciel</th><th>Version</th><th>Date</th><th>Statut</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          {% for d in mes_demandes %}
+          <tr>
+            <td class="fw-semibold">{{ d.logiciel_nom }}</td>
+            <td class="small text-muted">{{ d.numero_version or '—' }}</td>
+            <td class="small text-muted">{{ d.date_demande[:10] }}</td>
+            <td>
+              <span class="badge bg-{{ STATUT_BADGE[d.statut] }} text-{{ 'dark' if d.statut == 'Demandé' else 'white' }}">
+                {{ d.statut }}
+              </span>
+            </td>
+            <td>
+              {% if d.statut in ['Demandé', 'Validé'] %}
+              <button class="btn btn-outline-danger btn-sm"
+                      onclick="annulerDemande({{ d.id }}, '{{ token }}')"
+                      title="Annuler cette demande">
+                <i class="bi bi-x"></i>
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted small">Aucune demande pour l'instant.</p>
+  {% endif %}
+</div>
+
+<!-- Modal demande logiciel -->
+<div class="modal fade" id="modalLogiciel" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mLogNom">—</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="mLogDesc" class="text-muted small mb-3"></div>
+        <div id="mPackBase" class="alert alert-info small" style="display:none;">
+          <i class="bi bi-info-circle me-1"></i>Ce logiciel fait partie du <strong>pack de base</strong> et sera automatiquement installé.
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Version demandée</label>
+            <select id="mVersion" class="form-select">
+              <option value="">— Pas de préférence —</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <div id="mPluginsBlock">
+              <label class="form-label fw-semibold">Plugins / Options</label>
+              <div id="mPlugins" class="d-flex flex-column gap-1"></div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3">
+          <label class="form-label fw-semibold">Précisions / Contexte d'utilisation</label>
+          <textarea id="mPrecisions" class="form-control" rows="2" placeholder="Ex: cours de modélisation 3D, salle B12…"></textarea>
+        </div>
+        <div id="mGuideBlock" class="mt-3" style="display:none;">
+          <a id="mGuideLink" class="btn btn-outline-info btn-sm" target="_blank">
+            <i class="bi bi-book me-1"></i>Consulter le guide
+          </a>
+        </div>
+        <div id="mErreur" class="alert alert-danger mt-3" style="display:none;"></div>
+        <div id="mSucces" class="alert alert-success mt-3" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+        <button class="btn btn-primary" id="btnSoumettre" onclick="soumettreDemande()">
+          <i class="bi bi-send me-1"></i>Soumettre la demande
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const token = "{{ token }}";
+let currentLogicielId = null;
+const modal = new bootstrap.Modal(document.getElementById('modalLogiciel'));
+
+// Données logiciels injectées en JSON pour éviter les appels supplémentaires
+const LOGICIELS = {{ logiciels | tojson }};
+const LOGICIELS_MAP = {};
+LOGICIELS.forEach(l => { LOGICIELS_MAP[l.id] = l; });
+
+function filtrerCategorie(cat) {
+  document.querySelectorAll('.logiciel-item').forEach(el => {
+    el.style.display = (!cat || el.dataset.cat === cat) ? '' : 'none';
+  });
+  document.querySelectorAll('[id^="btn-"], #btn-all').forEach(btn => {
+    btn.classList.remove('active', 'btn-primary', 'btn-outline-primary', 'btn-outline-secondary');
+    btn.classList.add(btn.id === 'btn-all' && !cat ? 'active' : '', 'btn-outline-secondary');
+  });
+}
+
+function ouvrirLogiciel(id) {
+  const l = LOGICIELS_MAP[id];
+  if (!l) return;
+  currentLogicielId = id;
+
+  document.getElementById('mLogNom').textContent = l.nom;
+  document.getElementById('mLogDesc').textContent = l.description || '';
+  document.getElementById('mPackBase').style.display = l.dans_pack_base ? '' : 'none';
+  document.getElementById('mErreur').style.display = 'none';
+  document.getElementById('mSucces').style.display = 'none';
+  document.getElementById('btnSoumettre').disabled = false;
+  document.getElementById('mPrecisions').value = '';
+
+  // Versions
+  const sel = document.getElementById('mVersion');
+  sel.innerHTML = '<option value="">— Pas de préférence —</option>';
+  (l.versions || []).forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.numero_version + (v.type_licence ? ` (${v.type_licence})` : '') + (v.gratuit_education ? ' 🎓' : '');
+    sel.appendChild(opt);
+  });
+
+  // Plugins
+  const pluginsDiv = document.getElementById('mPlugins');
+  pluginsDiv.innerHTML = '';
+  const plugins = l.plugins || [];
+  if (plugins.length) {
+    document.getElementById('mPluginsBlock').style.display = '';
+    plugins.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'form-check';
+      div.innerHTML = `<input type="checkbox" class="form-check-input plugin-cb" id="p${p.id}" value="${p.id}" ${p.optionnel ? '' : 'checked disabled'}>
+        <label class="form-check-label small" for="p${p.id}">${p.nom}${p.optionnel ? '' : ' <span class="badge bg-secondary">Inclus</span>'}</label>`;
+      pluginsDiv.appendChild(div);
+    });
+  } else {
+    document.getElementById('mPluginsBlock').style.display = 'none';
+  }
+
+  // Guide
+  const guideBlock = document.getElementById('mGuideBlock');
+  document.getElementById('mGuideLink').href = `/prof/${token}/guide/${id}`;
+  guideBlock.style.display = '';
+
+  modal.show();
+}
+
+async function soumettreDemande() {
+  const errDiv = document.getElementById('mErreur');
+  const sucDiv = document.getElementById('mSucces');
+  errDiv.style.display = 'none';
+  sucDiv.style.display = 'none';
+
+  const version_id = document.getElementById('mVersion').value || null;
+  const precisions = document.getElementById('mPrecisions').value;
+  const plugin_ids = Array.from(document.querySelectorAll('.plugin-cb:checked')).map(cb => parseInt(cb.value));
+
+  document.getElementById('btnSoumettre').disabled = true;
+
+  try {
+    const r = await fetch(`/api/prof/${token}/demandes`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        logiciel_id: currentLogicielId,
+        version_id: version_id ? parseInt(version_id) : null,
+        precisions,
+        plugin_ids
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      errDiv.textContent = data.error || 'Erreur lors de la soumission.';
+      errDiv.style.display = '';
+      document.getElementById('btnSoumettre').disabled = false;
+    } else {
+      sucDiv.textContent = 'Demande enregistrée avec succès !';
+      sucDiv.style.display = '';
+      setTimeout(() => { modal.hide(); location.reload(); }, 1500);
+    }
+  } catch(e) {
+    errDiv.textContent = 'Erreur réseau.';
+    errDiv.style.display = '';
+    document.getElementById('btnSoumettre').disabled = false;
+  }
+}
+
+async function annulerDemande(id, tok) {
+  if (!confirm('Annuler cette demande ?')) return;
+  const r = await fetch(`/api/prof/${tok}/demandes/${id}/cancel`, {method:'POST'});
+  if (r.ok) location.reload();
+  else alert('Impossible d\'annuler cette demande.');
+}
+</script>
+</body>
+</html>

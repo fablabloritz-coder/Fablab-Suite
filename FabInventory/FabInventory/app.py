@@ -14,7 +14,9 @@ import io
 import csv
 import zipfile
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory, session
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fabinventory-secret-change-me")
@@ -189,10 +191,184 @@ def init_db():
     db.execute("UPDATE roadmap_minimal_pack SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
     db.execute("UPDATE roadmap_items SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
 
+    # ─── NOUVELLES TABLES : portail demandes logiciels ───────────────────────
+
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS admin_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS logiciels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom TEXT NOT NULL UNIQUE,
+        categorie TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        dans_pack_base INTEGER DEFAULT 0,
+        actif INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS logiciel_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        logiciel_id INTEGER NOT NULL,
+        numero_version TEXT NOT NULL,
+        type_licence TEXT DEFAULT '',
+        gratuit_education INTEGER DEFAULT 1,
+        url_download TEXT DEFAULT '',
+        commentaires TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (logiciel_id) REFERENCES logiciels(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS logiciel_plugins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        logiciel_id INTEGER NOT NULL,
+        nom TEXT NOT NULL,
+        optionnel INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (logiciel_id) REFERENCES logiciels(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS logiciel_guides (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        logiciel_id INTEGER NOT NULL UNIQUE,
+        guide_markdown TEXT DEFAULT '',
+        comptes_info TEXT DEFAULT '',
+        troubleshooting_json TEXT DEFAULT '[]',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (logiciel_id) REFERENCES logiciels(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS prof_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        nom TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        actif INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS demandes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prof_token_id INTEGER NOT NULL,
+        logiciel_id INTEGER NOT NULL,
+        version_id INTEGER,
+        precisions TEXT DEFAULT '',
+        statut TEXT DEFAULT 'Demandé',
+        notes_internes TEXT DEFAULT '',
+        date_demande TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        date_installation TIMESTAMP,
+        FOREIGN KEY (prof_token_id) REFERENCES prof_tokens(id) ON DELETE CASCADE,
+        FOREIGN KEY (logiciel_id) REFERENCES logiciels(id) ON DELETE CASCADE,
+        FOREIGN KEY (version_id) REFERENCES logiciel_versions(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS demande_plugins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        demande_id INTEGER NOT NULL,
+        plugin_id INTEGER NOT NULL,
+        UNIQUE(demande_id, plugin_id),
+        FOREIGN KEY (demande_id) REFERENCES demandes(id) ON DELETE CASCADE,
+        FOREIGN KEY (plugin_id) REFERENCES logiciel_plugins(id) ON DELETE CASCADE
+    );
+    """)
+
+    # Seed : compte admin par défaut (admin/admin — à changer après déploiement)
+    existing_admin = db.execute("SELECT id FROM admin_users WHERE username = 'admin'").fetchone()
+    if not existing_admin:
+        db.execute(
+            "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)",
+            ("admin", generate_password_hash("admin"))
+        )
+
+    # Seed : pack de base par défaut
+    pack_base = [
+        ("VLC media player", "Multimédia", "Lecteur multimédia universel", 1),
+        ("7-Zip", "Utilitaires", "Archiveur de fichiers gratuit", 1),
+        ("SumatraPDF", "Bureautique", "Lecteur PDF léger et rapide", 1),
+    ]
+    for nom, cat, desc, pack in pack_base:
+        db.execute(
+            "INSERT OR IGNORE INTO logiciels (nom, categorie, description, dans_pack_base) VALUES (?, ?, ?, ?)",
+            (nom, cat, desc, pack)
+        )
+
     db.commit()
     db.close()
 
 init_db()
+
+
+# ─── DÉCORATEUR AUTH ADMIN ────────────────────────────────────────────────────
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('admin_login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def _get_admin_user():
+    """Retourne le nom d'utilisateur admin connecté (pour affichage)."""
+    return session.get('admin_username', 'admin')
+
+
+# ─── HELPERS DEMANDES ─────────────────────────────────────────────────────────
+
+STATUTS_DEMANDE = ['Demandé', 'Validé', 'En cours', 'Installé', 'Refusé']
+STATUT_BADGE = {
+    'Demandé': 'warning',
+    'Validé': 'info',
+    'En cours': 'primary',
+    'Installé': 'success',
+    'Refusé': 'danger',
+}
+
+
+def _logiciel_full(db, logiciel_id):
+    """Retourne logiciel + ses versions + plugins + guide."""
+    log = db.execute("SELECT * FROM logiciels WHERE id = ?", (logiciel_id,)).fetchone()
+    if not log:
+        return None
+    versions = db.execute(
+        "SELECT * FROM logiciel_versions WHERE logiciel_id = ? ORDER BY id DESC", (logiciel_id,)
+    ).fetchall()
+    plugins = db.execute(
+        "SELECT * FROM logiciel_plugins WHERE logiciel_id = ? ORDER BY nom", (logiciel_id,)
+    ).fetchall()
+    guide = db.execute(
+        "SELECT * FROM logiciel_guides WHERE logiciel_id = ?", (logiciel_id,)
+    ).fetchone()
+    return dict(log), [dict(v) for v in versions], [dict(p) for p in plugins], dict(guide) if guide else None
+
+
+def _demande_detail(db, demande_id):
+    row = db.execute("""
+        SELECT d.*, pt.email AS prof_email, pt.nom AS prof_nom,
+               l.nom AS logiciel_nom, l.categorie AS logiciel_categorie,
+               lv.numero_version
+        FROM demandes d
+        JOIN prof_tokens pt ON pt.id = d.prof_token_id
+        JOIN logiciels l ON l.id = d.logiciel_id
+        LEFT JOIN logiciel_versions lv ON lv.id = d.version_id
+        WHERE d.id = ?
+    """, (demande_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    plugins = db.execute("""
+        SELECT lp.nom, lp.optionnel
+        FROM demande_plugins dp
+        JOIN logiciel_plugins lp ON lp.id = dp.plugin_id
+        WHERE dp.demande_id = ?
+    """, (demande_id,)).fetchall()
+    d['plugins'] = [dict(p) for p in plugins]
+    return d
 
 
 def _invalidate_counts_cache():
@@ -244,6 +420,633 @@ def log_request_duration(response):
             elapsed_ms,
         )
     return response
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION : PORTAIL DEMANDES LOGICIELS — ADMIN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    if session.get('admin_logged_in'):
+        return redirect(url_for('admin_dashboard'))
+    error = None
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        db = get_db()
+        user = db.execute("SELECT * FROM admin_users WHERE username = ?", (username,)).fetchone()
+        if user and check_password_hash(user["password_hash"], password):
+            session['admin_logged_in'] = True
+            session['admin_username'] = username
+            session['admin_user_id'] = user['id']
+            return redirect(url_for('admin_dashboard'))
+        error = "Identifiants incorrects."
+    return render_template("admin/login.html", error=error)
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.clear()
+    return redirect(url_for('admin_login'))
+
+
+@app.route("/admin/")
+@admin_required
+def admin_dashboard():
+    db = get_db()
+    # Agrégation demandes par statut
+    statuts = db.execute(
+        "SELECT statut, COUNT(*) AS total FROM demandes GROUP BY statut"
+    ).fetchall()
+    statuts_dict = {r['statut']: r['total'] for r in statuts}
+    total_demandes = sum(statuts_dict.values())
+
+    # Top logiciels demandés
+    top_logiciels = db.execute("""
+        SELECT l.nom, COUNT(d.id) AS nb
+        FROM demandes d
+        JOIN logiciels l ON l.id = d.logiciel_id
+        GROUP BY d.logiciel_id
+        ORDER BY nb DESC
+        LIMIT 8
+    """).fetchall()
+
+    # Demandes récentes
+    recentes = db.execute("""
+        SELECT d.id, d.statut, d.date_demande, pt.nom AS prof_nom, l.nom AS logiciel_nom
+        FROM demandes d
+        JOIN prof_tokens pt ON pt.id = d.prof_token_id
+        JOIN logiciels l ON l.id = d.logiciel_id
+        ORDER BY d.date_demande DESC
+        LIMIT 10
+    """).fetchall()
+
+    nb_logiciels = db.execute("SELECT COUNT(*) AS c FROM logiciels WHERE actif = 1").fetchone()['c']
+    nb_profs = db.execute("SELECT COUNT(*) AS c FROM prof_tokens WHERE actif = 1").fetchone()['c']
+
+    return render_template("admin/dashboard.html",
+        statuts_dict=statuts_dict,
+        total_demandes=total_demandes,
+        top_logiciels=top_logiciels,
+        recentes=recentes,
+        nb_logiciels=nb_logiciels,
+        nb_profs=nb_profs,
+        admin_user=_get_admin_user(),
+        STATUT_BADGE=STATUT_BADGE,
+    )
+
+
+@app.route("/admin/demandes")
+@admin_required
+def admin_demandes():
+    db = get_db()
+    filtre_statut = request.args.get("statut") or ""
+    filtre_logiciel = (request.args.get("logiciel") or "").strip()
+
+    query = """
+        SELECT d.id, d.statut, d.date_demande, d.date_installation, d.precisions,
+               pt.nom AS prof_nom, pt.email AS prof_email,
+               l.nom AS logiciel_nom, l.id AS logiciel_id,
+               lv.numero_version
+        FROM demandes d
+        JOIN prof_tokens pt ON pt.id = d.prof_token_id
+        JOIN logiciels l ON l.id = d.logiciel_id
+        LEFT JOIN logiciel_versions lv ON lv.id = d.version_id
+    """
+    conditions, params = [], []
+    if filtre_statut in STATUTS_DEMANDE:
+        conditions.append("d.statut = ?")
+        params.append(filtre_statut)
+    if filtre_logiciel:
+        conditions.append("l.nom LIKE ?")
+        params.append(f"%{filtre_logiciel}%")
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY d.date_demande DESC"
+
+    demandes = [dict(r) for r in db.execute(query, params).fetchall()]
+    logiciels = db.execute("SELECT id, nom FROM logiciels WHERE actif=1 ORDER BY nom").fetchall()
+
+    return render_template("admin/demandes.html",
+        demandes=demandes,
+        logiciels=logiciels,
+        STATUTS_DEMANDE=STATUTS_DEMANDE,
+        STATUT_BADGE=STATUT_BADGE,
+        filtre_statut=filtre_statut,
+        filtre_logiciel=filtre_logiciel,
+        admin_user=_get_admin_user(),
+    )
+
+
+@app.route("/api/admin/demandes/<int:demande_id>", methods=["PATCH"])
+@admin_required
+def api_admin_update_demande(demande_id):
+    data = request.get_json(silent=True) or {}
+    nouveau_statut = data.get("statut") or ""
+    notes = data.get("notes_internes") or ""
+
+    if nouveau_statut and nouveau_statut not in STATUTS_DEMANDE:
+        return jsonify({"error": "Statut invalide"}), 400
+
+    db = get_db()
+    demande = db.execute("SELECT id FROM demandes WHERE id = ?", (demande_id,)).fetchone()
+    if not demande:
+        return jsonify({"error": "Demande introuvable"}), 404
+
+    updates, params = [], []
+    if nouveau_statut:
+        updates.append("statut = ?")
+        params.append(nouveau_statut)
+        if nouveau_statut == "Installé":
+            updates.append("date_installation = CURRENT_TIMESTAMP")
+    if notes is not None:
+        updates.append("notes_internes = ?")
+        params.append(notes)
+
+    if updates:
+        params.append(demande_id)
+        db.execute(f"UPDATE demandes SET {', '.join(updates)} WHERE id = ?", params)
+        db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/demandes/<int:demande_id>/details")
+@admin_required
+def api_admin_demande_details(demande_id):
+    db = get_db()
+    d = _demande_detail(db, demande_id)
+    if not d:
+        return jsonify({"error": "Introuvable"}), 404
+    return jsonify(d)
+
+
+@app.route("/admin/logiciels")
+@admin_required
+def admin_logiciels():
+    db = get_db()
+    logiciels = db.execute("SELECT * FROM logiciels ORDER BY nom").fetchall()
+    result = []
+    for log in logiciels:
+        l = dict(log)
+        l['versions'] = [dict(v) for v in db.execute(
+            "SELECT * FROM logiciel_versions WHERE logiciel_id = ? ORDER BY id DESC", (l['id'],)
+        ).fetchall()]
+        l['plugins'] = [dict(p) for p in db.execute(
+            "SELECT * FROM logiciel_plugins WHERE logiciel_id = ? ORDER BY nom", (l['id'],)
+        ).fetchall()]
+        nb_demandes = db.execute(
+            "SELECT COUNT(*) AS c FROM demandes WHERE logiciel_id = ?", (l['id'],)
+        ).fetchone()['c']
+        l['nb_demandes'] = nb_demandes
+        result.append(l)
+
+    categories = sorted(set(r['categorie'] for r in result if r['categorie']))
+    return render_template("admin/logiciels.html",
+        logiciels=result,
+        categories=categories,
+        admin_user=_get_admin_user(),
+    )
+
+
+@app.route("/admin/logiciels/add", methods=["POST"])
+@admin_required
+def admin_logiciels_add():
+    nom = (request.form.get("nom") or "").strip()
+    categorie = (request.form.get("categorie") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    dans_pack_base = 1 if request.form.get("dans_pack_base") else 0
+    if not nom:
+        flash("Le nom est obligatoire.", "error")
+        return redirect(url_for('admin_logiciels'))
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO logiciels (nom, categorie, description, dans_pack_base) VALUES (?,?,?,?)",
+            (nom, categorie, description, dans_pack_base)
+        )
+        db.commit()
+        flash(f"Logiciel « {nom} » ajouté.", "success")
+    except Exception:
+        flash("Ce nom de logiciel existe déjà.", "error")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/logiciels/<int:logiciel_id>/edit", methods=["POST"])
+@admin_required
+def admin_logiciels_edit(logiciel_id):
+    nom = (request.form.get("nom") or "").strip()
+    categorie = (request.form.get("categorie") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    dans_pack_base = 1 if request.form.get("dans_pack_base") else 0
+    actif = 1 if request.form.get("actif") else 0
+    if not nom:
+        return jsonify({"error": "Nom obligatoire"}), 400
+    db = get_db()
+    db.execute(
+        "UPDATE logiciels SET nom=?, categorie=?, description=?, dans_pack_base=?, actif=? WHERE id=?",
+        (nom, categorie, description, dans_pack_base, actif, logiciel_id)
+    )
+    db.commit()
+    flash(f"Logiciel « {nom} » mis à jour.", "success")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/logiciels/<int:logiciel_id>/delete", methods=["POST"])
+@admin_required
+def admin_logiciels_delete(logiciel_id):
+    db = get_db()
+    log = db.execute("SELECT nom FROM logiciels WHERE id=?", (logiciel_id,)).fetchone()
+    if log:
+        db.execute("DELETE FROM logiciels WHERE id=?", (logiciel_id,))
+        db.commit()
+        flash(f"Logiciel « {log['nom']} » supprimé.", "success")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/logiciels/<int:logiciel_id>/versions/add", methods=["POST"])
+@admin_required
+def admin_logiciels_version_add(logiciel_id):
+    numero = (request.form.get("numero_version") or "").strip()
+    type_licence = (request.form.get("type_licence") or "").strip()
+    gratuit_education = 1 if request.form.get("gratuit_education") else 0
+    url_download = (request.form.get("url_download") or "").strip()
+    commentaires = (request.form.get("commentaires") or "").strip()
+    if not numero:
+        flash("Le numéro de version est obligatoire.", "error")
+        return redirect(url_for('admin_logiciels'))
+    db = get_db()
+    db.execute(
+        "INSERT INTO logiciel_versions (logiciel_id, numero_version, type_licence, gratuit_education, url_download, commentaires) VALUES (?,?,?,?,?,?)",
+        (logiciel_id, numero, type_licence, gratuit_education, url_download, commentaires)
+    )
+    db.commit()
+    flash(f"Version {numero} ajoutée.", "success")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/logiciels/<int:logiciel_id>/versions/<int:version_id>/delete", methods=["POST"])
+@admin_required
+def admin_logiciels_version_delete(logiciel_id, version_id):
+    db = get_db()
+    db.execute("DELETE FROM logiciel_versions WHERE id=? AND logiciel_id=?", (version_id, logiciel_id))
+    db.commit()
+    flash("Version supprimée.", "success")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/logiciels/<int:logiciel_id>/plugins/add", methods=["POST"])
+@admin_required
+def admin_logiciels_plugin_add(logiciel_id):
+    nom = (request.form.get("nom") or "").strip()
+    optionnel = 1 if request.form.get("optionnel") else 0
+    if not nom:
+        flash("Le nom du plugin est obligatoire.", "error")
+        return redirect(url_for('admin_logiciels'))
+    db = get_db()
+    db.execute(
+        "INSERT INTO logiciel_plugins (logiciel_id, nom, optionnel) VALUES (?,?,?)",
+        (logiciel_id, nom, optionnel)
+    )
+    db.commit()
+    flash(f"Plugin « {nom} » ajouté.", "success")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/logiciels/<int:logiciel_id>/plugins/<int:plugin_id>/delete", methods=["POST"])
+@admin_required
+def admin_logiciels_plugin_delete(logiciel_id, plugin_id):
+    db = get_db()
+    db.execute("DELETE FROM logiciel_plugins WHERE id=? AND logiciel_id=?", (plugin_id, logiciel_id))
+    db.commit()
+    flash("Plugin supprimé.", "success")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/profs")
+@admin_required
+def admin_profs():
+    db = get_db()
+    profs = db.execute("SELECT * FROM prof_tokens ORDER BY nom").fetchall()
+    result = []
+    for p in profs:
+        prof = dict(p)
+        prof['nb_demandes'] = db.execute(
+            "SELECT COUNT(*) AS c FROM demandes WHERE prof_token_id=?", (p['id'],)
+        ).fetchone()['c']
+        result.append(prof)
+    return render_template("admin/profs.html",
+        profs=result,
+        admin_user=_get_admin_user(),
+    )
+
+
+@app.route("/admin/profs/add", methods=["POST"])
+@admin_required
+def admin_profs_add():
+    import uuid
+    email = (request.form.get("email") or "").strip().lower()
+    nom = (request.form.get("nom") or "").strip()
+    if not email or not nom:
+        flash("Email et nom sont obligatoires.", "error")
+        return redirect(url_for('admin_profs'))
+    token = str(uuid.uuid4())
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO prof_tokens (email, nom, token) VALUES (?,?,?)",
+            (email, nom, token)
+        )
+        db.commit()
+        lien = url_for('prof_catalogue', token=token, _external=True)
+        flash(f"Professeur « {nom} » ajouté. Lien d'accès : {lien}", "success")
+    except Exception:
+        flash("Cet email est déjà enregistré.", "error")
+    return redirect(url_for('admin_profs'))
+
+
+@app.route("/admin/profs/<int:prof_id>/revoke", methods=["POST"])
+@admin_required
+def admin_profs_revoke(prof_id):
+    db = get_db()
+    db.execute("UPDATE prof_tokens SET actif=0 WHERE id=?", (prof_id,))
+    db.commit()
+    flash("Token révoqué.", "warning")
+    return redirect(url_for('admin_profs'))
+
+
+@app.route("/admin/profs/<int:prof_id>/activate", methods=["POST"])
+@admin_required
+def admin_profs_activate(prof_id):
+    db = get_db()
+    db.execute("UPDATE prof_tokens SET actif=1 WHERE id=?", (prof_id,))
+    db.commit()
+    flash("Token réactivé.", "success")
+    return redirect(url_for('admin_profs'))
+
+
+@app.route("/admin/profs/<int:prof_id>/regen", methods=["POST"])
+@admin_required
+def admin_profs_regen(prof_id):
+    import uuid
+    new_token = str(uuid.uuid4())
+    db = get_db()
+    db.execute("UPDATE prof_tokens SET token=?, actif=1 WHERE id=?", (new_token, prof_id))
+    db.commit()
+    lien = url_for('prof_catalogue', token=new_token, _external=True)
+    flash(f"Nouveau lien généré : {lien}", "success")
+    return redirect(url_for('admin_profs'))
+
+
+@app.route("/admin/wiki")
+@admin_required
+def admin_wiki():
+    db = get_db()
+    logiciels = db.execute("SELECT id, nom FROM logiciels WHERE actif=1 ORDER BY nom").fetchall()
+    logiciel_id = request.args.get("logiciel_id", type=int)
+    guide = None
+    logiciel_sel = None
+    if logiciel_id:
+        logiciel_sel = db.execute("SELECT * FROM logiciels WHERE id=?", (logiciel_id,)).fetchone()
+        guide = db.execute("SELECT * FROM logiciel_guides WHERE logiciel_id=?", (logiciel_id,)).fetchone()
+    return render_template("admin/wiki.html",
+        logiciels=logiciels,
+        logiciel_id=logiciel_id,
+        logiciel_sel=logiciel_sel,
+        guide=guide,
+        admin_user=_get_admin_user(),
+    )
+
+
+@app.route("/admin/wiki/<int:logiciel_id>/save", methods=["POST"])
+@admin_required
+def admin_wiki_save(logiciel_id):
+    guide_markdown = request.form.get("guide_markdown") or ""
+    comptes_info = request.form.get("comptes_info") or ""
+    troubleshooting_json = request.form.get("troubleshooting_json") or "[]"
+    db = get_db()
+    existing = db.execute("SELECT id FROM logiciel_guides WHERE logiciel_id=?", (logiciel_id,)).fetchone()
+    if existing:
+        db.execute(
+            "UPDATE logiciel_guides SET guide_markdown=?, comptes_info=?, troubleshooting_json=?, updated_at=CURRENT_TIMESTAMP WHERE logiciel_id=?",
+            (guide_markdown, comptes_info, troubleshooting_json, logiciel_id)
+        )
+    else:
+        db.execute(
+            "INSERT INTO logiciel_guides (logiciel_id, guide_markdown, comptes_info, troubleshooting_json) VALUES (?,?,?,?)",
+            (logiciel_id, guide_markdown, comptes_info, troubleshooting_json)
+        )
+    db.commit()
+    flash("Guide sauvegardé.", "success")
+    return redirect(url_for('admin_wiki', logiciel_id=logiciel_id))
+
+
+@app.route("/admin/export-pdf")
+@admin_required
+def admin_export_pdf():
+    """Page HTML pour impression PDF."""
+    db = get_db()
+    filtre_statut = request.args.get("statut") or "Validé"
+    query = """
+        SELECT d.id, d.statut, d.date_demande, d.precisions, d.notes_internes,
+               pt.nom AS prof_nom, pt.email AS prof_email,
+               l.nom AS logiciel_nom, l.categorie AS logiciel_categorie,
+               lv.numero_version
+        FROM demandes d
+        JOIN prof_tokens pt ON pt.id = d.prof_token_id
+        JOIN logiciels l ON l.id = d.logiciel_id
+        LEFT JOIN logiciel_versions lv ON lv.id = d.version_id
+    """
+    params = []
+    if filtre_statut in STATUTS_DEMANDE:
+        query += " WHERE d.statut = ?"
+        params.append(filtre_statut)
+    query += " ORDER BY l.nom, pt.nom"
+    demandes = [dict(r) for r in db.execute(query, params).fetchall()]
+    return render_template("admin/export_pdf.html",
+        demandes=demandes,
+        filtre_statut=filtre_statut,
+        STATUTS_DEMANDE=STATUTS_DEMANDE,
+        admin_user=_get_admin_user(),
+    )
+
+
+@app.route("/admin/settings", methods=["GET", "POST"])
+@admin_required
+def admin_settings():
+    db = get_db()
+    error = None
+    if request.method == "POST":
+        old_password = request.form.get("old_password") or ""
+        new_password = request.form.get("new_password") or ""
+        confirm = request.form.get("confirm_password") or ""
+        user_id = session.get('admin_user_id')
+        user = db.execute("SELECT * FROM admin_users WHERE id=?", (user_id,)).fetchone()
+        if not user or not check_password_hash(user['password_hash'], old_password):
+            error = "Mot de passe actuel incorrect."
+        elif new_password != confirm:
+            error = "Les mots de passe ne correspondent pas."
+        elif len(new_password) < 6:
+            error = "Le mot de passe doit faire au moins 6 caractères."
+        else:
+            db.execute(
+                "UPDATE admin_users SET password_hash=? WHERE id=?",
+                (generate_password_hash(new_password), user_id)
+            )
+            db.commit()
+            flash("Mot de passe modifié.", "success")
+            return redirect(url_for('admin_settings'))
+    return render_template("admin/settings.html", error=error, admin_user=_get_admin_user())
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION : PORTAIL PROFESSEURS (accès via token UUID)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _get_prof_by_token(token):
+    """Retourne le prof si son token est actif, sinon None."""
+    db = get_db()
+    prof = db.execute(
+        "SELECT * FROM prof_tokens WHERE token=? AND actif=1", (token,)
+    ).fetchone()
+    return dict(prof) if prof else None
+
+
+@app.route("/prof/<token>")
+def prof_catalogue(token):
+    prof = _get_prof_by_token(token)
+    if not prof:
+        return render_template("prof/token_invalide.html"), 403
+    db = get_db()
+    logiciels = db.execute(
+        "SELECT * FROM logiciels WHERE actif=1 ORDER BY categorie, nom"
+    ).fetchall()
+    result = []
+    for log in logiciels:
+        l = dict(log)
+        l['versions'] = [dict(v) for v in db.execute(
+            "SELECT * FROM logiciel_versions WHERE logiciel_id=? ORDER BY id DESC", (l['id'],)
+        ).fetchall()]
+        l['plugins'] = [dict(p) for p in db.execute(
+            "SELECT * FROM logiciel_plugins WHERE logiciel_id=? ORDER BY nom", (l['id'],)
+        ).fetchall()]
+        result.append(l)
+
+    mes_demandes = db.execute("""
+        SELECT d.id, d.statut, d.date_demande, d.precisions,
+               l.nom AS logiciel_nom, lv.numero_version
+        FROM demandes d
+        JOIN logiciels l ON l.id = d.logiciel_id
+        LEFT JOIN logiciel_versions lv ON lv.id = d.version_id
+        WHERE d.prof_token_id = ?
+        ORDER BY d.date_demande DESC
+    """, (prof['id'],)).fetchall()
+
+    categories = sorted(set(l['categorie'] for l in result if l['categorie']))
+    return render_template("prof/catalogue.html",
+        prof=prof,
+        logiciels=result,
+        categories=categories,
+        mes_demandes=mes_demandes,
+        STATUT_BADGE=STATUT_BADGE,
+        token=token,
+    )
+
+
+@app.route("/api/prof/<token>/demandes", methods=["POST"])
+def api_prof_creer_demande(token):
+    prof = _get_prof_by_token(token)
+    if not prof:
+        return jsonify({"error": "Token invalide"}), 403
+
+    data = request.get_json(silent=True) or {}
+    logiciel_id = data.get("logiciel_id")
+    version_id = data.get("version_id")
+    precisions = (data.get("precisions") or "").strip()
+    plugin_ids = data.get("plugin_ids") or []
+
+    if not logiciel_id:
+        return jsonify({"error": "logiciel_id obligatoire"}), 400
+
+    db = get_db()
+    log = db.execute("SELECT id FROM logiciels WHERE id=? AND actif=1", (logiciel_id,)).fetchone()
+    if not log:
+        return jsonify({"error": "Logiciel introuvable"}), 404
+
+    # Validation version
+    if version_id:
+        ver = db.execute(
+            "SELECT id FROM logiciel_versions WHERE id=? AND logiciel_id=?",
+            (version_id, logiciel_id)
+        ).fetchone()
+        if not ver:
+            version_id = None
+
+    # Empêcher les doublons (même prof, même logiciel, demande en cours)
+    existing = db.execute("""
+        SELECT id FROM demandes
+        WHERE prof_token_id=? AND logiciel_id=? AND statut NOT IN ('Installé','Refusé')
+    """, (prof['id'], logiciel_id)).fetchone()
+    if existing:
+        return jsonify({"error": "Vous avez déjà une demande en cours pour ce logiciel."}), 409
+
+    db.execute(
+        "INSERT INTO demandes (prof_token_id, logiciel_id, version_id, precisions) VALUES (?,?,?,?)",
+        (prof['id'], logiciel_id, version_id, precisions)
+    )
+    demande_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()['id']
+
+    # Plugins sélectionnés
+    for pid in plugin_ids:
+        plug = db.execute(
+            "SELECT id FROM logiciel_plugins WHERE id=? AND logiciel_id=?",
+            (pid, logiciel_id)
+        ).fetchone()
+        if plug:
+            db.execute(
+                "INSERT OR IGNORE INTO demande_plugins (demande_id, plugin_id) VALUES (?,?)",
+                (demande_id, pid)
+            )
+    db.commit()
+    return jsonify({"ok": True, "demande_id": demande_id})
+
+
+@app.route("/api/prof/<token>/demandes/<int:demande_id>/cancel", methods=["POST"])
+def api_prof_annuler_demande(token, demande_id):
+    prof = _get_prof_by_token(token)
+    if not prof:
+        return jsonify({"error": "Token invalide"}), 403
+    db = get_db()
+    demande = db.execute(
+        "SELECT id, statut FROM demandes WHERE id=? AND prof_token_id=?",
+        (demande_id, prof['id'])
+    ).fetchone()
+    if not demande:
+        return jsonify({"error": "Demande introuvable"}), 404
+    if demande['statut'] not in ('Demandé', 'Validé'):
+        return jsonify({"error": "Cette demande ne peut plus être annulée."}), 400
+    db.execute("DELETE FROM demandes WHERE id=?", (demande_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/prof/<token>/guide/<int:logiciel_id>")
+def prof_guide(token, logiciel_id):
+    prof = _get_prof_by_token(token)
+    if not prof:
+        return render_template("prof/token_invalide.html"), 403
+    db = get_db()
+    logiciel = db.execute("SELECT * FROM logiciels WHERE id=? AND actif=1", (logiciel_id,)).fetchone()
+    if not logiciel:
+        flash("Logiciel introuvable.", "error")
+        return redirect(url_for('prof_catalogue', token=token))
+    guide = db.execute("SELECT * FROM logiciel_guides WHERE logiciel_id=?", (logiciel_id,)).fetchone()
+    return render_template("prof/guide.html",
+        prof=prof,
+        logiciel=logiciel,
+        guide=guide,
+        token=token,
+    )
 
 
 @app.route("/api/fabsuite/manifest")

@@ -1,0 +1,258 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Logiciels — Admin FabInventory{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="fw-bold mb-0"><i class="bi bi-grid me-2 text-primary"></i>Catalogue logiciels</h3>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAjout">
+    <i class="bi bi-plus-lg me-1"></i>Ajouter
+  </button>
+</div>
+
+{% if logiciels %}
+<div class="accordion" id="accordionLogiciels">
+  {% for l in logiciels %}
+  <div class="accordion-item border-0 shadow-sm mb-2">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-{{ l.id }}">
+        <div class="d-flex align-items-center gap-3 w-100 me-3">
+          <span class="fw-semibold">{{ l.nom }}</span>
+          {% if l.dans_pack_base %}<span class="badge bg-primary">Pack de base</span>{% endif %}
+          {% if not l.actif %}<span class="badge bg-secondary">Inactif</span>{% endif %}
+          {% if l.categorie %}<span class="badge bg-light text-dark border">{{ l.categorie }}</span>{% endif %}
+          <span class="ms-auto badge bg-light text-dark border">{{ l.nb_demandes }} demande{{ 's' if l.nb_demandes != 1 }}</span>
+        </div>
+      </button>
+    </h2>
+    <div id="acc-{{ l.id }}" class="accordion-collapse collapse" data-bs-parent="">
+      <div class="accordion-body pt-0">
+        {% if l.description %}
+        <p class="text-muted small mb-3">{{ l.description }}</p>
+        {% endif %}
+
+        <div class="row g-3">
+          <!-- Versions -->
+          <div class="col-md-4">
+            <div class="card border-0 bg-light">
+              <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="mb-0 fw-semibold"><i class="bi bi-tags me-1"></i>Versions</h6>
+                  <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalVersion{{ l.id }}">
+                    <i class="bi bi-plus"></i>
+                  </button>
+                </div>
+                {% if l.versions %}
+                <ul class="list-unstyled mb-0">
+                  {% for v in l.versions %}
+                  <li class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small">{{ v.numero_version }}
+                      {% if v.type_licence %}<span class="text-muted">({{ v.type_licence }})</span>{% endif %}
+                      {% if v.gratuit_education %}<i class="bi bi-mortarboard-fill text-success ms-1" title="Gratuit éducation"></i>{% endif %}
+                    </span>
+                    <form method="POST" action="/admin/logiciels/{{ l.id }}/versions/{{ v.id }}/delete" class="ms-2">
+                      <button type="submit" class="btn btn-link text-danger btn-sm p-0" onclick="return confirm('Supprimer cette version ?')">
+                        <i class="bi bi-x"></i>
+                      </button>
+                    </form>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% else %}
+                <p class="small text-muted mb-0">Aucune version.</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Plugins -->
+          <div class="col-md-4">
+            <div class="card border-0 bg-light">
+              <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="mb-0 fw-semibold"><i class="bi bi-puzzle me-1"></i>Plugins</h6>
+                  <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalPlugin{{ l.id }}">
+                    <i class="bi bi-plus"></i>
+                  </button>
+                </div>
+                {% if l.plugins %}
+                <ul class="list-unstyled mb-0">
+                  {% for p in l.plugins %}
+                  <li class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small">{{ p.nom }}
+                      {% if p.optionnel %}<span class="text-muted">(opt.)</span>{% endif %}
+                    </span>
+                    <form method="POST" action="/admin/logiciels/{{ l.id }}/plugins/{{ p.id }}/delete" class="ms-2">
+                      <button type="submit" class="btn btn-link text-danger btn-sm p-0" onclick="return confirm('Supprimer ce plugin ?')">
+                        <i class="bi bi-x"></i>
+                      </button>
+                    </form>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% else %}
+                <p class="small text-muted mb-0">Aucun plugin.</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions logiciel -->
+          <div class="col-md-4">
+            <div class="d-flex flex-column gap-2">
+              <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalEdit{{ l.id }}">
+                <i class="bi bi-pencil me-1"></i>Modifier
+              </button>
+              <a href="/admin/wiki?logiciel_id={{ l.id }}" class="btn btn-outline-info btn-sm">
+                <i class="bi bi-book me-1"></i>Éditer le guide
+              </a>
+              <form method="POST" action="/admin/logiciels/{{ l.id }}/delete">
+                <button type="submit" class="btn btn-outline-danger btn-sm w-100" onclick="return confirm('Supprimer définitivement {{ l.nom }} et toutes ses demandes ?')">
+                  <i class="bi bi-trash me-1"></i>Supprimer
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal édition logiciel -->
+  <div class="modal fade" id="modalEdit{{ l.id }}" tabindex="-1">
+    <div class="modal-dialog">
+      <form method="POST" action="/admin/logiciels/{{ l.id }}/edit" class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Modifier « {{ l.nom }} »</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Nom</label>
+            <input type="text" name="nom" class="form-control" value="{{ l.nom }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Catégorie</label>
+            <input type="text" name="categorie" class="form-control" value="{{ l.categorie }}" list="categorie-list">
+            <datalist id="categorie-list">
+              {% for c in categories %}<option value="{{ c }}">{% endfor %}
+            </datalist>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="2">{{ l.description }}</textarea>
+          </div>
+          <div class="form-check mb-2">
+            <input type="checkbox" class="form-check-input" name="dans_pack_base" id="packEdit{{ l.id }}" {% if l.dans_pack_base %}checked{% endif %}>
+            <label class="form-check-label" for="packEdit{{ l.id }}">Dans le pack de base</label>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="actif" id="actifEdit{{ l.id }}" {% if l.actif %}checked{% endif %}>
+            <label class="form-check-label" for="actifEdit{{ l.id }}">Actif (visible par les profs)</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal ajout version -->
+  <div class="modal fade" id="modalVersion{{ l.id }}" tabindex="-1">
+    <div class="modal-dialog">
+      <form method="POST" action="/admin/logiciels/{{ l.id }}/versions/add" class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Ajouter une version — {{ l.nom }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Numéro de version *</label>
+            <input type="text" name="numero_version" class="form-control" placeholder="ex: 3.2.0" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Type de licence</label>
+            <input type="text" name="type_licence" class="form-control" placeholder="ex: Gratuit, Commercial, Open Source">
+          </div>
+          <div class="form-check mb-2">
+            <input type="checkbox" class="form-check-input" name="gratuit_education" id="ge{{ l.id }}" checked>
+            <label class="form-check-label" for="ge{{ l.id }}">Gratuit pour l'éducation</label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">URL de téléchargement</label>
+            <input type="url" name="url_download" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Commentaires</label>
+            <textarea name="commentaires" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Ajouter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal ajout plugin -->
+  <div class="modal fade" id="modalPlugin{{ l.id }}" tabindex="-1">
+    <div class="modal-dialog">
+      <form method="POST" action="/admin/logiciels/{{ l.id }}/plugins/add" class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Ajouter un plugin — {{ l.nom }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Nom du plugin *</label>
+            <input type="text" name="nom" class="form-control" required>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="optionnel" id="opt{{ l.id }}" checked>
+            <label class="form-check-label" for="opt{{ l.id }}">Optionnel (le prof peut cocher/décocher)</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Ajouter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-grid fs-1 d-block mb-2"></i>
+  Aucun logiciel dans le catalogue. Ajoutez-en un !
+</div>
+{% endif %}
+
+<!-- Modal ajout logiciel -->
+<div class="modal fade" id="modalAjout" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="POST" action="/admin/logiciels/add" class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Ajouter un logiciel</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Nom *</label>
+          <input type="text" name="nom" class="form-control" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Catégorie</label>
+          <input type="text" name="categorie" class="form-control" list="categorie-list-add"
+                 placeholder="ex: Bureautique, Multimédia, CAO…">
+          <datalist id="categorie-list-add">
+            {% for c in categories %}<option value="{{ c }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" name="dans_pack_base" id="packNew">
+          <label class="form-check-label" for="packNew">Dans le pack de base</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="submit" class="btn btn-primary">Ajouter</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
