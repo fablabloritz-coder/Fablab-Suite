@@ -1,0 +1,117 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Masters — Admin FabInventory{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="fw-bold mb-0"><i class="bi bi-pc-display me-2 text-primary"></i>Masters inventoriés</h3>
+  <a href="/upload" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-cloud-upload me-1"></i>Importer un scan
+  </a>
+</div>
+
+{% if masters %}
+{% set inventory = masters | selectattr('workflow_type', 'equalto', 'inventory') | list %}
+{% set preparation = masters | selectattr('workflow_type', 'equalto', 'preparation') | list %}
+
+{% if inventory %}
+<h6 class="text-uppercase text-muted fw-semibold small mb-3" style="letter-spacing:.05em;">
+  <i class="bi bi-hdd me-1"></i>Masters inventoriés ({{ inventory | length }})
+</h6>
+<div class="row g-3 mb-4">
+  {% for m in inventory %}
+  <div class="col-sm-6 col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-1">
+          <h6 class="fw-bold mb-0">{{ m.pc_name }}</h6>
+          {% if not m.scan_date %}
+          <span class="badge bg-secondary">Pas de scan</span>
+          {% elif m.scan_date < (now_minus_30 if now_minus_30 is defined else '2000') %}
+          <span class="badge bg-warning text-dark" title="Scan > 30 jours"><i class="bi bi-clock-history me-1"></i>Ancien</span>
+          {% else %}
+          <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Récent</span>
+          {% endif %}
+        </div>
+        {% if m.label %}<div class="small text-muted mb-2">{{ m.label }}</div>{% endif %}
+
+        {% if m.scan_date %}
+        <div class="d-flex gap-3 text-muted small mb-2">
+          <span><i class="bi bi-camera me-1"></i>{{ m.scan_date[:10] }}</span>
+          <span><i class="bi bi-app me-1"></i>{{ m.total_software }} logiciels</span>
+        </div>
+        {% if m.os_info %}<div class="small text-muted text-truncate mb-2">{{ m.os_info }}</div>{% endif %}
+
+        <!-- Couverture catalogue -->
+        {% if nb_catalogue > 0 %}
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small mb-1">
+            <span class="text-muted">Logiciels catalogue détectés</span>
+            <span class="fw-semibold">{{ m.nb_couverts }}/{{ nb_catalogue }}</span>
+          </div>
+          <div class="progress" style="height:6px;">
+            <div class="progress-bar bg-success" style="width:{{ ((m.nb_couverts / nb_catalogue) * 100) | int }}%"></div>
+          </div>
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-muted small mb-2">Aucun scan importé.</p>
+        {% endif %}
+      </div>
+      <div class="card-footer bg-transparent border-top-0 d-flex gap-2">
+        <a href="/masters/{{ m.id }}" class="btn btn-outline-primary btn-sm flex-fill">
+          <i class="bi bi-eye me-1"></i>Détail
+        </a>
+        {% if m.snapshot_id %}
+        <a href="/snapshots/{{ m.snapshot_id }}" class="btn btn-outline-secondary btn-sm flex-fill">
+          <i class="bi bi-camera me-1"></i>Snapshot
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if preparation %}
+<h6 class="text-uppercase text-muted fw-semibold small mb-3" style="letter-spacing:.05em;">
+  <i class="bi bi-list-check me-1"></i>Listes de préparation ({{ preparation | length }})
+</h6>
+<div class="row g-3 mb-4">
+  {% for m in preparation %}
+  <div class="col-sm-6 col-lg-4">
+    <div class="card border-0 shadow-sm bg-light h-100">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">{{ m.pc_name }}</h6>
+        {% if m.label %}<div class="small text-muted">{{ m.label }}</div>{% endif %}
+      </div>
+      <div class="card-footer bg-transparent border-top-0">
+        <a href="/roadmaps/{{ m.id }}" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-list-check me-1"></i>Checklist
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-pc-display fs-1 d-block mb-2"></i>
+  Aucun master inventorié. <a href="/upload">Importez un scan</a> pour commencer.
+</div>
+{% endif %}
+
+<!-- Légende couverture -->
+{% if masters and nb_catalogue > 0 %}
+<div class="alert alert-info d-flex gap-2 align-items-start mt-2">
+  <i class="bi bi-info-circle-fill flex-shrink-0 mt-1"></i>
+  <div>
+    La barre de progression montre combien de logiciels du <strong>catalogue de demandes</strong>
+    ({{ nb_catalogue }} actifs) ont été détectés dans ce master.
+    <a href="/admin/logiciels" class="alert-link">Gérer le catalogue</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

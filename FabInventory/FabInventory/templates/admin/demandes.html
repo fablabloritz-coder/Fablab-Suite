@@ -109,6 +109,8 @@
           <dt class="col-4">Version</dt><dd class="col-8" id="mVersion">—</dd>
           <dt class="col-4">Précisions</dt><dd class="col-8" id="mPrecisions">—</dd>
           <dt class="col-4">Plugins</dt><dd class="col-8" id="mPlugins">—</dd>
+          <dt class="col-4">Déjà présent</dt>
+          <dd class="col-8" id="mCoverage">—</dd>
         </dl>
         <div class="mb-3">
           <label class="form-label fw-semibold">Statut</label>
@@ -150,6 +152,9 @@ async function ouvrirDetail(id) {
     document.getElementById('mVersion').textContent = d.numero_version || '—';
     document.getElementById('mPrecisions').textContent = d.precisions || '—';
     document.getElementById('mPlugins').textContent = (d.plugins && d.plugins.length) ? d.plugins.map(p => p.nom).join(', ') : '—';
+    document.getElementById('mCoverage').innerHTML = d.masters_coverage > 0
+      ? `<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>${d.masters_coverage} master(s)</span>`
+      : '<span class="text-muted small">Non détecté dans l\'inventaire</span>';
     document.getElementById('modalStatut').value = d.statut;
     document.getElementById('modalNotes').value = d.notes_internes || '';
   } catch(e) {

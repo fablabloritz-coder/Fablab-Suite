@@ -368,7 +368,28 @@ def _demande_detail(db, demande_id):
         WHERE dp.demande_id = ?
     """, (demande_id,)).fetchall()
     d['plugins'] = [dict(p) for p in plugins]
+    d['masters_coverage'] = _software_masters_count(db, d['logiciel_nom'])
     return d
+
+
+def _software_masters_count(db, logiciel_nom):
+    """Nombre de masters ayant ce logiciel détecté (via software_index, any snapshot)."""
+    if not logiciel_nom:
+        return 0
+    result = db.execute("""
+        SELECT COUNT(DISTINCT master_id) AS c
+        FROM software_index
+        WHERE LOWER(software_name) LIKE LOWER(?)
+    """, (f"%{logiciel_nom}%",)).fetchone()
+    return result['c'] if result else 0
+
+
+def _coverage_for_logiciels(db, logiciels_list):
+    """Retourne un dict {logiciel_id: masters_count} pour une liste de logiciels."""
+    coverage = {}
+    for l in logiciels_list:
+        coverage[l['id']] = _software_masters_count(db, l['nom'])
+    return coverage
 
 
 def _invalidate_counts_cache():
@@ -455,14 +476,13 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     db = get_db()
-    # Agrégation demandes par statut
+    # ── Demandes ──
     statuts = db.execute(
         "SELECT statut, COUNT(*) AS total FROM demandes GROUP BY statut"
     ).fetchall()
     statuts_dict = {r['statut']: r['total'] for r in statuts}
     total_demandes = sum(statuts_dict.values())
 
-    # Top logiciels demandés
     top_logiciels = db.execute("""
         SELECT l.nom, COUNT(d.id) AS nb
         FROM demandes d
@@ -472,18 +492,41 @@ def admin_dashboard():
         LIMIT 8
     """).fetchall()
 
-    # Demandes récentes
     recentes = db.execute("""
         SELECT d.id, d.statut, d.date_demande, pt.nom AS prof_nom, l.nom AS logiciel_nom
         FROM demandes d
         JOIN prof_tokens pt ON pt.id = d.prof_token_id
         JOIN logiciels l ON l.id = d.logiciel_id
         ORDER BY d.date_demande DESC
-        LIMIT 10
+        LIMIT 8
     """).fetchall()
 
     nb_logiciels = db.execute("SELECT COUNT(*) AS c FROM logiciels WHERE actif = 1").fetchone()['c']
     nb_profs = db.execute("SELECT COUNT(*) AS c FROM prof_tokens WHERE actif = 1").fetchone()['c']
+
+    # ── Inventaire ──
+    nb_masters = db.execute(
+        "SELECT COUNT(*) AS c FROM masters WHERE workflow_type = 'inventory'"
+    ).fetchone()['c']
+    nb_snapshots = db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()['c']
+
+    # Logiciels du catalogue déjà détectés sur au moins un master
+    logiciels_actifs = db.execute("SELECT id, nom FROM logiciels WHERE actif=1").fetchall()
+    nb_couverts = 0
+    for l in logiciels_actifs:
+        if _software_masters_count(db, l['nom']) > 0:
+            nb_couverts += 1
+
+    # Masters sans scan récent (>30 jours)
+    masters_obsoletes = db.execute("""
+        SELECT COUNT(DISTINCT m.id) AS c
+        FROM masters m
+        LEFT JOIN snapshots s ON s.id = (
+            SELECT id FROM snapshots WHERE master_id = m.id ORDER BY scan_date DESC LIMIT 1
+        )
+        WHERE m.workflow_type = 'inventory'
+          AND (s.scan_date IS NULL OR s.scan_date < datetime('now', '-30 days'))
+    """).fetchone()['c']
 
     return render_template("admin/dashboard.html",
         statuts_dict=statuts_dict,
@@ -492,8 +535,56 @@ def admin_dashboard():
         recentes=recentes,
         nb_logiciels=nb_logiciels,
         nb_profs=nb_profs,
+        nb_masters=nb_masters,
+        nb_snapshots=nb_snapshots,
+        nb_couverts=nb_couverts,
+        nb_catalogue=len(logiciels_actifs),
+        masters_obsoletes=masters_obsoletes,
         admin_user=_get_admin_user(),
         STATUT_BADGE=STATUT_BADGE,
+    )
+
+
+@app.route("/admin/masters")
+@admin_required
+def admin_masters():
+    db = get_db()
+    nb_catalogue = db.execute("SELECT COUNT(*) AS c FROM logiciels WHERE actif=1").fetchone()['c']
+
+    masters = db.execute("""
+        SELECT m.id, m.pc_name, m.label, m.notes, m.workflow_type,
+               s.scan_date, s.total_software, s.os_info, s.id AS snapshot_id
+        FROM masters m
+        LEFT JOIN snapshots s ON s.id = (
+            SELECT id FROM snapshots WHERE master_id = m.id ORDER BY scan_date DESC LIMIT 1
+        )
+        ORDER BY m.workflow_type, m.pc_name
+    """).fetchall()
+
+    logiciels_actifs = db.execute("SELECT id, nom FROM logiciels WHERE actif=1").fetchall()
+
+    result = []
+    for m in masters:
+        master = dict(m)
+        if m['snapshot_id'] and logiciels_actifs:
+            nb_couverts = db.execute("""
+                SELECT COUNT(DISTINCT l.id) AS c
+                FROM logiciels l
+                WHERE l.actif = 1 AND EXISTS (
+                    SELECT 1 FROM software_index si
+                    WHERE si.snapshot_id = ? AND LOWER(si.software_name) LIKE '%' || LOWER(l.nom) || '%'
+                )
+            """, (m['snapshot_id'],)).fetchone()['c']
+        else:
+            nb_couverts = 0
+        master['nb_couverts'] = nb_couverts
+        master['nb_catalogue'] = nb_catalogue
+        result.append(master)
+
+    return render_template("admin/masters.html",
+        masters=result,
+        nb_catalogue=nb_catalogue,
+        admin_user=_get_admin_user(),
     )
 
 
@@ -586,6 +677,9 @@ def api_admin_demande_details(demande_id):
 def admin_logiciels():
     db = get_db()
     logiciels = db.execute("SELECT * FROM logiciels ORDER BY nom").fetchall()
+    nb_masters_total = db.execute(
+        "SELECT COUNT(*) AS c FROM masters WHERE workflow_type='inventory'"
+    ).fetchone()['c']
     result = []
     for log in logiciels:
         l = dict(log)
@@ -595,16 +689,18 @@ def admin_logiciels():
         l['plugins'] = [dict(p) for p in db.execute(
             "SELECT * FROM logiciel_plugins WHERE logiciel_id = ? ORDER BY nom", (l['id'],)
         ).fetchall()]
-        nb_demandes = db.execute(
+        l['nb_demandes'] = db.execute(
             "SELECT COUNT(*) AS c FROM demandes WHERE logiciel_id = ?", (l['id'],)
         ).fetchone()['c']
-        l['nb_demandes'] = nb_demandes
+        l['nb_masters'] = _software_masters_count(db, l['nom'])
+        l['nb_masters_total'] = nb_masters_total
         result.append(l)
 
     categories = sorted(set(r['categorie'] for r in result if r['categorie']))
     return render_template("admin/logiciels.html",
         logiciels=result,
         categories=categories,
+        nb_masters_total=nb_masters_total,
         admin_user=_get_admin_user(),
     )
 
@@ -918,9 +1014,19 @@ def prof_catalogue(token):
     if not prof:
         return render_template("prof/token_invalide.html"), 403
     db = get_db()
+    nb_masters_total = db.execute(
+        "SELECT COUNT(*) AS c FROM masters WHERE workflow_type='inventory'"
+    ).fetchone()['c']
     logiciels = db.execute(
         "SELECT * FROM logiciels WHERE actif=1 ORDER BY categorie, nom"
     ).fetchall()
+    # Set des logiciels déjà demandés par ce prof et pas encore terminés
+    demandes_en_cours = set(
+        r['logiciel_id'] for r in db.execute("""
+            SELECT logiciel_id FROM demandes
+            WHERE prof_token_id=? AND statut NOT IN ('Installé','Refusé')
+        """, (prof['id'],)).fetchall()
+    )
     result = []
     for log in logiciels:
         l = dict(log)
@@ -930,6 +1036,9 @@ def prof_catalogue(token):
         l['plugins'] = [dict(p) for p in db.execute(
             "SELECT * FROM logiciel_plugins WHERE logiciel_id=? ORDER BY nom", (l['id'],)
         ).fetchall()]
+        l['nb_masters'] = _software_masters_count(db, l['nom'])
+        l['nb_masters_total'] = nb_masters_total
+        l['demande_en_cours'] = l['id'] in demandes_en_cours
         result.append(l)
 
     mes_demandes = db.execute("""

@@ -52,6 +52,14 @@
     <a href="/admin/profs" class="nav-link d-flex align-items-center {% if request.endpoint == 'admin_profs' %}active{% endif %}">
       <i class="bi bi-people me-2"></i>Professeurs
     </a>
+    <div class="sidebar-section mt-2">Inventaire</div>
+    <a href="/admin/masters" class="nav-link d-flex align-items-center {% if request.endpoint == 'admin_masters' %}active{% endif %}">
+      <i class="bi bi-pc-display me-2"></i>Masters
+    </a>
+    <a href="/" class="nav-link d-flex align-items-center">
+      <i class="bi bi-house-door me-2"></i>Dashboard inventaire
+    </a>
+    <div class="sidebar-section mt-2">Outils</div>
     <a href="/admin/export-pdf" class="nav-link d-flex align-items-center {% if request.endpoint == 'admin_export_pdf' %}active{% endif %}">
       <i class="bi bi-file-earmark-pdf me-2"></i>Export PDF
     </a>

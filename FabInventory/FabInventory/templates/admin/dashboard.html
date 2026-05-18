@@ -4,105 +4,176 @@
 {% block content %}
 <h3 class="fw-bold mb-4"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h3>
 
-<!-- KPIs -->
-<div class="row g-3 mb-4">
-  <div class="col-sm-6 col-lg-3">
+<!-- ── Demandes KPIs ───────────────────────────────────────────── -->
+<p class="text-uppercase text-muted fw-semibold small mb-2" style="letter-spacing:.05em;">Demandes logiciels</p>
+<div class="row g-3 mb-2">
+  <div class="col-6 col-lg-3">
+    <a href="/admin/demandes" class="text-decoration-none">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body d-flex align-items-center gap-3">
-        <div class="rounded-circle d-flex align-items-center justify-content-center bg-primary bg-opacity-10" style="width:52px;height:52px;">
-          <i class="bi bi-inbox text-primary fs-4"></i>
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-primary bg-opacity-10" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-inbox text-primary fs-5"></i>
         </div>
         <div>
           <div class="fs-3 fw-bold">{{ total_demandes }}</div>
           <div class="small text-muted">Demandes totales</div>
         </div>
       </div>
-    </div>
+    </div></a>
   </div>
-  <div class="col-sm-6 col-lg-3">
+  <div class="col-6 col-lg-3">
+    <a href="/admin/demandes?statut=Demandé" class="text-decoration-none">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body d-flex align-items-center gap-3">
-        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning bg-opacity-10" style="width:52px;height:52px;">
-          <i class="bi bi-hourglass-split text-warning fs-4"></i>
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning bg-opacity-10" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-hourglass-split text-warning fs-5"></i>
         </div>
         <div>
-          <div class="fs-3 fw-bold">{{ statuts_dict.get('Demandé', 0) + statuts_dict.get('Validé', 0) + statuts_dict.get('En cours', 0) }}</div>
+          <div class="fs-3 fw-bold text-warning">{{ statuts_dict.get('Demandé', 0) + statuts_dict.get('Validé', 0) + statuts_dict.get('En cours', 0) }}</div>
           <div class="small text-muted">En attente</div>
         </div>
       </div>
-    </div>
+    </div></a>
   </div>
-  <div class="col-sm-6 col-lg-3">
+  <div class="col-6 col-lg-3">
+    <a href="/admin/logiciels" class="text-decoration-none">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body d-flex align-items-center gap-3">
-        <div class="rounded-circle d-flex align-items-center justify-content-center bg-success bg-opacity-10" style="width:52px;height:52px;">
-          <i class="bi bi-grid text-success fs-4"></i>
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-success bg-opacity-10" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-grid text-success fs-5"></i>
         </div>
         <div>
           <div class="fs-3 fw-bold">{{ nb_logiciels }}</div>
           <div class="small text-muted">Logiciels actifs</div>
         </div>
       </div>
-    </div>
+    </div></a>
   </div>
-  <div class="col-sm-6 col-lg-3">
+  <div class="col-6 col-lg-3">
+    <a href="/admin/profs" class="text-decoration-none">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body d-flex align-items-center gap-3">
-        <div class="rounded-circle d-flex align-items-center justify-content-center bg-info bg-opacity-10" style="width:52px;height:52px;">
-          <i class="bi bi-people text-info fs-4"></i>
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-info bg-opacity-10" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-people text-info fs-5"></i>
         </div>
         <div>
           <div class="fs-3 fw-bold">{{ nb_profs }}</div>
           <div class="small text-muted">Professeurs actifs</div>
         </div>
       </div>
-    </div>
+    </div></a>
   </div>
 </div>
 
+<!-- ── Inventaire KPIs ────────────────────────────────────────── -->
+<p class="text-uppercase text-muted fw-semibold small mb-2 mt-4" style="letter-spacing:.05em;">Inventaire machines</p>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <a href="/admin/masters" class="text-decoration-none">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-secondary bg-opacity-10" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-pc-display text-secondary fs-5"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold">{{ nb_masters }}</div>
+          <div class="small text-muted">Masters</div>
+        </div>
+      </div>
+    </div></a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-secondary bg-opacity-10" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-camera text-secondary fs-5"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold">{{ nb_snapshots }}</div>
+          <div class="small text-muted">Scans totaux</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a href="/admin/logiciels" class="text-decoration-none">
+    <div class="card border-0 shadow-sm h-100 {% if nb_couverts > 0 %}border-success border-opacity-25{% endif %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-success bg-opacity-10" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-patch-check text-success fs-5"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold text-success">{{ nb_couverts }}<span class="fs-6 text-muted fw-normal">/{{ nb_catalogue }}</span></div>
+          <div class="small text-muted">Logiciels détectés</div>
+        </div>
+      </div>
+    </div></a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a href="/admin/masters" class="text-decoration-none">
+    <div class="card border-0 shadow-sm h-100 {% if masters_obsoletes > 0 %}border-warning border-opacity-50{% endif %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center {% if masters_obsoletes > 0 %}bg-warning bg-opacity-15{% else %}bg-success bg-opacity-10{% endif %}" style="width:48px;height:48px;flex-shrink:0">
+          <i class="bi bi-clock-history {% if masters_obsoletes > 0 %}text-warning{% else %}text-success{% endif %} fs-5"></i>
+        </div>
+        <div>
+          <div class="fs-3 fw-bold {% if masters_obsoletes > 0 %}text-warning{% endif %}">{{ masters_obsoletes }}</div>
+          <div class="small text-muted">Scans &gt;30j</div>
+        </div>
+      </div>
+    </div></a>
+  </div>
+</div>
+
+<!-- ── Colonnes ──────────────────────────────────────────────── -->
 <div class="row g-3">
-  <!-- Statuts -->
-  <div class="col-lg-4">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white fw-semibold">Demandes par statut</div>
-      <div class="card-body">
+  <!-- Statuts demandes -->
+  <div class="col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold small">Statuts des demandes</div>
+      <div class="card-body pb-2">
         {% set statuts_ordre = ['Demandé','Validé','En cours','Installé','Refusé'] %}
         {% for s in statuts_ordre %}
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <span class="badge bg-{{ STATUT_BADGE[s] }} text-{{ 'dark' if s == 'Demandé' else 'white' }}">{{ s }}</span>
+          <a href="/admin/demandes?statut={{ s }}" class="text-decoration-none">
+            <span class="badge bg-{{ STATUT_BADGE[s] }} text-{{ 'dark' if s == 'Demandé' else 'white' }}">{{ s }}</span>
+          </a>
           <span class="fw-bold">{{ statuts_dict.get(s, 0) }}</span>
         </div>
         {% endfor %}
         {% if total_demandes %}
-        <a href="/admin/demandes" class="btn btn-outline-primary btn-sm mt-2 w-100">Voir toutes</a>
+        <a href="/admin/demandes" class="btn btn-outline-primary btn-sm mt-1 w-100">Voir toutes</a>
         {% endif %}
       </div>
     </div>
   </div>
 
-  <!-- Top logiciels -->
-  <div class="col-lg-4">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white fw-semibold">Top logiciels demandés</div>
+  <!-- Top logiciels demandés -->
+  <div class="col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold small">Top logiciels demandés</div>
       <div class="card-body">
         {% if top_logiciels %}
         {% for item in top_logiciels %}
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <span class="small">{{ item.nom }}</span>
+          <span class="small text-truncate" style="max-width:140px;">{{ item.nom }}</span>
           <span class="badge bg-secondary">{{ item.nb }}</span>
         </div>
         {% endfor %}
         {% else %}
-        <p class="text-muted small mb-0">Aucune demande pour l'instant.</p>
+        <p class="text-muted small mb-0">Aucune demande.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
   <!-- Demandes récentes -->
-  <div class="col-lg-4">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white fw-semibold">Demandes récentes</div>
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-semibold small">Demandes récentes</span>
+        <a href="/admin/demandes" class="btn btn-outline-secondary btn-sm">Tout voir</a>
+      </div>
       <div class="card-body p-0">
         {% if recentes %}
         <ul class="list-group list-group-flush">
@@ -110,17 +181,88 @@
           <li class="list-group-item px-3 py-2">
             <div class="d-flex justify-content-between align-items-center">
               <span class="small fw-semibold">{{ d.logiciel_nom }}</span>
-              <span class="badge bg-{{ STATUT_BADGE[d.statut] }} text-{{ 'dark' if d.statut == 'Demandé' else 'white' }} ms-2">{{ d.statut }}</span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-{{ STATUT_BADGE[d.statut] }} text-{{ 'dark' if d.statut == 'Demandé' else 'white' }}">{{ d.statut }}</span>
+                <button class="btn btn-link btn-sm p-0 text-muted" onclick="ouvrirDetail({{ d.id }})"><i class="bi bi-pencil-square"></i></button>
+              </div>
             </div>
-            <div class="text-muted" style="font-size:.75rem;">{{ d.prof_nom }} — {{ d.date_demande[:10] }}</div>
+            <div class="text-muted" style="font-size:.75rem;">{{ d.prof_nom }} &mdash; {{ d.date_demande[:10] }}</div>
           </li>
           {% endfor %}
         </ul>
         {% else %}
-        <p class="text-muted small px-3 py-2 mb-0">Aucune demande.</p>
+        <p class="text-muted small px-3 py-3 mb-0">Aucune demande.</p>
         {% endif %}
       </div>
     </div>
   </div>
 </div>
+
+<!-- Modal édition rapide (réutilise la même logique que demandes.html) -->
+<div class="modal fade" id="modalDemande" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Demande #<span id="modalId"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-3">
+          <dt class="col-4">Professeur</dt><dd class="col-8" id="mProf">—</dd>
+          <dt class="col-4">Logiciel</dt><dd class="col-8" id="mLogiciel">—</dd>
+          <dt class="col-4">Précisions</dt><dd class="col-8" id="mPrecisions">—</dd>
+          <dt class="col-4">Déjà installé</dt><dd class="col-8" id="mCoverage">—</dd>
+        </dl>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Statut</label>
+          <select id="modalStatut" class="form-select">
+            {% for s in ['Demandé','Validé','En cours','Installé','Refusé'] %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Notes internes</label>
+          <textarea id="modalNotes" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary" onclick="sauverDemande()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUT_BADGE = {{ STATUT_BADGE | tojson }};
+let currentDemandeId = null;
+const modal = new bootstrap.Modal(document.getElementById('modalDemande'));
+async function ouvrirDetail(id) {
+  currentDemandeId = id;
+  document.getElementById('modalId').textContent = id;
+  const r = await fetch(`/api/admin/demandes/${id}/details`);
+  const d = await r.json();
+  document.getElementById('mProf').textContent = d.prof_nom || '—';
+  document.getElementById('mLogiciel').textContent = d.logiciel_nom || '—';
+  document.getElementById('mPrecisions').textContent = d.precisions || '—';
+  document.getElementById('mCoverage').textContent = d.masters_coverage > 0
+    ? `${d.masters_coverage} master(s) ont déjà ce logiciel` : 'Non détecté dans l\'inventaire';
+  document.getElementById('modalStatut').value = d.statut;
+  document.getElementById('modalNotes').value = d.notes_internes || '';
+  modal.show();
+}
+async function sauverDemande() {
+  const statut = document.getElementById('modalStatut').value;
+  const notes = document.getElementById('modalNotes').value;
+  await fetch(`/api/admin/demandes/${currentDemandeId}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({statut, notes_internes: notes})
+  });
+  modal.hide();
+  location.reload();
+}
+</script>
 {% endblock %}

@@ -20,6 +20,15 @@
           {% if l.dans_pack_base %}<span class="badge bg-primary">Pack de base</span>{% endif %}
           {% if not l.actif %}<span class="badge bg-secondary">Inactif</span>{% endif %}
           {% if l.categorie %}<span class="badge bg-light text-dark border">{{ l.categorie }}</span>{% endif %}
+          {% if l.nb_masters > 0 %}
+          <span class="badge bg-success bg-opacity-75 ms-1" title="{{ l.nb_masters }} master(s) avec ce logiciel">
+            <i class="bi bi-pc-display me-1"></i>{{ l.nb_masters }}{% if l.nb_masters_total %}/{{ l.nb_masters_total }}{% endif %}
+          </span>
+          {% elif l.nb_masters_total > 0 %}
+          <span class="badge bg-light text-muted border ms-1" title="Non détecté dans l'inventaire">
+            <i class="bi bi-pc-display me-1"></i>0/{{ l.nb_masters_total }}
+          </span>
+          {% endif %}
           <span class="ms-auto badge bg-light text-dark border">{{ l.nb_demandes }} demande{{ 's' if l.nb_demandes != 1 }}</span>
         </div>
       </button>

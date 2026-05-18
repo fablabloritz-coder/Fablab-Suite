@@ -71,6 +71,13 @@
           </div>
           {% if l.categorie %}<div class="text-muted small mb-2">{{ l.categorie }}</div>{% endif %}
           {% if l.description %}<p class="small text-muted mb-0 text-truncate">{{ l.description }}</p>{% endif %}
+          {% if l.nb_masters > 0 %}
+          <div class="mt-2">
+            <span class="badge bg-success bg-opacity-75" title="Déjà detecté sur {{ l.nb_masters }} master(s)">
+              <i class="bi bi-pc-display me-1"></i>Déjà sur {{ l.nb_masters }} poste{{ 's' if l.nb_masters > 1 }}
+            </span>
+          </div>
+          {% endif %}
         </div>
         <div class="card-footer bg-transparent border-top-0 d-flex justify-content-between align-items-center">
           <span class="small text-muted">
@@ -78,9 +85,15 @@
             <i class="bi bi-puzzle me-1"></i>{{ l.plugins|selectattr('optionnel','equalto',0)|list|length }} plugin(s) inclus
             {% endif %}
           </span>
+          {% if l.demande_en_cours %}
+          <span class="badge bg-warning text-dark">
+            <i class="bi bi-hourglass-split me-1"></i>Demande en cours
+          </span>
+          {% else %}
           <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); ouvrirLogiciel({{ l.id }})">
             <i class="bi bi-plus-lg me-1"></i>Demander
           </button>
+          {% endif %}
         </div>
       </div>
     </div>
