@@ -101,7 +101,7 @@
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label small fw-bold">Date et heure</label>
-                        <input type="datetime-local" id="editDateSaisie" class="form-control">
+                        <input type="datetime-local" id="editDateSaisie" class="form-control" step="1">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold">Préparateur</label>
@@ -172,7 +172,15 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold">Format papier</label>
-                        <input type="text" id="editFormatPapier" class="form-control" placeholder="A4, A3...">
+                        <select id="editFormatPapier" class="form-select">
+                            <option value="">— Non défini —</option>
+                            <option value="A0">A0 (1189×841 mm)</option>
+                            <option value="A1">A1 (841×594 mm)</option>
+                            <option value="A2">A2 (594×420 mm)</option>
+                            <option value="A3">A3 (420×297 mm)</option>
+                            <option value="A4">A4 (297×210 mm)</option>
+                            <option value="A5">A5 (210×148 mm)</option>
+                        </select>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold">Impression</label>
@@ -188,7 +196,11 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-bold">Type de feuille</label>
-                        <input type="text" id="editTypeFeuille" class="form-control">
+                        <select id="editTypeFeuille" class="form-select">
+                            <option value="">— Non défini —</option>
+                            <option value="opaque">Feuille opaque</option>
+                            <option value="transparente">Feuille transparente</option>
+                        </select>
                     </div>
                     <div class="col-12">
                         <label class="form-label small fw-bold">Commentaire</label>
@@ -226,7 +238,8 @@ function fillSelectOptions(selectId, rows, placeholder, labelBuilder) {
 
 function toDateTimeLocalValue(value) {
     if (!value) return '';
-    return String(value).replace(' ', 'T').slice(0, 16);
+    // Préserver les secondes (slice(0,19)) pour éviter la perte de précision au tri
+    return String(value).replace(' ', 'T').slice(0, 19);
 }
 
 function selectedMultiValues(selectId) {

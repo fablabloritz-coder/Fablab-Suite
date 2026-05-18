@@ -934,7 +934,13 @@ async function doSubmit(andNew) {
             type_activite_id: parseInt(typeId),
             machine_id: parseInt(card.querySelector('.f-machine')?.value) || null,
             materiau_id: parseInt(card.querySelector('.f-materiau')?.value) || null,
-            occurrence_count: parseInt(card.querySelector('.f-occurrence-count')?.value, 10) || 1,
+            occurrence_count: parseInt(
+                Array.from(card.querySelectorAll('.specific-fields'))
+                    .find(p => p.style.display !== 'none')
+                    ?.querySelector('.f-occurrence-count')?.value
+                ?? card.querySelector('.f-occurrence-count')?.value,
+                10
+            ) || 1,
             poids_grammes: parseFloat(card.querySelector('.f-poids')?.value) || null,
             longueur_mm: rawL ? rawL * factor : null,
             largeur_mm: rawW ? rawW * factor : null,

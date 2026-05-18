@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "2.4.1",
+      "date": "2026-05-18",
+      "title": "Corrections saisie et historique",
+      "notes": [
+        "Correction du calcul de surface pour les activites multi-occurrences : le champ occurrence etait toujours lu depuis le panneau Impression 3D meme lors d'une Decoupe Laser/CNC.",
+        "Historique > modal d'edition : les champs Format papier et Type de feuille sont maintenant des listes deroulantes (coherentes avec la saisie principale).",
+        "Historique > modal d'edition : les secondes de l'heure de saisie sont desormais preservees lors d'une modification, evitant le deplacement de la ligne dans le tri."
+      ]
+    },
+    {
       "version": "2.4.0",
       "date": "2026-05-16",
       "title": "Filtres avances dans les statistiques et les exports",
