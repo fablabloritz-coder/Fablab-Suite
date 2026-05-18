@@ -1,6 +1,14 @@
 {
   "history": [
     {
+      "version": "3.3.1",
+      "date": "2026-05-18",
+      "title": "Persistance des medias uploadés",
+      "notes": [
+        "Les videos et images uploadees sont maintenant persistantes : le dossier static/uploads est monte en volume Docker (docker-data/uploads). Les fichiers ne sont plus perdus apres un docker compose up --build."
+      ]
+    },
+    {
       "version": "3.3.0",
       "date": "2026-05-03",
       "title": "Pause hebdomadaire et indisponibilite prioritaire",
