@@ -634,6 +634,8 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
         if (!e.target.classList.contains('item-input')) return;
         const row = e.target.closest('.item-row');
         const idx = row.dataset.index;
+        // Ignorer si c'est une assignation programmatique
+        if (row.dataset.isAssigning === 'true') return;
         // Délier si l'utilisateur édite
         row.querySelector('.item-materiel-id').value = '';
         row.querySelector('.item-linked').style.display = 'none';
@@ -698,7 +700,10 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
                         showDuplicateWarning(row);
                         return;
                     }
+                    // Marquer comme assignation programmatique pour éviter le re-trigger du listener input
+                    row.dataset.isAssigning = 'true';
                     row.querySelector('.item-input').value = label;
+                    row.dataset.isAssigning = 'false';
                     row.querySelector('.item-materiel-id').value = item.id;
                     row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
                     row.querySelector('.item-linked').style.display = 'block';
