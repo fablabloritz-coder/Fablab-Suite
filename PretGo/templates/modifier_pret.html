@@ -58,28 +58,28 @@
                     <i class="bi bi-box-fill text-primary"></i> 2. Quel(s) objet(s) ?
                 </label>
                 <p class="text-muted small mb-2">
-                    Ajoutez un ou plusieurs objets. Tapez pour chercher dans l'inventaire, ou saisissez un texte libre.
+                    Utilisez la zone inventaire pour les objets à lier au stock, et la zone texte libre pour les descriptions sans lien inventaire.
                 </p>
 
                 <div id="items-container">
-                    {% if pret_items %}
-                        {% for item in pret_items %}
+                    {% if pret_linked_items %}
+                        {% for item in pret_linked_items %}
                         <div class="item-row mb-2 position-relative" data-index="{{ loop.index0 }}">
                             <div class="input-group">
                                 <input type="text"
-                                       name="items_description[]"
+                                       name="linked_items_description[]"
                                        class="form-control form-control-lg item-input"
-                                       placeholder="N° inventaire, marque, modèle ou texte libre..."
+                                       placeholder="N° inventaire, marque, modèle..."
                                        autocomplete="off"
                                        value="{{ item.description }}"
                                        required>
-                                <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="{{ item.materiel_id or '' }}">
+                                <input type="hidden" name="linked_items_materiel_id[]" class="item-materiel-id" value="{{ item.materiel_id or '' }}">
                                 {% if mode_scanner != 'douchette' %}
                                 <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
                                     <i class="bi bi-upc-scan"></i>
                                 </button>
                                 {% endif %}
-                                <button type="button" class="btn btn-outline-danger btn-remove-item" title="Retirer" {% if pret_items | length <= 1 %}style="display:none"{% endif %}>
+                                <button type="button" class="btn btn-outline-danger btn-remove-item" title="Retirer" {% if pret_linked_items | length <= 1 %}style="display:none"{% endif %}>
                                     <i class="bi bi-x-lg"></i>
                                 </button>
                             </div>
@@ -95,13 +95,13 @@
                         <div class="item-row mb-2 position-relative" data-index="0">
                             <div class="input-group">
                                 <input type="text"
-                                       name="items_description[]"
+                                       name="linked_items_description[]"
                                        class="form-control form-control-lg item-input"
-                                       placeholder="N° inventaire, marque, modèle ou texte libre..."
+                                       placeholder="N° inventaire, marque, modèle..."
                                        autocomplete="off"
                                        value="{{ pret.descriptif_objets }}"
                                        required>
-                                <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="{{ pret.materiel_id or '' }}">
+                                <input type="hidden" name="linked_items_materiel_id[]" class="item-materiel-id" value="{{ pret.materiel_id or '' }}">
                                 {% if mode_scanner != 'douchette' %}
                                 <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner un code-barres">
                                     <i class="bi bi-upc-scan"></i>
@@ -130,6 +130,53 @@
                         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark"
                               style="font-size: 0.55rem; line-height: 1;">TEST</span>
                         <i class="bi bi-lightning-charge"></i>
+                    </button>
+                </div>
+
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 text-secondary">Texte libre</h6>
+                        <small class="text-muted">Jamais lié à l'inventaire</small>
+                    </div>
+                    <p class="text-muted small mb-2">
+                        Ajoutez une ou plusieurs lignes si vous devez conserver une description libre sans correspondance matériel.
+                    </p>
+                    <div id="free-text-container">
+                        {% if pret_free_text_items %}
+                        {% for item in pret_free_text_items %}
+                        <div class="free-text-row mb-2">
+                            <div class="input-group">
+                                <input type="text"
+                                       name="free_text_items[]"
+                                       class="form-control form-control-lg"
+                                       placeholder="Description libre..."
+                                       autocomplete="off"
+                                       value="{{ item.description }}"
+                                       required>
+                                <button type="button" class="btn btn-outline-danger btn-remove-free-text" title="Retirer">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="free-text-row mb-2">
+                            <div class="input-group">
+                                <input type="text"
+                                       name="free_text_items[]"
+                                       class="form-control form-control-lg"
+                                       placeholder="Description libre..."
+                                       autocomplete="off"
+                                       required>
+                                <button type="button" class="btn btn-outline-danger btn-remove-free-text" title="Retirer">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <button type="button" id="btn-add-free-text" class="btn btn-outline-secondary btn-sm mt-1">
+                        <i class="bi bi-plus-circle"></i> Ajouter une ligne de texte libre
                     </button>
                 </div>
             </div>
@@ -362,6 +409,9 @@ function toggleDuree() {
     const container = document.getElementById('items-container');
     const btnAdd = document.getElementById('btn-add-item');
     const btnSimulerScan = document.getElementById('btn-simuler-scan');
+    const freeTextContainer = document.getElementById('free-text-container');
+    const btnAddFreeText = document.getElementById('btn-add-free-text');
+    const scannerDouchetteAutoValidate = '{{ scanner_douchette_auto_validate }}' === '1';
     let itemIndex = container.querySelectorAll('.item-row').length;
     let debounceTimers = {};
     let activeScanTarget = null;
@@ -403,10 +453,35 @@ function toggleDuree() {
             .catch(() => {});
     }
 
+    function createFreeTextRow(value) {
+        const row = document.createElement('div');
+        row.className = 'free-text-row mb-2';
+        row.innerHTML = `
+            <div class="input-group">
+                <input type="text" name="free_text_items[]"
+                       class="form-control form-control-lg"
+                       placeholder="Description libre..."
+                       autocomplete="off"
+                       value="${escapeHtml(value || '')}"
+                       required>
+                <button type="button" class="btn btn-outline-danger btn-remove-free-text" title="Retirer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        `;
+        return row;
+    }
+
     if (btnSimulerScan) {
         btnSimulerScan.addEventListener('click', function(e) {
             e.preventDefault();
             simulerImpulsionDouchette();
+        });
+    }
+
+    if (btnAddFreeText && freeTextContainer) {
+        btnAddFreeText.addEventListener('click', function() {
+            freeTextContainer.appendChild(createFreeTextRow(''));
         });
     }
 
@@ -416,11 +491,11 @@ function toggleDuree() {
         row.dataset.index = itemIndex;
         row.innerHTML = `
             <div class="input-group">
-                <input type="text" name="items_description[]"
+                <input type="text" name="linked_items_description[]"
                        class="form-control form-control-lg item-input"
-                       placeholder="N° inventaire, marque, modèle ou texte libre..."
+                       placeholder="N° inventaire, marque, modèle..."
                        autocomplete="off" required>
-                <input type="hidden" name="items_materiel_id[]" class="item-materiel-id" value="">
+                <input type="hidden" name="linked_items_materiel_id[]" class="item-materiel-id" value="">
                 {% if mode_scanner != 'douchette' %}
                 <button type="button" class="btn btn-outline-info btn-scan-item" title="Scanner">
                     <i class="bi bi-upc-scan"></i>
@@ -458,6 +533,19 @@ function toggleDuree() {
         }
     });
 
+    if (freeTextContainer) {
+        freeTextContainer.addEventListener('click', function(e) {
+            if (!e.target.closest('.btn-remove-free-text')) return;
+            const rows = freeTextContainer.querySelectorAll('.free-text-row');
+            if (rows.length > 1) {
+                e.target.closest('.free-text-row').remove();
+            } else {
+                const input = rows[0].querySelector('input[name="free_text_items[]"]');
+                if (input) input.value = '';
+            }
+        });
+    }
+
     container.addEventListener('input', function(e) {
         if (!e.target.classList.contains('item-input')) return;
         const row = e.target.closest('.item-row');
@@ -478,15 +566,26 @@ function toggleDuree() {
 
     // Intercepter Entrée sur les champs item (évite soumission du form + recherche immédiate)
     container.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && e.target.classList.contains('item-input')) {
+        if (!e.target.classList.contains('item-input')) return;
+        const isEnter = e.key === 'Enter';
+        const isTab = e.key === 'Tab';
+        if (!isEnter && !(isTab && scannerDouchetteAutoValidate)) return;
+
+        if (isTab && !scannerDouchetteAutoValidate) return;
+
+        if (isEnter || isTab) {
             e.preventDefault();
             const row = e.target.closest('.item-row');
             const val = e.target.value.trim();
-            if (val.length >= 2) searchInventaire(row, val);
+            if (scannerDouchetteAutoValidate) {
+                row.dataset.scanSource = 'douchette';
+            }
+            if (val.length >= 2) searchInventaire(row, val, { explicitValidate: true });
         }
     });
 
-    function searchInventaire(row, query) {
+    function searchInventaire(row, query, options = {}) {
+        const explicitValidate = options.explicitValidate === true;
         fetch('{{ url_for("api.api_inventaire") }}?q=' + encodeURIComponent(query))
             .then(r => r.json())
             .then(items => {
@@ -496,35 +595,56 @@ function toggleDuree() {
                     box.style.display = 'none';
                     return;
                 }
-                
-                // Si 1 seul résultat → validation automatique
-                if (items.length === 1) {
-                    const item = items[0];
-                    const shouldBeep = row.dataset.scanSource === 'webcam';
-                    row.dataset.scanSource = '';
+
+                function buildLabel(item) {
                     let label = item.type_materiel;
                     if (item.marque) label += ' — ' + item.marque;
                     if (item.modele) label += ' ' + item.modele;
-                    if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
+                    if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-')) {
                         label += ' (' + item.numero_inventaire + ')';
-                    
-                    // Assigner automatiquement
+                    }
+                    return label;
+                }
+
+                function assignItem(item, shouldBeep) {
+                    const label = buildLabel(item);
                     row.querySelector('.item-input').value = label;
                     row.querySelector('.item-materiel-id').value = item.id;
                     row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
                     row.querySelector('.item-linked').style.display = 'block';
                     box.style.display = 'none';
-                    
-                    // Bip uniquement pour un scan webcam (pas douchette USB, pas simulation)
+
                     if (shouldBeep && typeof window.playBeep === 'function') {
                         window.playBeep(0.15, 'up');
                     }
-                    
-                    // Focus sur le bouton "Ajouter un autre objet" ou prochain champ
+
                     const addBtn = document.getElementById('btn-add-item');
-                    if (addBtn) {
-                        addBtn.focus();
-                    }
+                    if (addBtn) addBtn.focus();
+                }
+
+                const normalizedQuery = String(query || '').trim().toLowerCase();
+                const exactMatches = items.filter(item => {
+                    const inv = String(item.numero_inventaire || '').trim().toLowerCase();
+                    const serial = String(item.numero_serie || '').trim().toLowerCase();
+                    return normalizedQuery && (inv === normalizedQuery || serial === normalizedQuery);
+                });
+
+                const scanSource = row.dataset.scanSource || '';
+                const isScan = scanSource === 'webcam' || scanSource === 'simulated' || scanSource === 'douchette';
+
+                if (explicitValidate && exactMatches.length === 1) {
+                    const shouldBeep = scanSource === 'webcam';
+                    row.dataset.scanSource = '';
+                    assignItem(exactMatches[0], shouldBeep);
+                    return;
+                }
+
+                // Validation automatique uniquement pour les scans
+                if (items.length === 1 && isScan) {
+                    const item = items[0];
+                    const shouldBeep = scanSource === 'webcam';
+                    row.dataset.scanSource = '';
+                    assignItem(item, shouldBeep);
                     return;
                 }
                 
@@ -532,11 +652,7 @@ function toggleDuree() {
                 row.dataset.scanSource = '';
                 box.innerHTML = '';
                 items.forEach(item => {
-                    let label = item.type_materiel;
-                    if (item.marque) label += ' — ' + item.marque;
-                    if (item.modele) label += ' ' + item.modele;
-                    if (item.numero_inventaire && !item.numero_inventaire.startsWith('AUTO-'))
-                        label += ' (' + item.numero_inventaire + ')';
+                    const label = buildLabel(item);
                     const div = document.createElement('div');
                     div.className = 'autocomplete-item d-flex align-items-center gap-2';
                     if (item.image) {

@@ -444,6 +444,14 @@ def admin_reglages():
                 msg += f' Suffixe : « {suffixe} »'
             flash(msg, 'success')
 
+        elif action == 'scanner_validation_douchette':
+            auto_validate = '1' if request.form.get('scanner_douchette_auto_validate') == '1' else '0'
+            set_setting('scanner_douchette_auto_validate', auto_validate)
+            if auto_validate == '1':
+                flash('Douchette: validation automatique activée (Entrée/Tabulation).', 'success')
+            else:
+                flash('Douchette: validation automatique désactivée.', 'success')
+
         elif action == 'theme_reset':
             # Réinitialiser le thème aux valeurs par défaut
             set_setting('theme_couleur_primaire', '#1a73e8')
@@ -656,6 +664,7 @@ def admin_reglages():
                            reservation_lock_window_hours=get_setting('reservation_lock_window_hours', '48'),
                            scanner_prefixe=get_setting('scanner_prefixe', ''),
                            scanner_suffixe=get_setting('scanner_suffixe', ''),
+                           scanner_douchette_auto_validate=get_setting('scanner_douchette_auto_validate', '1'),
                            theme_couleur_primaire=get_setting('theme_couleur_primaire', '#1a73e8'),
                            theme_couleur_navbar=get_setting('theme_couleur_navbar', '#1a56db'),
                            theme_logo=get_setting('theme_logo', ''),

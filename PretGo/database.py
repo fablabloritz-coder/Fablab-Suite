@@ -381,6 +381,7 @@ def init_db():
         'mode_scanner': 'les_deux',
         'scanner_prefixe': '',
         'scanner_suffixe': '',
+        'scanner_douchette_auto_validate': '1',
         # ── Heure de fin de journée ──
         'heure_fin_journee': '17:45',
         # ── Thème personnalisable ──

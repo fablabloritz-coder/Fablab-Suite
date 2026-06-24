@@ -130,11 +130,96 @@ def _inventory_map(conn, material_ids):
     ).fetchall()
     return {int(r['id']): r for r in rows}
 
+
+def _split_items_by_kind(items):
+    """Sépare les items liés à l'inventaire du texte libre."""
+    linked_items = []
+    free_text_items = []
+
+    for item in items or []:
+        if not item:
+            continue
+
+        if hasattr(item, 'keys'):
+            desc = (item.get('description') or item.get('descriptif_objets') or '').strip()
+            mat_id = item.get('materiel_id')
+        else:
+            desc = (item[0] or '').strip() if len(item) > 0 else ''
+            mat_id = item[1] if len(item) > 1 else None
+
+        try:
+            mat_id = int(mat_id) if mat_id not in (None, '') else None
+        except (TypeError, ValueError):
+            mat_id = None
+
+        if not desc and mat_id is None:
+            continue
+
+        payload = {'description': desc, 'materiel_id': mat_id}
+        if mat_id:
+            linked_items.append(payload)
+        else:
+            free_text_items.append(payload)
+
+    return linked_items, free_text_items
+
+
+def _items_from_form(form):
+    """Lit les items du formulaire avec support du nouveau champ texte libre."""
+    linked_descriptions = form.getlist('linked_items_description[]')
+    linked_materiel_ids = form.getlist('linked_items_materiel_id[]')
+    free_text_items = form.getlist('free_text_items[]')
+
+    legacy_descriptions = form.getlist('items_description[]')
+    legacy_materiel_ids = form.getlist('items_materiel_id[]')
+
+    linked_items = []
+    if linked_descriptions or linked_materiel_ids:
+        max_len = max(len(linked_descriptions), len(linked_materiel_ids))
+        for i in range(max_len):
+            desc = linked_descriptions[i].strip() if i < len(linked_descriptions) else ''
+            mat_raw = linked_materiel_ids[i].strip() if i < len(linked_materiel_ids) else ''
+            if not desc:
+                continue
+            try:
+                mat_id = int(mat_raw) if mat_raw else None
+            except (TypeError, ValueError):
+                mat_id = None
+            linked_items.append({'description': desc, 'materiel_id': mat_id})
+    else:
+        max_len = max(len(legacy_descriptions), len(legacy_materiel_ids))
+        for i in range(max_len):
+            desc = legacy_descriptions[i].strip() if i < len(legacy_descriptions) else ''
+            mat_raw = legacy_materiel_ids[i].strip() if i < len(legacy_materiel_ids) else ''
+            if not desc:
+                continue
+            try:
+                mat_id = int(mat_raw) if mat_raw else None
+            except (TypeError, ValueError):
+                mat_id = None
+            linked_items.append({'description': desc, 'materiel_id': mat_id})
+
+    free_items = []
+    for text in free_text_items:
+        text = (text or '').strip()
+        if text:
+            free_items.append({'description': text, 'materiel_id': None})
+
+    all_items = linked_items + free_items
+    all_items_as_tuples = [
+        (item['description'], item['materiel_id'])
+        for item in all_items
+    ]
+
+    return linked_items, free_items, all_items_as_tuples
+
 @bp.route('/nouveau-pret', methods=['GET', 'POST'])
 def nouveau_pret():
     conn = get_app_db()
     reservation_prefill = None
     reservation_prefill_items = []
+    reservation_prefill_linked_items = []
+    reservation_prefill_free_text_items = []
     reservation_prefill_categories = []
     form_state = None
 
@@ -158,6 +243,7 @@ def nouveau_pret():
             return redirect(url_for('reservations.reservations'))
         reservation_prefill_items = _extract_reservation_items(reservation_prefill)
         reservation_prefill_categories = _extract_reservation_category_demands(reservation_prefill)
+        reservation_prefill_linked_items, reservation_prefill_free_text_items = _split_items_by_kind(reservation_prefill_items)
 
     if request.method == 'POST':
         personne_id = request.form.get('personne_id')
@@ -171,25 +257,13 @@ def nouveau_pret():
             'duree_heures': request.form.get('duree_heures', '').strip(),
             'duree_jours': request.form.get('duree_jours', '').strip(),
             'date_retour_prevue': request.form.get('date_retour_prevue', '').strip(),
-            'pret_items': [],
+            'linked_items': [],
+            'free_text_items': [],
         }
 
-        # ── Récupération des items (multi-matériel) ──
-        items_desc = request.form.getlist('items_description[]')
-        items_mat = request.form.getlist('items_materiel_id[]')
-
-        # Nettoyer les items vides
-        items = []
-        for i in range(len(items_desc)):
-            desc = items_desc[i].strip() if i < len(items_desc) else ''
-            mat_id = items_mat[i].strip() if i < len(items_mat) else ''
-            if desc:
-                items.append((desc, int(mat_id) if mat_id else None))
-
-        form_state['pret_items'] = [
-            {'description': desc, 'materiel_id': mat_id}
-            for desc, mat_id in items
-        ]
+        linked_items, free_text_items, items = _items_from_form(request.form)
+        form_state['linked_items'] = linked_items
+        form_state['free_text_items'] = free_text_items
 
         # ── Gestion de la durée (heures ou jours) ──
         duree_pret_jours, duree_pret_heures, date_retour_prevue, duree_type = _parse_duree(request.form)
@@ -301,15 +375,19 @@ def nouveau_pret():
         lieux=lieux,
         reservation_prefill=reservation_prefill,
         reservation_prefill_items=reservation_prefill_items,
+        reservation_prefill_linked_items=reservation_prefill_linked_items,
+        reservation_prefill_free_text_items=reservation_prefill_free_text_items,
         reservation_prefill_categories=reservation_prefill_categories,
         form_state=form_state,
+        linked_items=(form_state['linked_items'] if form_state else reservation_prefill_linked_items),
+        free_text_items=(form_state['free_text_items'] if form_state else reservation_prefill_free_text_items),
         inventory_by_id=_inventory_map(
             conn,
             [
                 item['materiel_id']
                 for item in (
-                    (form_state or {}).get('items')
-                    or reservation_prefill_items
+                    (form_state or {}).get('linked_items')
+                    or reservation_prefill_linked_items
                 )
                 if item.get('materiel_id')
             ],
@@ -317,7 +395,8 @@ def nouveau_pret():
         duree_defaut=duree_defaut,
         unite_defaut=unite_defaut,
         heure_fin_journee=get_setting('heure_fin_journee', '17:45'),
-        mode_scanner=get_setting('mode_scanner', 'les_deux')
+        mode_scanner=get_setting('mode_scanner', 'les_deux'),
+        scanner_douchette_auto_validate=get_setting('scanner_douchette_auto_validate', '1')
     )
 
 
@@ -467,15 +546,7 @@ def modifier_pret(pret_id):
         notes = request.form.get('notes', '').strip()
         lieu_id = request.form.get('lieu_id', '').strip() or None
 
-        # ── Récupération des items (multi-matériel) ──
-        items_desc = request.form.getlist('items_description[]')
-        items_mat = request.form.getlist('items_materiel_id[]')
-        items = []
-        for i in range(len(items_desc)):
-            desc = items_desc[i].strip() if i < len(items_desc) else ''
-            mat_id = items_mat[i].strip() if i < len(items_mat) else ''
-            if desc:
-                items.append((desc, int(mat_id) if mat_id else None))
+        linked_items, free_text_items, items = _items_from_form(request.form)
 
         # ── Gestion de la durée ──
         duree_pret_jours, duree_pret_heures, date_retour_prevue, duree_type = _parse_duree(request.form)
@@ -541,6 +612,7 @@ def modifier_pret(pret_id):
         LEFT JOIN inventaire inv ON pm.materiel_id = inv.id
         WHERE pm.pret_id = ?
     ''', (pret_id,)).fetchall()
+    pret_linked_items, pret_free_text_items = _split_items_by_kind(pret_items)
 
     personnes = conn.execute(
         'SELECT * FROM personnes WHERE actif = 1 ORDER BY nom, prenom'
@@ -558,13 +630,16 @@ def modifier_pret(pret_id):
         'modifier_pret.html',
         pret=pret,
         pret_items=pret_items,
+        pret_linked_items=pret_linked_items,
+        pret_free_text_items=pret_free_text_items,
         personnes=personnes,
         categories=categories,
         lieux=lieux,
         duree_defaut=duree_defaut,
         unite_defaut=unite_defaut,
         heure_fin_journee=get_setting('heure_fin_journee', '17:45'),
-        mode_scanner=get_setting('mode_scanner', 'les_deux')
+        mode_scanner=get_setting('mode_scanner', 'les_deux'),
+        scanner_douchette_auto_validate=get_setting('scanner_douchette_auto_validate', '1')
     )
 
 
