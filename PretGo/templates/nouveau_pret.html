@@ -640,6 +640,7 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
         row.querySelector('.item-materiel-id').value = '';
         row.querySelector('.item-linked').style.display = 'none';
         clearTimeout(debounceTimers[idx]);
+        row.dataset.searchRequestId = '';
         const val = e.target.value.trim();
         if (val.length < 2) { row.querySelector('.item-suggestions').style.display = 'none'; return; }
         debounceTimers[idx] = setTimeout(() => searchInventaire(row, val), 300);
@@ -663,7 +664,11 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
         if (isEnter || isTab) {
             e.preventDefault();
             const row = e.target.closest('.item-row');
+            const idx = row.dataset.index;
             const val = e.target.value.trim();
+            clearTimeout(debounceTimers[idx]);
+            row.dataset.searchRequestId = '';
+            row.querySelector('.item-suggestions').style.display = 'none';
             if (scannerDouchetteAutoValidate) {
                 row.dataset.scanSource = 'douchette';
             }
@@ -673,12 +678,16 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
 
     function searchInventaire(row, query, options = {}) {
         const explicitValidate = options.explicitValidate === true;
+        const requestId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        row.dataset.searchRequestId = requestId;
         fetch('{{ url_for("api.api_inventaire") }}?q=' + encodeURIComponent(query))
             .then(r => r.json())
             .then(items => {
+                if (row.dataset.searchRequestId !== requestId) return;
                 const box = row.querySelector('.item-suggestions');
                 if (!items.length) {
                     row.dataset.scanSource = '';
+                    row.dataset.searchRequestId = '';
                     box.style.display = 'none';
                     return;
                 }
@@ -707,6 +716,9 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
                     row.querySelector('.item-materiel-id').value = item.id;
                     row.querySelector('.linked-label').textContent = item.numero_inventaire || label;
                     row.querySelector('.item-linked').style.display = 'block';
+                    const idx = row.dataset.index;
+                    clearTimeout(debounceTimers[idx]);
+                    row.dataset.searchRequestId = '';
                     box.style.display = 'none';
 
                     if (shouldBeep && typeof window.playBeep === 'function') {
@@ -739,6 +751,14 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
                     const shouldBeep = scanSource === 'webcam';
                     row.dataset.scanSource = '';
                     assignItem(item, shouldBeep);
+                    return;
+                }
+
+                const linkedId = (row.querySelector('.item-materiel-id')?.value || '').trim();
+                if (linkedId && !explicitValidate) {
+                    row.dataset.scanSource = '';
+                    row.dataset.searchRequestId = '';
+                    box.style.display = 'none';
                     return;
                 }
                 
