@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "1.8.0",
+      "date": "2026-06-24",
+      "title": "Séparation inventaire/texte libre et douchette optimisée",
+      "notes": [
+        "<strong>Saisie divisée en deux zones</strong> — création et modification de prêt proposent maintenant une zone inventaire lié et une zone texte libre.",
+        "<strong>Réglage douchette configurable</strong> — nouvel élément admin pour contrôler la validation automatique sur Entrée/Tab.",
+        "<strong>Auto-validation sur correspondance exacte</strong> — si un numéro d'inventaire ou série existe exactement une seule fois, le matériel est validé automatiquement (scan ou frappe manuelle).",
+        "<strong>Liste déroulante robustifiée</strong> — suppression des cas où la liste réapparaît après un scan en raison de réponses API asynchrones tardives."
+      ]
+    },
+    {
       "version": "1.7.5",
       "date": "2026-05-18",
       "title": "Protection contre le double pret",
