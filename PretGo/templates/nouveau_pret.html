@@ -738,7 +738,7 @@ document.addEventListener('DOMContentLoaded', toggleDuree);
                 const scanSource = row.dataset.scanSource || '';
                 const isScan = scanSource === 'webcam' || scanSource === 'simulated' || scanSource === 'douchette';
 
-                if (explicitValidate && exactMatches.length === 1) {
+                if (exactMatches.length === 1) {
                     const shouldBeep = scanSource === 'webcam';
                     row.dataset.scanSource = '';
                     assignItem(exactMatches[0], shouldBeep);
