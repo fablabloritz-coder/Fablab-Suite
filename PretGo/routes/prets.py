@@ -141,8 +141,9 @@ def _split_items_by_kind(items):
             continue
 
         if hasattr(item, 'keys'):
-            desc = (item.get('description') or item.get('descriptif_objets') or '').strip()
-            mat_id = item.get('materiel_id')
+            keys = set(item.keys())
+            desc = ((item['description'] if 'description' in keys else None) or (item['descriptif_objets'] if 'descriptif_objets' in keys else None) or '').strip()
+            mat_id = item['materiel_id'] if 'materiel_id' in keys else None
         else:
             desc = (item[0] or '').strip() if len(item) > 0 else ''
             mat_id = item[1] if len(item) > 1 else None
