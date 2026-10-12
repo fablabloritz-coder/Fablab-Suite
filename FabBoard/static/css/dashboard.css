@@ -913,6 +913,19 @@
 }
 
 /* ========== WIDGET PAGE WEB ========== */
+.webpage-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+.webpage-frame {
+    position: absolute;
+    border: none;
+    border-radius: 10px;
+    background: #fff;
+    pointer-events: auto;
+}
 .widget-webpage {
     height: 100%;
     overflow: hidden;

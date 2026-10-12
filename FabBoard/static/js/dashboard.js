@@ -269,6 +269,7 @@ async function reloadSlidesAfterCycle() {
     var currentSlide = slides[currentSlideIndex];
     var previousSlideId = currentSlide ? currentSlide.id : undefined;
     await loadSlides();
+    pruneWebpageFrames(slides);
 
     if (slides.length === 0) {
         showEmptyState();
@@ -316,6 +317,7 @@ async function nextSlide() {
     currentSlideIndex = (currentSlideIndex + 1) % slides.length;
 
     const container = document.getElementById('dashboard-container');
+    hideWebpageFrames();
     container.classList.add('slide-transition');
 
     setTimeout(async () => {
@@ -354,6 +356,7 @@ async function displayCurrentSlide() {
     }
     
     // Parser la grille layout
+    hideWebpageFrames();
     const grille = JSON.parse(slide.grille_json);
     
     // Style CSS Grid
@@ -410,6 +413,11 @@ async function displayCurrentSlide() {
                 widgetElement.classList.add(scaleClass);
             }
 
+            if (widgetData.widget_code === 'webpage') {
+                showWebpageFrame(slide.id, index, cfg, widgetElement);
+                continue;
+            }
+
             renderPromises.push(
                 renderWidget(widgetData, slide.id, index).then(html => {
                     injectWidgetHtml(widgetElement, html);
@@ -425,6 +433,119 @@ async function displayCurrentSlide() {
     // Mettre à jour l'horloge immédiatement
     updateClock();
 }
+
+// ========== WIDGET PAGE WEB (iframes persistantes) ==========
+// Les iframes vivent dans un calque fixe, hors de la grille reconstruite à chaque slide :
+// elles ne sont donc ni détruites ni rechargées lors des changements de slide.
+const webpageFrames = new Map();
+
+function getWebpageLayer() {
+    let layer = document.getElementById('webpage-layer');
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.id = 'webpage-layer';
+        layer.className = 'webpage-layer';
+        document.body.appendChild(layer);
+    }
+    return layer;
+}
+
+function placeWebpageFrame(entry) {
+    if (!entry.cell || !entry.cell.isConnected) return;
+    const r = entry.cell.getBoundingClientRect();
+    const s = entry.iframe.style;
+    s.left = r.left + 'px';
+    s.top = r.top + 'px';
+    s.width = r.width + 'px';
+    s.height = r.height + 'px';
+    s.visibility = 'visible';
+}
+
+function placeVisibleWebpageFrames() {
+    webpageFrames.forEach(placeWebpageFrame);
+}
+
+function hideWebpageFrames() {
+    webpageFrames.forEach((entry) => {
+        entry.iframe.style.visibility = 'hidden';
+        entry.cell = null;
+    });
+}
+
+function destroyWebpageFrame(key) {
+    const entry = webpageFrames.get(key);
+    if (!entry) return;
+    if (entry.timer) clearInterval(entry.timer);
+    entry.iframe.remove();
+    webpageFrames.delete(key);
+}
+
+function pruneWebpageFrames(allSlides) {
+    const valid = new Set();
+    allSlides.forEach((slide) => {
+        (slide.widgets || []).forEach((w) => {
+            if (w.widget_code === 'webpage') valid.add(slide.id + ':' + w.position);
+        });
+    });
+    Array.from(webpageFrames.keys()).forEach((key) => {
+        if (!valid.has(key)) destroyWebpageFrame(key);
+    });
+}
+
+function showWebpageFrame(slideId, position, cfg, cell) {
+    const key = slideId + ':' + position;
+    const url = String(cfg.page_url || '').trim();
+    const refresh = Math.max(0, parseInt(cfg.rafraichir_secondes, 10) || 0);
+    const refreshSec = refresh > 0 ? Math.max(5, refresh) : 0;
+
+    if (!/^https?:\/\//i.test(url)) {
+        destroyWebpageFrame(key);
+        cell.innerHTML = `
+            <div class="widget-empty">
+                <i class="bi bi-globe" style="font-size: 2.5rem; color: #818cf8;"></i>
+                <p>Aucune page web configurée</p>
+                <small>Saisissez une URL http(s) dans les options du widget</small>
+            </div>`;
+        return;
+    }
+
+    let entry = webpageFrames.get(key);
+    if (entry && entry.url !== url) {
+        destroyWebpageFrame(key);
+        entry = null;
+    }
+
+    if (!entry) {
+        const iframe = document.createElement('iframe');
+        iframe.className = 'webpage-frame';
+        iframe.referrerPolicy = 'no-referrer';
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+        iframe.setAttribute('allowfullscreen', '');
+        iframe.style.visibility = 'hidden';
+        iframe.src = url;
+        getWebpageLayer().appendChild(iframe);
+        entry = { iframe, url, refresh: 0, timer: null, cell: null };
+        webpageFrames.set(key, entry);
+    }
+
+    // Le rafraîchissement continue en arrière-plan, même quand la slide n'est pas affichée
+    if (entry.refresh !== refreshSec) {
+        if (entry.timer) clearInterval(entry.timer);
+        entry.refresh = refreshSec;
+        entry.timer = refreshSec > 0
+            ? setInterval(() => { entry.iframe.src = entry.url; }, refreshSec * 1000)
+            : null;
+    }
+
+    cell.innerHTML = '';
+    entry.cell = cell;
+    placeWebpageFrame(entry);
+    // La grille peut encore bouger (transition de slide, mise en page)
+    requestAnimationFrame(placeVisibleWebpageFrames);
+    setTimeout(placeVisibleWebpageFrames, 600);
+}
+
+window.addEventListener('resize', placeVisibleWebpageFrames);
 
 function formatResumeLabel(isoDate) {
     if (!isoDate) return '';
