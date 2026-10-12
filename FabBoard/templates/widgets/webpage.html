@@ -1,0 +1,31 @@
+<div class="widget widget-webpage" id="widget-webpage-{{ widget_id }}" data-widget-code="webpage">
+    {% set page_url = (config.get('page_url', '') or '').strip() %}
+    {% set refresh = config.get('rafraichir_secondes', 0) | int(0) %}
+
+    {% if page_url.lower().startswith(('http://', 'https://')) %}
+    <iframe
+        id="webpage-frame-{{ widget_id }}"
+        src="{{ page_url }}"
+        referrerpolicy="no-referrer"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        allowfullscreen
+    ></iframe>
+    {% if refresh > 0 %}
+    <script>
+        (function () {
+            const frame = document.getElementById('webpage-frame-{{ widget_id }}');
+            const url = frame.getAttribute('src');
+            setInterval(function () {
+                if (frame.isConnected) frame.src = url;
+            }, {{ [refresh, 5] | max * 1000 }});
+        })();
+    </script>
+    {% endif %}
+    {% else %}
+    <div class="widget-empty">
+        <i class="bi bi-globe" style="font-size: 2.5rem; color: #818cf8;"></i>
+        <p>Aucune page web configurée</p>
+        <small>Saisissez une URL http(s) dans les options du widget</small>
+    </div>
+    {% endif %}
+</div>
