@@ -1212,6 +1212,13 @@ const WIDGET_CONFIG_DEFINITIONS = {
             { key: 'muet', label: 'Muet (obligatoire pour autoplay)', type: 'checkbox', default: true }
         ]
     },
+    webpage: {
+        titre: 'Page web',
+        fields: [
+            { key: 'page_url', label: 'URL de la page', type: 'text', default: '', placeholder: 'https://exemple.fr' },
+            { key: 'rafraichir_secondes', label: 'Rafraîchir toutes les N secondes (0 = jamais, min 5)', type: 'number', default: 0, min: 0, max: 3600 }
+        ]
+    },
     timer: {
         titre: 'Timer',
         fields: [

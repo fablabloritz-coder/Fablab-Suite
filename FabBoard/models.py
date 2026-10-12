@@ -275,6 +275,7 @@ def init_db():
             ('video', 'Vidéo', 'Affiche une vidéo locale ou YouTube/Dailymotion', '🎬', 'general'),
             ('timer', 'Timer', 'Compte à rebours vers une date/heure cible', '⏱️', 'general'),
             ('gif', 'GIF', 'Affiche un GIF animé (Tenor ou local)', '🎞️', 'general'),
+            ('webpage', 'Page web', 'Affiche une page web en plein écran', '🌐', 'general'),
         ]
         
         c.executemany(
@@ -384,6 +385,14 @@ def migrate_db():
             ('gif', 'GIF', 'Affiche un GIF animé (Tenor ou local)', '🎞️', 'general')
         )
         print('[FabBoard] Migration : widget gif ajouté')
+
+    # Migration : ajouter le widget 'webpage' s'il n'existe pas
+    if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'webpage'").fetchone()[0] == 0:
+        c.execute(
+            "INSERT INTO widgets_disponibles (code, nom, description, icone, categorie) VALUES (?, ?, ?, ?, ?)",
+            ('webpage', 'Page web', 'Affiche une page web en plein écran', '🌐', 'general')
+        )
+        print('[FabBoard] Migration : widget webpage ajouté')
 
     # Migration : ajouter le widget fabtrack_conso s'il n'existe pas
     if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'fabtrack_conso'").fetchone()[0] == 0:
