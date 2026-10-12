@@ -1564,6 +1564,17 @@ async function saveWidgetAdvancedConfig() {
         }
     });
     
+    // Accepter un code <iframe ...> collé tel quel : on en extrait l'URL du src
+    if (widgetCode === 'webpage' && newConfig.page_url) {
+        const iframeMatch = String(newConfig.page_url).match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
+        if (iframeMatch) {
+            const tmp = document.createElement('textarea');
+            tmp.innerHTML = iframeMatch[1];
+            newConfig.page_url = tmp.value.trim();
+            showToast("URL extraite du code iframe", 'info');
+        }
+    }
+
     try {
         // Normaliser/résoudre les URLs GIF avant sauvegarde (ex: lien Tenor non direct)
         if (widgetCode === 'gif' && newConfig.gif_type === 'url' && newConfig.gif_direct_url) {
