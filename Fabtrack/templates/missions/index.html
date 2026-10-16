@@ -783,7 +783,8 @@ function changeHistoryPage(delta) {
 
 function exportHistory(format) {
     const fmt = ['csv', 'html', 'pdf'].includes(format) ? format : 'csv';
-    window.open(`${API}/history/export?format=${fmt}`, '_blank');
+    const q = historySearchQuery ? `&q=${encodeURIComponent(historySearchQuery)}` : '';
+    window.open(`${API}/history/export?format=${fmt}${q}`, '_blank');
 }
 
 function renderKanban() {

@@ -121,16 +121,34 @@ def _fetch_mission_with_timeline(db, mission_id):
     ).fetchone()
 
 
-def _fetch_completed_missions(db):
-    """Retourne toutes les missions terminées (tri récentes d'abord)."""
+def _history_filter(query):
+    """Clause WHERE + paramètres de l'historique, filtrés par recherche (titre, description, catégorie, étapes)."""
+    where = "m.statut = 'termine'"
+    params = []
+    if query:
+        like = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        where += (
+            " AND (m.titre LIKE ? ESCAPE '\\' OR COALESCE(m.description, '') LIKE ? ESCAPE '\\'"
+            " OR COALESCE(mc.nom, '') LIKE ? ESCAPE '\\'"
+            " OR EXISTS (SELECT 1 FROM mission_steps s WHERE s.mission_id = m.id"
+            " AND s.texte LIKE ? ESCAPE '\\'))"
+        )
+        params = [like, like, like, like]
+    return where, params
+
+
+def _fetch_completed_missions(db, query=''):
+    """Retourne les missions terminées (tri récentes d'abord), filtrées par recherche optionnelle."""
+    where, params = _history_filter(query)
     return db.execute(
         f'''
         SELECT m.*, mc.nom AS categorie_nom, mc.couleur AS categorie_couleur, {_timeline_select_sql()}
         FROM missions m
         LEFT JOIN mission_categories mc ON mc.id = m.category_id
-        WHERE m.statut = 'termine'
+        WHERE {where}
         ORDER BY datetime(completed_at) DESC, m.id DESC
-        '''
+        ''',
+        params,
     ).fetchall()
 
 
@@ -555,17 +573,7 @@ def api_history():
     page_size = _parse_int(request.args.get('page_size'), default=10, min_value=1, max_value=50)
     query = (request.args.get('q') or '').strip()[:100]
 
-    where = "m.statut = 'termine'"
-    params = []
-    if query:
-        like = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
-        where += (
-            " AND (m.titre LIKE ? ESCAPE '\\' OR COALESCE(m.description, '') LIKE ? ESCAPE '\\'"
-            " OR COALESCE(mc.nom, '') LIKE ? ESCAPE '\\'"
-            " OR EXISTS (SELECT 1 FROM mission_steps s WHERE s.mission_id = m.id"
-            " AND s.texte LIKE ? ESCAPE '\\'))"
-        )
-        params = [like, like, like, like]
+    where, params = _history_filter(query)
 
     db = get_db()
     try:
@@ -612,14 +620,15 @@ def api_history():
 
 @bp.route('/api/history/export')
 def api_history_export():
-    """Exporte les missions terminées (csv|html|pdf)."""
+    """Exporte les missions terminées (csv|html|pdf), filtrées si ?q= est fourni."""
     export_format = (request.args.get('format') or 'csv').strip().lower()
     if export_format not in ('csv', 'html', 'pdf'):
         return jsonify({'success': False, 'error': 'Format invalide (csv|html|pdf)'}), 400
+    query = (request.args.get('q') or '').strip()[:100]
 
     db = get_db()
     try:
-        rows = _fetch_completed_missions(db)
+        rows = _fetch_completed_missions(db, query)
         categories = [
             dict(r) for r in db.execute(
                 "SELECT nom, couleur, COALESCE(description,'') AS description FROM mission_categories WHERE actif=1 ORDER BY ordre, nom"
