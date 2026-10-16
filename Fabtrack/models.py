@@ -1150,6 +1150,7 @@ def reset_db():
             DROP TABLE IF EXISTS stock_fournisseurs;
             DROP TABLE IF EXISTS stock_unites;
             DROP TABLE IF EXISTS mission_events;
+            DROP TABLE IF EXISTS mission_steps;
             DROP TABLE IF EXISTS mission_categories;
             DROP TABLE IF EXISTS missions;
         ''')
