@@ -187,7 +187,7 @@ class MissionsHistoryApiTests(unittest.TestCase):
         self.assertIn("text/csv", csv_res.headers.get("Content-Type", ""))
         csv_text = csv_res.data.decode("utf-8")
         self.assertIn("Mission export", csv_text)
-        self.assertIn("ID;Titre;Description;Categorie;Priorite;Creee le;Debut;Terminee le", csv_text)
+        self.assertIn("ID;Titre;Description;Categorie;Definition categorie;Priorite;Creee le;Debut;Terminee le", csv_text)
 
         html_res = self.client.get("/missions/api/history/export?format=html")
         self.assertEqual(html_res.status_code, 200, html_res.data)
@@ -200,6 +200,32 @@ class MissionsHistoryApiTests(unittest.TestCase):
         self.assertEqual(pdf_res.status_code, 200, pdf_res.data)
         self.assertIn("application/pdf", pdf_res.headers.get("Content-Type", ""))
         self.assertTrue(pdf_res.data.startswith(b"%PDF-"))
+
+    def test_history_search_filters_title_description_and_category(self):
+        cat_id = self._create_category("Laser")
+        self._create_mission("Réparer imprimante", statut="termine")
+        self._create_mission("Nettoyer atelier", statut="termine")
+        self._create_mission("Imprimante en cours", statut="en_cours")
+        self.client.post(
+            "/missions/api/create",
+            json={"titre": "Autre", "statut": "termine", "category_id": cat_id,
+                  "description": "Changement de lentille"},
+        )
+
+        def search(q):
+            res = self.client.get("/missions/api/history", query_string={"q": q})
+            self.assertEqual(res.status_code, 200, res.data)
+            body = res.get_json()
+            return [r["titre"] for r in body["data"]], body["pagination"]["total"]
+
+        titles, total = search("imprimante")
+        self.assertEqual(titles, ["Réparer imprimante"])
+        self.assertEqual(total, 1)
+        self.assertEqual(search("lentille")[0], ["Autre"])
+        self.assertEqual(search("laser")[0], ["Autre"])
+        self.assertEqual(search("zzz")[1], 0)
+        self.assertEqual(search("%")[1], 0)
+        self.assertEqual(search("")[1], 3)
 
 
 if __name__ == "__main__":
