@@ -1610,6 +1610,8 @@ def export_statistiques():
             type_duree = f'{p["duree_pret_heures"] or ""} heure(s)'
         elif type_duree == 'jours':
             type_duree = f'{p["duree_pret_jours"] or ""} jour(s)'
+        elif type_duree == 'longue_duree':
+            type_duree = 'Longue durée (sans date de fin)'
 
         writer.writerow([
             p['id'], p['nom'], p['prenom'], p['categorie'], p['classe'],

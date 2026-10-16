@@ -8,7 +8,8 @@ from reservations_logic import (
     find_reservation_conflicts_for_loan,
     parse_db_datetime,
 )
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret
+from utils import (get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret,
+                   TYPE_LONGUE_DUREE, LONGUE_DUREE_DATE)
 from datetime import datetime, timedelta
 
 bp = Blueprint('prets', __name__)
@@ -38,6 +39,8 @@ def _parse_duree(form):
                 pass
     elif duree_type == 'date_precise':
         date_retour_prevue = form.get('date_retour_prevue', '').strip() or None
+    elif duree_type == TYPE_LONGUE_DUREE:
+        date_retour_prevue = LONGUE_DUREE_DATE
     elif duree_type == 'fin_journee':
         heure_fin = get_setting('heure_fin_journee', '17:45')
         h_fin, m_fin = (int(x) for x in heure_fin.split(':'))

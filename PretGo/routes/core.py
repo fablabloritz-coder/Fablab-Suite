@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request
 from datetime import datetime
 from database import get_setting
 from reservations_logic import get_reservation_risks, get_upcoming_reservations
-from utils import get_app_db, calcul_depassement_heures
+from utils import get_app_db, calcul_depassement_heures, TYPE_LONGUE_DUREE
 
 bp = Blueprint('core', __name__)
 
@@ -221,6 +221,28 @@ def alertes():
                            reservation_risks=reservation_risks,
                            duree_defaut=duree_defaut, unite_defaut=unite_defaut)
 
+
+
+@bp.route('/prets-longue-duree')
+def prets_longue_duree():
+    """Onglet dédié : prêts de très longue durée (sans date de fin)."""
+    conn = get_app_db()
+    en_cours = conn.execute('''
+        SELECT p.*, pe.nom, pe.prenom, pe.classe, pe.categorie
+        FROM prets p
+        JOIN personnes pe ON p.personne_id = pe.id
+        WHERE p.type_duree = ? AND p.retour_confirme = 0
+        ORDER BY p.date_emprunt ASC
+    ''', (TYPE_LONGUE_DUREE,)).fetchall()
+    termines = conn.execute('''
+        SELECT p.*, pe.nom, pe.prenom, pe.classe, pe.categorie
+        FROM prets p
+        JOIN personnes pe ON p.personne_id = pe.id
+        WHERE p.type_duree = ? AND p.retour_confirme = 1
+        ORDER BY p.date_retour DESC
+        LIMIT 100
+    ''', (TYPE_LONGUE_DUREE,)).fetchall()
+    return render_template('prets_longue_duree.html', en_cours=en_cours, termines=termines)
 
 
 @bp.route('/fiche-vierge')
