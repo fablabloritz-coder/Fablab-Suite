@@ -561,9 +561,11 @@ def api_history():
         like = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
         where += (
             " AND (m.titre LIKE ? ESCAPE '\\' OR COALESCE(m.description, '') LIKE ? ESCAPE '\\'"
-            " OR COALESCE(mc.nom, '') LIKE ? ESCAPE '\\')"
+            " OR COALESCE(mc.nom, '') LIKE ? ESCAPE '\\'"
+            " OR EXISTS (SELECT 1 FROM mission_steps s WHERE s.mission_id = m.id"
+            " AND s.texte LIKE ? ESCAPE '\\'))"
         )
-        params = [like, like, like]
+        params = [like, like, like, like]
 
     db = get_db()
     try:

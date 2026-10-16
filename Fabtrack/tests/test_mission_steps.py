@@ -60,6 +60,15 @@ class MissionStepsApiTests(unittest.TestCase):
         steps = self.client.get(f"/missions/api/{mid}/steps").get_json()["data"]
         self.assertEqual(len(steps), 1)
 
+    def test_history_search_matches_steps(self):
+        mid = self.client.post(
+            "/missions/api/create", json={"titre": "Zébulon", "statut": "termine"}
+        ).get_json()["data"]["id"]
+        self.client.post(f"/missions/api/{mid}/steps", json={"texte": "Joint remplacé"})
+        res = self.client.get("/missions/api/history", query_string={"q": "joint rempl"})
+        titles = [r["titre"] for r in res.get_json()["data"]]
+        self.assertIn("Zébulon", titles)
+
     def test_validation_and_cascade(self):
         mid = self._mission()
         self.assertEqual(self.client.post(f"/missions/api/{mid}/steps", json={"texte": "  "}).status_code, 400)
