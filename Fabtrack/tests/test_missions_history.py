@@ -187,7 +187,7 @@ class MissionsHistoryApiTests(unittest.TestCase):
         self.assertIn("text/csv", csv_res.headers.get("Content-Type", ""))
         csv_text = csv_res.data.decode("utf-8")
         self.assertIn("Mission export", csv_text)
-        self.assertIn("ID;Titre;Description;Categorie;Priorite;Creee le;Debut;Terminee le", csv_text)
+        self.assertIn("ID;Titre;Description;Categorie;Definition categorie;Priorite;Creee le;Debut;Terminee le", csv_text)
 
         html_res = self.client.get("/missions/api/history/export?format=html")
         self.assertEqual(html_res.status_code, 200, html_res.data)

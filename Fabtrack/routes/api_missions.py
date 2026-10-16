@@ -355,7 +355,7 @@ def _build_history_pdf(rows, categories=None):
         cat_nom = r['categorie_nom'] or '—'
         cat_def = cat_map.get(cat_nom, '')
         lines.append(f"[{r['id']}] {r['titre'] or ''}")
-        if r.get('description'):
+        if r['description']:
             lines.append(f"  Description: {r['description']}")
         lines.append(f"  Categorie: {cat_nom}" + (f' ({cat_def})' if cat_def else ''))
         lines.append(f"  Priorite: {prio_labels.get(r['priorite'], str(r['priorite']))}")
