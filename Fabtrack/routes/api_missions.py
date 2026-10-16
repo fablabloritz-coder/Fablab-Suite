@@ -528,11 +528,28 @@ def api_history():
     """Historique paginé des missions terminées avec timeline."""
     page = _parse_int(request.args.get('page'), default=1, min_value=1)
     page_size = _parse_int(request.args.get('page_size'), default=10, min_value=1, max_value=50)
+    query = (request.args.get('q') or '').strip()[:100]
+
+    where = "m.statut = 'termine'"
+    params = []
+    if query:
+        like = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        where += (
+            " AND (m.titre LIKE ? ESCAPE '\\' OR COALESCE(m.description, '') LIKE ? ESCAPE '\\'"
+            " OR COALESCE(mc.nom, '') LIKE ? ESCAPE '\\')"
+        )
+        params = [like, like, like]
 
     db = get_db()
     try:
         total_row = db.execute(
-            "SELECT COUNT(*) AS cnt FROM missions WHERE statut = 'termine'"
+            f'''
+            SELECT COUNT(*) AS cnt
+            FROM missions m
+            LEFT JOIN mission_categories mc ON mc.id = m.category_id
+            WHERE {where}
+            ''',
+            params,
         ).fetchone()
         total = int(total_row['cnt']) if total_row else 0
         total_pages = max(1, math.ceil(total / page_size)) if total else 1
@@ -545,11 +562,11 @@ def api_history():
             SELECT m.*, mc.nom AS categorie_nom, mc.couleur AS categorie_couleur, {_timeline_select_sql()}
             FROM missions m
             LEFT JOIN mission_categories mc ON mc.id = m.category_id
-            WHERE m.statut = 'termine'
+            WHERE {where}
             ORDER BY datetime(completed_at) DESC, m.id DESC
             LIMIT ? OFFSET ?
             ''',
-            (page_size, offset),
+            params + [page_size, offset],
         ).fetchall()
 
         return jsonify({

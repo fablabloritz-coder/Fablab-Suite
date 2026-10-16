@@ -449,6 +449,11 @@
             <small class="text-muted">Missions terminées avec timeline d'avancement</small>
         </div>
         <div class="d-flex align-items-center gap-2">
+            <div class="input-group input-group-sm" style="width: 260px;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="search" class="form-control" id="historySearch" maxlength="100"
+                       placeholder="Rechercher (titre, description, catégorie)" aria-label="Rechercher dans les missions terminées">
+            </div>
             <div class="btn-group btn-group-sm" role="group" aria-label="Export historique missions">
                 <button class="btn btn-outline-secondary" onclick="exportHistory('csv')" title="Exporter CSV">
                     <i class="bi bi-filetype-csv"></i>
@@ -729,11 +734,17 @@ async function loadMissions() {
     }
 }
 
+let historySearchQuery = '';
+let historySearchTimer = null;
+let historyRequestSeq = 0;
+
 async function loadHistory(page = 1) {
+    const seq = ++historyRequestSeq;
     try {
-        const r = await fetch(`${API}/history?page=${page}&page_size=${HISTORY_PAGE_SIZE}`);
+        const q = historySearchQuery ? `&q=${encodeURIComponent(historySearchQuery)}` : '';
+        const r = await fetch(`${API}/history?page=${page}&page_size=${HISTORY_PAGE_SIZE}${q}`);
         const j = await r.json();
-        if (!j.success) return;
+        if (!j.success || seq !== historyRequestSeq) return;
 
         historyPagination = j.pagination || historyPagination;
         historyPage = historyPagination.page || 1;
@@ -742,6 +753,18 @@ async function loadHistory(page = 1) {
         console.error('Erreur chargement historique missions:', e);
     }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('historySearch');
+    if (!input) return;
+    input.addEventListener('input', () => {
+        clearTimeout(historySearchTimer);
+        historySearchTimer = setTimeout(() => {
+            historySearchQuery = input.value.trim();
+            loadHistory(1);
+        }, 300);
+    });
+});
 
 function changeHistoryPage(delta) {
     const nextPage = historyPage + delta;
@@ -794,7 +817,9 @@ function renderHistory(rows) {
     nextBtn.disabled = historyPagination.page >= historyPagination.total_pages;
 
     if (!rows.length) {
-        el.innerHTML = '<div class="history-empty">Aucune mission terminée dans l\'historique.</div>';
+        el.innerHTML = historySearchQuery
+            ? '<div class="history-empty">Aucune mission terminée ne correspond à la recherche.</div>'
+            : '<div class="history-empty">Aucune mission terminée dans l\'historique.</div>';
         return;
     }
 
