@@ -84,6 +84,30 @@ def _timeline_select_sql():
     '''
 
 
+def _last_step_select_sql():
+    """Extrait SQL de la dernière étape (texte + date) et du nombre d'étapes."""
+    return '''
+        (SELECT s.texte FROM mission_steps s WHERE s.mission_id = m.id
+         ORDER BY datetime(s.created_at) DESC, s.id DESC LIMIT 1) AS derniere_etape_texte,
+        (SELECT s.created_at FROM mission_steps s WHERE s.mission_id = m.id
+         ORDER BY datetime(s.created_at) DESC, s.id DESC LIMIT 1) AS derniere_etape_at,
+        (SELECT COUNT(*) FROM mission_steps s WHERE s.mission_id = m.id) AS nb_etapes
+    '''
+
+
+def _normalize_step_datetime(value):
+    """Convertit 'YYYY-MM-DD[T ]HH:MM[:SS]' en 'YYYY-MM-DD HH:MM:SS' ; None si invalide."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip().replace('T', ' ')
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+        try:
+            return datetime.strptime(text, fmt).strftime('%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            continue
+    return None
+
+
 def _fetch_mission_with_timeline(db, mission_id):
     """Retourne une mission enrichie avec ses dates de timeline."""
     return db.execute(
@@ -384,7 +408,8 @@ def api_list():
     try:
         rows = db.execute(
             f'''
-            SELECT m.*, mc.nom AS categorie_nom, mc.couleur AS categorie_couleur, {_timeline_select_sql()}
+            SELECT m.*, mc.nom AS categorie_nom, mc.couleur AS categorie_couleur, {_timeline_select_sql()},
+                   {_last_step_select_sql()}
             FROM missions m
             LEFT JOIN mission_categories mc ON mc.id = m.category_id
             ORDER BY
@@ -817,6 +842,115 @@ def api_update(mission_id):
         db.commit()
         mission = _fetch_mission_with_timeline(db, mission_id)
         return jsonify({'success': True, 'data': dict(mission)})
+    finally:
+        db.close()
+
+
+@bp.route('/api/<int:mission_id>/steps')
+def api_steps_list(mission_id):
+    """Liste les étapes d'une mission (ordre chronologique)."""
+    db = get_db()
+    try:
+        if not db.execute('SELECT id FROM missions WHERE id = ?', (mission_id,)).fetchone():
+            return jsonify({'success': False, 'error': 'Mission non trouvée'}), 404
+        rows = db.execute(
+            '''SELECT id, mission_id, texte, created_at FROM mission_steps
+               WHERE mission_id = ? ORDER BY datetime(created_at), id''',
+            (mission_id,),
+        ).fetchall()
+        return jsonify({'success': True, 'data': [dict(r) for r in rows]})
+    finally:
+        db.close()
+
+
+@bp.route('/api/<int:mission_id>/steps', methods=['POST'])
+def api_steps_create(mission_id):
+    """Ajoute une étape ; la date/heure est automatique sauf si fournie."""
+    data = request.get_json(silent=True) or {}
+    texte = str(data.get('texte', '')).strip()
+    if not texte:
+        return jsonify({'success': False, 'error': "Le texte de l'étape est requis"}), 400
+    if len(texte) > 500:
+        return jsonify({'success': False, 'error': "Texte trop long (500 caractères max)"}), 400
+
+    created_at = None
+    if data.get('created_at'):
+        created_at = _normalize_step_datetime(data.get('created_at'))
+        if not created_at:
+            return jsonify({'success': False, 'error': 'Date invalide'}), 400
+
+    db = get_db()
+    try:
+        if not db.execute('SELECT id FROM missions WHERE id = ?', (mission_id,)).fetchone():
+            return jsonify({'success': False, 'error': 'Mission non trouvée'}), 404
+        if created_at:
+            cur = db.execute(
+                'INSERT INTO mission_steps (mission_id, texte, created_at) VALUES (?, ?, ?)',
+                (mission_id, texte, created_at),
+            )
+        else:
+            cur = db.execute(
+                'INSERT INTO mission_steps (mission_id, texte) VALUES (?, ?)',
+                (mission_id, texte),
+            )
+        db.commit()
+        row = db.execute(
+            'SELECT id, mission_id, texte, created_at FROM mission_steps WHERE id = ?',
+            (cur.lastrowid,),
+        ).fetchone()
+        return jsonify({'success': True, 'data': dict(row)}), 201
+    finally:
+        db.close()
+
+
+@bp.route('/api/steps/<int:step_id>', methods=['PUT'])
+def api_steps_update(step_id):
+    """Modifie le texte et/ou la date d'une étape."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    try:
+        existing = db.execute('SELECT * FROM mission_steps WHERE id = ?', (step_id,)).fetchone()
+        if not existing:
+            return jsonify({'success': False, 'error': 'Étape non trouvée'}), 404
+
+        texte = existing['texte']
+        if 'texte' in data:
+            texte = str(data.get('texte', '')).strip()
+            if not texte:
+                return jsonify({'success': False, 'error': "Le texte de l'étape est requis"}), 400
+            if len(texte) > 500:
+                return jsonify({'success': False, 'error': "Texte trop long (500 caractères max)"}), 400
+
+        created_at = existing['created_at']
+        if 'created_at' in data:
+            created_at = _normalize_step_datetime(data.get('created_at'))
+            if not created_at:
+                return jsonify({'success': False, 'error': 'Date invalide'}), 400
+
+        db.execute(
+            'UPDATE mission_steps SET texte = ?, created_at = ? WHERE id = ?',
+            (texte, created_at, step_id),
+        )
+        db.commit()
+        row = db.execute(
+            'SELECT id, mission_id, texte, created_at FROM mission_steps WHERE id = ?',
+            (step_id,),
+        ).fetchone()
+        return jsonify({'success': True, 'data': dict(row)})
+    finally:
+        db.close()
+
+
+@bp.route('/api/steps/<int:step_id>', methods=['DELETE'])
+def api_steps_delete(step_id):
+    """Supprime une étape."""
+    db = get_db()
+    try:
+        if not db.execute('SELECT id FROM mission_steps WHERE id = ?', (step_id,)).fetchone():
+            return jsonify({'success': False, 'error': 'Étape non trouvée'}), 404
+        db.execute('DELETE FROM mission_steps WHERE id = ?', (step_id,))
+        db.commit()
+        return jsonify({'success': True})
     finally:
         db.close()
 

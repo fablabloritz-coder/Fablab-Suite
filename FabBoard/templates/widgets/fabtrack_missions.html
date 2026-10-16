@@ -198,6 +198,14 @@
                 ? display.map(function (m) {
                       const pCls = m.priorite === 2 ? 'prio-urgente' : m.priorite === 1 ? 'prio-haute' : '';
                       const desc = m.description ? '<div class="mission-desc">' + esc(m.description) + '</div>' : '';
+                      let step = '';
+                      if (m.derniere_etape_texte) {
+                          const sd = m.derniere_etape_at ? new Date(String(m.derniere_etape_at).replace(' ', 'T')) : null;
+                          const sdTxt = sd && !isNaN(sd.getTime())
+                              ? sd.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' · '
+                              : '';
+                          step = '<div class="mission-desc"><strong>Étape :</strong> ' + esc(sdTxt + m.derniere_etape_texte) + '</div>';
+                      }
                       const ech = echeanceHtml(m.date_echeance);
                       const footer = ech ? '<div class="mission-footer">' + ech + '</div>' : '';
                       const cat = m.categorie_nom
@@ -209,7 +217,7 @@
                       return '<div class="mission-card ' + pCls + '"' + cardStyle + '>'
                           + (cat ? '<div class="mission-meta">' + cat + '</div>' : '')
                           + '<div class="mission-titre">' + esc(m.titre) + '</div>'
-                          + desc + footer + '</div>';
+                          + desc + step + footer + '</div>';
                   }).join('')
                 : '<div class="missions-empty">\u2014</div>';
 

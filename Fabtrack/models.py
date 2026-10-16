@@ -731,6 +731,7 @@ def _migrate_db(c):
 
     _ensure_mission_categories_schema(c)
     _ensure_mission_events_schema(c)
+    _ensure_mission_steps_schema(c)
     _backfill_mission_events(c)
     _sync_image_library_from_references(c)
     _sync_base_material_pack_into_image_library(c)
@@ -814,6 +815,20 @@ def _ensure_mission_events_schema(c):
         c.execute("ALTER TABLE mission_events ADD COLUMN from_statut TEXT")
     if 'to_statut' not in ecols:
         c.execute("ALTER TABLE mission_events ADD COLUMN to_statut TEXT")
+
+
+def _ensure_mission_steps_schema(c):
+    """Crée la table des étapes libres (notes datées) d'une mission."""
+    c.executescript('''
+        CREATE TABLE IF NOT EXISTS mission_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mission_id INTEGER NOT NULL,
+            texte TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_mission_steps_mission ON mission_steps(mission_id, created_at);
+    ''')
 
 
 def _backfill_mission_events(c):

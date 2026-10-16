@@ -526,6 +526,15 @@
                         <input type="date" class="form-control" id="missionEcheance">
                     </div>
                 </div>
+                <div id="stepsSection" class="border-top pt-3" style="display:none">
+                    <label class="form-label fw-semibold"><i class="bi bi-list-check me-1"></i>Étapes</label>
+                    <div id="stepsList" class="mb-2"></div>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="stepNewText" maxlength="500" placeholder="Nouvelle étape (date et heure automatiques)"
+                               onkeydown="if(event.key==='Enter'){event.preventDefault();addStep();}">
+                        <button type="button" class="btn btn-outline-primary" onclick="addStep()"><i class="bi bi-plus-lg"></i> Ajouter</button>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
@@ -955,6 +964,7 @@ function openCreateModal() {
     document.getElementById('missionEcheance').value = '';
     renderCategorySelect(null);
     document.getElementById('modalMissionTitle').textContent = 'Nouvelle mission';
+    document.getElementById('stepsSection').style.display = 'none';
     modal.show();
     setTimeout(() => document.getElementById('missionTitre').focus(), 300);
 }
@@ -970,7 +980,90 @@ function openEditModal(id) {
     document.getElementById('missionEcheance').value = m.date_echeance || '';
     renderCategorySelect(m.category_id || null);
     document.getElementById('modalMissionTitle').textContent = 'Modifier la mission';
+    document.getElementById('stepsSection').style.display = '';
+    document.getElementById('stepNewText').value = '';
+    loadSteps(m.id);
     modal.show();
+}
+
+// ── Étapes ──
+
+function stepToInputValue(value) {
+    const d = parseDateTime(value);
+    if (!d) return '';
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function loadSteps(missionId) {
+    const box = document.getElementById('stepsList');
+    box.innerHTML = '<div class="text-muted small">Chargement…</div>';
+    try {
+        const r = await fetch(`${API}/${missionId}/steps`);
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error);
+        if (document.getElementById('missionId').value !== String(missionId)) return;
+        if (!j.data.length) {
+            box.innerHTML = '<div class="text-muted small">Aucune étape pour le moment.</div>';
+            return;
+        }
+        box.innerHTML = j.data.map(s => `
+            <div class="d-flex gap-2 align-items-center mb-1" data-step-id="${s.id}">
+                <input type="datetime-local" class="form-control form-control-sm step-date" style="max-width:210px" value="${stepToInputValue(s.created_at)}">
+                <input type="text" class="form-control form-control-sm step-text" maxlength="500" value="${escapeHtml(s.texte)}">
+                <button type="button" class="btn btn-sm btn-outline-success" title="Enregistrer" onclick="saveStep(${s.id}, this)"><i class="bi bi-check-lg"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger" title="Supprimer" onclick="deleteStep(${s.id})"><i class="bi bi-trash"></i></button>
+            </div>`).join('');
+    } catch (e) {
+        box.innerHTML = '<div class="text-danger small">Erreur de chargement des étapes.</div>';
+    }
+}
+
+async function addStep() {
+    const missionId = document.getElementById('missionId').value;
+    const input = document.getElementById('stepNewText');
+    const texte = input.value.trim();
+    if (!missionId || !texte) return;
+    try {
+        const r = await fetch(`${API}/${missionId}/steps`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ texte }) });
+        const j = await r.json();
+        if (!j.success) { showToast(j.error || 'Erreur', 'danger'); return; }
+        input.value = '';
+        await loadSteps(missionId);
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+async function saveStep(stepId, btn) {
+    const row = btn.closest('[data-step-id]');
+    const texte = row.querySelector('.step-text').value.trim();
+    const created_at = row.querySelector('.step-date').value;
+    if (!texte || !created_at) { showToast('Texte et date requis', 'warning'); return; }
+    try {
+        const r = await fetch(`${API}/steps/${stepId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ texte, created_at }) });
+        const j = await r.json();
+        if (!j.success) { showToast(j.error || 'Erreur', 'danger'); return; }
+        showToast('Étape modifiée', 'success');
+        await loadSteps(document.getElementById('missionId').value);
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+async function deleteStep(stepId) {
+    if (!confirm('Supprimer cette étape ?')) return;
+    try {
+        const r = await fetch(`${API}/steps/${stepId}`, { method: 'DELETE' });
+        const j = await r.json();
+        if (!j.success) { showToast(j.error || 'Erreur', 'danger'); return; }
+        await loadSteps(document.getElementById('missionId').value);
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
 }
 
 async function saveMission() {
