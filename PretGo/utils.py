@@ -223,6 +223,12 @@ def get_categories_personnes():
 #  CALCUL DE DÉPASSEMENT
 # ============================================================
 
+# Prêt longue durée : type_duree='longue_duree' + date de retour lointaine,
+# ce qui évite tout retard/rappel via les calculs « date précise » existants.
+TYPE_LONGUE_DUREE = 'longue_duree'
+LONGUE_DUREE_DATE = '2999-12-31'
+
+
 def calcul_depassement_heures(date_emprunt_str, duree_heures, duree_jours,
                               _duree_defaut=None, _unite_defaut=None,
                               date_retour_prevue=None, _heure_fin=None):
@@ -1484,6 +1490,8 @@ def register_filters(app):
         if not pret:
             return 'Durée par défaut'
         type_duree = pret['type_duree'] if pret['type_duree'] else None
+        if type_duree == TYPE_LONGUE_DUREE:
+            return 'Longue durée (sans date de fin)'
         if type_duree == 'date_precise':
             try:
                 drp = pret['date_retour_prevue']
@@ -1525,7 +1533,7 @@ def register_filters(app):
         if not pret or not pret['date_emprunt']:
             return ''
         type_duree = pret['type_duree'] if pret['type_duree'] else None
-        if type_duree in ('aucune',):
+        if type_duree in ('aucune', TYPE_LONGUE_DUREE):
             return '—'
         cache = getattr(g, '_settings_cache', {})
         if type_duree == 'date_precise':
