@@ -240,6 +240,17 @@ class MissionsHistoryApiTests(unittest.TestCase):
         pdf = self.client.get("/missions/api/history/export", query_string={"format": "pdf", "q": "imprimante"})
         self.assertTrue(pdf.data.startswith(b"%PDF-"))
 
+    def test_history_exports_include_steps(self):
+        mid = self._create_mission("Réparer imprimante", statut="termine")
+        self.client.post(f"/missions/api/{mid}/steps", json={"texte": "Pièce commandée & reçue"})
+        for fmt in ("csv", "html"):
+            res = self.client.get("/missions/api/history/export", query_string={"format": fmt})
+            text = res.data.decode("utf-8-sig")
+            self.assertIn("Pièce commandée", text)
+        self.assertIn("&amp; reçue", text)
+        pdf = self.client.get("/missions/api/history/export", query_string={"format": "pdf"})
+        self.assertEqual(pdf.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
