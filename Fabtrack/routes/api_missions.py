@@ -140,7 +140,7 @@ def _history_filter(query):
 def _fetch_completed_missions(db, query=''):
     """Retourne les missions terminées (tri récentes d'abord), filtrées par recherche optionnelle."""
     where, params = _history_filter(query)
-    return db.execute(
+    rows = [dict(r) for r in db.execute(
         f'''
         SELECT m.*, mc.nom AS categorie_nom, mc.couleur AS categorie_couleur, {_timeline_select_sql()}
         FROM missions m
@@ -149,7 +149,24 @@ def _fetch_completed_missions(db, query=''):
         ORDER BY datetime(completed_at) DESC, m.id DESC
         ''',
         params,
-    ).fetchall()
+    ).fetchall()]
+    steps_by_mission = {}
+    if rows:
+        ids = [r['id'] for r in rows]
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            marks = ','.join('?' * len(chunk))
+            for s in db.execute(
+                f'''SELECT mission_id, texte, created_at FROM mission_steps
+                    WHERE mission_id IN ({marks})
+                    ORDER BY datetime(created_at) ASC, id ASC''',
+                chunk,
+            ).fetchall():
+                steps_by_mission.setdefault(s['mission_id'], []).append(
+                    (_fmt_dt(s['created_at']), s['texte'] or ''))
+    for r in rows:
+        r['etapes'] = steps_by_mission.get(r['id'], [])
+    return rows
 
 
 def _fmt_dt(value):
@@ -180,7 +197,7 @@ def _build_history_csv(rows, categories=None):
 
     writer.writerow([
         'ID', 'Titre', 'Description', 'Categorie', 'Definition categorie',
-        'Priorite', 'Creee le', 'Debut', 'Terminee le',
+        'Priorite', 'Creee le', 'Debut', 'Terminee le', 'Etapes',
     ])
 
     cat_map = {c['nom']: c.get('description', '') for c in (categories or [])}
@@ -197,6 +214,7 @@ def _build_history_csv(rows, categories=None):
             _fmt_dt(r['timeline_created_at'] or r['created_at']),
             _fmt_dt(r['timeline_started_at']),
             _fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at']),
+            ' | '.join(f'{d} : {t}' for d, t in r.get('etapes', [])),
         ])
     return output.getvalue()
 
@@ -224,10 +242,16 @@ def _build_history_html(rows, categories=None):
         prio_label = prio_labels.get(prio, str(prio))
         prio_color = prio_colors.get(prio, '#374151')
         desc_cell = html.escape(r['description'] or '').replace('\n', '<br>')
+        steps_cell = ''.join(
+            f"<li><span style='color:#6b7280'>{html.escape(d)}</span> — {html.escape(t)}</li>"
+            for d, t in r.get('etapes', [])
+        )
+        if steps_cell:
+            steps_cell = f"<ul style='margin:4px 0 0;padding-left:16px;font-size:.85em'>{steps_cell}</ul>"
         tr_rows.append(
             '<tr>'
             f"<td style='color:#6b7280'>{int(r['id'])}</td>"
-            f"<td><strong>{html.escape(r['titre'] or '')}</strong>" + (f"<br><small style='color:#6b7280'>{desc_cell}</small>" if desc_cell else '') + '</td>'
+            f"<td><strong>{html.escape(r['titre'] or '')}</strong>" + (f"<br><small style='color:#6b7280'>{desc_cell}</small>" if desc_cell else '') + steps_cell + '</td>'
             f"<td>{cat_cell}</td>"
             f"<td style='color:{prio_color};font-weight:600'>{html.escape(prio_label)}</td>"
             f"<td>{html.escape(_fmt_dt(r['timeline_created_at'] or r['created_at']))}</td>"
@@ -404,6 +428,11 @@ def _build_history_pdf(rows, categories=None):
         lines.append(f"  Creee: {_fmt_dt(r['timeline_created_at'] or r['created_at'])}")
         lines.append(f"  Debut: {_fmt_dt(r['timeline_started_at'])}")
         lines.append(f"  Terminee: {_fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at'])}")
+        etapes = r.get('etapes', [])
+        if etapes:
+            lines.append('  Etapes:')
+            for d, t in etapes:
+                lines.append(f"    - {d} : {t}")
         lines.append('')
 
     return _build_simple_pdf(lines)
