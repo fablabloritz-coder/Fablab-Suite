@@ -226,6 +226,19 @@ class MissionsHistoryApiTests(unittest.TestCase):
         self.assertEqual(search("zzz")[1], 0)
         self.assertEqual(search("%")[1], 0)
         self.assertEqual(search("")[1], 3)
+    def test_history_export_follows_search_filter(self):
+        self._create_mission("Réparer imprimante", statut="termine")
+        self._create_mission("Nettoyer atelier", statut="termine")
+        full = self.client.get("/missions/api/history/export", query_string={"format": "csv"})
+        self.assertIn("Nettoyer atelier", full.data.decode("utf-8-sig"))
+        for fmt in ("csv", "html"):
+            res = self.client.get("/missions/api/history/export", query_string={"format": fmt, "q": "imprimante"})
+            self.assertEqual(res.status_code, 200)
+            text = res.data.decode("utf-8-sig")
+            self.assertIn("Réparer imprimante", text)
+            self.assertNotIn("Nettoyer atelier", text)
+        pdf = self.client.get("/missions/api/history/export", query_string={"format": "pdf", "q": "imprimante"})
+        self.assertTrue(pdf.data.startswith(b"%PDF-"))
 
 
 if __name__ == "__main__":
