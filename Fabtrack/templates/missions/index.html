@@ -484,7 +484,7 @@
 
 <!-- Modal Mission -->
 <div class="modal fade" id="modalMission" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="modalMissionTitle">Nouvelle mission</h5>
@@ -501,11 +501,11 @@
                     <textarea class="form-control" id="missionDesc" rows="3" maxlength="1000"></textarea>
                 </div>
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label fw-semibold">Catégorie</label>
                         <select class="form-select" id="missionCategory"></select>
                     </div>
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label fw-semibold">Statut</label>
                         <select class="form-select" id="missionStatut">
                             <option value="a_faire">À faire</option>
@@ -513,7 +513,7 @@
                             <option value="termine">Terminé</option>
                         </select>
                     </div>
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label fw-semibold">Priorité</label>
                         <select class="form-select" id="missionPriorite">
                             <option value="0">Normale</option>
@@ -521,7 +521,7 @@
                             <option value="2">Urgente</option>
                         </select>
                     </div>
-                    <div class="col-md-2 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label fw-semibold">Échéance</label>
                         <input type="date" class="form-control" id="missionEcheance">
                     </div>
@@ -529,10 +529,10 @@
                 <div id="stepsSection" class="border-top pt-3" style="display:none">
                     <label class="form-label fw-semibold"><i class="bi bi-list-check me-1"></i>Étapes</label>
                     <div id="stepsList" class="mb-2"></div>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="stepNewText" maxlength="500" placeholder="Nouvelle étape (date et heure automatiques)"
-                               onkeydown="if(event.key==='Enter'){event.preventDefault();addStep();}">
-                        <button type="button" class="btn btn-outline-primary" onclick="addStep()"><i class="bi bi-plus-lg"></i> Ajouter</button>
+                    <textarea class="form-control mb-2" id="stepNewText" rows="2" maxlength="500" placeholder="Nouvelle étape (date et heure automatiques) — Ctrl+Entrée pour ajouter"
+                              onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();addStep();}"></textarea>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addStep()"><i class="bi bi-plus-lg"></i> Ajouter l'étape</button>
                     </div>
                 </div>
             </div>
@@ -1009,12 +1009,19 @@ async function loadSteps(missionId) {
             return;
         }
         box.innerHTML = j.data.map(s => `
-            <div class="d-flex gap-2 align-items-center mb-1" data-step-id="${s.id}">
-                <input type="datetime-local" class="form-control form-control-sm step-date" style="max-width:210px" value="${stepToInputValue(s.created_at)}">
-                <input type="text" class="form-control form-control-sm step-text" maxlength="500" value="${escapeHtml(s.texte)}">
-                <button type="button" class="btn btn-sm btn-outline-success" title="Enregistrer" onclick="saveStep(${s.id}, this)"><i class="bi bi-check-lg"></i></button>
-                <button type="button" class="btn btn-sm btn-outline-danger" title="Supprimer" onclick="deleteStep(${s.id})"><i class="bi bi-trash"></i></button>
+            <div class="border rounded p-2 mb-2" data-step-id="${s.id}">
+                <div class="d-flex gap-2 align-items-center mb-2">
+                    <input type="datetime-local" class="form-control form-control-sm step-date" style="max-width:220px" value="${stepToInputValue(s.created_at)}">
+                    <span class="ms-auto"></span>
+                    <button type="button" class="btn btn-sm btn-outline-success" title="Enregistrer" onclick="saveStep(${s.id}, this)"><i class="bi bi-check-lg"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" title="Supprimer" onclick="deleteStep(${s.id})"><i class="bi bi-trash"></i></button>
+                </div>
+                <textarea class="form-control form-control-sm step-text" rows="2" maxlength="500" style="resize:vertical">${escapeHtml(s.texte)}</textarea>
             </div>`).join('');
+        box.querySelectorAll('.step-text').forEach(t => {
+            t.style.height = 'auto';
+            t.style.height = Math.min(t.scrollHeight + 2, 240) + 'px';
+        });
     } catch (e) {
         box.innerHTML = '<div class="text-danger small">Erreur de chargement des étapes.</div>';
     }
