@@ -918,7 +918,8 @@ function cardHtml(m) {
     const desc = m.description ? `<div class="mission-desc">${escapeHtml(m.description)}</div>` : '';
     const lastStep = m.derniere_etape_texte
         ? `<div class="mission-step" title="${escapeHtml(m.derniere_etape_texte)}"><i class="bi bi-arrow-return-right me-1"></i><span class="mission-step-date">${escapeHtml(formatDateTime(m.derniere_etape_at))}</span> · ${escapeHtml(m.derniere_etape_texte)}</div>`
-        : ''; = m.categorie_nom
+        : '';
+    const category = m.categorie_nom
         ? `<span class="mission-category" ${m.categorie_couleur ? '' : ''} ${getCategoryTitle(m.categorie_nom)}><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
         : '';
     const footer = footerBadges ? `<div class="mission-footer">${footerBadges}${actions}</div>` : `<div class="mission-footer">${actions}</div>`;
