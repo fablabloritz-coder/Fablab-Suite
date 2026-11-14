@@ -20,8 +20,10 @@ Met à jour static/release-notes.json dans le dossier de l'app : la nouvelle ent
 est ajoutée en tête de "history" (les versions précédentes sont conservées), et
 une entrée de même numéro de version est remplacée au lieu d'être dupliquée.
 
-Conseil : poser un tag par version (git tag v1.4.0) et passer --since v1.3.0 ;
-sans tag, le générateur lit HEAD~50 et écarte les notes déjà publiées.
+Conseil : poser un tag par version, préfixé par l'application
+(git tag -a fabtrack-v1.4.0 -m "Fabtrack 1.4.0"), puis laisser le générateur
+s'en servir : sans --since, il repart du dernier tag `<app>-v*`. Sans aucun tag,
+il lit HEAD~50 et écarte les notes déjà publiées.
 
 Filtrage automatique des commits :
   - Garde   : feat, feat(*), fix, fix(*) (hors fixes de test)
@@ -130,8 +132,35 @@ def get_last_tag(repo_path: Path) -> str | None:
     return None
 
 
+def get_latest_app_tag(repo_path: Path, app_slug: str) -> str | None:
+    """Dernier tag de l'application, au format `<app>-vX.Y.Z`, ou None.
+
+    Les tags sont préfixés par application car le dépôt héberge plusieurs
+    logiciels qui ont chacun leur propre numérotation.
+    """
+    app_slug = (app_slug or "").strip().lower()
+    if not app_slug:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--list", f"{app_slug}-v*", "--sort=-creatordate"],
+            cwd=repo_path,
+            capture_output=True,
+            timeout=10,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if result.returncode == 0:
+            tags = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if tags:
+                return tags[0]
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return None
+
+
 def get_commits(repo_path: Path, since: str | None = None) -> list[str]:
-    """Retourne la liste des sujets de commits depuis `since` (tag ou commit)."""
+    """Retourne les sujets des commits de l'app courante depuis `since` (tag ou commit)."""
     if since:
         ref_range = f"{since}..HEAD"
     else:
@@ -139,8 +168,10 @@ def get_commits(repo_path: Path, since: str | None = None) -> list[str]:
         ref_range = "HEAD~50..HEAD"
 
     try:
+        # "-- ." limite aux commits touchant l'application courante (cwd) :
+        # sans ça, une app sans tag reprendrait les commits des autres logiciels.
         result = subprocess.run(
-            ["git", "log", ref_range, "--no-merges", "--pretty=format:%s"],
+            ["git", "log", ref_range, "--no-merges", "--pretty=format:%s", "--", "."],
             cwd=repo_path,
             capture_output=True,
             timeout=15,
@@ -154,10 +185,10 @@ def get_commits(repo_path: Path, since: str | None = None) -> list[str]:
     return []
 
 
-def build_notes_from_git(repo_path: Path, since: str | None) -> list[str]:
+def build_notes_from_git(repo_path: Path, since: str | None, app_slug: str = '') -> list[str]:
     """Construit la liste de notes depuis git avec filtrage."""
     if since is None:
-        since = get_last_tag(repo_path)
+        since = get_latest_app_tag(repo_path, app_slug)
 
     commits = get_commits(repo_path, since)
     notes = []
@@ -274,12 +305,14 @@ def main() -> None:
         notes = args.override
         source = "manuel"
     else:
-        notes = build_notes_from_git(app_path, args.since)
+        app_slug = app_path.name.strip().lower()
+        resolved_since = args.since or get_latest_app_tag(app_path, app_slug)
+        notes = build_notes_from_git(app_path, resolved_since, app_slug)
         source = "git"
 
         # Sans tag, la lecture git repart de HEAD~50 : on écarte les notes déjà
         # publiées dans l'historique pour ne pas les reproposer.
-        if not args.since:
+        if not resolved_since:
             known = {
                 str(note).strip().lower()
                 for entry in existing_history
