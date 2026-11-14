@@ -184,8 +184,8 @@ quel point lire l'historique.
 
 ### Publier une version
 
-1. Mettre à jour le numéro de version dans le code (manifest `routes/__init__.py`, et le pied de page
-   quand il affiche la version, comme Fabtrack).
+1. Mettre à jour la constante `APP_VERSION` de l'application (manifest FabSuite, bannière de démarrage
+   et pieds de page en dérivent ; `tests/test_release_versions.py` compare cette valeur aux notes).
 2. Générer l'entrée de notes (toujours en `--dry-run` d'abord) :
 
 ```bash

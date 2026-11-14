@@ -18,7 +18,11 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
+# Source unique de la version : manifeste FabSuite et templates.
+APP_VERSION = "2.1.0"
+
 app = Flask(__name__)
+app.jinja_env.globals["app_version"] = APP_VERSION
 app.secret_key = os.environ.get("SECRET_KEY", "fabinventory-secret-change-me")
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
 
@@ -1165,7 +1169,7 @@ def fabsuite_manifest():
     return jsonify({
         "app": "fabinventory",
         "name": "FabInventory",
-        "version": "2.1.0",
+        "version": APP_VERSION,
         "suite_version": "1.0.0",
         "description": "Gestionnaire d'inventaire de masters informatique",
         "icon": "bi-pc-display",

@@ -6,6 +6,9 @@ from flask import session
 
 import models
 
+# Source unique de la version : manifeste FabSuite et templates.
+APP_VERSION = "1.7.1"
+
 
 def get_current_profile_id():
     """Récupère l'ID du profil actif depuis la session."""
@@ -43,7 +46,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id="fabhome",
         name="FabHome",
-        version="1.7.1",
+        version=APP_VERSION,
         description="Hub central de la FabLab Suite",
         capabilities=["x-hub", "x-discovery", "x-notifications-aggregator"],
         icon="bi-house-heart",
@@ -52,3 +55,6 @@ def register_blueprints(app):
         health_fn=_check_health,
     )
     app.register_blueprint(fabsuite_bp)
+
+    # Version exposée aux templates.
+    app.jinja_env.globals["app_version"] = APP_VERSION

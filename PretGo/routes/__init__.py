@@ -6,6 +6,9 @@ from database import get_setting
 from utils import get_app_db, calcul_depassement_heures
 from fabsuite_core.widgets import counter, item_list, chart, notification
 
+# Source unique de la version : manifeste FabSuite et templates.
+APP_VERSION = "1.9.0"
+
 
 # ── Callbacks FabSuite widgets ──
 
@@ -170,7 +173,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id="pretgo",
         name="PretGo",
-        version="1.9.0",
+        version=APP_VERSION,
         description="Gestion des prêts de matériel pour établissements",
         capabilities=["loans", "inventory", "notifications"],
         icon="bi-box-arrow-right",
@@ -194,3 +197,6 @@ def register_blueprints(app):
         health_fn=_check_health,
     )
     app.register_blueprint(fabsuite_bp)
+
+    # Version exposée aux templates.
+    app.jinja_env.globals["app_version"] = APP_VERSION
