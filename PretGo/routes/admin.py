@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for, current_app
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response, lister_prets_pour_rappel_mail, envoyer_email_reference_manuel
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response, lister_prets_pour_rappel_mail, envoyer_email_reference_manuel, TYPE_LONGUE_DUREE
 from datetime import datetime, timedelta
 import csv
 import io
@@ -247,7 +247,11 @@ def admin_dashboard():
     conn = get_app_db()
     stats = {
         'personnes': conn.execute('SELECT COUNT(*) FROM personnes WHERE actif = 1').fetchone()[0],
-        'prets_actifs': conn.execute('SELECT COUNT(*) FROM prets WHERE retour_confirme = 0').fetchone()[0],
+        # Les prêts longue durée ont leur propre onglet : hors de ce compteur.
+        'prets_actifs': conn.execute(
+            "SELECT COUNT(*) FROM prets WHERE retour_confirme = 0 AND IFNULL(type_duree, '') != ?",
+            (TYPE_LONGUE_DUREE,)
+        ).fetchone()[0],
         'prets_total': conn.execute('SELECT COUNT(*) FROM prets').fetchone()[0],
         'categories': conn.execute('SELECT COUNT(*) FROM categories_materiel').fetchone()[0],
         'inventaire': conn.execute('SELECT COUNT(*) FROM inventaire WHERE actif = 1').fetchone()[0],
@@ -1465,7 +1469,10 @@ def statistiques():
 
     # ── Stats générales ──
     total_prets = conn.execute('SELECT COUNT(*) FROM prets').fetchone()[0]
-    prets_actifs = conn.execute('SELECT COUNT(*) FROM prets WHERE retour_confirme = 0').fetchone()[0]
+    prets_actifs = conn.execute(
+        "SELECT COUNT(*) FROM prets WHERE retour_confirme = 0 AND IFNULL(type_duree, '') != ?",
+        (TYPE_LONGUE_DUREE,)
+    ).fetchone()[0]
     prets_retournes = conn.execute('SELECT COUNT(*) FROM prets WHERE retour_confirme = 1').fetchone()[0]
     total_personnes = conn.execute('SELECT COUNT(*) FROM personnes WHERE actif = 1').fetchone()[0]
     total_materiel = conn.execute('SELECT COUNT(*) FROM inventaire WHERE actif = 1').fetchone()[0]

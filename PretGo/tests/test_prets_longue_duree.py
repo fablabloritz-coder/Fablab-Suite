@@ -116,6 +116,21 @@ class PretsLongueDureeTests(unittest.TestCase):
             valeur = _widget_active_loans()['value']
         self.assertEqual(valeur, self._compter_prets_classiques())
 
+    def test_compteur_admin_exclut_les_prets_longue_duree(self):
+        """Le tableau de bord admin affiche le même « Prêts en cours » que l'accueil."""
+        self._create('Ecran longue duree', 'longue_duree')
+        self._create('Classeur normal', 'jours')
+
+        with self.client.session_transaction() as sess:
+            sess['admin_logged_in'] = True
+        html = self.client.get('/admin').data.decode('utf-8')
+
+        attendu = self._compter_prets_classiques()
+        self.assertIn(
+            f'<div class="number text-warning">{attendu}</div>\n            <div class="label">Prêts en cours</div>',
+            html,
+        )
+
     def test_pages_detail_et_modification(self):
         pret = self._create('Clavier', 'longue_duree')
         detail = self.client.get(f"/pret/{pret['id']}")
