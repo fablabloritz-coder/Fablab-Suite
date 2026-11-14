@@ -85,3 +85,43 @@ FabInventory/
 | `DB_PATH` | `/data/fabinventory.db` | Chemin de la base SQLite |
 | `UPLOAD_FOLDER` | `/data/uploads` | Dossier d'upload |
 | `SECRET_KEY` | `fabinventory-secret` | Clé secrète Flask |
+
+---
+
+## 📜 Changelog
+
+<!-- changelog:start -->
+
+### v2.1.0 — 2026-05-19
+
+#### Admin unifie et couverture du catalogue
+
+- Dashboard admin enrichi : 8 indicateurs (4 cotes demandes, 4 cotes inventaire) et alerte sur les scans de plus de 30 jours.
+- Nouvelle page /admin/masters avec barre de progression de la couverture du catalogue.
+- Badge « X/Y masters » sur chaque logiciel du catalogue pour voir ou il est deja installe.
+- Champ « Deja present » dans la fenetre de demande, avec la couverture inventaire.
+- Portail professeur : badge « Deja sur X poste(s) » et bouton desactive si une demande est deja en cours.
+- Barre laterale admin : section Inventaire avec le lien Masters, et liens Outils restaures.
+
+---
+
+### v2.0.0 — 2026-05-19
+
+#### Portail demandes logiciels - refonte majeure
+
+- Portail professeurs : acces via token UUID unique (sans mot de passe), catalogue logiciels, soumission de demandes.
+- Espace admin securise : login/password, dashboard agrege, gestion des demandes (statuts : Demande -> Valide -> En cours -> Installe -> Refuse).
+- Catalogue logiciels : CRUD complet (nom, categorie, description, pack de base, actif/inactif).
+- Versions par logiciel : numero, type de licence, gratuit pour l'education, URL de telechargement.
+- Plugins/options par logiciel : selectionnables par le professeur lors de la demande.
+- Guides / Wiki : editeur Markdown par logiciel (guide principal, comptes/licences, depannage JSON).
+- Gestion des professeurs : creation, revocation, regeneration de token, lien copiable.
+- Export PDF des demandes pour preparer les installations masters.
+- Anti-doublon : pas de deuxieme demande en cours pour le meme logiciel.
+- Donnees de depart : compte admin par defaut et pack de base (VLC, 7-Zip, SumatraPDF).
+- Migrations SQLite idempotentes : 8 nouvelles tables sans rupture de la base existante.
+- Navigation : lien Admin ajoute dans la barre de navigation de l'inventaire.
+
+---
+
+<!-- changelog:end -->

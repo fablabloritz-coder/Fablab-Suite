@@ -140,3 +140,73 @@ docker compose up -d --build
 ### Réinitialiser la configuration
 
 Supprimer le fichier `data/fabhome.db` et redémarrer — la base sera recréée avec les valeurs par défaut.
+
+---
+
+## 📜 Changelog
+
+<!-- changelog:start -->
+
+### v1.7.1 — 2026-05-14
+
+#### Lisibilite des cellules et des widgets
+
+- Cellules carrees restaurees : la mesure se fait sur la hauteur reelle de la cellule, sans debordement de la grille.
+- Libelles des raccourcis toujours visibles, y compris dans les petites cellules.
+- Dimensionnement de la grille et des widgets entierement en CSS pour un rendu stable a toutes les resolutions.
+- Correction de l'affichage des informations tronquees dans les widgets de liste.
+
+---
+
+### v1.7.0 — 2026-05-13
+
+#### Grille 16:9, cellules carrées et bibliothèque d'icônes
+
+- Grille fixe 16×9 cellules carrées : les cellules s'adaptent automatiquement à la résolution de l'écran sans jamais déborder (calcul min largeur / hauteur viewport).
+- Widget Raccourci enrichi : prévisualisation de l'icône en temps réel, extraction automatique du favicon depuis l'URL du lien, upload d'une image personnalisée.
+- Bibliothèque d'icônes intégrée : retrouvez directement dans la modale toutes les images que vous avez uploadées pour les sélectionner en un clic.
+- Onglet Icônes dans les Réglages : gérez votre bibliothèque d'icônes (ajout et suppression) sans quitter FabHome.
+
+---
+
+### v1.6.0 — 2026-04-28
+
+#### Fiabilite popup et robustesse des mises a jour
+
+- Popup Nouveautes fiabilisee: detection basee sur signature complete de release et non plus uniquement la version.
+- Chargement des notes de release via URL statique Flask pour un comportement plus robuste.
+- Migrations SQLite durcies: version de schema tracee dans la base et controlee au demarrage.
+- Suivi centralise des migrations avec historique idempotent pour limiter les regressions de mise a jour.
+- Validation de compatibilite schema au boot du hub avant activation complete des services.
+
+---
+
+### v1.5.0 — 2026-04-11
+
+#### Popup de nouveautes centralisee
+
+- Ajout de la popup de nouveautes basee sur fichier JSON.
+- Ajout d'un lien footer pour reconsulter les mises a jour a tout moment.
+- Affichage conditionnel une fois par release via signature stockee localement.
+
+---
+
+### v1.4.2 — 2026-03-21
+
+#### Confort de navigation et UX d'accueil
+
+- Autofocus automatique sur la barre de recherche au chargement de la page.
+- Amelioration de la fluidite du flux de recherche pour un usage quotidien plus rapide.
+
+---
+
+### v1.4.0 — 2026-03-15
+
+#### Personnalisation des groupes et widgets
+
+- Ajout de la couleur de fond par groupe pour differencier visuellement les zones.
+- Ajout d'un widget dedie pour enrichir le tableau de bord FabHome.
+
+---
+
+<!-- changelog:end -->

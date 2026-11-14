@@ -473,6 +473,101 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 ---
 
+## 📜 Changelog
+
+<!-- changelog:start -->
+
+### v1.9.0 — 2026-10-16
+
+#### Prets longue duree sans date de fin
+
+- <strong>Prets longue duree sans date de fin</strong> — un pret peut desormais rester ouvert sans echeance.
+- <strong>Onglet dedie</strong> — les prets longue duree se consultent dans leur propre onglet, sans polluer la liste classique.
+
+---
+
+### v1.8.1 — 2026-06-29
+
+#### Corrections sur la saisie des prets
+
+- <strong>Texte libre optionnel</strong> — un pret peut etre enregistre uniquement avec l'inventaire lie.
+- <strong>Modification de pret fiabilisee</strong> — plus d'erreur 500 a l'enregistrement d'une modification.
+
+---
+
+### v1.8.0 — 2026-06-24
+
+#### Séparation inventaire/texte libre et douchette optimisée
+
+- <strong>Saisie divisée en deux zones</strong> — création et modification de prêt proposent maintenant une zone inventaire lié et une zone texte libre.
+- <strong>Réglage douchette configurable</strong> — nouvel élément admin pour contrôler la validation automatique sur Entrée/Tab.
+- <strong>Auto-validation sur correspondance exacte</strong> — si un numéro d'inventaire ou série existe exactement une seule fois, le matériel est validé automatiquement (scan ou frappe manuelle).
+- <strong>Liste déroulante robustifiée</strong> — suppression des cas où la liste réapparaît après un scan en raison de réponses API asynchrones tardives.
+
+---
+
+### v1.7.5 — 2026-05-18
+
+#### Protection contre le double pret
+
+- <strong>Verification de disponibilite au moment de la soumission</strong> — un objet deja emprunte entre l'affichage du formulaire et sa validation est maintenant detecte et le pret est refuse avec un message explicite.
+
+---
+
+### v1.7.4 — 2026-05-04
+
+#### Reservations hybrides et alertes capacitaires
+
+- <strong>Reservation categorie seule autorisee</strong> — une reservation peut maintenant etre enregistree avec categorie(s) et/ou objet(s) scanne(s).
+- <strong>Conflits hybrides verifies</strong> — couverture renforcee sur les cas categorie, objet exact et texte libre.
+- <strong>Alertes categorie basees sur la capacite reelle</strong> — les alertes ne remontent que si le stock devient insuffisant apres cumul des prets a risque et reservations chevauchantes.
+- <strong>Tests admin en conditions reelles</strong> — scenarios admin durcis pour conversion, annulation et suppression de reservations.
+
+---
+
+### v1.7.1 — 2026-04-30
+
+#### Reservations exportables et administration fiabilisee
+
+- <strong>Export CSV des reservations</strong> — la page Export propose maintenant un fichier dedie avec statut, dates, objets reserves et notes.
+- <strong>Reset selectif etendu</strong> — les reservations sont desormais prises en charge dans la reinitialisation selective de l'administration.
+- <strong>Integrite des liaisons preservee</strong> — la suppression selective de prets, personnes et materiels gere maintenant correctement les references de reservations.
+- <strong>Compatibilite anciennes reservations verifiee</strong> — les tests couvrent explicitement les formats historiques avec <em>materiel_id</em> et <em>items_json</em>.
+- <strong>Validation complete</strong> — la suite PretGo passe a <em>113/113 OK</em> sur ce lot de corrections.
+
+---
+
+### v1.7.0 — 2026-04-29
+
+#### Rappels avances et pilotage des notifications
+
+- <strong>Nouveaux modes de rappel</strong> — gestion plus fine des relances selon le contexte de pret.
+- <strong>Stabilite operationnelle</strong> — renforcement du comportement des rappels en execution reelle.
+
+---
+
+### v1.6.2 — 2026-04-28
+
+#### Fiabilite popup et migrations SQLite
+
+- <strong>Popup de nouveautes robuste</strong> — rafraichissement fiable du contenu release-notes.
+- <strong>Migrations durcies</strong> — suivi schema SQLite plus strict pour eviter les regressions de MAJ.
+
+---
+
+### v1.6.0 — 2026-04-28
+
+#### Conversion reservation et calendrier
+
+- <strong>Conversion reservation vers pret</strong> — flux de transformation clarifie pour l'admin.
+- <strong>Vue calendrier reservation</strong> — meilleure visualisation des periodes et conflits potentiels.
+
+---
+
+<!-- changelog:end -->
+
+---
+
 ## 📄 Licence
 
 Ce projet est distribué sous licence **MIT**. Voir le fichier [LICENSE](LICENSE) pour plus de détails.

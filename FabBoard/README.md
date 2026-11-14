@@ -523,6 +523,93 @@ Navigation :
 
 ---
 
+## 📜 Changelog
+
+<!-- changelog:start -->
+
+### v3.5.1 — 2026-11-14
+
+#### Widgets plus legers sur Fabtrack
+
+- Les widgets partageant la meme source et la meme periode ne declenchent plus qu'un seul appel vers Fabtrack par rafraichissement (cache de 10 secondes).
+- Un rechargement force reste possible avec le parametre refresh, et les erreurs ne sont jamais mises en cache.
+- Nouvelle suite de tests FabBoard : bornes de periode, proxy Fabtrack et comportement du cache sont couverts automatiquement.
+
+---
+
+### v3.5.0 — 2026-11-14
+
+#### Periode configurable par widget et listes enrichies
+
+- Chaque widget Fabtrack choisit sa periode : annee scolaire (par defaut), mois en cours, semaine, jour ou cumul total.
+- La periode active est rappelee dans l'en-tete du widget (ex. « Annee scolaire 2026-2027 »).
+- Nouvelle limite d'elements configurable pour le widget Repartition des activites, comme pour les activites recentes et les dernieres consommations.
+- Activites recentes et dernieres consommations affichent le projet et la date de saisie, pour distinguer deux interventions du meme type.
+- Les compteurs, la repartition et les deux listes sont alimentes par les nouvelles routes Fabtrack (resume par periode et consommations filtrees).
+
+---
+
+### v3.4.0 — 2026-10-16
+
+#### Widget page web et suivi des missions
+
+- Nouveau widget page web : affichage plein ecran d'un site dans une slide, avec conservation de l'iframe lors des changements de slide.
+- Nouveau widget derniere etape de mission, alimente par Fabtrack.
+
+---
+
+### v3.3.1 — 2026-05-18
+
+#### Persistance des medias uploadés
+
+- Les videos et images uploadees sont maintenant persistantes : le dossier static/uploads est monte en volume Docker (docker-data/uploads). Les fichiers ne sont plus perdus apres un docker compose up --build.
+
+---
+
+### v3.3.0 — 2026-05-03
+
+#### Pause hebdomadaire et indisponibilite prioritaire
+
+- Nouvelle pause hebdomadaire recurrente configurable jour par jour (lundi a dimanche) avec horaires debut/fin.
+- Indisponibilite manuelle prioritaire ajoutee: prend le dessus sur toutes les slides tant qu'elle est active.
+- Option d'heure de retour sur l'indisponibilite: affichable ou masquable via un simple switch.
+- Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITE (reglages independants).
+- Texte de pause personnalise: titre et message configurables dans les parametres.
+- Nouveau mode image pour la pause recurrente (JPG/PNG) avec upload et apercu.
+
+---
+
+### v3.2.0 — 2026-04-11
+
+#### Popup de nouveautes et trace des evolutions
+
+- Ajout de la popup Nouveautes pilotee par release-notes.json.
+- Lien footer admin pour ouvrir l'historique des MAJ a la demande.
+- Gestion du 'vu' local pour eviter les reaffichages repetes.
+
+---
+
+### v3.1.0 — 2026-04-10
+
+#### Lisibilite dashboard horloge/timer
+
+- Difference visuelle renforcee entre mode Horloge et mode Timer.
+- Ajustement de hauteur pour le layout 'Large + 2/3 blocs' afin d'ameliorer la lisibilite.
+
+---
+
+### v3.0.2 — 2026-03-21
+
+#### Amelioration visuelle des missions
+
+- Ajout de fonds couleurs pour les missions afin de clarifier l'etat des cartes et leur priorite.
+
+---
+
+<!-- changelog:end -->
+
+---
+
 ## 📄 Licence
 
 MIT — © 2026 Fablab Loritz
