@@ -187,10 +187,19 @@ class SyncWorker:
 
         for candidate in candidates:
             try:
-                # Stats summary
-                summary_resp = requests.get(f"{candidate}/api/stats/summary", timeout=4)
-                summary_resp.raise_for_status()
-                summary = summary_resp.json()
+                # Stats summary (borné à l'année scolaire, repli sur le cumul)
+                summary = None
+                last_summary_error = None
+                for summary_path in ('/api/stats/school-year-summary', '/api/stats/summary'):
+                    try:
+                        summary_resp = requests.get(f"{candidate}{summary_path}", timeout=4)
+                        summary_resp.raise_for_status()
+                        summary = summary_resp.json()
+                        break
+                    except requests.RequestException as exc:
+                        last_summary_error = exc
+                if summary is None:
+                    raise last_summary_error or requests.RequestException('Résumé Fabtrack indisponible')
 
                 # Consommations récentes
                 conso_resp = requests.get(f"{candidate}/api/consommations?per_page=10&page=1", timeout=4)

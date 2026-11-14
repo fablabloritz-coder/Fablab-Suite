@@ -1,7 +1,7 @@
 """Routes API consommations — CRUD, batch, statistiques, export/import CSV."""
 
 from flask import Blueprint, request, jsonify, Response
-from models import get_db
+from models import get_db, list_school_years
 from routes.api_reference import rows_to_list, _resolve_nom
 from datetime import datetime
 import csv, io
@@ -795,70 +795,123 @@ def api_update_consommation(id):
 
 # ── Statistiques ──
 
+def _stats_summary_payload(db, date_debut='', date_fin='', referent_id='', classe_id='', q=''):
+    """Calcule le résumé statistique d'une période, avec les filtres optionnels."""
+    dd = date_debut or ''
+    df = date_fin or ''
+    q = (q or '').strip()
+    w = '1=1'; p = []
+    if dd: w+=' AND c.date_saisie >= ?'; p.append(dd)
+    if df: w+=' AND c.date_saisie <= ?'; p.append(df + ' 23:59:59' if len(df) == 10 else df)
+    if referent_id:
+        ref_val = int(referent_id)
+        w += ' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf WHERE crf.consommation_id = c.id AND crf.referent_id = ?))'
+        p.extend([ref_val, ref_val])
+    if classe_id: w += ' AND c.classe_id = ?'; p.append(int(classe_id))
+    if q: w += ' AND c.projet_nom LIKE ?'; p.append(f'%{q}%')
+
+    total = db.execute(f'SELECT COUNT(*) as n FROM consommations c WHERE {w}', p).fetchone()['n']
+
+    by_type = rows_to_list(db.execute(f'''
+        SELECT t.nom,t.icone,t.couleur,t.badge_class,COUNT(*) as count
+        FROM consommations c JOIN types_activite t ON c.type_activite_id=t.id
+        WHERE {w} GROUP BY t.id ORDER BY count DESC''', p).fetchall())
+
+    by_prep = rows_to_list(db.execute(f'''
+        SELECT p.nom,COUNT(*) as count FROM consommations c
+        JOIN preparateurs p ON c.preparateur_id=p.id
+        WHERE {w} GROUP BY p.id ORDER BY count DESC''', p).fetchall())
+
+    total_3d = db.execute(f'''
+        SELECT COALESCE(SUM(c.poids_grammes),0) as t FROM consommations c
+        JOIN types_activite t ON c.type_activite_id=t.id
+        WHERE t.unite_defaut='g' AND {w}''', p).fetchone()['t']
+
+    total_decoupe = db.execute(f'''
+        SELECT COALESCE(SUM(c.surface_m2),0) as t FROM consommations c
+        JOIN types_activite t ON c.type_activite_id=t.id
+        WHERE t.unite_defaut='m²' AND {w}''', p).fetchone()['t']
+
+    total_papier = db.execute(f'''
+        SELECT COALESCE(SUM(c.nb_feuilles),0) as t FROM consommations c
+        JOIN types_activite t ON c.type_activite_id=t.id
+        WHERE t.unite_defaut='feuilles' AND {w}''', p).fetchone()['t']
+
+    papier_detail = db.execute(f'''
+        SELECT
+            COALESCE(SUM(CASE WHEN COALESCE(mat.nom, c.nom_materiau) LIKE '%Couleur%' THEN c.nb_feuilles ELSE 0 END),0) as couleur,
+            COALESCE(SUM(CASE WHEN COALESCE(mat.nom, c.nom_materiau) LIKE '%N&B%' THEN c.nb_feuilles ELSE 0 END),0) as nb
+        FROM consommations c
+        JOIN types_activite t ON c.type_activite_id=t.id
+        LEFT JOIN materiaux mat ON c.materiau_id=mat.id
+        WHERE t.unite_defaut='feuilles' AND {w}''', p).fetchone()
+
+    return {
+        'total_interventions': total,
+        'by_type': by_type, 'by_preparateur': by_prep,
+        'total_3d_grammes': round(total_3d, 1),
+        'total_decoupe_m2': round(total_decoupe, 3),
+        'total_papier_feuilles': int(total_papier),
+        'total_papier_couleur': int(papier_detail['couleur']),
+        'total_papier_nb': int(papier_detail['nb']),
+    }
+
+
 @bp.route('/api/stats/summary')
 def api_stats_summary():
     db = get_db()
     try:
-        dd = request.args.get('date_debut','')
-        df = request.args.get('date_fin','')
-        referent_id = request.args.get('referent_id','')
-        classe_id   = request.args.get('classe_id','')
-        q           = request.args.get('q','').strip()
-        w = '1=1'; p = []
-        if dd: w+=' AND c.date_saisie >= ?'; p.append(dd)
-        if df: w+=' AND c.date_saisie <= ?'; p.append(df + ' 23:59:59' if df and len(df) == 10 else df)
-        if referent_id:
-            ref_val = int(referent_id)
-            w += ' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf WHERE crf.consommation_id = c.id AND crf.referent_id = ?))'
-            p.extend([ref_val, ref_val])
-        if classe_id: w += ' AND c.classe_id = ?'; p.append(int(classe_id))
-        if q: w += ' AND c.projet_nom LIKE ?'; p.append(f'%{q}%')
+        return jsonify(_stats_summary_payload(
+            db,
+            date_debut=request.args.get('date_debut', ''),
+            date_fin=request.args.get('date_fin', ''),
+            referent_id=request.args.get('referent_id', ''),
+            classe_id=request.args.get('classe_id', ''),
+            q=request.args.get('q', ''),
+        ))
+    finally:
+        db.close()
 
-        total = db.execute(f'SELECT COUNT(*) as n FROM consommations c WHERE {w}', p).fetchone()['n']
 
-        by_type = rows_to_list(db.execute(f'''
-            SELECT t.nom,t.icone,t.couleur,t.badge_class,COUNT(*) as count
-            FROM consommations c JOIN types_activite t ON c.type_activite_id=t.id
-            WHERE {w} GROUP BY t.id ORDER BY count DESC''', p).fetchall())
+@bp.route('/api/stats/school-year-summary')
+def api_stats_school_year_summary():
+    """Résumé des consommations de l'année scolaire configurée (écrans FabBoard)."""
+    db = get_db()
+    try:
+        config, _years = list_school_years(db)
+        payload = _stats_summary_payload(db, date_debut=config['debut'], date_fin=config['fin'])
+        payload['periode'] = {'label': config['label'], 'debut': config['debut'], 'fin': config['fin']}
+        payload['periode_label'] = f"Année scolaire {config['label']}"
+        return jsonify(payload)
+    finally:
+        db.close()
 
-        by_prep = rows_to_list(db.execute(f'''
-            SELECT p.nom,COUNT(*) as count FROM consommations c
-            JOIN preparateurs p ON c.preparateur_id=p.id
-            WHERE {w} GROUP BY p.id ORDER BY count DESC''', p).fetchall())
 
-        total_3d = db.execute(f'''
-            SELECT COALESCE(SUM(c.poids_grammes),0) as t FROM consommations c
-            JOIN types_activite t ON c.type_activite_id=t.id
-            WHERE t.unite_defaut='g' AND {w}''', p).fetchone()['t']
-
-        total_decoupe = db.execute(f'''
-            SELECT COALESCE(SUM(c.surface_m2),0) as t FROM consommations c
-            JOIN types_activite t ON c.type_activite_id=t.id
-            WHERE t.unite_defaut='m²' AND {w}''', p).fetchone()['t']
-
-        total_papier = db.execute(f'''
-            SELECT COALESCE(SUM(c.nb_feuilles),0) as t FROM consommations c
-            JOIN types_activite t ON c.type_activite_id=t.id
-            WHERE t.unite_defaut='feuilles' AND {w}''', p).fetchone()['t']
-
-        papier_detail = db.execute(f'''
-            SELECT
-                COALESCE(SUM(CASE WHEN COALESCE(mat.nom, c.nom_materiau) LIKE '%Couleur%' THEN c.nb_feuilles ELSE 0 END),0) as couleur,
-                COALESCE(SUM(CASE WHEN COALESCE(mat.nom, c.nom_materiau) LIKE '%N&B%' THEN c.nb_feuilles ELSE 0 END),0) as nb
-            FROM consommations c
-            JOIN types_activite t ON c.type_activite_id=t.id
-            LEFT JOIN materiaux mat ON c.materiau_id=mat.id
-            WHERE t.unite_defaut='feuilles' AND {w}''', p).fetchone()
-
-        return jsonify({
-            'total_interventions': total,
-            'by_type': by_type, 'by_preparateur': by_prep,
-            'total_3d_grammes': round(total_3d, 1),
-            'total_decoupe_m2': round(total_decoupe, 3),
-            'total_papier_feuilles': int(total_papier),
-            'total_papier_couleur': int(papier_detail['couleur']),
-            'total_papier_nb': int(papier_detail['nb']),
-        })
+@bp.route('/api/stats/school-years')
+def api_stats_school_years():
+    """Totaux de consommation par année scolaire (année en cours puis précédentes)."""
+    db = get_db()
+    try:
+        config, years = list_school_years(db)
+        data = []
+        for year in years:
+            totals = db.execute('''
+                SELECT COUNT(*) AS interventions,
+                       COALESCE(SUM(CASE WHEN t.unite_defaut='g' THEN c.poids_grammes END), 0) AS grammes,
+                       COALESCE(SUM(CASE WHEN t.unite_defaut='m²' THEN c.surface_m2 END), 0) AS surface,
+                       COALESCE(SUM(CASE WHEN t.unite_defaut='feuilles' THEN c.nb_feuilles END), 0) AS feuilles
+                FROM consommations c
+                LEFT JOIN types_activite t ON t.id = c.type_activite_id
+                WHERE c.date_saisie >= ? AND c.date_saisie <= ?
+            ''', (year['debut'], year['fin'] + ' 23:59:59')).fetchone()
+            data.append({
+                **year,
+                'total_interventions': int(totals['interventions'] or 0),
+                'total_3d_grammes': round(float(totals['grammes'] or 0), 1),
+                'total_decoupe_m2': round(float(totals['surface'] or 0), 3),
+                'total_papier_feuilles': int(totals['feuilles'] or 0),
+            })
+        return jsonify({'success': True, 'config': config, 'data': data})
     finally:
         db.close()
 

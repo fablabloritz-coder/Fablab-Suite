@@ -24,6 +24,17 @@
 <!-- Filters -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-body">
+        <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold"><i class="bi bi-calendar-range me-1"></i>Année scolaire</label>
+                <select id="statSchoolYear" class="form-select" onchange="applySchoolYearSelection(this.value)">
+                    <option value="all">Tout l'historique</option>
+                </select>
+            </div>
+            <div class="col-md-8 d-flex align-items-end">
+                <small class="text-muted" id="schoolYearInfo"></small>
+            </div>
+        </div>
         <div class="row g-3 align-items-end">
             <div class="col-md-2">
                 <label class="form-label small fw-bold">Période début</label>
@@ -44,12 +55,12 @@
             <div class="col-md-4">
                 <label class="form-label small fw-bold">Raccourcis</label>
                 <div class="filter-tabs">
-                    <button class="filter-tab" onclick="setPreset('week', this)">7j</button>
-                    <button class="filter-tab" onclick="setPreset('month', this)">30j</button>
-                    <button class="filter-tab" onclick="setPreset('semester', this)">Semestre</button>
-                    <button class="filter-tab" onclick="setPreset('year', this)">Année</button>
-                    <button class="filter-tab" onclick="setPreset('schoolyear', this)" title="Du 1er septembre jusqu'à aujourd'hui">Année scol.</button>
-                    <button class="filter-tab active" onclick="setPreset('all', this)">Tout</button>
+                    <button class="filter-tab" data-preset="week" onclick="setPreset('week', this)">7j</button>
+                    <button class="filter-tab" data-preset="month" onclick="setPreset('month', this)">30j</button>
+                    <button class="filter-tab" data-preset="semester" onclick="setPreset('semester', this)">Semestre</button>
+                    <button class="filter-tab" data-preset="year" onclick="setPreset('year', this)">Année</button>
+                    <button class="filter-tab active" data-preset="schoolyear" onclick="setPreset('schoolyear', this)" title="Année scolaire configurée dans les paramètres">Année scol.</button>
+                    <button class="filter-tab" data-preset="all" onclick="setPreset('all', this)">Tout</button>
                 </div>
             </div>
             <div class="col-md-2">
@@ -114,6 +125,33 @@
                 <span class="text-primary"><i class="bi bi-palette-fill"></i> <span id="statPapierCouleur">—</span> couleur</span>
                 <span class="text-secondary"><i class="bi bi-circle-half"></i> <span id="statPapierNB">—</span> N&B</span>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Comparaison des années scolaires -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <strong><i class="bi bi-calendar3-range me-1"></i> Consommation par année scolaire</strong>
+        <small class="text-muted">Cliquez sur une année pour afficher son détail</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" id="schoolYearsTable">
+                <thead>
+                    <tr>
+                        <th>Année</th>
+                        <th>Période</th>
+                        <th class="text-end">Interventions</th>
+                        <th class="text-end">Filament 3D</th>
+                        <th class="text-end">Surface découpe</th>
+                        <th class="text-end">Feuilles</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="6" class="text-center text-muted py-3">Chargement…</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -261,8 +299,10 @@
 let charts = {};
 let rawData3D = [];
 let rawDataLaser = [];
+let SCHOOL_YEAR_CONFIG = null;
+let SCHOOL_YEARS = [];
 
-function onReferenceDataLoaded() {
+async function onReferenceDataLoaded() {
     // Populate activity filters
     const prepSel = document.getElementById('actFilterPrep');
     REF_DATA.preparateurs.forEach(p => {
@@ -282,7 +322,9 @@ function onReferenceDataLoaded() {
         claSel.innerHTML += `<option value="${cl.id}">${cl.nom}</option>`;
     });
 
-    setPreset('all', document.querySelector('.filter-tab.active'));
+    // Par défaut : consommation de l'année scolaire en cours uniquement
+    await loadSchoolYears();
+    setPreset('schoolyear', document.querySelector('.filter-tab[data-preset="schoolyear"]'));
 }
 
 function setPreset(preset, btn) {
@@ -312,9 +354,14 @@ function setPreset(preset, btn) {
             document.getElementById('statGroupBy').value = 'month';
             break;
         case 'schoolyear': {
-            // 1er sept de l'année scolaire en cours (si on est avant sept, on recule d'un an)
-            const sepYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-            debut = new Date(sepYear, 8, 1).toISOString().split('T')[0];
+            // Période configurée dans les paramètres ; repli sur le 1er septembre.
+            if (SCHOOL_YEAR_CONFIG && SCHOOL_YEAR_CONFIG.debut && SCHOOL_YEAR_CONFIG.fin) {
+                debut = SCHOOL_YEAR_CONFIG.debut;
+                fin = SCHOOL_YEAR_CONFIG.fin;
+            } else {
+                const sepYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+                debut = new Date(sepYear, 8, 1).toISOString().split('T')[0];
+            }
             document.getElementById('statGroupBy').value = 'month';
             break;
         }
@@ -326,8 +373,141 @@ function setPreset(preset, btn) {
     }
     document.getElementById('statDateDebut').value = debut;
     document.getElementById('statDateFin').value = fin;
+    syncSchoolYearSelection(preset);
     loadStats();
     loadActivity();
+}
+
+/* ===== Années scolaires ===== */
+
+async function loadSchoolYears() {
+    try {
+        const res = await fetch('/api/stats/school-years');
+        const body = await res.json();
+        if (!body.success) return null;
+        SCHOOL_YEAR_CONFIG = body.config || null;
+        SCHOOL_YEARS = body.data || [];
+        renderSchoolYearSelect();
+        renderSchoolYearsTable();
+        updateSchoolYearInfo();
+        return SCHOOL_YEAR_CONFIG;
+    } catch (err) {
+        console.error('Erreur années scolaires:', err);
+        return null;
+    }
+}
+
+function renderSchoolYearSelect() {
+    const sel = document.getElementById('statSchoolYear');
+    if (!sel) return;
+    const previous = sel.value;
+    const options = SCHOOL_YEARS.map(y =>
+        `<option value="${y.label}">Année ${y.label}${y.en_cours ? ' (en cours)' : ''}</option>`
+    );
+    options.push('<option value="custom">Période personnalisée</option>');
+    options.push('<option value="all">Tout l\'historique</option>');
+    sel.innerHTML = options.join('');
+    if (previous && Array.from(sel.options).some(o => o.value === previous)) sel.value = previous;
+}
+
+function renderSchoolYearsTable() {
+    const tbody = document.querySelector('#schoolYearsTable tbody');
+    if (!tbody) return;
+    if (!SCHOOL_YEARS.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Aucune donnée.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = SCHOOL_YEARS.map(y => `
+        <tr data-year="${y.label}" role="button" onclick="applySchoolYearSelection('${y.label}')">
+            <td class="fw-semibold">${y.label}${y.en_cours ? ' <span class="badge text-bg-primary">en cours</span>' : ''}</td>
+            <td class="small text-muted">${formatFrDate(y.debut)} → ${formatFrDate(y.fin)}</td>
+            <td class="text-end">${y.total_interventions}</td>
+            <td class="text-end">${formatGrammes(y.total_3d_grammes)}</td>
+            <td class="text-end">${y.total_decoupe_m2} m²</td>
+            <td class="text-end">${y.total_papier_feuilles}</td>
+        </tr>
+    `).join('');
+    highlightSchoolYearRow();
+}
+
+function applySchoolYearSelection(value) {
+    const sel = document.getElementById('statSchoolYear');
+    if (sel) sel.value = value;
+
+    if (value === 'custom') {
+        updateSchoolYearInfo();
+        highlightSchoolYearRow();
+        return;
+    }
+    if (value === 'all') {
+        setPreset('all', null);
+        return;
+    }
+
+    const year = SCHOOL_YEARS.find(y => y.label === value);
+    if (!year) return;
+
+    document.getElementById('statDateDebut').value = year.debut;
+    document.getElementById('statDateFin').value = year.fin;
+    document.getElementById('statGroupBy').value = 'month';
+    document.querySelectorAll('.filter-tabs .filter-tab').forEach(t => t.classList.remove('active'));
+    if (year.en_cours) {
+        const btn = document.querySelector('.filter-tab[data-preset="schoolyear"]');
+        if (btn) btn.classList.add('active');
+    }
+    updateSchoolYearInfo();
+    highlightSchoolYearRow();
+    loadStats();
+    loadActivity();
+}
+
+function syncSchoolYearSelection(preset) {
+    const sel = document.getElementById('statSchoolYear');
+    if (sel) {
+        const labels = Array.from(sel.options).map(o => o.value);
+        if (preset === 'all') sel.value = 'all';
+        else if (preset === 'schoolyear' && SCHOOL_YEAR_CONFIG && labels.includes(SCHOOL_YEAR_CONFIG.label)) {
+            sel.value = SCHOOL_YEAR_CONFIG.label;
+        } else sel.value = 'custom';
+    }
+    updateSchoolYearInfo();
+    highlightSchoolYearRow();
+}
+
+function updateSchoolYearInfo() {
+    const info = document.getElementById('schoolYearInfo');
+    const sel = document.getElementById('statSchoolYear');
+    if (!info || !sel) return;
+    if (sel.value === 'all') {
+        info.textContent = 'Cumul de toutes les consommations enregistrées.';
+        return;
+    }
+    if (sel.value === 'custom') {
+        info.textContent = 'Période personnalisée : utilisez les dates ou un raccourci ci-dessous.';
+        return;
+    }
+    const year = SCHOOL_YEARS.find(y => y.label === sel.value);
+    info.textContent = year
+        ? `Consommations de l'année scolaire ${year.label} : du ${formatFrDate(year.debut)} au ${formatFrDate(year.fin)}.`
+        : '';
+}
+
+function highlightSchoolYearRow() {
+    const sel = document.getElementById('statSchoolYear');
+    const active = sel ? sel.value : '';
+    document.querySelectorAll('#schoolYearsTable tbody tr[data-year]').forEach(tr => {
+        tr.classList.toggle('table-active', tr.dataset.year === active);
+    });
+}
+
+function formatFrDate(value) {
+    const p = String(value || '').split('-');
+    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : (value || '');
+}
+
+function formatGrammes(grammes) {
+    const value = Number(grammes || 0);
+    return value > 1000 ? `${(value / 1000).toFixed(2)} kg` : `${value} g`;
 }
 
 async function loadStats() {
@@ -813,6 +993,10 @@ function buildFilterInfo() {
     const kw     = document.getElementById('exportFilterKeyword').value.trim();
     const f = [];
     f.push({ label: 'Période', value: `${debut || 'début'} → ${fin || "aujourd'hui"}` });
+    const sySel = document.getElementById('statSchoolYear');
+    if (sySel && sySel.value && sySel.value !== 'custom' && sySel.value !== 'all') {
+        f.push({ label: 'Année scolaire', value: sySel.options[sySel.selectedIndex]?.text || sySel.value });
+    }
     if (refSel.value) f.push({ label: 'Référent', value: refSel.options[refSel.selectedIndex].text });
     if (claSel.value) f.push({ label: 'Classe',   value: claSel.options[claSel.selectedIndex].text });
     if (kw)           f.push({ label: 'Mot-clé projet', value: kw });
@@ -928,6 +1112,27 @@ function exportStatsHTML() {
     showToast('Export HTML téléchargé', 'info');
 }
 
+/** Récupère toutes les consommations filtrées, page par page (pas de troncature). */
+async function fetchAllConsommations(params) {
+    const perPage = 10000;  // borne maximale acceptée par /api/consommations
+    const all = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+        const qs = new URLSearchParams(params);
+        qs.set('per_page', perPage);
+        qs.set('page', page);
+        const res = await fetch(`/api/consommations?${qs}`);
+        const result = await res.json();
+        const rows = result.data || [];
+        all.push(...rows);
+        totalPages = Number(result.pages || 1);
+        if (!rows.length) break;
+        page += 1;
+    } while (page <= totalPages && page <= 1000);
+    return all;
+}
+
 async function exportStatsCSV() {
     const referentId = document.getElementById('exportFilterReferent').value;
     const classeId   = document.getElementById('exportFilterClasse').value;
@@ -940,9 +1145,8 @@ async function exportStatsCSV() {
     if (classeId)   params.set('classe_id', classeId);
     if (keyword)    params.set('q', keyword);
     try {
-        const res = await fetch(`/api/consommations?per_page=99999&page=1&${params}`);
-        const result = await res.json();
-        if (!result.data || !result.data.length) {
+        const allRows = await fetchAllConsommations(params);
+        if (!allRows.length) {
             showToast('Aucune donnée à exporter', 'info');
             return;
         }
@@ -956,7 +1160,7 @@ async function exportStatsCSV() {
             [q(''), q('')],  // ligne vide séparateur
         ];
         const headers = ['Date', 'Projet', 'Type activité', 'Machine', 'Matériau', 'Poids (g)', 'Surface (m²)', 'Nb feuilles', 'Préparateur', 'Classe', 'Référent', 'Commentaire'];
-        const rows = result.data.map(r => [
+        const rows = allRows.map(r => [
             r.date_saisie, r.projet_nom || '', r.type_activite_nom || '', r.machine_nom || '',
             r.materiau_nom || '', r.poids_grammes || '', r.surface_m2 || '', r.nb_feuilles || '',
             r.preparateur_nom || '', r.classe_nom || '', r.referent_nom || '', r.commentaire || ''
@@ -991,5 +1195,19 @@ async function exportStatsCSV() {
         showToast('Erreur export CSV', 'error');
     }
 }
+
+/* Saisie manuelle des dates → période personnalisée */
+document.addEventListener('DOMContentLoaded', () => {
+    ['statDateDebut', 'statDateFin'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => {
+            const sel = document.getElementById('statSchoolYear');
+            if (sel) sel.value = 'custom';
+            updateSchoolYearInfo();
+            highlightSchoolYearRow();
+        });
+    });
+});
 </script>
 {% endblock %}

@@ -499,6 +499,8 @@ Toutes les données sont accessibles via une API JSON complète :
 | `GET` | `/api/stats/summary` | Résumé statistique (totaux, répartitions) |
 | `GET` | `/api/stats/timeline` | Données timeline pour graphiques |
 | `GET` | `/api/stats/activity` | Activité journalière (heure, jour, préparateur) |
+| `GET` | `/api/stats/school-years` | Totaux de consommation par année scolaire (année en cours + précédentes) |
+| `GET` | `/api/stats/school-year-summary` | Résumé (compteurs, répartitions) borné à l'année scolaire configurée |
 
 ### Gestion des entités (CRUD)
 
@@ -539,6 +541,8 @@ Pour chaque entité (`types_activite`, `machines`, `materiaux`, `classes`, `refe
 | `GET/POST` | `/api/custom-fields` | Gestion champs personnalisés |
 | `PUT/DELETE` | `/api/custom-fields/<id>` | Modifier/supprimer champ personnalisé |
 | `GET/POST` | `/api/custom-field-values/<type>/<id>` | Valeurs des champs personnalisés |
+| `GET` | `/api/settings/school-year` | Période de l'année scolaire utilisée par les statistiques |
+| `PUT` | `/api/settings/school-year` | Configurer l'année scolaire de date à date (dates vides = valeurs par défaut) |
 | `POST` | `/api/demo/generate` | Générer données de démonstration |
 | `POST` | `/api/reset` | Réinitialiser la base (confirmation requise) |
 
@@ -576,6 +580,28 @@ Depuis la page **Export** :
 ---
 
 ## � Changelog
+
+### v2.2.0 — 2026-11-14
+
+#### Missions — Date de création automatique
+
+- Les nouvelles missions enregistrent automatiquement leur date de création et l'affichent sur la carte kanban (« Créée le … ») ainsi que, en lecture seule, dans la fiche de la mission.
+- Les missions créées avant cette version n'ont pas de date de création : rien n'est affiché pour elles (aucun remplissage rétroactif).
+- La date de création est reprise dans les exports de l'historique (CSV, HTML, PDF) sous « Date creation » ; vide pour les missions antérieures.
+
+#### Statistiques — Année scolaire
+
+- La page Statistiques s'ouvre désormais sur l'**année scolaire en cours** au lieu du cumul historique.
+- Nouveau sélecteur **Année scolaire** : année en cours, années précédentes et « Tout l'historique » (les anciennes années restent consultables).
+- Nouveau tableau **Consommation par année scolaire** (interventions, filament 3D, surface découpée, feuilles) ; un clic sur une ligne affiche le détail de cette année.
+- Période configurable de date à date dans Paramètres → Informations du Fablab → « Année scolaire des statistiques » (par défaut : 1er septembre → 31 août).
+- Les widgets FabBoard « Compteurs Fabtrack » et « Répartition activités » utilisent le même cadrage (via `/api/stats/school-year-summary`) et affichent l'année concernée, au lieu du cumul historique. Avec « Activités récentes » et « Dernières consommations » (via `/api/fabtrack/consommations`), leur période est configurable widget par widget (année scolaire, mois, semaine, jour, cumul) et affichée à côté du titre.
+- Export CSV des statistiques : récupération paginée complète (plus de troncature silencieuse à 10 000 lignes).
+
+**Migration de base de données :**
+- Ajout de la colonne `date_creation TEXT` sur la table `missions` (migration idempotente, sans remplissage rétroactif).
+
+---
 
 ### v2.1.0 — 2026-05-08
 

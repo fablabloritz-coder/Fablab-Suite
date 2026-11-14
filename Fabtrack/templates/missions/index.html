@@ -161,6 +161,14 @@
 .badge-echeance.today { background: rgba(245,158,11,0.15); color: #d97706; }
 .badge-echeance.soon  { background: rgba(251,191,36,0.12); color: #ca8a04; }
 .badge-echeance.ok    { background: rgba(148,163,184,0.1); color: var(--bs-secondary); }
+.badge-creation {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.15em 0.5em;
+    border-radius: 4px;
+    background: rgba(148,163,184,0.1);
+    color: var(--bs-secondary);
+}
 
 [data-bs-theme="dark"] .badge-prio.haute  { color: #fbbf24; }
 [data-bs-theme="dark"] .badge-prio.urgente{ color: #f87171; }
@@ -553,6 +561,13 @@
                         <input type="date" class="form-control" id="missionEcheance">
                     </div>
                 </div>
+                <div class="row g-3 mt-1" id="missionCreationRow" style="display:none;">
+                    <div class="col-sm-6">
+                        <label class="form-label fw-semibold"><i class="bi bi-calendar-plus me-1"></i>Date de création</label>
+                        <input type="text" class="form-control" id="missionCreationDate" value="" readonly>
+                        <div class="form-text">Information automatique, non modifiable.</div>
+                    </div>
+                </div>
                 </div>
                 <div class="col-lg-7" id="stepsSection" style="display:none">
                     <div class="steps-panel">
@@ -901,6 +916,8 @@ function cardHtml(m) {
     else if (m.priorite === 1) footerBadges += '<span class="badge-prio haute">Haute</span>';
     // Badge échéance
     if (m.date_echeance) footerBadges += echeanceBadge(m.date_echeance, m.statut);
+    // Date de création (automatique ; absente sur les missions antérieures)
+    if (m.date_creation) footerBadges += `<span class="badge-creation" title="Date de création de la mission"><i class="bi bi-calendar-plus me-1"></i>Créée le ${formatShortDate(m.date_creation)}</span>`;
 
     // Actions rapides : avancer / reculer le statut
     let actions = '<div class="mission-actions">';
@@ -968,6 +985,12 @@ function echeanceBadge(dateStr, statut) {
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function formatDate(d) { const p = d.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
 
+function formatShortDate(value) {
+    const raw = String(value || '').slice(0, 10);
+    const p = raw.split('-');
+    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : raw;
+}
+
 function parseDateTime(value) {
     if (!value) return null;
     const normalized = value.includes('T') ? value : value.replace(' ', 'T');
@@ -1001,6 +1024,8 @@ function openCreateModal() {
     document.getElementById('missionStatut').value = 'a_faire';
     document.getElementById('missionPriorite').value = '0';
     document.getElementById('missionEcheance').value = '';
+    document.getElementById('missionCreationDate').value = '';
+    document.getElementById('missionCreationRow').style.display = 'none';
     renderCategorySelect(null);
     document.getElementById('modalMissionTitle').textContent = 'Nouvelle mission';
     setStepsLayout(false);
@@ -1017,6 +1042,15 @@ function openEditModal(id) {
     document.getElementById('missionStatut').value = m.statut;
     document.getElementById('missionPriorite').value = m.priorite;
     document.getElementById('missionEcheance').value = m.date_echeance || '';
+    const creationRow = document.getElementById('missionCreationRow');
+    if (m.date_creation) {
+        document.getElementById('missionCreationDate').value = formatDateTime(m.date_creation);
+        creationRow.style.display = '';
+    } else {
+        // Missions antérieures : aucune date de création enregistrée.
+        document.getElementById('missionCreationDate').value = '';
+        creationRow.style.display = 'none';
+    }
     renderCategorySelect(m.category_id || null);
     document.getElementById('modalMissionTitle').textContent = 'Modifier la mission';
     setStepsLayout(true);

@@ -197,7 +197,7 @@ def _build_history_csv(rows, categories=None):
 
     writer.writerow([
         'ID', 'Titre', 'Description', 'Categorie', 'Definition categorie',
-        'Priorite', 'Creee le', 'Debut', 'Terminee le', 'Etapes',
+        'Priorite', 'Creee le', 'Debut', 'Terminee le', 'Date creation', 'Etapes',
     ])
 
     cat_map = {c['nom']: c.get('description', '') for c in (categories or [])}
@@ -214,6 +214,7 @@ def _build_history_csv(rows, categories=None):
             _fmt_dt(r['timeline_created_at'] or r['created_at']),
             _fmt_dt(r['timeline_started_at']),
             _fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at']),
+            _fmt_dt(r['date_creation']) if r.get('date_creation') else '—',
             ' | '.join(f'{d} : {t}' for d, t in r.get('etapes', [])),
         ])
     return output.getvalue()
@@ -257,10 +258,11 @@ def _build_history_html(rows, categories=None):
             f"<td>{html.escape(_fmt_dt(r['timeline_created_at'] or r['created_at']))}</td>"
             f"<td>{html.escape(_fmt_dt(r['timeline_started_at']))}</td>"
             f"<td>{html.escape(_fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at']))}</td>"
+            f"<td>{html.escape(_fmt_dt(r['date_creation']) if r.get('date_creation') else '—')}</td>"
             '</tr>'
         )
 
-    body_rows = ''.join(tr_rows) if tr_rows else '<tr><td colspan="7" style="text-align:center;color:#6b7280">Aucune mission terminée.</td></tr>'
+    body_rows = ''.join(tr_rows) if tr_rows else '<tr><td colspan="8" style="text-align:center;color:#6b7280">Aucune mission terminée.</td></tr>'
     generated = datetime.now().strftime('%d/%m/%Y %H:%M')
 
     # Bloc légende des catégories
@@ -302,7 +304,7 @@ def _build_history_html(rows, categories=None):
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Titre / Description</th><th>Catégorie</th><th>Priorité</th><th>Créée</th><th>Début</th><th>Terminée</th>
+        <th>#</th><th>Titre / Description</th><th>Catégorie</th><th>Priorité</th><th>Créée</th><th>Début</th><th>Terminée</th><th>Date création</th>
       </tr>
     </thead>
     <tbody>{body_rows}</tbody>
@@ -428,6 +430,7 @@ def _build_history_pdf(rows, categories=None):
         lines.append(f"  Creee: {_fmt_dt(r['timeline_created_at'] or r['created_at'])}")
         lines.append(f"  Debut: {_fmt_dt(r['timeline_started_at'])}")
         lines.append(f"  Terminee: {_fmt_dt(r['timeline_finished_at'] or r['completed_at'] or r['updated_at'])}")
+        lines.append(f"  Date creation: {_fmt_dt(r['date_creation']) if r.get('date_creation') else '—'}")
         etapes = r.get('etapes', [])
         if etapes:
             lines.append('  Etapes:')
@@ -804,9 +807,12 @@ def api_create():
                 return jsonify({'success': False, 'error': 'Catégorie invalide'}), 400
 
         c = db.execute(
-            '''INSERT INTO missions (titre, description, category_id, statut, priorite, ordre, date_echeance)
-               VALUES (?, ?, ?, ?, ?, ?, ?)''',
-            (titre, description, category_id, statut, priorite, ordre, date_echeance)
+            '''INSERT INTO missions (titre, description, category_id, statut, priorite, ordre, date_echeance, date_creation)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+            (
+                titre, description, category_id, statut, priorite, ordre, date_echeance,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            )
         )
         mission_id = c.lastrowid
         _log_mission_event(db, mission_id, 'created', None, 'a_faire')

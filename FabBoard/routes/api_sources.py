@@ -9,7 +9,7 @@ import json
 import os
 import requests as http_requests
 from urllib.parse import quote, urlparse
-from datetime import datetime
+from datetime import datetime, timedelta
 
 bp = Blueprint('api_sources', __name__)
 
@@ -86,6 +86,53 @@ def _request_json(base_url, path, timeout=4):
         return False, None, str(e)
 
 
+FABTRACK_SUMMARY_PATH = '/api/stats/school-year-summary'
+FABTRACK_SUMMARY_FALLBACK_PATH = '/api/stats/summary'
+
+
+def _request_fabtrack_summary(base_url):
+    """Résumé Fabtrack borné à l'année scolaire configurée.
+
+    Repli sur le cumul historique si le Fabtrack interrogé est antérieur
+    à l'endpoint dédié.
+    """
+    ok, data, err = _request_json(base_url, FABTRACK_SUMMARY_PATH)
+    if ok:
+        return True, data, ''
+    return _request_json(base_url, FABTRACK_SUMMARY_FALLBACK_PATH)
+
+
+FABTRACK_PERIODS = ('jour', 'semaine', 'mois', 'annee_scolaire', 'cumul')
+
+
+def _period_bounds(periode):
+    """Bornes (debut, fin, libellé) d'une période de widget ; vides pour le cumul."""
+    today = datetime.now().date()
+    if periode == 'jour':
+        return today.isoformat(), today.isoformat(), "Aujourd'hui"
+    if periode == 'semaine':
+        debut = today - timedelta(days=today.weekday())
+        return debut.isoformat(), today.isoformat(), 'Cette semaine'
+    if periode == 'mois':
+        debut = today.replace(day=1)
+        return debut.isoformat(), today.isoformat(), f"Mois en cours ({today.strftime('%m/%Y')})"
+    return '', '', 'Cumul depuis le début'
+
+
+def _source_base_url(source_id=''):
+    """URL de la source Fabtrack demandée, sinon source active ou URL par défaut."""
+    source_id = str(source_id or '').strip()
+    if source_id.isdigit():
+        db = get_db()
+        try:
+            row = db.execute('SELECT url FROM sources WHERE id = ?', (int(source_id),)).fetchone()
+        finally:
+            db.close()
+        if row and row['url']:
+            return _normalize_base_url(row['url'])
+    return _resolve_fabtrack_base_url()
+
+
 def _extract_fabtrack_payload(base_url):
     """Agrège les données nécessaires au dashboard depuis Fabtrack."""
     base_url = _normalize_base_url(base_url)
@@ -97,7 +144,7 @@ def _extract_fabtrack_payload(base_url):
 
     last_error = ''
     for candidate in candidates:
-        ok_summary, summary, err_summary = _request_json(candidate, '/api/stats/summary')
+        ok_summary, summary, err_summary = _request_fabtrack_summary(candidate)
         ok_conso, conso, err_conso = _request_json(candidate, '/api/consommations?per_page=5&page=1')
         ok_ref, reference, _ = _request_json(candidate, '/api/reference')
         ok_missions, missions_payload, _ = _request_json(candidate, '/missions/api/list')
@@ -488,14 +535,14 @@ def test_source(id):
             db.commit()
 
         if source['type'] == 'fabtrack':
-            ok, data, err = _request_json(base_url, '/api/stats/summary')
+            ok, data, err = _request_fabtrack_summary(base_url)
             tested_url = base_url
 
             # Auto-réparation: source historique en localhost dans un contexte Docker.
             if not ok and _is_localhost_url(base_url):
                 fallback_url = _default_fabtrack_url()
                 if fallback_url and fallback_url != base_url:
-                    ok_fb, data_fb, err_fb = _request_json(fallback_url, '/api/stats/summary')
+                    ok_fb, data_fb, err_fb = _request_fabtrack_summary(fallback_url)
                     if ok_fb:
                         tested_url = fallback_url
                         ok = True
@@ -671,6 +718,82 @@ def worker_status():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+@bp.route('/api/fabtrack/summary')
+def fabtrack_summary():
+    """Résumé Fabtrack pour la période configurée sur un widget."""
+    periode = (request.args.get('periode') or 'annee_scolaire').strip().lower()
+    if periode not in FABTRACK_PERIODS:
+        periode = 'annee_scolaire'
+
+    base_url = _source_base_url(request.args.get('source_id'))
+
+    if periode == 'annee_scolaire':
+        # Fabtrack connaît les bornes exactes de l'année scolaire configurée.
+        ok, data, err = _request_fabtrack_summary(base_url)
+        label = (data or {}).get('periode_label') or 'Année scolaire'
+    else:
+        debut, fin, label = _period_bounds(periode)
+        path = '/api/stats/summary'
+        if debut:
+            path += f'?date_debut={debut}&date_fin={fin}'
+        ok, data, err = _request_json(base_url, path)
+
+    if not ok or not isinstance(data, dict):
+        return jsonify({'success': False, 'error': err or 'Fabtrack indisponible'}), 502
+
+    return jsonify({
+        'success': True,
+        'periode': periode,
+        'periode_label': label,
+        'summary': data,
+    })
+
+
+@bp.route('/api/fabtrack/consommations')
+def fabtrack_consommations():
+    """Dernières consommations Fabtrack sur la période configurée sur un widget."""
+    periode = (request.args.get('periode') or 'annee_scolaire').strip().lower()
+    if periode not in FABTRACK_PERIODS:
+        periode = 'annee_scolaire'
+    try:
+        limit = max(1, min(int(request.args.get('limit', 10) or 10), 100))
+    except (TypeError, ValueError):
+        limit = 10
+
+    base_url = _source_base_url(request.args.get('source_id'))
+
+    if periode == 'annee_scolaire':
+        ok_summary, summary, err_summary = _request_fabtrack_summary(base_url)
+        bornes = (summary or {}).get('periode') or {}
+        debut = bornes.get('debut', '')
+        fin = bornes.get('fin', '')
+        label = (summary or {}).get('periode_label') or ('Année scolaire' if debut else 'Cumul depuis le début')
+    else:
+        debut, fin, label = _period_bounds(periode)
+        path = '/api/stats/summary'
+        if debut:
+            path += f'?date_debut={debut}&date_fin={fin}'
+        ok_summary, summary, err_summary = _request_json(base_url, path)
+
+    params = [f'per_page={limit}', 'page=1']
+    if debut:
+        params.extend([f'date_debut={debut}', f'date_fin={fin}'])
+    ok_conso, conso, err_conso = _request_json(base_url, '/api/consommations?' + '&'.join(params))
+
+    if not ok_conso and not ok_summary:
+        return jsonify({'success': False, 'error': err_conso or err_summary or 'Fabtrack indisponible'}), 502
+
+    summary = summary if isinstance(summary, dict) else {}
+    return jsonify({
+        'success': True,
+        'periode': periode,
+        'periode_label': label,
+        'periode_bornes': {'debut': debut, 'fin': fin},
+        'by_type': summary.get('by_type', []),
+        'data': (conso or {}).get('data', []),
+    })
 
 
 @bp.route('/api/cache/<int:source_id>', methods=['GET'])

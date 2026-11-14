@@ -1,5 +1,5 @@
-<div class="widget widget-activites" id="widget-activites-{{ widget_id }}" data-widget-code="activites" data-max-items="{{ config.get('max_items', 5) }}">
-    <h3><i class="bi bi-list-check"></i> Activites recentes</h3>
+<div class="widget widget-activites" id="widget-activites-{{ widget_id }}" data-widget-code="activites" data-max-items="{{ config.get('nombre_max', config.get('max_items', 5)) }}">
+    <h3><i class="bi bi-list-check"></i> Activites recentes <small class="js-periode" style="font-size:0.62em;opacity:0.7;font-weight:500;"></small></h3>
     <div class="activites-list js-activites-list">
         <div style="color: #475569;">Chargement...</div>
     </div>
@@ -45,9 +45,10 @@
         list.innerHTML = items.slice(0, maxItems).map((item) => {
             const typeName = item.type_activite_nom || item.nom_type_activite || 'Activite';
             const typeColor = colorMap[typeName] || '#818cf8';
+            const projet = item.projet_nom || item.nom_projet || '';
             return `
             <div class="activite-item" style="border-left: 3px solid ${esc(typeColor)}; padding-left: 0.6rem;">
-                <div class="activite-titre">${esc(typeName)}</div>
+                <div class="activite-titre">${esc(typeName)}${projet ? ` <span style="color:#94a3b8; font-weight:400;">${esc(projet)}</span>` : ''}</div>
                 <div class="activite-meta">
                     <span class="badge" style="background:${esc(typeColor)}22; color:${esc(typeColor)};">${esc(item.machine_nom || item.nom_machine || 'Machine n/a')}</span>
                     <span>${esc(item.preparateur_nom || item.nom_preparateur || 'Preparateur n/a')}</span>
@@ -59,29 +60,34 @@
 
     const config = {{ config | tojson | safe }};
     const sourceId = config.source_id || null;
+    const periode = config.periode || 'annee_scolaire';
 
-    function refresh() {
-        const store = window.FabBoardStore;
+    async function refresh() {
         let items = [];
         let errorMsg = '';
         let colorMap = {};
+        let periodeLabel = '';
 
-        if (sourceId && store && store.getSource(sourceId)) {
-            const sd = store.getSource(sourceId);
-            items = sd.consommations || [];
-            (sd.summary?.by_type || []).forEach(t => {
-                if (t.nom && t.couleur) colorMap[t.nom] = t.couleur;
-            });
-        } else if (store && store.data) {
-            items = store.data.activites || [];
-            errorMsg = store.data.fabtrack_error || '';
-            ((store.data.fabtrack_stats || {}).by_type || []).forEach(t => {
-                if (t.nom && t.couleur) colorMap[t.nom] = t.couleur;
-            });
-        } else {
-            return;
+        try {
+            const qs = new URLSearchParams({ periode, limit: String(maxItems) });
+            if (sourceId) qs.set('source_id', sourceId);
+            const resp = await fetch(`/api/fabtrack/consommations?${qs}`);
+            const body = await resp.json();
+            if (body.success) {
+                items = body.data || [];
+                (body.by_type || []).forEach(t => {
+                    if (t.nom && t.couleur) colorMap[t.nom] = t.couleur;
+                });
+                periodeLabel = body.periode_label || '';
+            } else {
+                errorMsg = body.error || 'Fabtrack indisponible';
+            }
+        } catch (e) {
+            errorMsg = 'Erreur réseau';
         }
 
+        const periodeEl = root.querySelector('.js-periode');
+        if (periodeEl) periodeEl.textContent = periodeLabel ? `— ${periodeLabel}` : '';
         render(items, errorMsg, colorMap);
     }
 

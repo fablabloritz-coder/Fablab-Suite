@@ -1,5 +1,5 @@
-<div class="widget widget-fabtrack-stats" id="widget-fabtrack-stats-{{ widget_id }}" data-widget-code="fabtrack_stats">
-    <h3><i class="bi bi-graph-up"></i> Répartition activités</h3>
+<div class="widget widget-fabtrack-stats" id="widget-fabtrack-stats-{{ widget_id }}" data-widget-code="fabtrack_stats" data-max-items="{{ config.get('nombre_max', config.get('max_items', 0)) }}">
+    <h3><i class="bi bi-graph-up"></i> Répartition activités <small class="js-periode" style="font-size:0.62em;opacity:0.7;font-weight:500;"></small></h3>
     <div class="fabtrack-repartition js-stats-grid">
         <div style="color: #475569; padding: 1rem;">Chargement...</div>
     </div>
@@ -80,6 +80,7 @@
     if (!root) return;
 
     const grid = root.querySelector('.js-stats-grid');
+    const maxItems = Number(root.dataset.maxItems || 0) || 0;
 
     function esc(value) {
         const div = document.createElement('div');
@@ -115,7 +116,8 @@
             return;
         }
 
-        const types = stats.by_type || [];
+        const allTypes = stats.by_type || [];
+        const types = maxItems > 0 ? allTypes.slice(0, maxItems) : allTypes;
         const total = stats.total_interventions || 1;
         const maxCount = types.length ? Math.max(...types.map(t => t.count)) : 1;
 
@@ -146,22 +148,30 @@
 
     const config = {{ config | tojson | safe }};
     const sourceId = config.source_id || null;
+    const periode = config.periode || 'annee_scolaire';
 
-    function refresh() {
-        const store = window.FabBoardStore;
+    async function refresh() {
         let stats = {};
         let errorMsg = '';
+        let periodeLabel = '';
 
-        if (sourceId && store && store.getSource(sourceId)) {
-            const sd = store.getSource(sourceId);
-            stats = sd.summary || sd;
-        } else if (store && store.data) {
-            stats = store.data.fabtrack_stats || {};
-            errorMsg = store.data.fabtrack_error || '';
-        } else {
-            return;
+        try {
+            const qs = new URLSearchParams({ periode });
+            if (sourceId) qs.set('source_id', sourceId);
+            const resp = await fetch(`/api/fabtrack/summary?${qs}`);
+            const body = await resp.json();
+            if (body.success) {
+                stats = body.summary || {};
+                periodeLabel = body.periode_label || '';
+            } else {
+                errorMsg = body.error || 'Fabtrack indisponible';
+            }
+        } catch (e) {
+            errorMsg = 'Erreur réseau';
         }
 
+        const periodeEl = root.querySelector('.js-periode');
+        if (periodeEl) periodeEl.textContent = periodeLabel ? `— ${periodeLabel}` : '';
         render(stats, errorMsg);
     }
 

@@ -1,5 +1,5 @@
-<div class="widget widget-fabtrack-conso" id="widget-fabtrack-conso-{{ widget_id }}" data-widget-code="fabtrack_conso" data-max-items="{{ config.get('max_items', 6) }}">
-    <h3><i class="bi bi-receipt"></i> Dernieres consommations</h3>
+<div class="widget widget-fabtrack-conso" id="widget-fabtrack-conso-{{ widget_id }}" data-widget-code="fabtrack_conso" data-max-items="{{ config.get('nombre_max', config.get('max_items', 6)) }}">
+    <h3><i class="bi bi-receipt"></i> Dernieres consommations <small class="js-periode" style="font-size:0.62em;opacity:0.7;font-weight:500;"></small></h3>
     <div class="conso-list js-conso-list">
         <div style="color: #475569;">Chargement...</div>
     </div>
@@ -24,20 +24,29 @@
         return Number(value).toLocaleString('fr-FR');
     }
 
+    function fmtDate(value) {
+        if (!value) return '--';
+        const dt = new Date(value.replace(' ', 'T'));
+        if (Number.isNaN(dt.getTime())) return value;
+        return dt.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
     function line(item) {
         const typeNom = item.type_activite_nom || item.nom_type_activite || 'Activite';
         const machine = item.machine_nom || item.nom_machine || 'Machine n/a';
         const mat = item.materiau_nom || item.nom_materiau || '';
+        const projet = item.projet_nom || item.nom_projet || '';
         const qty = item.poids_grammes || item.surface_m2 || item.nb_feuilles || '';
         const qtyTxt = qty !== '' ? `${n(qty)} ${mat ? mat : ''}`.trim() : mat;
 
         return `
             <div class="activite-item">
-                <div class="activite-titre">${esc(typeNom)}</div>
+                <div class="activite-titre">${esc(typeNom)}${projet ? ` <span style="color:#94a3b8; font-weight:400;">${esc(projet)}</span>` : ''}</div>
                 <div class="activite-meta">
                     <span class="badge" style="background:#1e293b; color:#94a3b8;">${esc(machine)}</span>
                     <span>${esc(item.preparateur_nom || item.nom_preparateur || '')}</span>
                     ${qtyTxt ? `<span style="color:#60a5fa;">${esc(qtyTxt)}</span>` : ''}
+                    <span style="color:#475569;">${esc(fmtDate(item.date_saisie || ''))}</span>
                 </div>
             </div>
         `;
@@ -63,21 +72,30 @@
 
     const config = {{ config | tojson | safe }};
     const sourceId = config.source_id || null;
+    const periode = config.periode || 'annee_scolaire';
 
     async function refresh() {
-        const store = window.FabBoardStore;
         let items = [];
         let errorMsg = '';
+        let periodeLabel = '';
 
-        if (sourceId && store && store.getSource(sourceId)) {
-            items = store.getSource(sourceId).consommations || [];
-        } else if (store && store.data) {
-            items = store.data.activites || [];
-            errorMsg = store.data.fabtrack_error || '';
-        } else {
-            return;
+        try {
+            const qs = new URLSearchParams({ periode, limit: String(maxItems) });
+            if (sourceId) qs.set('source_id', sourceId);
+            const resp = await fetch(`/api/fabtrack/consommations?${qs}`);
+            const body = await resp.json();
+            if (body.success) {
+                items = body.data || [];
+                periodeLabel = body.periode_label || '';
+            } else {
+                errorMsg = body.error || 'Fabtrack indisponible';
+            }
+        } catch (e) {
+            errorMsg = 'Erreur réseau';
         }
 
+        const periodeEl = root.querySelector('.js-periode');
+        if (periodeEl) periodeEl.textContent = periodeLabel ? `— ${periodeLabel}` : '';
         render(items, errorMsg);
     }
 

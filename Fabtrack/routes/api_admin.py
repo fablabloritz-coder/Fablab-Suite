@@ -2,6 +2,7 @@
 
 from flask import Blueprint, request, jsonify, send_file, send_from_directory
 from models import get_db, init_db, reset_db, generate_demo_data, DATA_DIR, get_setup_status, apply_starter_pack, get_base_material_pack_dir
+from models import get_school_year, set_school_year
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import json, os, shutil, glob, logging
@@ -283,6 +284,32 @@ def api_setup_apply():
         return jsonify(result)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
+
+# ── Année scolaire (période par défaut des statistiques) ──
+
+@bp.route('/api/settings/school-year', methods=['GET'])
+def api_school_year_get():
+    """Retourne la période de l'année scolaire utilisée par les statistiques."""
+    db = get_db()
+    try:
+        return jsonify({'success': True, 'data': get_school_year(db)})
+    finally:
+        db.close()
+
+
+@bp.route('/api/settings/school-year', methods=['PUT'])
+def api_school_year_put():
+    """Configure l'année scolaire de date à date (dates vides → valeurs par défaut)."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    try:
+        config = set_school_year(data.get('debut'), data.get('fin'), db=db)
+        return jsonify({'success': True, 'data': config})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        db.close()
 
 
 # ── Statut machines ──

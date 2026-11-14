@@ -877,8 +877,9 @@
                             <textarea class="form-control" id="fablabDesc" rows="3" placeholder="Décrivez votre Fablab..."></textarea>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label"><i class="bi bi-calendar-range me-1"></i> Année scolaire</label>
+                            <label class="form-label"><i class="bi bi-calendar-range me-1"></i> Année scolaire (libellé des exports)</label>
                             <input type="text" class="form-control" id="fablabAnnee" placeholder="Ex: 2025-2026">
+                            <div class="form-text">Texte affiché dans les exports. La période utilisée par les statistiques se configure plus bas.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label"><i class="bi bi-image me-1"></i> Logo du Fablab</label>
@@ -913,6 +914,38 @@
             <div class="alert alert-info mt-3 small">
                 <i class="bi bi-info-circle me-1"></i>
                 Ces informations sont stockées localement sur ce navigateur. Elles apparaissent dans les exports HTML et PDF des statistiques.
+            </div>
+
+            <div class="card border-0 shadow-sm mt-3">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-calendar-range text-primary"></i>
+                    <strong>Année scolaire des statistiques</strong>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Période affichée par défaut sur la page Statistiques. Configurez-la de date à date :
+                        les années précédentes restent consultables depuis le sélecteur d'année scolaire.
+                    </p>
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="form-label"><i class="bi bi-calendar-event me-1"></i> Début</label>
+                            <input type="date" class="form-control" id="schoolYearDebut">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label"><i class="bi bi-calendar-check me-1"></i> Fin</label>
+                            <input type="date" class="form-control" id="schoolYearFin">
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="saveSchoolYear()">
+                            <i class="bi bi-check-lg me-1"></i>Enregistrer la période
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetSchoolYear()">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>Valeurs par défaut
+                        </button>
+                    </div>
+                    <div class="form-text" id="schoolYearHint"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -1127,6 +1160,7 @@ function showSection(name, btn) {
     if (btn) btn.classList.add('active');
     if (name === 'custom_fields') loadCustomFields();
     if (name === 'image_library') loadImageLibrary();
+    if (name === 'fablab_info') loadSchoolYearSettings();
 }
 
 function onReferenceDataLoaded() {
@@ -2387,6 +2421,71 @@ function updateFablabPreview(info) {
             ${info.web ? `<div class="col-12"><i class="bi bi-globe me-1 text-info"></i> <a href="${info.web}" target="_blank">${info.web}</a></div>` : ''}
         </div>
     `;
+}
+
+// ========== ANNÉE SCOLAIRE (STATISTIQUES) ==========
+async function loadSchoolYearSettings() {
+    try {
+        const res = await fetch('/api/settings/school-year');
+        const body = await res.json();
+        if (!body.success) return;
+        applySchoolYearForm(body.data || {});
+    } catch (error) {
+        console.error('Erreur chargement année scolaire:', error);
+    }
+}
+
+function applySchoolYearForm(data) {
+    document.getElementById('schoolYearDebut').value = data.debut || '';
+    document.getElementById('schoolYearFin').value = data.fin || '';
+    const hint = document.getElementById('schoolYearHint');
+    hint.textContent = data.configured
+        ? `Période enregistrée : année scolaire ${data.label}.`
+        : `Valeurs par défaut : année scolaire ${data.label} (1er septembre → 31 août).`;
+}
+
+async function saveSchoolYear() {
+    const debut = document.getElementById('schoolYearDebut').value;
+    const fin = document.getElementById('schoolYearFin').value;
+    if ((debut && !fin) || (!debut && fin)) {
+        showToast("Renseignez les deux dates de l'année scolaire", 'error');
+        return;
+    }
+    try {
+        const res = await fetch('/api/settings/school-year', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ debut, fin }),
+        });
+        const body = await res.json();
+        if (!body.success) {
+            showToast(body.error || 'Erreur année scolaire', 'error');
+            return;
+        }
+        applySchoolYearForm(body.data || {});
+        showToast('Année scolaire enregistrée');
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+    }
+}
+
+async function resetSchoolYear() {
+    try {
+        const res = await fetch('/api/settings/school-year', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        const body = await res.json();
+        if (!body.success) {
+            showToast(body.error || 'Erreur année scolaire', 'error');
+            return;
+        }
+        applySchoolYearForm(body.data || {});
+        showToast('Année scolaire réinitialisée');
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+    }
 }
 
 // ================================

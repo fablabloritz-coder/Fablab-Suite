@@ -1,5 +1,5 @@
 <div class="widget widget-compteurs" id="widget-compteurs-{{ widget_id }}" data-widget-code="compteurs">
-    <h3><i class="bi bi-bar-chart"></i> Compteurs Fabtrack</h3>
+    <h3><i class="bi bi-bar-chart"></i> Compteurs Fabtrack <small class="js-periode" style="font-size:0.62em;opacity:0.7;font-weight:500;"></small></h3>
     <div class="compteurs-grid js-compteurs-grid">
         <div class="compteur-item"><div class="compteur-value">--</div><div class="compteur-label">Interventions</div></div>
         <div class="compteur-item"><div class="compteur-value">--</div><div class="compteur-label">Filament 3D</div></div>
@@ -65,22 +65,30 @@
 
     const config = {{ config | tojson | safe }};
     const sourceId = config.source_id || null;
+    const periode = config.periode || 'annee_scolaire';
 
     async function refresh() {
-        const store = window.FabBoardStore;
         let stats = {};
         let errorMsg = '';
+        let periodeLabel = '';
 
-        if (sourceId && store && store.getSource(sourceId)) {
-            const sd = store.getSource(sourceId);
-            stats = sd.summary || sd;
-        } else if (store && store.data) {
-            stats = store.data.fabtrack_stats || {};
-            errorMsg = store.data.fabtrack_error || '';
-        } else {
-            return;
+        try {
+            const qs = new URLSearchParams({ periode });
+            if (sourceId) qs.set('source_id', sourceId);
+            const resp = await fetch(`/api/fabtrack/summary?${qs}`);
+            const body = await resp.json();
+            if (body.success) {
+                stats = body.summary || {};
+                periodeLabel = body.periode_label || '';
+            } else {
+                errorMsg = body.error || 'Fabtrack indisponible';
+            }
+        } catch (e) {
+            errorMsg = 'Erreur réseau';
         }
 
+        const periodeEl = root.querySelector('.js-periode');
+        if (periodeEl) periodeEl.textContent = periodeLabel ? `— ${periodeLabel}` : '';
         render(stats, errorMsg);
     }
 

@@ -1035,6 +1035,16 @@ const ECHELLE_FIELD = {
     ], default: '1'
 };
 
+const PERIODE_FIELD = {
+    key: 'periode', label: 'Période affichée', type: 'select', options: [
+        { value: 'annee_scolaire', label: 'Année scolaire en cours' },
+        { value: 'mois', label: 'Mois en cours' },
+        { value: 'semaine', label: 'Semaine en cours' },
+        { value: 'jour', label: "Aujourd'hui" },
+        { value: 'cumul', label: 'Cumul depuis le début' }
+    ], default: 'annee_scolaire'
+};
+
 const WIDGET_CONFIG_DEFINITIONS = {
     horloge: {
         titre: 'Horloge',
@@ -1082,6 +1092,7 @@ const WIDGET_CONFIG_DEFINITIONS = {
         titre: 'Compteurs Fabtrack',
         fields: [
             { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
+            PERIODE_FIELD,
             { key: 'afficher_en_attente', label: 'Afficher "À faire"', type: 'checkbox', default: true },
             { key: 'afficher_en_cours', label: 'Afficher "En cours"', type: 'checkbox', default: true },
             { key: 'afficher_termines', label: 'Afficher "Terminées"', type: 'checkbox', default: true },
@@ -1092,6 +1103,7 @@ const WIDGET_CONFIG_DEFINITIONS = {
         titre: 'Activités Fabtrack',
         fields: [
             { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
+            PERIODE_FIELD,
             { key: 'nombre_max', label: "Nombre max d'activités", type: 'number', default: 5, min: 1, max: 20 },
             { key: 'filtre_urgence', label: 'Filtrer par urgence', type: 'select', options: [
                 { value: '', label: 'Toutes' },
@@ -1141,11 +1153,8 @@ const WIDGET_CONFIG_DEFINITIONS = {
         titre: 'Stats Fabtrack',
         fields: [
             { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
-            { key: 'periode', label: 'Période', type: 'select', options: [
-                { value: 'jour', label: "Aujourd'hui" },
-                { value: 'semaine', label: 'Cette semaine' },
-                { value: 'mois', label: 'Ce mois' }
-            ], default: 'jour' },
+            PERIODE_FIELD,
+            { key: 'nombre_max', label: "Nombre max de types affichés (0 = tous)", type: 'number', default: 0, min: 0, max: 50 },
             ECHELLE_FIELD
         ]
     },
@@ -1153,6 +1162,7 @@ const WIDGET_CONFIG_DEFINITIONS = {
         titre: 'Consommations Fabtrack',
         fields: [
             { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
+            PERIODE_FIELD,
             { key: 'nombre_max', label: 'Nombre max de consommations', type: 'number', default: 10, min: 1, max: 100 },
             ECHELLE_FIELD
         ]
@@ -1270,11 +1280,8 @@ const WIDGET_CONFIG_DEFINITIONS = {
         titre: 'Stats Fabtrack',
         fields: [
             { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
-            { key: 'periode', label: 'Période', type: 'select', options: [
-                { value: 'jour', label: "Aujourd'hui" },
-                { value: 'semaine', label: 'Cette semaine' },
-                { value: 'mois', label: 'Ce mois' }
-            ], default: 'jour' },
+            PERIODE_FIELD,
+            { key: 'nombre_max', label: "Nombre max de types affichés (0 = tous)", type: 'number', default: 0, min: 0, max: 50 },
             ECHELLE_FIELD
         ]
     },
@@ -1282,6 +1289,7 @@ const WIDGET_CONFIG_DEFINITIONS = {
         titre: 'Consommations Fabtrack',
         fields: [
             { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
+            PERIODE_FIELD,
             { key: 'nombre_max', label: 'Nombre max de consommations', type: 'number', default: 10, min: 1, max: 100 },
             ECHELLE_FIELD
         ]

@@ -15,7 +15,10 @@ from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DATA_DIR, 'fabtrack.db')
-FABTRACK_SCHEMA_VERSION = 2026050102
+FABTRACK_SCHEMA_VERSION = 2026111401
+
+ANNEE_SCOLAIRE_DEBUT_KEY = 'annee_scolaire_debut'
+ANNEE_SCOLAIRE_FIN_KEY = 'annee_scolaire_fin'
 
 SETUP_STATE_KEY = 'setup_state'
 SETUP_PACK_KEY = 'starter_pack'
@@ -78,6 +81,123 @@ def _set_param(db, key, value):
 
     _ensure_parametres_table(db)
     set_param(db, key, value)
+
+
+# ============================================================
+# ANNÉE SCOLAIRE (période des statistiques)
+# ============================================================
+
+def _parse_iso_date(value):
+    """Retourne une date à partir de 'AAAA-MM-JJ', ou None."""
+    try:
+        return datetime.strptime(str(value).strip(), '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return None
+
+
+def default_school_year_bounds(today=None):
+    """Bornes par défaut : 1er septembre → 31 août de l'année scolaire courante."""
+    today = today or datetime.now().date()
+    start_year = today.year if today.month >= 9 else today.year - 1
+    return f'{start_year}-09-01', f'{start_year + 1}-08-31'
+
+
+def _shift_years(value, delta):
+    """Décale une date 'AAAA-MM-JJ' de N années (gère le 29 février)."""
+    day = _parse_iso_date(value)
+    if not day or not delta:
+        return value
+    try:
+        return day.replace(year=day.year + delta).isoformat()
+    except ValueError:
+        return day.replace(year=day.year + delta, day=28).isoformat()
+
+
+def get_school_year(db=None):
+    """Retourne la période de l'année scolaire utilisée par les statistiques.
+
+    Les dates sont paramétrables ; à défaut, le 1er septembre → 31 août
+    de l'année scolaire en cours est utilisé.
+    """
+    own_conn = db is None
+    if own_conn:
+        db = get_db()
+    try:
+        debut = _get_param(db, ANNEE_SCOLAIRE_DEBUT_KEY, '')
+        fin = _get_param(db, ANNEE_SCOLAIRE_FIN_KEY, '')
+        configured = bool(_parse_iso_date(debut) and _parse_iso_date(fin))
+        if not configured:
+            debut, fin = default_school_year_bounds()
+        return {
+            'debut': debut,
+            'fin': fin,
+            'label': f'{debut[:4]}-{fin[:4]}',
+            'configured': configured,
+        }
+    finally:
+        if own_conn:
+            db.close()
+
+
+def set_school_year(debut=None, fin=None, db=None):
+    """Enregistre la période de l'année scolaire (dates vides → retour aux défauts)."""
+    own_conn = db is None
+    if own_conn:
+        db = get_db()
+    try:
+        _ensure_parametres_table(db)
+        if not debut and not fin:
+            db.execute(
+                'DELETE FROM parametres WHERE cle IN (?, ?)',
+                (ANNEE_SCOLAIRE_DEBUT_KEY, ANNEE_SCOLAIRE_FIN_KEY),
+            )
+            db.commit()
+            return get_school_year(db)
+
+        date_debut = _parse_iso_date(debut)
+        date_fin = _parse_iso_date(fin)
+        if not date_debut or not date_fin:
+            raise ValueError('Dates invalides (format attendu AAAA-MM-JJ)')
+        if date_debut > date_fin:
+            raise ValueError('La date de début doit précéder la date de fin')
+
+        _set_param(db, ANNEE_SCOLAIRE_DEBUT_KEY, date_debut.isoformat())
+        _set_param(db, ANNEE_SCOLAIRE_FIN_KEY, date_fin.isoformat())
+        return get_school_year(db)
+    finally:
+        if own_conn:
+            db.close()
+
+
+def list_school_years(db=None):
+    """Liste les années scolaires connues (année en cours puis les précédentes)."""
+    own_conn = db is None
+    if own_conn:
+        db = get_db()
+    try:
+        config = get_school_year(db)
+        current_year = int(config['debut'][:4])
+        row = db.execute('SELECT MIN(date_saisie) AS plus_ancienne FROM consommations').fetchone()
+        oldest = (row['plus_ancienne'] if row else '') or ''
+        try:
+            oldest_year = int(oldest[:4])
+        except (TypeError, ValueError):
+            oldest_year = current_year
+        oldest_year = min(oldest_year, current_year)
+
+        years = []
+        for year in range(current_year, oldest_year - 1, -1):
+            delta = year - current_year
+            years.append({
+                'debut': _shift_years(config['debut'], delta),
+                'fin': _shift_years(config['fin'], delta),
+                'label': f'{year}-{year + 1}',
+                'en_cours': delta == 0,
+            })
+        return config, years
+    finally:
+        if own_conn:
+            db.close()
 
 
 def _has_meaningful_data(c):
@@ -542,6 +662,7 @@ def init_db():
         priorite INTEGER DEFAULT 0 CHECK(priorite IN (0,1,2)),
         ordre INTEGER DEFAULT 0,
         date_echeance TEXT DEFAULT NULL,
+        date_creation TEXT DEFAULT NULL,
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime')),
         FOREIGN KEY (category_id) REFERENCES mission_categories(id)
@@ -757,6 +878,9 @@ def _ensure_mission_categories_schema(c):
     mcols = [r[1] for r in c.execute("PRAGMA table_info(missions)").fetchall()]
     if 'category_id' not in mcols:
         c.execute("ALTER TABLE missions ADD COLUMN category_id INTEGER")
+    if 'date_creation' not in mcols:
+        # Pas de backfill : les missions antérieures n'ont pas de date de création.
+        c.execute("ALTER TABLE missions ADD COLUMN date_creation TEXT DEFAULT NULL")
     c.execute('CREATE INDEX IF NOT EXISTS idx_missions_category ON missions(category_id)')
 
     # Migration idempotente : champ description sur les catégories
@@ -1305,8 +1429,8 @@ def generate_demo_data():
 
         for titre, description, statut, priorite, ordre, echeance in demo_missions:
             c.execute('''INSERT OR IGNORE INTO missions
-                       (titre, description, statut, priorite, ordre, date_echeance)
-                       VALUES (?,?,?,?,?,?)''',
+                       (titre, description, statut, priorite, ordre, date_echeance, date_creation)
+                       VALUES (?,?,?,?,?,?,datetime('now','localtime'))''',
                       (titre, description, statut, priorite, ordre, echeance))
 
         _backfill_mission_events(c)
