@@ -1,0 +1,47 @@
+name: GitHub release
+
+# Un tag <app>-vX.Y.Z poussé publie la release correspondante avec les notes
+# déjà présentes dans static/release-notes.json (aucune note n'est inventée ici).
+on:
+  push:
+    tags:
+      - "*-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release du tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Préparer le corps de la release
+        id: body
+        run: |
+          python3 release_publish.py --tag "$GITHUB_REF_NAME" --output release-body.md > release-title.txt
+          echo "title=$(cat release-title.txt)" >> "$GITHUB_OUTPUT"
+          echo "--- corps ---"
+          cat release-body.md
+
+      - name: Publier la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Titre passé par variable d'environnement : un titre contenant des
+          # guillemets ne doit pas pouvoir casser la commande shell.
+          RELEASE_TITLE: ${{ steps.body.outputs.title }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release déjà publiée pour $GITHUB_REF_NAME : rien à faire."
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$RELEASE_TITLE" \
+            --notes-file release-body.md

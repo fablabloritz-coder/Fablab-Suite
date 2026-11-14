@@ -201,6 +201,10 @@ git tag -a fabtrack-v2.7.0 -m "Fabtrack 2.7.0 - garde-fou contre les doubles sai
 git push origin main --tags
 ```
 
+Le push du tag publie automatiquement une GitHub Release titrée d'après l'entrée de notes
+correspondante (`.github/workflows/github-release.yml`, corps préparé par `release_publish.py`) :
+un tag sans entrée de notes fait échouer ce workflow plutôt que de créer une release vide.
+
 4. Contrôler la cohérence version / notes et qu'il ne reste rien en attente :
 
 ```bash
