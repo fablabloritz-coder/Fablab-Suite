@@ -402,7 +402,7 @@ def main() -> None:
                 raw = {}
         payload = dict(raw) if isinstance(raw, dict) else {"_source": "manuel"}
         payload["history"] = existing_history
-        output = json.dumps(payload, ensure_ascii=False, indent=2)
+        output = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
         if args.dry_run:
             print(output)
             return
@@ -454,7 +454,7 @@ def main() -> None:
     apply_release_links(history, app_slug, get_app_tag_versions(app_path, app_slug) | {args.version})
 
     payload = {"history": history, "_source": source}
-    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    output = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
     if args.dry_run:
         print(output)
