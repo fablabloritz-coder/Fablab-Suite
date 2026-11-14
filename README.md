@@ -137,6 +137,76 @@ pip install eel paramiko
 python fabsuite_ssh_gui.py
 ```
 
+## Notes de version (popup « Nouveautés »)
+
+Chaque application affiche une popup des dernières évolutions, pilotée par `static/release-notes.json`
+(FabHome, Fabtrack, PretGo, FabBoard, FabInventory). Le fichier contient un tableau `history`, version la
+plus récente en tête :
+
+```json
+{
+  "history": [
+    {
+      "version": "2.7.0",
+      "date": "2026-11-14",
+      "title": "Garde-fou contre les doubles saisies",
+      "notes": ["Une saisie identique a moins de deux minutes est signalee."]
+    }
+  ],
+  "_source": "manuel"
+}
+```
+
+La popup s'affiche une fois par signature d'historique (clé `localStorage` propre à chaque application,
+par exemple `fabtrack:last_seen_release`) et reste consultable via le lien « Nouveautés » du pied de page.
+Les notes sont injectées en HTML : le gras `<strong>` est utilisé dans PretGo. L'historique est plafonné
+à 30 entrées par le générateur.
+
+### Convention de tags
+
+Les tags sont **préfixés par l'application**, car le dépôt héberge plusieurs logiciels qui numérotent
+leurs versions indépendamment (`v1.7.1` de FabHome et `v1.9.0` de PretGo ne doivent pas se confondre) :
+
+| Application | Préfixe | Exemple |
+|---|---|---|
+| Fabtrack | `fabtrack-v` | `fabtrack-v2.7.0` |
+| FabBoard | `fabboard-v` | `fabboard-v3.5.1` |
+| PretGo | `pretgo-v` | `pretgo-v1.9.0` |
+| FabHome | `fabhome-v` | `fabhome-v1.7.1` |
+| FabInventory | `fabinventory-v` | `fabinventory-v2.1.0` |
+
+Les tags sont annotés et posés sur le commit de la release. Le générateur s'en sert pour savoir depuis
+quel point lire l'historique.
+
+### Publier une version
+
+1. Mettre à jour le numéro de version dans le code (manifest `routes/__init__.py`, et le pied de page
+   quand il affiche la version, comme Fabtrack).
+2. Générer l'entrée de notes (toujours en `--dry-run` d'abord) :
+
+```bash
+python release_notes_gen.py --app ./Fabtrack --version 2.7.0 --title "Garde-fou contre les doubles saisies" --dry-run
+python release_notes_gen.py --app ./Fabtrack --version 2.7.0 --title "Garde-fou contre les doubles saisies"
+```
+
+Sans `--since`, le générateur repart du dernier tag `<app>-v*` et ne garde que les commits touchant le
+dossier de l'application. S'il n'existe aucun tag, il lit les 50 derniers commits et écarte les notes
+déjà publiées. Une entrée de même numéro de version est remplacée, les autres sont conservées.
+`--override "Note A" "Note B"` permet d'écrire les notes à la main.
+
+3. Poser le tag et publier :
+
+```bash
+git tag -a fabtrack-v2.7.0 -m "Fabtrack 2.7.0 - garde-fou contre les doubles saisies"
+git push origin main --tags
+```
+
+4. Contrôler qu'il ne reste rien en attente (le générateur ne doit proposer aucune note) :
+
+```bash
+python release_notes_gen.py --app ./Fabtrack --version 9.9.9 --dry-run
+```
+
 ## Maintenance serveur
 
 ```bash
