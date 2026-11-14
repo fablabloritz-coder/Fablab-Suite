@@ -979,7 +979,24 @@ async function doSubmit(andNew) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
-        const result = await res.json();
+        let result = await res.json();
+
+        // Garde-fou serveur : saisie identique (double clic) → confirmation explicite.
+        if (!result.success && result.code === 'doublon') {
+            const confirmer = window.confirm(
+                `${result.error}\n\nEnregistrer quand même cette saisie ?`
+            );
+            if (!confirmer) return;
+
+            payload.confirmer_doublon = 1;
+            const retry = await fetch('/api/consommations/batch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            result = await retry.json();
+        }
+
         if (result.success) {
             const n = result.count || actions.length;
             showToast(`${n} action(s) enregistrée(s) !`);

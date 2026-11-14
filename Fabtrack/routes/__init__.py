@@ -35,7 +35,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id='fabtrack',
         name='Fabtrack',
-        version='2.6.0',
+        version='2.7.0',
         description='Suivi des consommations machines et matériaux du FabLab',
         capabilities=['stats', 'machines', 'consumptions', 'stock', 'tasks', 'x-raise3d'],
         widgets=[

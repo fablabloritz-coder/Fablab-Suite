@@ -20,6 +20,9 @@ Met à jour static/release-notes.json dans le dossier de l'app : la nouvelle ent
 est ajoutée en tête de "history" (les versions précédentes sont conservées), et
 une entrée de même numéro de version est remplacée au lieu d'être dupliquée.
 
+Conseil : poser un tag par version (git tag v1.4.0) et passer --since v1.3.0 ;
+sans tag, le générateur lit HEAD~50 et écarte les notes déjà publiées.
+
 Filtrage automatique des commits :
   - Garde   : feat, feat(*), fix, fix(*) (hors fixes de test)
   - Exclut  : test, chore, wip, debug, refactor, docs, style, ci, build
@@ -263,6 +266,9 @@ def main() -> None:
         print(f"[ERREUR] Dossier static introuvable : {static_dir}", file=sys.stderr)
         sys.exit(1)
 
+    dest = static_dir / "release-notes.json"
+    existing_history = load_existing_history(dest)
+
     # ── Notes ──────────────────────────────────────────────────
     if args.override:
         notes = args.override
@@ -270,6 +276,16 @@ def main() -> None:
     else:
         notes = build_notes_from_git(app_path, args.since)
         source = "git"
+
+        # Sans tag, la lecture git repart de HEAD~50 : on écarte les notes déjà
+        # publiées dans l'historique pour ne pas les reproposer.
+        if not args.since:
+            known = {
+                str(note).strip().lower()
+                for entry in existing_history
+                for note in (entry.get("notes") or [])
+            }
+            notes = [note for note in notes if note.strip().lower() not in known]
 
     if not notes:
         print(
@@ -289,8 +305,10 @@ def main() -> None:
         "notes": notes,
     }
 
-    dest = static_dir / "release-notes.json"
-    history = [e for e in load_existing_history(dest) if e.get("version") != args.version]
+    if any(str(entry.get("version", "")) == str(args.version) for entry in existing_history):
+        print(f"[INFO] Version {args.version} deja presente : elle sera remplacee.", file=sys.stderr)
+
+    history = [e for e in existing_history if e.get("version") != args.version]
     history.insert(0, entry)
     if args.max_entries > 0:
         history = history[: args.max_entries]

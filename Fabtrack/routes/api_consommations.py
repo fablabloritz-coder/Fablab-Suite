@@ -460,6 +460,94 @@ def _decrease_stock_from_action(db, consommation_id, action):
     return True
 
 
+DUPLICATE_WINDOW_SECONDS = 120
+
+
+def _to_number(value):
+    try:
+        if value in (None, ''):
+            return 0.0
+        return round(float(value), 3)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _find_recent_duplicate(db, payload, date_saisie, surface=None):
+    """Id d'une consommation identique saisie dans la fenêtre courte, sinon None.
+
+    Sert à repérer un double clic sur « Enregistrer » : même type, même machine,
+    même matériau, mêmes quantités et même projet à moins de deux minutes.
+    """
+    try:
+        type_id = int(payload.get('type_activite_id') or 0)
+    except (TypeError, ValueError):
+        return None
+    if not type_id:
+        return None
+
+    try:
+        machine_id = int(payload.get('machine_id') or 0)
+    except (TypeError, ValueError):
+        machine_id = 0
+    try:
+        materiau_id = int(payload.get('materiau_id') or 0)
+    except (TypeError, ValueError):
+        materiau_id = 0
+
+    date_saisie = date_saisie or datetime.now().strftime('%Y-%m-%d %H:%M')
+    window = f'{DUPLICATE_WINDOW_SECONDS} seconds'
+
+    rows = db.execute(
+        '''
+        SELECT id, quantite, poids_grammes, surface_m2, nb_feuilles, projet_nom, preparateur_id
+        FROM consommations
+        WHERE type_activite_id = ?
+          AND IFNULL(machine_id, 0) = ?
+          AND IFNULL(materiau_id, 0) = ?
+          AND datetime(date_saisie) BETWEEN datetime(?, ?) AND datetime(?, ?)
+        ''',
+        (type_id, machine_id, materiau_id, date_saisie, f'-{window}', date_saisie, f'+{window}'),
+    ).fetchall()
+
+    projet = str(payload.get('projet_nom') or '').strip().lower()
+    try:
+        preparateur_id = int(payload.get('preparateur_id') or 0)
+    except (TypeError, ValueError):
+        preparateur_id = 0
+
+    cible = (
+        _to_number(payload.get('quantite')),
+        _to_number(payload.get('poids_grammes')),
+        _to_number(surface if surface is not None else payload.get('surface_m2')),
+        _to_number(payload.get('nb_feuilles')),
+    )
+
+    for row in rows:
+        if str(row['projet_nom'] or '').strip().lower() != projet:
+            continue
+        if preparateur_id and row['preparateur_id'] and int(row['preparateur_id']) != preparateur_id:
+            continue
+        candidat = (
+            _to_number(row['quantite']),
+            _to_number(row['poids_grammes']),
+            _to_number(row['surface_m2']),
+            _to_number(row['nb_feuilles']),
+        )
+        if candidat == cible:
+            return row['id']
+    return None
+
+
+def _duplicate_response(duplicate_id, message):
+    """Réponse 409 invitant à confirmer explicitement un doublon."""
+    return jsonify({
+        'success': False,
+        'code': 'doublon',
+        'duplicate_id': duplicate_id,
+        'error': message,
+    }), 409
+
+
 # ── CRUD Consommations ──
 
 @bp.route('/api/consommations', methods=['GET'])
@@ -573,6 +661,15 @@ def api_create_consommation():
             return jsonify({'success': False, 'error': validation_error}), 400
 
         surface = _surface_from_action(payload)
+
+        if not _to_bool_int(payload.get('confirmer_doublon', 0)):
+            duplicate_id = _find_recent_duplicate(db, payload, payload.get('date_saisie'), surface)
+            if duplicate_id:
+                return _duplicate_response(
+                    duplicate_id,
+                    'Une saisie identique a déjà été enregistrée il y a moins de deux minutes.',
+                )
+
         referent_links = _resolve_referent_links(db, payload.get('referent_ids', payload.get('referent_id')))
         primary_referent = referent_links[0] if referent_links else None
 
@@ -645,6 +742,7 @@ def api_create_consommation_batch():
         'referent_ids': data.get('referent_ids', data.get('referent_id')),
         'projet_nom': data.get('projet_nom', ''),
         'projet_personnel': _to_bool_int(data.get('projet_personnel', 0)),
+        'confirmer_doublon': _to_bool_int(data.get('confirmer_doublon', 0)),
     }
 
     db = get_db()
@@ -666,6 +764,21 @@ def api_create_consommation_batch():
                 return jsonify({'success': False, 'error': f'Action {index}: {validation_error}'}), 400
 
             surface = _surface_from_action(action_payload)
+
+            if not common['confirmer_doublon']:
+                # Le projet et le préparateur viennent de la saisie commune, pas de l'action.
+                detection_payload = dict(action_payload)
+                detection_payload['projet_nom'] = common.get('projet_nom', '')
+                detection_payload['preparateur_id'] = common.get('preparateur_id')
+                duplicate_id = _find_recent_duplicate(
+                    db, detection_payload, common['date_saisie'], surface
+                )
+                if duplicate_id:
+                    db.rollback()
+                    return _duplicate_response(
+                        duplicate_id,
+                        f'Action {index} : saisie identique déjà enregistrée il y a moins de deux minutes.',
+                    )
 
             nom_type = _resolve_nom(db, 'types_activite', action_payload.get('type_activite_id'))
             nom_mach = _resolve_nom(db, 'machines', action_payload.get('machine_id'))

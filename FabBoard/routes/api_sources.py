@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify
 from models import get_db
 import json
 import os
+import time
 import requests as http_requests
 from urllib.parse import quote, urlparse
 from datetime import datetime, timedelta
@@ -89,6 +90,37 @@ def _request_json(base_url, path, timeout=4):
 FABTRACK_SUMMARY_PATH = '/api/stats/school-year-summary'
 FABTRACK_SUMMARY_FALLBACK_PATH = '/api/stats/summary'
 
+# Cache mémoire court des réponses Fabtrack : plusieurs widgets affichés en même
+# temps interrogent la même source et la même période au même rafraîchissement.
+FABTRACK_CACHE_TTL = float(os.environ.get('FABBOARD_FABTRACK_CACHE_TTL', '10'))
+_FABTRACK_CACHE_MAX_ENTRIES = 200
+_FABTRACK_RESPONSE_CACHE = {}
+
+
+def clear_fabtrack_cache():
+    """Vide le cache mémoire des réponses Fabtrack."""
+    _FABTRACK_RESPONSE_CACHE.clear()
+
+
+def _cached_request_json(base_url, path, timeout=4, ttl=None):
+    """GET JSON Fabtrack avec cache court (seules les réponses valides sont gardées)."""
+    ttl = FABTRACK_CACHE_TTL if ttl is None else ttl
+    if ttl <= 0:
+        return _request_json(base_url, path, timeout=timeout)
+
+    key = (_normalize_base_url(base_url), path)
+    now = time.monotonic()
+    cached = _FABTRACK_RESPONSE_CACHE.get(key)
+    if cached and cached[0] > now:
+        return cached[1], cached[2], cached[3]
+
+    ok, data, err = _request_json(base_url, path, timeout=timeout)
+    if ok:
+        if len(_FABTRACK_RESPONSE_CACHE) >= _FABTRACK_CACHE_MAX_ENTRIES:
+            _FABTRACK_RESPONSE_CACHE.clear()
+        _FABTRACK_RESPONSE_CACHE[key] = (now + ttl, ok, data, err)
+    return ok, data, err
+
 
 def _request_fabtrack_summary(base_url):
     """Résumé Fabtrack borné à l'année scolaire configurée.
@@ -96,10 +128,10 @@ def _request_fabtrack_summary(base_url):
     Repli sur le cumul historique si le Fabtrack interrogé est antérieur
     à l'endpoint dédié.
     """
-    ok, data, err = _request_json(base_url, FABTRACK_SUMMARY_PATH)
+    ok, data, err = _cached_request_json(base_url, FABTRACK_SUMMARY_PATH)
     if ok:
         return True, data, ''
-    return _request_json(base_url, FABTRACK_SUMMARY_FALLBACK_PATH)
+    return _cached_request_json(base_url, FABTRACK_SUMMARY_FALLBACK_PATH)
 
 
 FABTRACK_PERIODS = ('jour', 'semaine', 'mois', 'annee_scolaire', 'cumul')
@@ -727,6 +759,9 @@ def fabtrack_summary():
     if periode not in FABTRACK_PERIODS:
         periode = 'annee_scolaire'
 
+    if request.args.get('refresh'):
+        clear_fabtrack_cache()
+
     base_url = _source_base_url(request.args.get('source_id'))
 
     if periode == 'annee_scolaire':
@@ -738,7 +773,7 @@ def fabtrack_summary():
         path = '/api/stats/summary'
         if debut:
             path += f'?date_debut={debut}&date_fin={fin}'
-        ok, data, err = _request_json(base_url, path)
+        ok, data, err = _cached_request_json(base_url, path)
 
     if not ok or not isinstance(data, dict):
         return jsonify({'success': False, 'error': err or 'Fabtrack indisponible'}), 502
@@ -762,6 +797,9 @@ def fabtrack_consommations():
     except (TypeError, ValueError):
         limit = 10
 
+    if request.args.get('refresh'):
+        clear_fabtrack_cache()
+
     base_url = _source_base_url(request.args.get('source_id'))
 
     if periode == 'annee_scolaire':
@@ -775,12 +813,12 @@ def fabtrack_consommations():
         path = '/api/stats/summary'
         if debut:
             path += f'?date_debut={debut}&date_fin={fin}'
-        ok_summary, summary, err_summary = _request_json(base_url, path)
+        ok_summary, summary, err_summary = _cached_request_json(base_url, path)
 
     params = [f'per_page={limit}', 'page=1']
     if debut:
         params.extend([f'date_debut={debut}', f'date_fin={fin}'])
-    ok_conso, conso, err_conso = _request_json(base_url, '/api/consommations?' + '&'.join(params))
+    ok_conso, conso, err_conso = _cached_request_json(base_url, '/api/consommations?' + '&'.join(params))
 
     if not ok_conso and not ok_summary:
         return jsonify({'success': False, 'error': err_conso or err_summary or 'Fabtrack indisponible'}), 502

@@ -77,7 +77,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id="fabboard",
         name="FabBoard",
-        version="3.5.0",
+        version="3.5.1",
         description="Dashboard TV temps réel pour le FabLab",
         icon="bi-tv",
         color="#6f42c1",
