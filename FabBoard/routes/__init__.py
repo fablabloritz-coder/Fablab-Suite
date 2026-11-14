@@ -7,7 +7,7 @@ from fabsuite_core.manifest import create_fabsuite_blueprint
 from fabsuite_core.widgets import counter
 
 # Source unique de la version : manifeste FabSuite et pages (À propos).
-APP_VERSION = "3.5.1"
+APP_VERSION = "3.5.2"
 
 
 def _health_check():

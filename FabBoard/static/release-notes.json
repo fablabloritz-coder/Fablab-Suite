@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "3.5.2",
+      "date": "2026-11-14",
+      "title": "Version affichée dans À propos",
+      "notes": [
+        "La carte « À propos » des paramètres affiche la version réelle de FabBoard au lieu d'un « v1.0 » figé.",
+        "Le numéro vient de la constante APP_VERSION, désormais seule source de version côté serveur et dans les templates."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.5.2"
+    },
+    {
       "version": "3.5.1",
       "date": "2026-11-14",
       "title": "Widgets plus légers sur Fabtrack",

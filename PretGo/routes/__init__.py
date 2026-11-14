@@ -1,5 +1,5 @@
 """
-PretGo v1.9.0 — Enregistrement des blueprints.
+PretGo v1.9.1 — Enregistrement des blueprints.
 """
 
 from database import get_setting
@@ -7,7 +7,7 @@ from utils import get_app_db, calcul_depassement_heures, TYPE_LONGUE_DUREE
 from fabsuite_core.widgets import counter, item_list, chart, notification
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.9.1"
 
 
 # ── Callbacks FabSuite widgets ──

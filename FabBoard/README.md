@@ -527,6 +527,15 @@ Navigation :
 
 <!-- changelog:start -->
 
+### v3.5.2 — 2026-11-14
+
+#### Version affichée dans À propos
+
+- La carte « À propos » des paramètres affiche la version réelle de FabBoard au lieu d'un « v1.0 » figé.
+- Le numéro vient de la constante APP_VERSION, désormais seule source de version côté serveur et dans les templates.
+
+---
+
 ### v3.5.1 — 2026-11-14
 
 #### Widgets plus légers sur Fabtrack

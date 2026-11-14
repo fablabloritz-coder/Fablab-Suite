@@ -1,6 +1,6 @@
 """
 ==============================================
-  PRETGO v1.9.0 — Gestion de Prêt de Matériel
+  PRETGO v1.9.1 — Gestion de Prêt de Matériel
   Application Flask avec base SQLite locale
 ==============================================
 Pour lancer : python app.py
