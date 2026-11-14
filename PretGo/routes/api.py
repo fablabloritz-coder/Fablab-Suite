@@ -62,7 +62,9 @@ def api_prets_actifs_personne(personne_id):
     """Retourne les emprunts actifs (non rendus) pour une personne donnée."""
     conn = get_app_db()
     prets = conn.execute('''
-        SELECT id, descriptif_objets, date_emprunt, date_retour_prevue
+        SELECT id, descriptif_objets, date_emprunt,
+               CASE WHEN type_duree = 'longue_duree' THEN NULL
+                    ELSE date_retour_prevue END AS date_retour_prevue
         FROM prets
         WHERE personne_id = ? AND retour_confirme = 0
         ORDER BY date_emprunt DESC

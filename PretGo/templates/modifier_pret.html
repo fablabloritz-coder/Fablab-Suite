@@ -311,7 +311,7 @@
                             <input type="text" name="date_retour_prevue" id="datepicker_retour"
                                    class="form-control form-control-lg" style="width: 220px"
                                    placeholder="Sélectionner une date..." readonly
-                                   value="{{ pret.date_retour_prevue or '' }}">
+                                   value="{{ '' if pret.type_duree == 'longue_duree' else (pret.date_retour_prevue or '') }}">
                         </div>
                         <div id="calendrier_inline" class="border rounded"></div>
                     </div>

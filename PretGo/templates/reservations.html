@@ -765,7 +765,8 @@
 
         planningItems.forEach(item => {
             const start = parseIsoDate(item.start);
-            const end = parseIsoDate(item.end) || start;
+            // Prêt sans échéance (longue durée) : il occupe le mois entier affiché.
+            const end = item.open ? monthEnd : (parseIsoDate(item.end) || start);
             if (!start || !end) return;
 
             const itemStart = start < monthStart ? monthStart : start;

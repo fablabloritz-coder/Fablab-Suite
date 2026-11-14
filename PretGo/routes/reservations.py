@@ -15,7 +15,7 @@ from reservations_logic import (
     parse_form_datetime_local,
 )
 from database import get_setting
-from utils import get_app_db, admin_required
+from utils import get_app_db, admin_required, TYPE_LONGUE_DUREE
 
 bp = Blueprint('reservations', __name__)
 
@@ -352,7 +352,7 @@ def reservations():
     prets_actifs = conn.execute(
         """
         SELECT p.id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
-               p.date_retour_prevue, p.descriptif_objets,
+               p.date_retour_prevue, p.type_duree, p.descriptif_objets,
                pe.nom, pe.prenom
         FROM prets p
         JOIN personnes pe ON pe.id = p.personne_id
@@ -401,13 +401,16 @@ def reservations():
         if not end_dt or end_dt < start_dt:
             end_dt = start_dt
 
+        # Prêt longue durée : pas d'échéance réelle, le planning l'étale sur le mois affiché.
+        sans_fin = p['type_duree'] == TYPE_LONGUE_DUREE
         planning_items.append({
             'kind': 'pret',
             'id': int(p['id']),
             'status': 'actif',
             'title': f"{p['nom']} {p['prenom']} — {p['descriptif_objets']}",
             'start': format_db_datetime(start_dt),
-            'end': format_db_datetime(end_dt),
+            'end': None if sans_fin else format_db_datetime(end_dt),
+            'open': sans_fin,
             'url': url_for('prets.detail_pret', pret_id=p['id']),
         })
 

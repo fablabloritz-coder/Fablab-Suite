@@ -131,6 +131,26 @@ class PretsLongueDureeTests(unittest.TestCase):
             html,
         )
 
+    def test_aucun_ecran_n_affiche_la_date_sentinelle(self):
+        """31/12/2999 est un stockage interne : aucun écran ne doit le montrer."""
+        pret = self._create('Station longue duree', 'longue_duree')
+        with self.client.session_transaction() as sess:
+            sess['admin_logged_in'] = True
+
+        pages = [
+            '/',
+            '/prets-longue-duree',
+            f"/pret/{pret['id']}",
+            f"/pret/modifier/{pret['id']}",
+            f"/retour/{pret['id']}",
+            f"/historique/personne/{self.personne_id}",
+            f"/api/personnes/{self.personne_id}/prets-actifs",
+            '/reservations',
+        ]
+        for url in pages:
+            body = self.client.get(url).get_data(as_text=True)
+            self.assertNotIn('2999', body, f"{url} affiche la date sentinelle")
+
     def test_pages_detail_et_modification(self):
         pret = self._create('Clavier', 'longue_duree')
         detail = self.client.get(f"/pret/{pret['id']}")
