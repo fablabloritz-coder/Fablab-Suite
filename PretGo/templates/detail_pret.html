@@ -69,7 +69,7 @@
                                 {% else %}
                                 <i class="bi bi-box text-primary fs-4" style="min-width:30px;text-align:center;"></i>
                                 {% endif %}
-                                <div>
+                                <div class="flex-grow-1">
                                     <div class="fw-bold">{{ item.description }}</div>
                                     {% if item.marque or item.modele %}
                                     <small class="text-muted">
@@ -78,6 +78,23 @@
                                     </small>
                                     {% endif %}
                                 </div>
+                                {% if item.retour_confirme %}
+                                <div class="text-end">
+                                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Rendu</span>
+                                    {% if item.date_retour %}
+                                    <div class="small text-muted">{{ item.date_retour | format_date }}</div>
+                                    {% endif %}
+                                </div>
+                                {% elif not pret.retour_confirme %}
+                                <form method="POST"
+                                      action="{{ url_for('prets.retourner_objet_pret', pret_id=pret.id, pm_id=item.id) }}"
+                                      class="ms-auto"
+                                      onsubmit="return confirm('Marquer cet objet comme rendu ?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-success">
+                                        <i class="bi bi-box-arrow-in-left"></i> Rendre cet objet
+                                    </button>
+                                </form>
+                                {% endif %}
                             </div>
                             {% endfor %}
                         {% elif materiel_legacy %}

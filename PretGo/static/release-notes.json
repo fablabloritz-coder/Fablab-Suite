@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "1.10.0",
+      "date": "2026-11-14",
+      "title": "Retour partiel objet par objet",
+      "notes": [
+        "<strong>Rendre un objet à la fois</strong> — la fiche d'un prêt liste chaque objet avec son bouton « Rendre cet objet » : l'objet repasse en stock et le prêt reste ouvert pour les autres.",
+        "<strong>Clôture automatique</strong> — le prêt se ferme dès que le dernier objet est rendu ; « Enregistrer le retour » et le retour en masse continuent de clôturer l'ensemble d'un coup.",
+        "<strong>Traçabilité</strong> — chaque objet porte sa propre date de retour, affichée dans la fiche du prêt."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.0"
+    },
+    {
       "version": "1.9.1",
       "date": "2026-11-14",
       "title": "Prêts longue durée hors des compteurs et date de fin masquée",

@@ -445,10 +445,70 @@ def confirmer_retour(pret_id):
         'UPDATE prets SET date_retour = ?, retour_confirme = 1, signature_retour = ? WHERE id = ?',
         (now, signature, pret_id)
     )
+    conn.execute(
+        "UPDATE pret_materiels SET retour_confirme = 1, date_retour = ? "
+        "WHERE pret_id = ? AND IFNULL(retour_confirme, 0) = 0",
+        (now, pret_id)
+    )
     liberer_materiels_pret(conn, pret_id, pret_row=pret)
     conn.commit()
     flash('Retour confirmé avec succès !', 'success')
     return redirect(url_for('prets.retour'))
+
+
+@bp.route('/pret/<int:pret_id>/retour-objet/<int:pm_id>', methods=['POST'])
+def retourner_objet_pret(pret_id, pm_id):
+    """Rend un seul objet d'un prêt : le prêt reste ouvert jusqu'au dernier objet."""
+    conn = get_app_db()
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    pret = conn.execute(
+        'SELECT id, retour_confirme FROM prets WHERE id = ?', (pret_id,)
+    ).fetchone()
+    if not pret:
+        flash('Prêt non trouvé.', 'danger')
+        return redirect(url_for('core.index'))
+    if pret['retour_confirme']:
+        flash('Ce prêt est déjà retourné.', 'warning')
+        return redirect(url_for('prets.detail_pret', pret_id=pret_id))
+
+    item = conn.execute(
+        'SELECT id, materiel_id, description, retour_confirme FROM pret_materiels '
+        'WHERE id = ? AND pret_id = ?',
+        (pm_id, pret_id),
+    ).fetchone()
+    if not item:
+        flash('Objet introuvable pour ce prêt.', 'danger')
+        return redirect(url_for('prets.detail_pret', pret_id=pret_id))
+    if item['retour_confirme']:
+        flash('Cet objet a déjà été rendu.', 'warning')
+        return redirect(url_for('prets.detail_pret', pret_id=pret_id))
+
+    conn.execute(
+        'UPDATE pret_materiels SET retour_confirme = 1, date_retour = ? WHERE id = ?',
+        (now, pm_id),
+    )
+    if item['materiel_id']:
+        conn.execute("UPDATE inventaire SET etat = 'disponible' WHERE id = ?", (item['materiel_id'],))
+
+    restants = conn.execute(
+        'SELECT COUNT(*) AS c FROM pret_materiels '
+        'WHERE pret_id = ? AND IFNULL(retour_confirme, 0) = 0',
+        (pret_id,),
+    ).fetchone()['c']
+
+    if restants == 0:
+        # Tous les objets sont rendus : le prêt se clôture comme un retour complet.
+        conn.execute(
+            'UPDATE prets SET date_retour = ?, retour_confirme = 1 WHERE id = ?',
+            (now, pret_id),
+        )
+        flash('Dernier objet rendu : le prêt est clôturé.', 'success')
+    else:
+        flash(f"{item['description']} rendu — {restants} objet(s) encore emprunté(s).", 'success')
+
+    conn.commit()
+    return redirect(url_for('prets.detail_pret', pret_id=pret_id))
 
 
 
@@ -475,6 +535,11 @@ def retour_masse():
         conn.execute(
             'UPDATE prets SET date_retour = ?, retour_confirme = 1, signature_retour = ? WHERE id = ?',
             (now, '', pid)
+        )
+        conn.execute(
+            "UPDATE pret_materiels SET retour_confirme = 1, date_retour = ? "
+            "WHERE pret_id = ? AND IFNULL(retour_confirme, 0) = 0",
+            (now, pid)
         )
         liberer_materiels_pret(conn, pid, pret_row=pret)
         nb += 1

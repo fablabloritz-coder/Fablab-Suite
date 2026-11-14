@@ -477,6 +477,16 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.0 — 2026-11-14
+
+#### Retour partiel objet par objet
+
+- <strong>Rendre un objet à la fois</strong> — la fiche d'un prêt liste chaque objet avec son bouton « Rendre cet objet » : l'objet repasse en stock et le prêt reste ouvert pour les autres.
+- <strong>Clôture automatique</strong> — le prêt se ferme dès que le dernier objet est rendu ; « Enregistrer le retour » et le retour en masse continuent de clôturer l'ensemble d'un coup.
+- <strong>Traçabilité</strong> — chaque objet porte sa propre date de retour, affichée dans la fiche du prêt.
+
+---
+
 ### v1.9.1 — 2026-11-14
 
 #### Prêts longue durée hors des compteurs et date de fin masquée

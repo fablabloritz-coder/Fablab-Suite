@@ -113,6 +113,16 @@ class RetoursRetardsTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _pm(self, pret_id, materiel_id):
+        conn = database.get_db()
+        try:
+            return conn.execute(
+                'SELECT * FROM pret_materiels WHERE pret_id = ? AND materiel_id = ?',
+                (pret_id, materiel_id),
+            ).fetchone()
+        finally:
+            conn.close()
+
     def _items_du_pret(self, pret_id):
         conn = database.get_db()
         try:
@@ -151,7 +161,64 @@ class RetoursRetardsTests(unittest.TestCase):
         self.assertEqual(self._pret(second)['retour_confirme'], 1)
         self.assertEqual(self._etats(), {'RET-A': 'disponible', 'RET-B': 'disponible'})
 
-    # ── Sortie d'un objet seul (pas de retour partiel natif) ─
+    # ── Retour partiel objet par objet ───────────────────────
+    def test_retour_partiel_garde_le_pret_ouvert(self):
+        pret_id = self._inserer_pret(
+            [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],
+            datetime.datetime.now(),
+        )
+        pm_a = self._pm(pret_id, self.materiel_a)['id']
+
+        fiche = self.client.get(f'/pret/{pret_id}')
+        self.assertEqual(fiche.status_code, 200)
+        self.assertEqual(fiche.get_data(as_text=True).count('Rendre cet objet'), 2)
+
+        resp = self.client.post(f'/pret/{pret_id}/retour-objet/{pm_a}', follow_redirects=True)
+        texte = resp.get_data(as_text=True)
+        self.assertIn('1 objet(s) encore emprunté(s)', texte)
+        self.assertIn('Rendu', texte)
+        self.assertEqual(texte.count('Rendre cet objet'), 1)
+
+        pret = self._pret(pret_id)
+        self.assertEqual(pret['retour_confirme'], 0)
+        self.assertIsNone(pret['date_retour'])
+        self.assertEqual(self._etats(), {'RET-A': 'disponible', 'RET-B': 'prete'})
+        self.assertEqual(self._pm(pret_id, self.materiel_a)['retour_confirme'], 1)
+        self.assertIsNotNone(self._pm(pret_id, self.materiel_a)['date_retour'])
+        self.assertEqual(self._pm(pret_id, self.materiel_b)['retour_confirme'], 0)
+
+    def test_retour_du_dernier_objet_cloture_le_pret(self):
+        pret_id = self._inserer_pret(
+            [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],
+            datetime.datetime.now(),
+        )
+        pm_a = self._pm(pret_id, self.materiel_a)['id']
+        pm_b = self._pm(pret_id, self.materiel_b)['id']
+
+        self.client.post(f'/pret/{pret_id}/retour-objet/{pm_a}', follow_redirects=True)
+        resp = self.client.post(f'/pret/{pret_id}/retour-objet/{pm_b}', follow_redirects=True)
+        self.assertIn('le prêt est clôturé', resp.get_data(as_text=True))
+
+        pret = self._pret(pret_id)
+        self.assertEqual(pret['retour_confirme'], 1)
+        self.assertIsNotNone(pret['date_retour'])
+        self.assertEqual(self._etats(), {'RET-A': 'disponible', 'RET-B': 'disponible'})
+
+    def test_retour_d_un_objet_deja_rendu_refuse(self):
+        pret_id = self._inserer_pret(
+            [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],
+            datetime.datetime.now(),
+        )
+        pm_a = self._pm(pret_id, self.materiel_a)['id']
+
+        self.client.post(f'/pret/{pret_id}/retour-objet/{pm_a}', follow_redirects=True)
+        resp = self.client.post(f'/pret/{pret_id}/retour-objet/{pm_a}', follow_redirects=True)
+        self.assertIn('déjà été rendu', resp.get_data(as_text=True))
+
+        self.assertEqual(self._pret(pret_id)['retour_confirme'], 0)
+        self.assertEqual(self._etats(), {'RET-A': 'disponible', 'RET-B': 'prete'})
+
+    # ── Sortie d'un objet seul par modification du prêt ──────
     def test_retrait_d_un_objet_libere_seulement_celui_ci(self):
         pret_id = self._inserer_pret(
             [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],

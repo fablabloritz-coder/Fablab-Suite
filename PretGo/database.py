@@ -1,5 +1,5 @@
 """
-PretGo v1.9.1 — Module de gestion de la base de données SQLite.
+PretGo v1.10.0 — Module de gestion de la base de données SQLite.
 Toutes les données sont stockées localement dans le dossier 'data/'.
 """
 
@@ -15,7 +15,7 @@ from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DATABASE_PATH = os.path.join(DATA_DIR, 'gestion_prets.db')
 RECOVERY_CODE_PATH = os.path.join(DATA_DIR, 'code_recuperation.txt')
-PRETGO_SCHEMA_VERSION = 2026042801
+PRETGO_SCHEMA_VERSION = 2026111401
 
 
 def get_db():
@@ -137,6 +137,8 @@ def init_db():
             pret_id INTEGER NOT NULL,
             materiel_id INTEGER DEFAULT NULL,
             description TEXT NOT NULL,
+            retour_confirme INTEGER DEFAULT 0,
+            date_retour TEXT DEFAULT NULL,
             FOREIGN KEY (pret_id) REFERENCES prets(id) ON DELETE CASCADE,
             FOREIGN KEY (materiel_id) REFERENCES inventaire(id)
         );
@@ -279,6 +281,16 @@ def init_db():
     ]:
         try:
             cursor.execute(f'ALTER TABLE reservations ADD COLUMN {col} {default}')
+        except sqlite3.OperationalError:
+            pass
+
+    # ── Migration retour partiel objet par objet (pret_materiels) ──
+    for col, default in [
+        ('retour_confirme', 'INTEGER DEFAULT 0'),
+        ('date_retour', 'TEXT DEFAULT NULL'),
+    ]:
+        try:
+            cursor.execute(f'ALTER TABLE pret_materiels ADD COLUMN {col} {default}')
         except sqlite3.OperationalError:
             pass
 
