@@ -200,7 +200,8 @@ recalcule à partir des tags locaux, sans toucher aux notes.
 Chaque README d'application possède une section changelog encadrée par `<!-- changelog:start -->` et
 `<!-- changelog:end -->`. `python3 changelog_gen.py --app ./<app>` la synchronise avec les notes : les
 blocs déjà écrits sont conservés, les versions présentes dans les notes mais absentes du README sont
-ajoutées automatiquement.
+ajoutées automatiquement. Après une correction des notes, `--refresh` réécrit les blocs générés ; ceux
+rédigés à la main et marqués `<!-- manuel -->` restent intacts.
 
 Sans `--since`, le générateur repart du dernier tag `<app>-v*` et ne garde que les commits touchant le
 dossier de l'application. S'il n'existe aucun tag, il lit les 50 derniers commits et écarte les notes

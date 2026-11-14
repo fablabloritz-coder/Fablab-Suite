@@ -12,9 +12,14 @@ déjà écrits à la main sont conservés tels quels (leur texte détaillé rest
 référence) ; seules les versions absentes sont ajoutées, au bon endroit, dans le
 format standard du fichier.
 
+Un bloc rédigé à la main peut porter la marque `<!-- manuel -->` : il est alors
+conservé même avec `--refresh`, qui régénère sinon tous les blocs depuis les notes
+(utile après une correction des notes elles-mêmes).
+
 Usage :
     python3 changelog_gen.py --app ./Fabtrack          # complète le changelog
     python3 changelog_gen.py --app ./Fabtrack --check   # échoue si une version manque
+    python3 changelog_gen.py --app ./Fabtrack --refresh # réécrit les blocs auto-générés
 """
 
 import argparse
@@ -25,6 +30,7 @@ from pathlib import Path
 
 START_MARKER = "<!-- changelog:start -->"
 END_MARKER = "<!-- changelog:end -->"
+MANUAL_MARKER = "<!-- manuel -->"
 VERSION_HEADING = re.compile(r"^### v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)\s*—\s*(?P<date>\S+)")
 
 
@@ -58,6 +64,7 @@ def split_blocks(body):
     for block in blocks:
         while block["lines"] and block["lines"][-1].strip() in ("", "---"):
             block["lines"].pop()
+        block["manual"] = any(line.strip() == MANUAL_MARKER for line in block["lines"])
     return blocks
 
 
@@ -96,6 +103,11 @@ def main():
         action="store_true",
         help="Vérifie seulement la présence de chaque version, sans écrire (code 1 si écart).",
     )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=f"Régénère les blocs depuis les notes, sauf ceux marqués {MANUAL_MARKER}.",
+    )
     args = parser.parse_args()
 
     app_path = Path(args.app).resolve()
@@ -127,6 +139,20 @@ def main():
                 print(f"[ATTENTION] {app_path.name} : {problem}", file=sys.stderr)
             return 1
         print(f"[OK] {app_path.name} : changelog a jour ({len(history)} version(s) de notes)")
+        return 0
+
+    if args.refresh:
+        refreshed = []
+        for entry in history:
+            existing = by_version.get(entry["version"])
+            refreshed.append(existing if existing and existing["manual"] else generated_block(entry))
+        known = {entry["version"] for entry in history}
+        refreshed.extend(block for block in blocks if block["version"] not in known)
+        if render(refreshed) == render(blocks):
+            print(f"[OK] {app_path.name} : blocs deja a jour")
+            return 0
+        readme.write_text(prefix + "\n\n" + render(refreshed) + "\n" + suffix, encoding="utf-8")
+        print(f"[OK] {app_path.name} : {len(history)} bloc(s) regenere(s) depuis les notes")
         return 0
 
     if not missing:

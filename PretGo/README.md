@@ -479,19 +479,19 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 ### v1.9.0 — 2026-10-16
 
-#### Prets longue duree sans date de fin
+#### Prêts longue durée sans date de fin
 
-- <strong>Prets longue duree sans date de fin</strong> — un pret peut desormais rester ouvert sans echeance.
-- <strong>Onglet dedie</strong> — les prets longue duree se consultent dans leur propre onglet, sans polluer la liste classique.
+- <strong>Prêts longue durée sans date de fin</strong> — un prêt peut désormais rester ouvert sans échéance.
+- <strong>Onglet dédié</strong> — les prêts longue durée se consultent dans leur propre onglet, sans polluer la liste classique.
 
 ---
 
 ### v1.8.1 — 2026-06-29
 
-#### Corrections sur la saisie des prets
+#### Corrections sur la saisie des prêts
 
-- <strong>Texte libre optionnel</strong> — un pret peut etre enregistre uniquement avec l'inventaire lie.
-- <strong>Modification de pret fiabilisee</strong> — plus d'erreur 500 a l'enregistrement d'une modification.
+- <strong>Texte libre optionnel</strong> — un prêt peut être enregistré uniquement avec l'inventaire lié.
+- <strong>Modification de prêt fiabilisée</strong> — plus d'erreur 500 à l'enregistrement d'une modification.
 
 ---
 
@@ -508,59 +508,59 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 ### v1.7.5 — 2026-05-18
 
-#### Protection contre le double pret
+#### Protection contre le double prêt
 
-- <strong>Verification de disponibilite au moment de la soumission</strong> — un objet deja emprunte entre l'affichage du formulaire et sa validation est maintenant detecte et le pret est refuse avec un message explicite.
+- <strong>Vérification de disponibilité au moment de la soumission</strong> — un objet déjà emprunté entre l'affichage du formulaire et sa validation est maintenant détecté et le prêt est refusé avec un message explicite.
 
 ---
 
 ### v1.7.4 — 2026-05-04
 
-#### Reservations hybrides et alertes capacitaires
+#### Réservations hybrides et alertes capacitaires
 
-- <strong>Reservation categorie seule autorisee</strong> — une reservation peut maintenant etre enregistree avec categorie(s) et/ou objet(s) scanne(s).
-- <strong>Conflits hybrides verifies</strong> — couverture renforcee sur les cas categorie, objet exact et texte libre.
-- <strong>Alertes categorie basees sur la capacite reelle</strong> — les alertes ne remontent que si le stock devient insuffisant apres cumul des prets a risque et reservations chevauchantes.
-- <strong>Tests admin en conditions reelles</strong> — scenarios admin durcis pour conversion, annulation et suppression de reservations.
+- <strong>Réservation catégorie seule autorisée</strong> — une réservation peut maintenant être enregistrée avec catégorie(s) et/ou objet(s) scanne(s).
+- <strong>Conflits hybrides vérifiés</strong> — couverture renforcée sur les cas catégorie, objet exact et texte libre.
+- <strong>Alertes catégorie basées sur la capacité réelle</strong> — les alertes ne remontent que si le stock devient insuffisant après cumul des prêts à risque et réservations chevauchantes.
+- <strong>Tests admin en conditions réelles</strong> — scénarios admin durcis pour conversion, annulation et suppression de réservations.
 
 ---
 
 ### v1.7.1 — 2026-04-30
 
-#### Reservations exportables et administration fiabilisee
+#### Réservations exportables et administration fiabilisée
 
-- <strong>Export CSV des reservations</strong> — la page Export propose maintenant un fichier dedie avec statut, dates, objets reserves et notes.
-- <strong>Reset selectif etendu</strong> — les reservations sont desormais prises en charge dans la reinitialisation selective de l'administration.
-- <strong>Integrite des liaisons preservee</strong> — la suppression selective de prets, personnes et materiels gere maintenant correctement les references de reservations.
-- <strong>Compatibilite anciennes reservations verifiee</strong> — les tests couvrent explicitement les formats historiques avec <em>materiel_id</em> et <em>items_json</em>.
-- <strong>Validation complete</strong> — la suite PretGo passe a <em>113/113 OK</em> sur ce lot de corrections.
+- <strong>Export CSV des réservations</strong> — la page Export propose maintenant un fichier dédié avec statut, dates, objets réservés et notes.
+- <strong>Reset sélectif étendu</strong> — les réservations sont désormais prises en charge dans la réinitialisation sélective de l'administration.
+- <strong>Intégrité des liaisons préservée</strong> — la suppression sélective de prêts, personnes et matériels gère maintenant correctement les références de réservations.
+- <strong>Compatibilité anciennes réservations vérifiée</strong> — les tests couvrent explicitement les formats historiques avec <em>materiel_id</em> et <em>items_json</em>.
+- <strong>Validation complète</strong> — la suite PretGo passe à <em>113/113 OK</em> sur ce lot de corrections.
 
 ---
 
 ### v1.7.0 — 2026-04-29
 
-#### Rappels avances et pilotage des notifications
+#### Rappels avancés et pilotage des notifications
 
-- <strong>Nouveaux modes de rappel</strong> — gestion plus fine des relances selon le contexte de pret.
-- <strong>Stabilite operationnelle</strong> — renforcement du comportement des rappels en execution reelle.
+- <strong>Nouveaux modes de rappel</strong> — gestion plus fine des relances selon le contexte de prêt.
+- <strong>Stabilité opérationnelle</strong> — renforcement du comportement des rappels en exécution réelle.
 
 ---
 
 ### v1.6.2 — 2026-04-28
 
-#### Fiabilite popup et migrations SQLite
+#### Fiabilité popup et migrations SQLite
 
-- <strong>Popup de nouveautes robuste</strong> — rafraichissement fiable du contenu release-notes.
-- <strong>Migrations durcies</strong> — suivi schema SQLite plus strict pour eviter les regressions de MAJ.
+- <strong>Popup de nouveautés robuste</strong> — rafraichissement fiable du contenu release-notes.
+- <strong>Migrations durcies</strong> — suivi schéma SQLite plus strict pour éviter les régressions de MAJ.
 
 ---
 
 ### v1.6.0 — 2026-04-28
 
-#### Conversion reservation et calendrier
+#### Conversion réservation et calendrier
 
-- <strong>Conversion reservation vers pret</strong> — flux de transformation clarifie pour l'admin.
-- <strong>Vue calendrier reservation</strong> — meilleure visualisation des periodes et conflits potentiels.
+- <strong>Conversion réservation vers prêt</strong> — flux de transformation clarifié pour l'admin.
+- <strong>Vue calendrier réservation</strong> — meilleure visualisation des périodes et conflits potentiels.
 
 ---
 

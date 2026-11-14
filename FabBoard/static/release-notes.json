@@ -3,24 +3,24 @@
     {
       "version": "3.5.1",
       "date": "2026-11-14",
-      "title": "Widgets plus legers sur Fabtrack",
+      "title": "Widgets plus légers sur Fabtrack",
       "notes": [
-        "Les widgets partageant la meme source et la meme periode ne declenchent plus qu'un seul appel vers Fabtrack par rafraichissement (cache de 10 secondes).",
-        "Un rechargement force reste possible avec le parametre refresh, et les erreurs ne sont jamais mises en cache.",
-        "Nouvelle suite de tests FabBoard : bornes de periode, proxy Fabtrack et comportement du cache sont couverts automatiquement."
+        "Les widgets partageant la même source et la même période ne déclenchent plus qu'un seul appel vers Fabtrack par rafraichissement (cache de 10 secondes).",
+        "Un rechargement forcé reste possible avec le paramètre refresh, et les erreurs ne sont jamais mises en cache.",
+        "Nouvelle suite de tests FabBoard : bornes de période, proxy Fabtrack et comportement du cache sont couverts automatiquement."
       ],
       "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.5.1"
     },
     {
       "version": "3.5.0",
       "date": "2026-11-14",
-      "title": "Periode configurable par widget et listes enrichies",
+      "title": "Période configurable par widget et listes enrichies",
       "notes": [
-        "Chaque widget Fabtrack choisit sa periode : annee scolaire (par defaut), mois en cours, semaine, jour ou cumul total.",
-        "La periode active est rappelee dans l'en-tete du widget (ex. « Annee scolaire 2026-2027 »).",
-        "Nouvelle limite d'elements configurable pour le widget Repartition des activites, comme pour les activites recentes et les dernieres consommations.",
-        "Activites recentes et dernieres consommations affichent le projet et la date de saisie, pour distinguer deux interventions du meme type.",
-        "Les compteurs, la repartition et les deux listes sont alimentes par les nouvelles routes Fabtrack (resume par periode et consommations filtrees)."
+        "Chaque widget Fabtrack choisit sa période : année scolaire (par défaut), mois en cours, semaine, jour ou cumul total.",
+        "La période active est rappelée dans l'en-tête du widget (ex. « Année scolaire 2026-2027 »).",
+        "Nouvelle limite d'éléments configurable pour le widget Répartition des activités, comme pour les activités récentes et les dernières consommations.",
+        "Activités récentes et dernières consommations affichent le projet et la date de saisie, pour distinguer deux interventions du même type.",
+        "Les compteurs, la répartition et les deux listes sont alimentés par les nouvelles routes Fabtrack (résumé par période et consommations filtrées)."
       ]
     },
     {
@@ -28,56 +28,56 @@
       "date": "2026-10-16",
       "title": "Widget page web et suivi des missions",
       "notes": [
-        "Nouveau widget page web : affichage plein ecran d'un site dans une slide, avec conservation de l'iframe lors des changements de slide.",
-        "Nouveau widget derniere etape de mission, alimente par Fabtrack."
+        "Nouveau widget page web : affichage plein écran d'un site dans une slide, avec conservation de l'iframe lors des changements de slide.",
+        "Nouveau widget dernière étape de mission, alimenté par Fabtrack."
       ]
     },
     {
       "version": "3.3.1",
       "date": "2026-05-18",
-      "title": "Persistance des medias uploadés",
+      "title": "Persistance des médias uploadés",
       "notes": [
-        "Les videos et images uploadees sont maintenant persistantes : le dossier static/uploads est monte en volume Docker (docker-data/uploads). Les fichiers ne sont plus perdus apres un docker compose up --build."
+        "Les vidéos et images uploadées sont maintenant persistantes : le dossier static/uploads est monté en volume Docker (docker-data/uploads). Les fichiers ne sont plus perdus après un docker compose up --build."
       ]
     },
     {
       "version": "3.3.0",
       "date": "2026-05-03",
-      "title": "Pause hebdomadaire et indisponibilite prioritaire",
+      "title": "Pause hebdomadaire et indisponibilité prioritaire",
       "notes": [
-        "Nouvelle pause hebdomadaire recurrente configurable jour par jour (lundi a dimanche) avec horaires debut/fin.",
-        "Indisponibilite manuelle prioritaire ajoutee: prend le dessus sur toutes les slides tant qu'elle est active.",
-        "Option d'heure de retour sur l'indisponibilite: affichable ou masquable via un simple switch.",
-        "Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITE (reglages independants).",
-        "Texte de pause personnalise: titre et message configurables dans les parametres.",
-        "Nouveau mode image pour la pause recurrente (JPG/PNG) avec upload et apercu."
+        "Nouvelle pause hebdomadaire récurrente configurable jour par jour (lundi à dimanche) avec horaires début/fin.",
+        "Indisponibilité manuelle prioritaire ajoutée: prend le dessus sur toutes les slides tant qu'elle est active.",
+        "Option d'heure de retour sur l'indisponibilité: affichable ou masquable via un simple switch.",
+        "Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITÉ (réglages indépendants).",
+        "Texte de pause personnalisé: titre et message configurables dans les paramètres.",
+        "Nouveau mode image pour la pause récurrente (JPG/PNG) avec upload et aperçu."
       ]
     },
     {
       "version": "3.2.0",
       "date": "2026-04-11",
-      "title": "Popup de nouveautes et trace des evolutions",
+      "title": "Popup de nouveautés et trace des évolutions",
       "notes": [
-        "Ajout de la popup Nouveautes pilotee par release-notes.json.",
-        "Lien footer admin pour ouvrir l'historique des MAJ a la demande.",
-        "Gestion du 'vu' local pour eviter les reaffichages repetes."
+        "Ajout de la popup Nouveautés pilotée par release-notes.json.",
+        "Lien footer admin pour ouvrir l'historique des MAJ à la demande.",
+        "Gestion du 'vu' local pour éviter les réaffichages répétés."
       ]
     },
     {
       "version": "3.1.0",
       "date": "2026-04-10",
-      "title": "Lisibilite dashboard horloge/timer",
+      "title": "Lisibilité dashboard horloge/timer",
       "notes": [
-        "Difference visuelle renforcee entre mode Horloge et mode Timer.",
-        "Ajustement de hauteur pour le layout 'Large + 2/3 blocs' afin d'ameliorer la lisibilite."
+        "Différence visuelle renforcée entre mode Horloge et mode Timer.",
+        "Ajustement de hauteur pour le layout 'Large + 2/3 blocs' afin d'améliorer la lisibilité."
       ]
     },
     {
       "version": "3.0.2",
       "date": "2026-03-21",
-      "title": "Amelioration visuelle des missions",
+      "title": "Amélioration visuelle des missions",
       "notes": [
-        "Ajout de fonds couleurs pour les missions afin de clarifier l'etat des cartes et leur priorite."
+        "Ajout de fonds couleurs pour les missions afin de clarifier l'état des cartes et leur priorité."
       ]
     }
   ],

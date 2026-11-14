@@ -149,12 +149,12 @@ Supprimer le fichier `data/fabhome.db` et redémarrer — la base sera recréée
 
 ### v1.7.1 — 2026-05-14
 
-#### Lisibilite des cellules et des widgets
+#### Lisibilité des cellules et des widgets
 
-- Cellules carrees restaurees : la mesure se fait sur la hauteur reelle de la cellule, sans debordement de la grille.
-- Libelles des raccourcis toujours visibles, y compris dans les petites cellules.
-- Dimensionnement de la grille et des widgets entierement en CSS pour un rendu stable a toutes les resolutions.
-- Correction de l'affichage des informations tronquees dans les widgets de liste.
+- Cellules carrées restaurées : la mesure se fait sur la hauteur réelle de la cellule, sans débordement de la grille.
+- Libellés des raccourcis toujours visibles, y compris dans les petites cellules.
+- Dimensionnement de la grille et des widgets entièrement en CSS pour un rendu stable à toutes les résolutions.
+- Correction de l'affichage des informations tronquées dans les widgets de liste.
 
 ---
 
@@ -171,23 +171,23 @@ Supprimer le fichier `data/fabhome.db` et redémarrer — la base sera recréée
 
 ### v1.6.0 — 2026-04-28
 
-#### Fiabilite popup et robustesse des mises a jour
+#### Fiabilité popup et robustesse des mises à jour
 
-- Popup Nouveautes fiabilisee: detection basee sur signature complete de release et non plus uniquement la version.
+- Popup Nouveautés fiabilisée: détection basée sur signature complète de release et non plus uniquement la version.
 - Chargement des notes de release via URL statique Flask pour un comportement plus robuste.
-- Migrations SQLite durcies: version de schema tracee dans la base et controlee au demarrage.
-- Suivi centralise des migrations avec historique idempotent pour limiter les regressions de mise a jour.
-- Validation de compatibilite schema au boot du hub avant activation complete des services.
+- Migrations SQLite durcies: version de schéma tracée dans la base et contrôlée au démarrage.
+- Suivi centralisé des migrations avec historique idempotent pour limiter les régressions de mise à jour.
+- Validation de compatibilité schéma au boot du hub avant activation complète des services.
 
 ---
 
 ### v1.5.0 — 2026-04-11
 
-#### Popup de nouveautes centralisee
+#### Popup de nouveautés centralisée
 
-- Ajout de la popup de nouveautes basee sur fichier JSON.
-- Ajout d'un lien footer pour reconsulter les mises a jour a tout moment.
-- Affichage conditionnel une fois par release via signature stockee localement.
+- Ajout de la popup de nouveautés basée sur fichier JSON.
+- Ajout d'un lien footer pour reconsulter les mises à jour à tout moment.
+- Affichage conditionnel une fois par release via signature stockée localement.
 
 ---
 
@@ -196,7 +196,7 @@ Supprimer le fichier `data/fabhome.db` et redémarrer — la base sera recréée
 #### Confort de navigation et UX d'accueil
 
 - Autofocus automatique sur la barre de recherche au chargement de la page.
-- Amelioration de la fluidite du flux de recherche pour un usage quotidien plus rapide.
+- Amélioration de la fluidité du flux de recherche pour un usage quotidien plus rapide.
 
 ---
 
@@ -204,8 +204,8 @@ Supprimer le fichier `data/fabhome.db` et redémarrer — la base sera recréée
 
 #### Personnalisation des groupes et widgets
 
-- Ajout de la couleur de fond par groupe pour differencier visuellement les zones.
-- Ajout d'un widget dedie pour enrichir le tableau de bord FabHome.
+- Ajout de la couleur de fond par groupe pour différencier visuellement les zones.
+- Ajout d'un widget dédié pour enrichir le tableau de bord FabHome.
 
 ---
 

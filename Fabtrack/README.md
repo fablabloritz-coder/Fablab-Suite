@@ -587,9 +587,9 @@ Depuis la page **Export** :
 
 #### Garde-fou contre les doubles saisies
 
-- Une saisie identique a une autre (meme type, machine, materiau, quantites et projet) a moins de deux minutes d'intervalle est maintenant signalee.
-- Un message demande confirmation avant d'enregistrer malgre tout, ce qui evite les doublons crees par un double clic sur Enregistrer.
-- Le garde-fou fonctionne aussi sur la saisie multi-actions : la ligne concernee est indiquee et rien n'est enregistre tant que l'on n'a pas confirme.
+- Une saisie identique à une autre (même type, machine, matériau, quantités et projet) à moins de deux minutes d'intervalle est maintenant signalée.
+- Un message demande confirmation avant d'enregistrer malgré tout, ce qui évite les doublons créés par un double clic sur Enregistrer.
+- Le garde-fou fonctionne aussi sur la saisie multi-actions : la ligne concernée est indiquée et rien n'est enregistré tant que l'on n'a pas confirmé.
 
 ---
 
@@ -613,26 +613,28 @@ Depuis la page **Export** :
 **Migration de base de données :**
 - Ajout de la colonne `date_creation TEXT` sur la table `missions` (migration idempotente, sans remplissage rétroactif).
 
+<!-- manuel -->
+
 ---
 
 ### v2.5.1 — 2026-11-02
 
-#### Fenetre de mission plus lisible
+#### Fenêtre de mission plus lisible
 
-- Fenetre de mission en deux colonnes : details a gauche, timeline des etapes a droite.
-- Derniere etape affichee directement sur les cartes du kanban.
-- Etapes en zone de texte multiligne et fenetre agrandie pour les longues descriptions.
-- Correction d'une erreur JavaScript dans le kanban (constante de categorie supprimee par erreur).
+- Fenêtre de mission en deux colonnes : détails à gauche, timeline des étapes à droite.
+- Dernière étape affichée directement sur les cartes du kanban.
+- Étapes en zone de texte multiligne et fenêtre agrandie pour les longues descriptions.
+- Correction d'une erreur JavaScript dans le kanban (constante de catégorie supprimée par erreur).
 
 ---
 
 ### v2.5.0 — 2026-10-19
 
-#### Etapes de mission, recherche et exports enrichis
+#### Étapes de mission, recherche et exports enrichis
 
-- Chaque mission peut maintenant contenir des etapes datees, avec timeline d'avancement.
-- Recherche dans les missions terminees et dans les etapes, avec exports filtres.
-- Les exports CSV, HTML et PDF incluent les etapes des missions.
+- Chaque mission peut maintenant contenir des étapes datées, avec timeline d'avancement.
+- Recherche dans les missions terminées et dans les étapes, avec exports filtrés.
+- Les exports CSV, HTML et PDF incluent les étapes des missions.
 
 ---
 
@@ -640,23 +642,23 @@ Depuis la page **Export** :
 
 #### Corrections saisie et historique
 
-- Correction du calcul de surface pour les activites multi-occurrences : le champ occurrence etait toujours lu depuis le panneau Impression 3D meme lors d'une Decoupe Laser/CNC.
-- Historique > modal d'edition : les champs Format papier et Type de feuille sont maintenant des listes deroulantes (coherentes avec la saisie principale).
-- Historique > modal d'edition : les secondes de l'heure de saisie sont desormais preservees lors d'une modification, evitant le deplacement de la ligne dans le tri.
+- Correction du calcul de surface pour les activités multi-occurrences : le champ occurrence était toujours lu depuis le panneau Impression 3D même lors d'une Découpe Laser/CNC.
+- Historique > modal d'édition : les champs Format papier et Type de feuille sont maintenant des listes déroulantes (cohérentes avec la saisie principale).
+- Historique > modal d'édition : les secondes de l'heure de saisie sont désormais préservées lors d'une modification, évitant le déplacement de la ligne dans le tri.
 
 ---
 
 ### v2.4.0 — 2026-05-16
 
-#### Filtres avances dans les statistiques et les exports
+#### Filtres avancés dans les statistiques et les exports
 
-- Trois nouveaux filtres dans la page Statistiques : Referent, Classe et Mot-cle projet.
-- Les filtres s'appliquent a la fois aux graphiques (actualisation) et aux exports.
-- Export CSV : lignes de metadonnees en tete de fichier indiquant les filtres actifs.
-- Export HTML : encart 'Filtres appliques' integre dans le fichier exporte.
-- Export PDF (impression) : recapitulatif des filtres affiche uniquement a l'impression.
+- Trois nouveaux filtres dans la page Statistiques : Référent, Classe et Mot-clé projet.
+- Les filtres s'appliquent à la fois aux graphiques (actualisation) et aux exports.
+- Export CSV : lignes de métadonnées en tête de fichier indiquant les filtres actifs.
+- Export HTML : encart 'Filtres appliqués' intégré dans le fichier exporté.
+- Export PDF (impression) : récapitulatif des filtres affiché uniquement à l'impression.
 - Nom de fichier enrichi selon les filtres actifs (ex: FabTrack_Export_Ref-Martin_2026-05-16.csv).
-- Preset 'Annee scolaire' : periode du 1er septembre a aujourd'hui en un clic.
+- Preset 'Année scolaire' : période du 1er septembre à aujourd'hui en un clic.
 
 ---
 
@@ -691,55 +693,57 @@ Depuis la page **Export** :
 **Migration de base de données :**
 - Ajout de la colonne `description TEXT DEFAULT ''` sur la table `mission_categories` (migration automatique idempotente au démarrage)
 
+<!-- manuel -->
+
 ---
 
 ### v2.3.3 — 2026-05-01
 
-#### Coherence occurrences par type et materiau
+#### Cohérence occurrences par type et matériau
 
-- Le flag materiau count_occurrences ne s'applique plus hors des familles ciblees (g, m2, feuilles).
-- Migration durcie: les valeurs NULL historiques de count_occurrences sont normalisees a 1.
-- Edition materiau fiabilisee: si le champ est absent, la valeur par defaut reste 1 (plus de retour a NULL).
-- Interface parametres simplifiee: suppression du mode auto par nom, affichage explicite oui/non.
-- Validation complete: 25 tests unitaires passes sur la suite Fabtrack.
+- Le flag matériau count_occurrences ne s'applique plus hors des familles ciblées (g, m2, feuilles).
+- Migration durcie: les valeurs NULL historiques de count_occurrences sont normalisées à 1.
+- Edition matériau fiabilisée: si le champ est absent, la valeur par défaut reste 1 (plus de retour à NULL).
+- Interface paramètres simplifiée: suppression du mode auto par nom, affichage explicite oui/non.
+- Validation complète: 25 tests unitaires passés sur la suite Fabtrack.
 
 ---
 
 ### v2.3.1 — 2026-05-01
 
-#### Occurrences 3D fiabilisees
+#### Occurrences 3D fiabilisées
 
-- Correction du pilotage des occurrences pour les entrees PLA/ABS 3D.
-- Mise a jour du popup de release pour aligner les notes de cette iteration.
+- Correction du pilotage des occurrences pour les entrées PLA/ABS 3D.
+- Mise à jour du popup de release pour aligner les notes de cette itération.
 
 ---
 
 ### v2.3.0 — 2026-04-30
 
-#### Multi-referents et edition d'historique
+#### Multi-referents et édition d'historique
 
-- Support des multi-referents dans les flux de suivi.
-- Edition de l'historique amelioree pour corriger les entrees plus facilement.
-- Securisation du flux de saisie pour reduire les erreurs operateur.
+- Support des multi-référents dans les flux de suivi.
+- Edition de l'historique améliorée pour corriger les entrées plus facilement.
+- Sécurisation du flux de saisie pour réduire les erreurs opérateur.
 
 ---
 
 ### v2.2.0 — 2026-04-10
 
-#### Assistant de setup et bibliotheque d'images
+#### Assistant de setup et bibliothèque d'images
 
 - Ajout d'un assistant de configuration initiale.
-- Ajout d'une bibliotheque d'images pour simplifier l'illustration des fiches.
-- Ameliorations UX successives sur le selecteur d'images.
+- Ajout d'une bibliothèque d'images pour simplifier l'illustration des fiches.
+- Améliorations UX successives sur le sélecteur d'images.
 
 ---
 
 ### v2.1.0 — 2026-04-09
 
-#### Popup de nouveautes centralisee
+#### Popup de nouveautés centralisée
 
-- Popup Nouveautes chargee depuis release-notes.json.
-- Lien footer pour consulter l'historique a tout moment.
+- Popup Nouveautés chargée depuis release-notes.json.
+- Lien footer pour consulter l'historique à tout moment.
 
 ---
 

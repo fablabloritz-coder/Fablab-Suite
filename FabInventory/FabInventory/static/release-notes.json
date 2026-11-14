@@ -3,14 +3,14 @@
     {
       "version": "2.1.0",
       "date": "2026-05-19",
-      "title": "Admin unifie et couverture du catalogue",
+      "title": "Admin unifié et couverture du catalogue",
       "notes": [
-        "Dashboard admin enrichi : 8 indicateurs (4 cotes demandes, 4 cotes inventaire) et alerte sur les scans de plus de 30 jours.",
+        "Dashboard admin enrichi : 8 indicateurs (4 côté demandes, 4 côté inventaire) et alerte sur les scans de plus de 30 jours.",
         "Nouvelle page /admin/masters avec barre de progression de la couverture du catalogue.",
-        "Badge « X/Y masters » sur chaque logiciel du catalogue pour voir ou il est deja installe.",
-        "Champ « Deja present » dans la fenetre de demande, avec la couverture inventaire.",
-        "Portail professeur : badge « Deja sur X poste(s) » et bouton desactive si une demande est deja en cours.",
-        "Barre laterale admin : section Inventaire avec le lien Masters, et liens Outils restaures."
+        "Badge « X/Y masters » sur chaque logiciel du catalogue pour voir où il est déjà installé.",
+        "Champ « Déjà présent » dans la fenêtre de demande, avec la couverture inventaire.",
+        "Portail professeur : badge « Déjà sur X poste(s) » et bouton désactivé si une demande est déjà en cours.",
+        "Barre latérale admin : section Inventaire avec le lien Masters, et liens Outils restaurés."
       ],
       "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabinventory-v2.1.0"
     },
@@ -19,18 +19,18 @@
       "date": "2026-05-19",
       "title": "Portail demandes logiciels - refonte majeure",
       "notes": [
-        "Portail professeurs : acces via token UUID unique (sans mot de passe), catalogue logiciels, soumission de demandes.",
-        "Espace admin securise : login/password, dashboard agrege, gestion des demandes (statuts : Demande -> Valide -> En cours -> Installe -> Refuse).",
-        "Catalogue logiciels : CRUD complet (nom, categorie, description, pack de base, actif/inactif).",
-        "Versions par logiciel : numero, type de licence, gratuit pour l'education, URL de telechargement.",
-        "Plugins/options par logiciel : selectionnables par le professeur lors de la demande.",
-        "Guides / Wiki : editeur Markdown par logiciel (guide principal, comptes/licences, depannage JSON).",
-        "Gestion des professeurs : creation, revocation, regeneration de token, lien copiable.",
-        "Export PDF des demandes pour preparer les installations masters.",
-        "Anti-doublon : pas de deuxieme demande en cours pour le meme logiciel.",
-        "Donnees de depart : compte admin par defaut et pack de base (VLC, 7-Zip, SumatraPDF).",
+        "Portail professeurs : accès via token UUID unique (sans mot de passe), catalogue logiciels, soumission de demandes.",
+        "Espace admin sécurisé : login/password, dashboard agrégé, gestion des demandes (statuts : Demande -> Validé -> En cours -> Installé -> Refusé).",
+        "Catalogue logiciels : CRUD complet (nom, catégorie, description, pack de base, actif/inactif).",
+        "Versions par logiciel : numéro, type de licence, gratuit pour l'éducation, URL de téléchargement.",
+        "Plugins/options par logiciel : sélectionnables par le professeur lors de la demande.",
+        "Guides / Wiki : éditeur Markdown par logiciel (guide principal, comptes/licences, dépannage JSON).",
+        "Gestion des professeurs : création, révocation, régénération de token, lien copiable.",
+        "Export PDF des demandes pour préparer les installations masters.",
+        "Anti-doublon : pas de deuxième demande en cours pour le même logiciel.",
+        "Données de départ : compte admin par défaut et pack de base (VLC, 7-Zip, SumatraPDF).",
         "Migrations SQLite idempotentes : 8 nouvelles tables sans rupture de la base existante.",
-        "Navigation : lien Admin ajoute dans la barre de navigation de l'inventaire."
+        "Navigation : lien Admin ajouté dans la barre de navigation de l'inventaire."
       ]
     }
   ],
