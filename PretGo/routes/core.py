@@ -17,8 +17,10 @@ def index():
     page = request.args.get('page', 1, type=int)
     par_page = 50
 
+    # Les prêts longue durée ont leur propre onglet : ils ne comptent pas ici.
     total_actifs = conn.execute(
-        'SELECT COUNT(*) FROM prets WHERE retour_confirme = 0'
+        "SELECT COUNT(*) FROM prets WHERE retour_confirme = 0 AND IFNULL(type_duree, '') != ?",
+        (TYPE_LONGUE_DUREE,)
     ).fetchone()[0]
     total_pages = max(1, (total_actifs + par_page - 1) // par_page)
     page = max(1, min(page, total_pages))
@@ -28,10 +30,10 @@ def index():
         SELECT p.*, pe.nom, pe.prenom, pe.classe, pe.categorie
         FROM prets p
         JOIN personnes pe ON p.personne_id = pe.id
-        WHERE p.retour_confirme = 0
+        WHERE p.retour_confirme = 0 AND IFNULL(p.type_duree, '') != ?
         ORDER BY p.date_emprunt DESC
         LIMIT ? OFFSET ?
-    ''', (par_page, offset)).fetchall()
+    ''', (TYPE_LONGUE_DUREE, par_page, offset)).fetchall()
 
     stats = {
         'actifs': total_actifs,

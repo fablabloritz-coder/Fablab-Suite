@@ -82,6 +82,40 @@ class PretsLongueDureeTests(unittest.TestCase):
         self.assertNotIn('Livre normal', html)
         self.assertEqual(self.client.get('/alertes').status_code, 200)
 
+    def _compter_prets_classiques(self):
+        conn = database.get_db()
+        try:
+            return conn.execute(
+                "SELECT COUNT(*) FROM prets WHERE retour_confirme = 0 "
+                "AND IFNULL(type_duree, '') != 'longue_duree'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_accueil_exclut_les_prets_longue_duree(self):
+        """La liste et le compteur de l'accueil ne comptent que les prêts classiques."""
+        self._create('Imprimante longue', 'longue_duree')
+        self._create('Manuel normal', 'jours')
+
+        html = self.client.get('/').data.decode('utf-8')
+        self.assertIn('Manuel normal', html)
+        self.assertNotIn('Imprimante longue', html)
+
+        attendu = self._compter_prets_classiques()
+        self.assertIn(f'Prêts en cours ({attendu})', html)
+
+    def test_compteur_fabhome_exclut_les_prets_longue_duree(self):
+        """Le compteur FabSuite suit la même règle que l'accueil."""
+        from routes import _widget_active_loans
+
+        self._create('Video projecteur longue', 'longue_duree')
+        self._create('Roman normal', 'jours')
+
+        import app as app_module
+        with app_module.app.app_context():
+            valeur = _widget_active_loans()['value']
+        self.assertEqual(valeur, self._compter_prets_classiques())
+
     def test_pages_detail_et_modification(self):
         pret = self._create('Clavier', 'longue_duree')
         detail = self.client.get(f"/pret/{pret['id']}")

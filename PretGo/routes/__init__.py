@@ -3,7 +3,7 @@ PretGo v1.9.0 — Enregistrement des blueprints.
 """
 
 from database import get_setting
-from utils import get_app_db, calcul_depassement_heures
+from utils import get_app_db, calcul_depassement_heures, TYPE_LONGUE_DUREE
 from fabsuite_core.widgets import counter, item_list, chart, notification
 
 # Source unique de la version : manifeste FabSuite et templates.
@@ -15,8 +15,11 @@ APP_VERSION = "1.9.0"
 def _widget_active_loans():
     """Widget counter : nombre de prêts en cours."""
     conn = get_app_db()
+    # Les prêts longue durée sont consultés dans leur onglet : hors de ce compteur.
     row = conn.execute(
-        "SELECT COUNT(*) as total FROM prets WHERE retour_confirme = 0"
+        "SELECT COUNT(*) as total FROM prets WHERE retour_confirme = 0 "
+        "AND IFNULL(type_duree, '') != ?",
+        (TYPE_LONGUE_DUREE,)
     ).fetchone()
     return counter(
         value=row['total'] if row else 0,
