@@ -484,7 +484,7 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 - <strong>Compteurs cohérents</strong> — les prêts longue durée sont exclus de la liste d'accueil et des compteurs « Prêts en cours » (accueil, tableau de bord admin, page Statistiques, widget FabHome) ; l'onglet dédié reste leur seul point de consultation.
 - <strong>Plus de 31/12/2999 à l'écran</strong> — la date technique n'apparaît plus dans la fiche de modification, le sélecteur d'emprunteur ni le planning des réservations, qui étale le prêt sur le mois affiché.
 - <strong>Rappels et exports protégés</strong> — une date sentinelle vaut désormais « pas d'échéance » dans les calculs : aucun rappel email ni export CSV ne peut la reprendre.
-- <strong>Couverture de tests</strong> — saisie avec inventaire lié seul, texte libre seul, compteurs, écrans, exports et rappels sont vérifiés automatiquement.
+- <strong>Couverture de tests</strong> — saisie avec inventaire lié seul, texte libre seul, réservations hybrides (catégorie seule, conflits, capacité), compteurs, écrans, exports et rappels sont vérifiés automatiquement.
 
 ---
 
