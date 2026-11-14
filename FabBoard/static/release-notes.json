@@ -46,10 +46,10 @@
       "title": "Pause hebdomadaire et indisponibilité prioritaire",
       "notes": [
         "Nouvelle pause hebdomadaire récurrente configurable jour par jour (lundi à dimanche) avec horaires début/fin.",
-        "Indisponibilité manuelle prioritaire ajoutée: prend le dessus sur toutes les slides tant qu'elle est active.",
-        "Option d'heure de retour sur l'indisponibilité: affichable ou masquable via un simple switch.",
+        "Indisponibilité manuelle prioritaire ajoutée : prend le dessus sur toutes les slides tant qu'elle est active.",
+        "Option d'heure de retour sur l'indisponibilité : affichable ou masquable via un simple switch.",
         "Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITÉ (réglages indépendants).",
-        "Texte de pause personnalisé: titre et message configurables dans les paramètres.",
+        "Texte de pause personnalisé : titre et message configurables dans les paramètres.",
         "Nouveau mode image pour la pause récurrente (JPG/PNG) avec upload et aperçu."
       ]
     },

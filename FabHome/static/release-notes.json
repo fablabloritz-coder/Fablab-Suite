@@ -28,9 +28,9 @@
       "date": "2026-04-28",
       "title": "Fiabilité popup et robustesse des mises à jour",
       "notes": [
-        "Popup Nouveautés fiabilisée: détection basée sur signature complète de release et non plus uniquement la version.",
+        "Popup Nouveautés fiabilisée : détection basée sur signature complète de release et non plus uniquement la version.",
         "Chargement des notes de release via URL statique Flask pour un comportement plus robuste.",
-        "Migrations SQLite durcies: version de schéma tracée dans la base et contrôlée au démarrage.",
+        "Migrations SQLite durcies : version de schéma tracée dans la base et contrôlée au démarrage.",
         "Suivi centralisé des migrations avec historique idempotent pour limiter les régressions de mise à jour.",
         "Validation de compatibilité schéma au boot du hub avant activation complète des services."
       ]

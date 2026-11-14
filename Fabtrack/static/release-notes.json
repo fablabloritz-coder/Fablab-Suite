@@ -64,14 +64,14 @@
         "Export CSV : lignes de métadonnées en tête de fichier indiquant les filtres actifs.",
         "Export HTML : encart 'Filtres appliqués' intégré dans le fichier exporté.",
         "Export PDF (impression) : récapitulatif des filtres affiché uniquement à l'impression.",
-        "Nom de fichier enrichi selon les filtres actifs (ex: FabTrack_Export_Ref-Martin_2026-05-16.csv).",
+        "Nom de fichier enrichi selon les filtres actifs (ex : FabTrack_Export_Ref-Martin_2026-05-16.csv).",
         "Preset 'Année scolaire' : période du 1er septembre à aujourd'hui en un clic."
       ]
     },
     {
       "version": "2.3.4",
       "date": "2026-05-08",
-      "title": "Missions enrichies: définitions, exports et statistiques",
+      "title": "Missions enrichies : définitions, exports et statistiques",
       "notes": [
         "Chaque catégorie de mission peut maintenant avoir une définition éditable pour clarifier son usage.",
         "Les badges de catégorie affichent cette définition en infobulle dans le kanban.",
@@ -85,10 +85,10 @@
       "title": "Cohérence occurrences par type et matériau",
       "notes": [
         "Le flag matériau count_occurrences ne s'applique plus hors des familles ciblées (g, m2, feuilles).",
-        "Migration durcie: les valeurs NULL historiques de count_occurrences sont normalisées à 1.",
-        "Edition matériau fiabilisée: si le champ est absent, la valeur par défaut reste 1 (plus de retour à NULL).",
-        "Interface paramètres simplifiée: suppression du mode auto par nom, affichage explicite oui/non.",
-        "Validation complète: 25 tests unitaires passés sur la suite Fabtrack."
+        "Migration durcie : les valeurs NULL historiques de count_occurrences sont normalisées à 1.",
+        "Edition matériau fiabilisée : si le champ est absent, la valeur par défaut reste 1 (plus de retour à NULL).",
+        "Interface paramètres simplifiée : suppression du mode auto par nom, affichage explicite oui/non.",
+        "Validation complète : 25 tests unitaires passés sur la suite Fabtrack."
       ]
     },
     {

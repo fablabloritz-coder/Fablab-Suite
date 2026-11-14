@@ -146,12 +146,12 @@ PretGo est prêt à être exécuté en conteneur avec persistance de la base SQL
 docker compose up -d --build
 ```
 
-- Application: `http://localhost:5000`
-- Données persistées sur le disque hôte (bind mounts):
+- Application : `http://localhost:5000`
+- Données persistées sur le disque hôte (bind mounts) :
     - `./docker-data/data` (SQLite, sauvegardes, clé secrète, code de récupération, documents)
     - `./docker-data/uploads/materiel` (images matériel)
 
-Arrêt:
+Arrêt :
 
 ```bash
 docker compose down
@@ -192,7 +192,7 @@ $env:FLASK_SECRET_KEY="votre_cle_longue_et_aleatoire"
 
 Commandes a executer depuis le dossier `PretGo/`.
 
-Mise a jour applicative (code + image + conteneur):
+Mise a jour applicative (code + image + conteneur) :
 
 ```bash
 cd /chemin/vers/PretGo
@@ -201,28 +201,28 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Arret du service:
+Arret du service :
 
 ```bash
 cd /chemin/vers/PretGo
 docker compose stop
 ```
 
-Relance du service (sans rebuild):
+Relance du service (sans rebuild) :
 
 ```bash
 cd /chemin/vers/PretGo
 docker compose start
 ```
 
-Redemarrage complet (sans rebuild):
+Redemarrage complet (sans rebuild) :
 
 ```bash
 cd /chemin/vers/PretGo
 docker compose restart
 ```
 
-Relance avec rebuild force:
+Relance avec rebuild force :
 
 ```bash
 cd /chemin/vers/PretGo
@@ -230,7 +230,7 @@ docker compose down
 docker compose up -d --build
 ```
 
-Diagnostic rapide:
+Diagnostic rapide :
 
 ```bash
 cd /chemin/vers/PretGo
@@ -238,7 +238,7 @@ docker compose ps
 docker logs --tail=120 pretgo
 ```
 
-En cas de conflit `container name ... already in use`:
+En cas de conflit `container name ... already in use` :
 
 ```bash
 docker stop pretgo 2>/dev/null || true
@@ -247,9 +247,9 @@ cd /chemin/vers/PretGo
 docker compose up -d --build
 ```
 
-Depannage: application inaccessible depuis le navigateur
+Depannage : application inaccessible depuis le navigateur
 
-1. Verifier que le conteneur tourne:
+1. Verifier que le conteneur tourne :
 
 ```bash
 cd /chemin/vers/PretGo
@@ -257,26 +257,26 @@ docker compose ps
 docker ps -a --filter "name=^/pretgo$"
 ```
 
-2. Lire les logs de demarrage:
+2. Lire les logs de demarrage :
 
 ```bash
 docker logs --tail=200 pretgo
 ```
 
-3. Tester localement sur le serveur:
+3. Tester localement sur le serveur :
 
 ```bash
 curl -I http://127.0.0.1:5000
 ```
 
-4. Si local OK mais acces distant KO, ouvrir le firewall:
+4. Si local OK mais acces distant KO, ouvrir le firewall :
 
 ```bash
 sudo ufw allow 5000/tcp
 sudo ufw status
 ```
 
-5. Si l'etat est incoherent, remise a plat sans perte de donnees:
+5. Si l'etat est incoherent, remise a plat sans perte de donnees :
 
 ```bash
 docker stop pretgo 2>/dev/null || true

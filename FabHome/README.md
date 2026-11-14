@@ -40,9 +40,9 @@ git pull --ff-only origin main
 ./deploy_safe.sh
 ```
 
-Cette commande sécurise la MAJ: build, redemarrage, attente de healthcheck, logs automatiques en cas d'echec.
+Cette commande sécurise la MAJ : build, redemarrage, attente de healthcheck, logs automatiques en cas d'echec.
 
-Si le script n'est pas executable:
+Si le script n'est pas executable :
 
 ```bash
 chmod +x deploy_safe.sh
@@ -123,10 +123,10 @@ docker compose up -d --build fabhome
 docker compose ps
 ```
 
-Points a verifier:
+Points a verifier :
 - Le service doit etre `Up` et `healthy`.
 - Le mapping doit etre `3001->3000/tcp`.
-- Si besoin, forcer le port: `FABHOME_PORT=3001 docker compose up -d`.
+- Si besoin, forcer le port : `FABHOME_PORT=3001 docker compose up -d`.
 
 Sous Windows, une erreur `dockerDesktopLinuxEngine pipe not found` signifie que Docker Desktop n'est pas demarre.
 
@@ -173,9 +173,9 @@ Supprimer le fichier `data/fabhome.db` et redémarrer — la base sera recréée
 
 #### Fiabilité popup et robustesse des mises à jour
 
-- Popup Nouveautés fiabilisée: détection basée sur signature complète de release et non plus uniquement la version.
+- Popup Nouveautés fiabilisée : détection basée sur signature complète de release et non plus uniquement la version.
 - Chargement des notes de release via URL statique Flask pour un comportement plus robuste.
-- Migrations SQLite durcies: version de schéma tracée dans la base et contrôlée au démarrage.
+- Migrations SQLite durcies : version de schéma tracée dans la base et contrôlée au démarrage.
 - Suivi centralisé des migrations avec historique idempotent pour limiter les régressions de mise à jour.
 - Validation de compatibilité schéma au boot du hub avant activation complète des services.
 

@@ -135,7 +135,7 @@ Pour trouver l'IP du serveur : `hostname -I | awk '{print $1}'`
 
 ##### A. FabBoard seul (docker-compose individuel)
 
-Mise a jour:
+Mise a jour :
 
 ```bash
 cd /chemin/vers/FabBoard
@@ -144,21 +144,21 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Arret:
+Arret :
 
 ```bash
 cd /chemin/vers/FabBoard
 docker compose stop
 ```
 
-Relance sans rebuild:
+Relance sans rebuild :
 
 ```bash
 cd /chemin/vers/FabBoard
 docker compose start
 ```
 
-Redemarrage complet:
+Redemarrage complet :
 
 ```bash
 cd /chemin/vers/FabBoard
@@ -167,7 +167,7 @@ docker compose restart
 
 ##### B. Suite complete (PretGo + Fabtrack + FabBoard)
 
-Mise a jour des 3 applications:
+Mise a jour des 3 applications :
 
 ```bash
 cd ~/fablab
@@ -178,28 +178,28 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Arret des 3 applications:
+Arret des 3 applications :
 
 ```bash
 cd ~/fablab
 docker compose stop
 ```
 
-Relance des 3 applications:
+Relance des 3 applications :
 
 ```bash
 cd ~/fablab
 docker compose start
 ```
 
-Redemarrage des 3 applications:
+Redemarrage des 3 applications :
 
 ```bash
 cd ~/fablab
 docker compose restart
 ```
 
-Diagnostic rapide:
+Diagnostic rapide :
 
 ```bash
 cd ~/fablab
@@ -209,7 +209,7 @@ docker logs --tail=120 fabtrack
 docker logs --tail=120 pretgo
 ```
 
-En cas de conflit `container name ... already in use`:
+En cas de conflit `container name ... already in use` :
 
 ```bash
 docker stop fabboard 2>/dev/null || true
@@ -218,22 +218,22 @@ cd /chemin/vers/FabBoard
 docker compose up -d --build
 ```
 
-Depannage: applications inaccessibles depuis le navigateur
+Depannage : applications inaccessibles depuis le navigateur
 
-1. Verifier l'etat des conteneurs:
+1. Verifier l'etat des conteneurs :
 
 ```bash
 docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | egrep "fabboard|fabtrack|pretgo"
 ```
 
-2. En cas de conflit de nom, nettoyer puis relancer:
+2. En cas de conflit de nom, nettoyer puis relancer :
 
 ```bash
 docker stop fabboard fabtrack pretgo 2>/dev/null || true
 docker rm fabboard fabtrack pretgo 2>/dev/null || true
 ```
 
-3. Choisir un seul mode de deploiement:
+3. Choisir un seul mode de deploiement :
 
 ```bash
 # Mode stack unique
@@ -245,7 +245,7 @@ cd /chemin/vers/Fabtrack && docker compose up -d --build
 cd /chemin/vers/FabBoard && docker compose up -d --build
 ```
 
-4. Verifier les logs et la reponse locale serveur:
+4. Verifier les logs et la reponse locale serveur :
 
 ```bash
 docker logs --tail=120 fabtrack
@@ -254,7 +254,7 @@ curl -I http://127.0.0.1:5555
 curl -I http://127.0.0.1:5580
 ```
 
-5. Si local OK mais acces distant KO, verifier le firewall:
+5. Si local OK mais acces distant KO, verifier le firewall :
 
 ```bash
 sudo ufw allow 5555/tcp
@@ -571,10 +571,10 @@ Navigation :
 #### Pause hebdomadaire et indisponibilité prioritaire
 
 - Nouvelle pause hebdomadaire récurrente configurable jour par jour (lundi à dimanche) avec horaires début/fin.
-- Indisponibilité manuelle prioritaire ajoutée: prend le dessus sur toutes les slides tant qu'elle est active.
-- Option d'heure de retour sur l'indisponibilité: affichable ou masquable via un simple switch.
+- Indisponibilité manuelle prioritaire ajoutée : prend le dessus sur toutes les slides tant qu'elle est active.
+- Option d'heure de retour sur l'indisponibilité : affichable ou masquable via un simple switch.
 - Taille de texte personnalisable pour la PAUSE et pour l'INDISPONIBILITÉ (réglages indépendants).
-- Texte de pause personnalisé: titre et message configurables dans les paramètres.
+- Texte de pause personnalisé : titre et message configurables dans les paramètres.
 - Nouveau mode image pour la pause récurrente (JPG/PNG) avec upload et aperçu.
 
 ---

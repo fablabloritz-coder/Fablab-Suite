@@ -135,7 +135,7 @@ FABTRACK_UPLOADS_PATH=./docker-data/uploads
 
 Commandes a executer depuis le dossier `Fabtrack/`.
 
-Mise a jour applicative (code + image + conteneur):
+Mise a jour applicative (code + image + conteneur) :
 
 ```bash
 cd /chemin/vers/Fabtrack
@@ -144,28 +144,28 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Arret du service:
+Arret du service :
 
 ```bash
 cd /chemin/vers/Fabtrack
 docker compose stop
 ```
 
-Relance du service (sans rebuild):
+Relance du service (sans rebuild) :
 
 ```bash
 cd /chemin/vers/Fabtrack
 docker compose start
 ```
 
-Redemarrage complet du service (sans rebuild):
+Redemarrage complet du service (sans rebuild) :
 
 ```bash
 cd /chemin/vers/Fabtrack
 docker compose restart
 ```
 
-Relance avec rebuild force (apres mise a jour ou changement Dockerfile):
+Relance avec rebuild force (apres mise a jour ou changement Dockerfile) :
 
 ```bash
 cd /chemin/vers/Fabtrack
@@ -173,7 +173,7 @@ docker compose down
 docker compose up -d --build
 ```
 
-Diagnostic rapide:
+Diagnostic rapide :
 
 ```bash
 cd /chemin/vers/Fabtrack
@@ -181,7 +181,7 @@ docker compose ps
 docker logs --tail=120 fabtrack
 ```
 
-En cas de conflit `container name ... already in use`:
+En cas de conflit `container name ... already in use` :
 
 ```bash
 docker stop fabtrack 2>/dev/null || true
@@ -190,9 +190,9 @@ cd /chemin/vers/Fabtrack
 docker compose up -d --build
 ```
 
-Depannage: application inaccessible depuis le navigateur
+Depannage : application inaccessible depuis le navigateur
 
-1. Verifier que le conteneur tourne:
+1. Verifier que le conteneur tourne :
 
 ```bash
 cd /chemin/vers/Fabtrack
@@ -200,26 +200,26 @@ docker compose ps
 docker ps -a --filter "name=^/fabtrack$"
 ```
 
-2. Lire les logs de demarrage:
+2. Lire les logs de demarrage :
 
 ```bash
 docker logs --tail=200 fabtrack
 ```
 
-3. Tester localement sur le serveur:
+3. Tester localement sur le serveur :
 
 ```bash
 curl -I http://127.0.0.1:5555
 ```
 
-4. Si le service repond en local mais pas depuis un autre poste, ouvrir le firewall:
+4. Si le service repond en local mais pas depuis un autre poste, ouvrir le firewall :
 
 ```bash
 sudo ufw allow 5555/tcp
 sudo ufw status
 ```
 
-5. Si l'etat est incoherent, remise a plat sans perte de donnees:
+5. Si l'etat est incoherent, remise a plat sans perte de donnees :
 
 ```bash
 docker stop fabtrack 2>/dev/null || true
@@ -321,7 +321,7 @@ Fabtrack/
 
 | Concept | Détail |
 |---------|--------|
-| **Table de jonction** | `materiau_machine` lie chaque matériau aux machines compatibles (N:M). Plus de doublons de matériaux. |
+| **Table de jonction** | `materiau_machine` lie chaque matériau aux machines compatibles (N :M). Plus de doublons de matériaux. |
 | **Dénormalisation** | Chaque consommation stocke les noms (`nom_preparateur`, `nom_machine`, etc.) en plus des FK, garantissant la lisibilité même après suppression d'une entité. |
 | **Soft-delete** | Les entités ne sont jamais supprimées physiquement — le champ `actif` passe à `0`. Les consommations existantes restent intactes. |
 | **Principes de conception** | Chaque machine porte un attribut `principes_conception` (`ajout`, `enlevement`, `deformation`) pour classification pédagogique. |
@@ -335,7 +335,7 @@ Fabtrack/
 L'application est pré-configurée avec **13 machines** :
 
 | Machine | Type | Qté | Marque | Zone de travail |
-|---------|------|:---:|--------|-----------------|
+|---------|------| :--- :|--------|-----------------|
 | Creality CR10-S | Impression 3D | ×2 | Creality | 300×300×400 mm |
 | Creality Ender 3 | Impression 3D | ×1 | Creality | 220×220×250 mm |
 | Raise 3D Pro | Impression 3D | ×1 | Raise3D | 305×305×305 mm |
@@ -368,7 +368,7 @@ L'application est pré-configurée avec **13 machines** :
 ## 📊 Types d'activité
 
 | Type | Icône | Unité | Principe |
-|------|:-----:|-------|----------|
+|------| :----- :|-------|----------|
 | Impression 3D | 🖨️ | g | Ajout |
 | Découpe Laser | ⚡ | m² | Enlèvement |
 | CNC / Fraisage | ⚙️ | m² | Enlèvement |
@@ -657,7 +657,7 @@ Depuis la page **Export** :
 - Export CSV : lignes de métadonnées en tête de fichier indiquant les filtres actifs.
 - Export HTML : encart 'Filtres appliqués' intégré dans le fichier exporté.
 - Export PDF (impression) : récapitulatif des filtres affiché uniquement à l'impression.
-- Nom de fichier enrichi selon les filtres actifs (ex: FabTrack_Export_Ref-Martin_2026-05-16.csv).
+- Nom de fichier enrichi selon les filtres actifs (ex : FabTrack_Export_Ref-Martin_2026-05-16.csv).
 - Preset 'Année scolaire' : période du 1er septembre à aujourd'hui en un clic.
 
 ---
@@ -702,10 +702,10 @@ Depuis la page **Export** :
 #### Cohérence occurrences par type et matériau
 
 - Le flag matériau count_occurrences ne s'applique plus hors des familles ciblées (g, m2, feuilles).
-- Migration durcie: les valeurs NULL historiques de count_occurrences sont normalisées à 1.
-- Edition matériau fiabilisée: si le champ est absent, la valeur par défaut reste 1 (plus de retour à NULL).
-- Interface paramètres simplifiée: suppression du mode auto par nom, affichage explicite oui/non.
-- Validation complète: 25 tests unitaires passés sur la suite Fabtrack.
+- Migration durcie : les valeurs NULL historiques de count_occurrences sont normalisées à 1.
+- Edition matériau fiabilisée : si le champ est absent, la valeur par défaut reste 1 (plus de retour à NULL).
+- Interface paramètres simplifiée : suppression du mode auto par nom, affichage explicite oui/non.
+- Validation complète : 25 tests unitaires passés sur la suite Fabtrack.
 
 ---
 

@@ -2,12 +2,12 @@
 
 Suite d'applications Flask/SQLite pour piloter un FabLab avec un déploiement Docker simple.
 
-Ce monorepo regroupe:
-- FabHome: hub central et tableau de supervision
-- Fabtrack: machines, consommations, stock, missions
-- PretGo: gestion des prêts de matériel
-- FabBoard: affichage TV / dashboard visuel
-- Outils d'installation: `fabsuite-ubuntu.sh` + `fabsuite_ssh_gui.py`
+Ce monorepo regroupe :
+- FabHome : hub central et tableau de supervision
+- Fabtrack : machines, consommations, stock, missions
+- PretGo : gestion des prêts de matériel
+- FabBoard : affichage TV / dashboard visuel
+- Outils d'installation : `fabsuite-ubuntu.sh` + `fabsuite_ssh_gui.py`
 
 ## Objectif
 
@@ -15,12 +15,12 @@ Installer rapidement une suite complète, préconfigurée pour que les applicati
 
 ## Architecture
 
-- Backend: Flask + SQLite
-- Frontend: Bootstrap 5 + JavaScript vanilla
-- Déploiement: Docker Compose
-- Inter-apps: endpoints FabSuite (`/api/fabsuite/*`)
+- Backend : Flask + SQLite
+- Frontend : Bootstrap 5 + JavaScript vanilla
+- Déploiement : Docker Compose
+- Inter-apps : endpoints FabSuite (`/api/fabsuite/*`)
 
-Structure principale:
+Structure principale :
 
 - `FabHome/`
 - `Fabtrack/`
@@ -109,15 +109,15 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Accès local:
-- FabHome: `http://localhost:3001`
-- Fabtrack: `http://localhost:5555`
-- PretGo: `http://localhost:5000`
-- FabBoard: `http://localhost:5580`
+Accès local :
+- FabHome : `http://localhost:3001`
+- Fabtrack : `http://localhost:5555`
+- PretGo : `http://localhost:5000`
+- FabBoard : `http://localhost:5580`
 
 ### Installation serveur Ubuntu manuelle
 
-Guide complet: `INSTALL_UBUNTU.md`
+Guide complet : `INSTALL_UBUNTU.md`
 
 ```bash
 scp fabsuite-ubuntu.sh fabsuite-ubuntu.env.example INSTALL_UBUNTU.md user@SERVER_IP:~/fabsuite-installer/
@@ -246,7 +246,7 @@ complet, sinon les tags seraient absents).
 
 ## Confidentialité et publication
 
-Le repo est préparé pour une publication propre:
+Le repo est préparé pour une publication propre :
 - valeurs serveur spécifiques retirées du code d'installation
 - variables sensibles externalisées (`.env`, `fabsuite-ubuntu.env`)
 - fichiers locaux/outils de debug exclus via `.gitignore`
