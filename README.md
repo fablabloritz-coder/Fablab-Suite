@@ -169,13 +169,13 @@ Les notes sont injectées en HTML : le gras `<strong>` est utilisé dans PretGo.
 ### Convention de tags
 
 Les tags sont **préfixés par l'application**, car le dépôt héberge plusieurs logiciels qui numérotent
-leurs versions indépendamment (`v1.7.1` de FabHome et `v1.9.0` de PretGo ne doivent pas se confondre) :
+leurs versions indépendamment (`v1.7.1` de FabHome et `v1.10.1` de PretGo ne doivent pas se confondre) :
 
 | Application | Préfixe | Exemple |
 |---|---|---|
 | Fabtrack | `fabtrack-v` | `fabtrack-v2.7.0` |
-| FabBoard | `fabboard-v` | `fabboard-v3.5.1` |
-| PretGo | `pretgo-v` | `pretgo-v1.9.0` |
+| FabBoard | `fabboard-v` | `fabboard-v3.5.2` |
+| PretGo | `pretgo-v` | `pretgo-v1.10.1` |
 | FabHome | `fabhome-v` | `fabhome-v1.7.1` |
 | FabInventory | `fabinventory-v` | `fabinventory-v2.1.0` |
 
