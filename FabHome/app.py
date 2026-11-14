@@ -1,4 +1,4 @@
-"""FabHome — Page d'accueil personnalisée avec grille configurable."""
+"""FabHome v1.7.1 — Page d'accueil personnalisée avec grille configurable."""
 
 import os
 import logging

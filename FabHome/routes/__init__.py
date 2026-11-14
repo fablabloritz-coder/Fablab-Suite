@@ -1,5 +1,5 @@
 """
-FabHome — Enregistrement des blueprints.
+FabHome v1.7.1 — Enregistrement des blueprints.
 """
 
 from flask import session

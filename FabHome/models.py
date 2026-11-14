@@ -1,4 +1,4 @@
-"""FabHome — Couche base de données SQLite."""
+"""FabHome v1.7.1 — Couche base de données SQLite."""
 
 import sqlite3
 import os

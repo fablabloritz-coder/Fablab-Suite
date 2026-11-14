@@ -1,5 +1,5 @@
 """
-FabInventory - Gestionnaire d'inventaire de masters FOG
+FabInventory v2.1.0 - Gestionnaire d'inventaire de masters FOG
 Flask + SQLite - Compatible Fablab-Suite
 """
 

@@ -1,6 +1,6 @@
 """
 ==============================================
-  PRETGO — Gestion de Prêt de Matériel
+  PRETGO v1.9.0 — Gestion de Prêt de Matériel
   Application Flask avec base SQLite locale
 ==============================================
 Pour lancer : python app.py
@@ -12,7 +12,7 @@ from database import init_db, get_db, DATA_DIR, PRETGO_SCHEMA_VERSION
 from utils import get_app_db, register_filters, register_context_processors, check_and_run_backup
 from fabsuite_core.security import load_secret_key
 from fabsuite_core.schema import assert_min_schema_version, get_schema_version
-from routes import register_blueprints
+from routes import APP_VERSION, register_blueprints
 from scheduler import email_scheduler
 import os
 import secrets
@@ -193,7 +193,7 @@ if __name__ == '__main__':
 
     print()
     print("=" * 55)
-    print("   PRETGO — Gestion de Prêt de Matériel")
+    print(f"   PRETGO v{APP_VERSION} — Gestion de Prêt de Matériel")
     print("   ----------------------------")
     print("   Ouvrez votre navigateur à l'adresse :")
     print(f"   http://localhost:{PORT}")

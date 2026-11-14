@@ -1,5 +1,5 @@
 """
-PretGo — Enregistrement des blueprints.
+PretGo v1.9.0 — Enregistrement des blueprints.
 """
 
 from database import get_setting
