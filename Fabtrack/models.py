@@ -1,5 +1,5 @@
 """
-FabTrack v2 — Modèles de base de données SQLite
+FabTrack v2.7.0 — Modèles de base de données SQLite
 Schéma enrichi : fiches techniques machines, catégories référents,
 types d'activité paramétrables, données de démonstration, réinitialisation.
 Matériaux liés aux machines via table de jonction (pas de doublons).

@@ -1,5 +1,5 @@
 """
-FabBoard v2.0 — Application Flask principale
+FabBoard v3.5.1 — Application Flask principale
 Tableau de bord TV pour Fablab
 Architecture blueprints + fabsuite_core
 """

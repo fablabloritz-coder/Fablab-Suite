@@ -9,6 +9,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Source unique de la version : manifeste FabSuite et bannière de démarrage.
+APP_VERSION = '2.7.0'
+
 
 def register_blueprints(app):
     """Enregistre tous les blueprints sur l'app Flask."""
@@ -35,7 +38,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id='fabtrack',
         name='Fabtrack',
-        version='2.7.0',
+        version=APP_VERSION,
         description='Suivi des consommations machines et matériaux du FabLab',
         capabilities=['stats', 'machines', 'consumptions', 'stock', 'tasks', 'x-raise3d'],
         widgets=[

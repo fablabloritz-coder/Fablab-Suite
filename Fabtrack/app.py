@@ -1,5 +1,5 @@
 """
-FabTrack v2 — Application Flask principale
+FabTrack v2.7.0 — Application Flask principale
 Suivi de consommation pour Fablab (Loritz)
 """
 
@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify
 from models import get_db, init_db, DATA_DIR, FABTRACK_SCHEMA_VERSION
 from fabsuite_core.security import load_secret_key
 from fabsuite_core.schema import assert_min_schema_version, get_schema_version
-from routes import register_blueprints
+from routes import APP_VERSION, register_blueprints
 from routes.api_admin import check_auto_backup
 import os, logging
 
@@ -71,7 +71,7 @@ def too_large(e):
 if __name__ == '__main__':
     init_db()
     print("\n" + "="*50)
-    print("  🏭 FabTrack v2 — Suivi Consommation Fablab")
+    print(f"  🏭 FabTrack v{APP_VERSION} — Suivi Consommation Fablab")
     print("  📡 FabLab Suite manifest v1.0.0")
     print("  📍 http://localhost:5555")
     print("  📍 Réseau: http://<IP>:5555")
