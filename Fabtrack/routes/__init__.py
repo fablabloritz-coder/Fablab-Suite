@@ -9,7 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Source unique de la version : manifeste FabSuite et bannière de démarrage.
+    # Source unique de la version : manifeste FabSuite, bannière et pied de page.
 APP_VERSION = '2.7.0'
 
 
@@ -121,6 +121,9 @@ def register_blueprints(app):
         color='#198754',
     )
     app.register_blueprint(fabsuite_bp)
+
+    # Version exposée aux templates (pied de page).
+    app.jinja_env.globals['app_version'] = APP_VERSION
 
 
 # ── Widget callbacks ──
