@@ -205,7 +205,9 @@ git push origin main --tags
 
 ```bash
 python3 -m unittest discover -s tests          # manifeste == tête des notes == dernier tag
-python release_notes_gen.py --app ./Fabtrack --version 9.9.9 --dry-run
+for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
+  python release_notes_gen.py --app "./$app" --check   # code 1 s'il reste une note à publier
+done
 ```
 
 Ces contrôles sont rejoués à chaque push par `.github/workflows/version-consistency.yml` (checkout

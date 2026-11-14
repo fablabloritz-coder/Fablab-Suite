@@ -242,6 +242,25 @@ def load_existing_history(dest: Path) -> list[dict]:
 # ──────────────────────────────────────────────────────────────
 
 
+def collect_pending_notes(app_path: Path, since: str | None, existing_history: list[dict]) -> tuple[list[str], str | None]:
+    """Notes candidates depuis le dernier tag de l'app, et la reference utilisee.
+
+    Sans tag, la lecture repart de HEAD~50 : les notes deja publiees sont ecartees
+    pour ne pas les reproposer.
+    """
+    app_slug = app_path.name.strip().lower()
+    resolved_since = since or get_latest_app_tag(app_path, app_slug)
+    notes = build_notes_from_git(app_path, resolved_since, app_slug)
+    if not resolved_since:
+        known = {
+            str(note).strip().lower()
+            for entry in existing_history
+            for note in (entry.get("notes") or [])
+        }
+        notes = [note for note in notes if note.strip().lower() not in known]
+    return notes, resolved_since
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Générateur de release notes FabLab Suite"
@@ -253,8 +272,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--version",
-        required=True,
-        help="Numéro de version (ex: 1.4.0)",
+        required=False,
+        help="Numéro de version (ex: 1.4.0). Non requis avec --check.",
     )
     parser.add_argument(
         "--title",
@@ -280,12 +299,20 @@ def main() -> None:
         help="Affiche le JSON sans écrire le fichier.",
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Vérifie qu'aucune note n'est en attente depuis le dernier tag, "
+             "sans rien écrire. Code de sortie 1 s'il reste des notes à publier.",
+    )
+    parser.add_argument(
         "--max-entries",
         type=int,
         default=30,
         help="Nombre maximum d'entrées conservées dans l'historique (défaut : 30).",
     )
     args = parser.parse_args()
+    if not args.check and not args.version:
+        parser.error("--version est requis (sauf avec --check)")
 
     app_path = Path(args.app).resolve()
     if not app_path.is_dir():
@@ -300,25 +327,28 @@ def main() -> None:
     dest = static_dir / "release-notes.json"
     existing_history = load_existing_history(dest)
 
+    # ── Contrôle (CI) ──────────────────────────────────────────
+    if args.check:
+        pending, reference = collect_pending_notes(app_path, args.since, existing_history)
+        if pending:
+            print(
+                f"[ATTENTION] {app_path.name} : {len(pending)} note(s) en attente "
+                f"depuis {reference or 'HEAD~50'} — publier une version avant de pousser :",
+                file=sys.stderr,
+            )
+            for note in pending:
+                print(f"  - {note}", file=sys.stderr)
+            sys.exit(1)
+        print(f"[OK] {app_path.name} : notes de version a jour ({reference or 'aucune note'})")
+        return
+
     # ── Notes ──────────────────────────────────────────────────
     if args.override:
         notes = args.override
         source = "manuel"
     else:
-        app_slug = app_path.name.strip().lower()
-        resolved_since = args.since or get_latest_app_tag(app_path, app_slug)
-        notes = build_notes_from_git(app_path, resolved_since, app_slug)
+        notes, resolved_since = collect_pending_notes(app_path, args.since, existing_history)
         source = "git"
-
-        # Sans tag, la lecture git repart de HEAD~50 : on écarte les notes déjà
-        # publiées dans l'historique pour ne pas les reproposer.
-        if not resolved_since:
-            known = {
-                str(note).strip().lower()
-                for entry in existing_history
-                for note in (entry.get("notes") or [])
-            }
-            notes = [note for note in notes if note.strip().lower() not in known]
 
     if not notes:
         print(
