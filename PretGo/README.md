@@ -482,7 +482,7 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 #### Prêts longue durée sans date de fin
 
 - <strong>Prêts longue durée sans date de fin</strong> — un prêt peut désormais rester ouvert sans échéance.
-- <strong>Onglet dédié</strong> — les prêts longue durée se consultent dans leur propre onglet, sans polluer la liste classique.
+- <strong>Onglet dédié</strong> — les prêts longue durée se consultent dans leur propre onglet et sont exclus de la liste d'accueil comme des compteurs « Prêts en cours » (accueil, tableau de bord admin, widget FabHome).
 
 ---
 
