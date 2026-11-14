@@ -43,7 +43,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id="fabhome",
         name="FabHome",
-        version="2.0.0",
+        version="1.7.1",
         description="Hub central de la FabLab Suite",
         capabilities=["x-hub", "x-discovery", "x-notifications-aggregator"],
         icon="bi-house-heart",

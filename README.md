@@ -201,9 +201,10 @@ git tag -a fabtrack-v2.7.0 -m "Fabtrack 2.7.0 - garde-fou contre les doubles sai
 git push origin main --tags
 ```
 
-4. Contrôler qu'il ne reste rien en attente (le générateur ne doit proposer aucune note) :
+4. Contrôler la cohérence version / notes et qu'il ne reste rien en attente :
 
 ```bash
+python3 -m unittest discover -s tests          # manifeste == tête des notes, versions uniques
 python release_notes_gen.py --app ./Fabtrack --version 9.9.9 --dry-run
 ```
 
