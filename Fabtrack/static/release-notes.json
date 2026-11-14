@@ -1,6 +1,39 @@
 {
   "history": [
     {
+      "version": "2.6.0",
+      "date": "2026-11-14",
+      "title": "Date de creation des missions et statistiques par annee scolaire",
+      "notes": [
+        "Date de creation enregistree automatiquement a la creation d'une mission : badge « Créée le » dans le kanban, champ en lecture seule dans la fenetre de mission et colonne dediee dans les exports CSV/HTML/PDF.",
+        "Les missions anterieures a cette version n'ont pas de date de creation : aucun badge n'est affiche, rien n'est invente.",
+        "Page Statistiques : cadrage sur l'annee scolaire en cours (1er septembre - 31 aout par defaut), avec comparaison des autres annees conservees en base.",
+        "Annee scolaire configurable de date a date dans Parametres ; cette periode est reprise telle quelle par les widgets FabBoard.",
+        "Export CSV des statistiques complet : toutes les lignes sont desormais exportees (pagination automatique au-dela de 10 000 lignes)."
+      ]
+    },
+    {
+      "version": "2.5.1",
+      "date": "2026-11-02",
+      "title": "Fenetre de mission plus lisible",
+      "notes": [
+        "Fenetre de mission en deux colonnes : details a gauche, timeline des etapes a droite.",
+        "Derniere etape affichee directement sur les cartes du kanban.",
+        "Etapes en zone de texte multiligne et fenetre agrandie pour les longues descriptions.",
+        "Correction d'une erreur JavaScript dans le kanban (constante de categorie supprimee par erreur)."
+      ]
+    },
+    {
+      "version": "2.5.0",
+      "date": "2026-10-19",
+      "title": "Etapes de mission, recherche et exports enrichis",
+      "notes": [
+        "Chaque mission peut maintenant contenir des etapes datees, avec timeline d'avancement.",
+        "Recherche dans les missions terminees et dans les etapes, avec exports filtres.",
+        "Les exports CSV, HTML et PDF incluent les etapes des missions."
+      ]
+    },
+    {
       "version": "2.4.1",
       "date": "2026-05-18",
       "title": "Corrections saisie et historique",
@@ -78,7 +111,7 @@
     },
     {
       "version": "2.1.0",
-      "date": "2026-04-11",
+      "date": "2026-04-09",
       "title": "Popup de nouveautes centralisee",
       "notes": [
         "Popup Nouveautes chargee depuis release-notes.json.",

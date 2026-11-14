@@ -170,7 +170,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id="pretgo",
         name="PretGo",
-        version="1.0.0",
+        version="1.9.0",
         description="Gestion des prêts de matériel pour établissements",
         capabilities=["loans", "inventory", "notifications"],
         icon="bi-box-arrow-right",

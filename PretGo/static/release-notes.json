@@ -1,6 +1,24 @@
 {
   "history": [
     {
+      "version": "1.9.0",
+      "date": "2026-10-16",
+      "title": "Prets longue duree sans date de fin",
+      "notes": [
+        "<strong>Prets longue duree sans date de fin</strong> — un pret peut desormais rester ouvert sans echeance.",
+        "<strong>Onglet dedie</strong> — les prets longue duree se consultent dans leur propre onglet, sans polluer la liste classique."
+      ]
+    },
+    {
+      "version": "1.8.1",
+      "date": "2026-06-29",
+      "title": "Corrections sur la saisie des prets",
+      "notes": [
+        "<strong>Texte libre optionnel</strong> — un pret peut etre enregistre uniquement avec l'inventaire lie.",
+        "<strong>Modification de pret fiabilisee</strong> — plus d'erreur 500 a l'enregistrement d'une modification."
+      ]
+    },
+    {
       "version": "1.8.0",
       "date": "2026-06-24",
       "title": "Séparation inventaire/texte libre et douchette optimisée",

@@ -51,10 +51,142 @@
 </div>
 
 <footer class="text-center border-top mt-4">
-  <small>FabInventory &mdash; FabLab Suite</small>
+  <small>FabInventory &mdash; FabLab Suite &mdash; v2.1.0 &mdash;
+    <a href="#" class="text-muted" onclick="showUpdatesModal(); return false;"><i class="bi bi-stars me-1"></i>Nouveautés</a>
+  </small>
 </footer>
 
+<!-- Modal Nouveautés (affiché une fois par version) -->
+<div class="modal fade" id="updatesModal" tabindex="-1" aria-labelledby="updatesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="updatesModalLabel">
+                    <i class="bi bi-stars me-2 text-primary"></i>Nouveautés de la mise à jour
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+            </div>
+            <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+                <div class="small text-muted mb-3">
+                    Historique des evolutions (de la plus recente a la plus ancienne).
+                </div>
+                <div id="updatesTimeline"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">J'ai compris</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function() {
+    const STORAGE_KEY = 'fabinventory:last_seen_release';
+
+    function releaseEntries(info) {
+        if (Array.isArray(info.history) && info.history.length) {
+            return info.history;
+        }
+        if (Array.isArray(info)) {
+            return info.map((entry) => ({
+                version: entry.version || '',
+                date: entry.date || '',
+                title: entry.title || entry.summary || '',
+                notes: Array.isArray(entry.notes) ? entry.notes : (Array.isArray(entry.changes) ? entry.changes : []),
+            }));
+        }
+        if (info.version || info.date || info.title || Array.isArray(info.notes)) {
+            return [{
+                version: info.version || '',
+                date: info.date || '',
+                title: info.title || '',
+                notes: Array.isArray(info.notes) ? info.notes : [],
+            }];
+        }
+        return [];
+    }
+
+    function releaseSignature(info) {
+        const entries = releaseEntries(info);
+        return entries.map((entry) => {
+            const notes = Array.isArray(entry.notes) ? entry.notes.join('||') : '';
+            return `${entry.version || ''}|${entry.date || ''}|${entry.title || ''}|${notes}`;
+        }).join('###');
+    }
+
+    function fillModal(info) {
+        const timeline = document.getElementById('updatesTimeline');
+        if (!timeline) return false;
+
+        const entries = releaseEntries(info);
+        if (!entries.length) {
+            timeline.innerHTML = '<div class="alert alert-light mb-0">Aucune note de mise a jour disponible.</div>';
+            return true;
+        }
+
+        timeline.innerHTML = entries.map((entry) => {
+            const datePart = entry.date || 'Date non renseignee';
+            const versionPart = entry.version ? `Version ${entry.version}` : 'Mise a jour';
+            const titlePart = entry.title ? ` - ${entry.title}` : '';
+            const notes = Array.isArray(entry.notes) ? entry.notes : [];
+            const notesHtml = notes.length
+                ? notes.map(n => `<li class="mb-2">${n}</li>`).join('')
+                : '<li class="text-muted">Aucun detail fourni.</li>';
+
+            return `
+                <section class="border-start border-4 border-primary-subtle bg-light-subtle rounded-3 p-3 mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <span class="badge text-bg-primary">${datePart}</span>
+                        <span class="small text-muted">${versionPart}${titlePart}</span>
+                    </div>
+                    <ul class="mb-0">${notesHtml}</ul>
+                </section>
+            `;
+        }).join('');
+        return true;
+    }
+
+    async function loadReleaseNotes() {
+        const resp = await fetch(`{{ url_for('static', filename='release-notes.json') }}?_v=${Date.now()}`);
+        if (!resp.ok) throw new Error('release-notes.json inaccessible');
+        return resp.json();
+    }
+
+    async function maybeShowUpdatesModal() {
+        try {
+            const info = await loadReleaseNotes();
+            const currentSignature = releaseSignature(info);
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored === currentSignature) return;
+            if (!fillModal(info)) return;
+            const modalEl = document.getElementById('updatesModal');
+            if (!modalEl) return;
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modalEl.addEventListener('hidden.bs.modal', () => {
+                try { localStorage.setItem(STORAGE_KEY, currentSignature); } catch (_) {}
+            }, { once: true });
+            modal.show();
+        } catch (_) {}
+    }
+
+    window.showUpdatesModal = async function() {
+        try {
+            const info = await loadReleaseNotes();
+            fillModal(info);
+            const modalEl = document.getElementById('updatesModal');
+            if (!modalEl) return;
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        } catch (_) {}
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', maybeShowUpdatesModal);
+    } else {
+        maybeShowUpdatesModal();
+    }
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

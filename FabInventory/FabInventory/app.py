@@ -1165,7 +1165,7 @@ def fabsuite_manifest():
     return jsonify({
         "app": "fabinventory",
         "name": "FabInventory",
-        "version": "1.0.0",
+        "version": "2.1.0",
         "suite_version": "1.0.0",
         "description": "Gestionnaire d'inventaire de masters informatique",
         "icon": "bi-pc-display",

@@ -16,7 +16,9 @@ Usage:
   # Dry-run (affiche sans écrire)
   python release_notes_gen.py --app ./PretGo --version 1.4.0 --dry-run
 
-Génère static/release-notes.json dans le dossier de l'app.
+Met à jour static/release-notes.json dans le dossier de l'app : la nouvelle entrée
+est ajoutée en tête de "history" (les versions précédentes sont conservées), et
+une entrée de même numéro de version est remplacée au lieu d'être dupliquée.
 
 Filtrage automatique des commits :
   - Garde   : feat, feat(*), fix, fix(*) (hors fixes de test)
@@ -39,6 +41,12 @@ from pathlib import Path
 # ──────────────────────────────────────────────────────────────
 
 KEEP_TYPES = re.compile(r"^(feat|fix)(\([^)]+\))?!?:", re.IGNORECASE)
+
+# Sujets au format "Fabtrack: message" (style majoritaire du dépôt).
+APP_PREFIX = re.compile(
+    r"^(fabtrack|fabboard|fabhome|pretgo|fabstock|fabsuite)\s*:\s*(.+)$",
+    re.IGNORECASE,
+)
 
 EXCLUDE_PATTERNS = [
     re.compile(p, re.IGNORECASE)
@@ -63,7 +71,7 @@ MAX_NOTES = 5
 
 def is_relevant(subject: str) -> bool:
     """Renvoie True si le commit est pertinent pour les release notes."""
-    if not KEEP_TYPES.match(subject):
+    if not (KEEP_TYPES.match(subject) or APP_PREFIX.match(subject)):
         return False
     for pattern in EXCLUDE_PATTERNS:
         if pattern.search(subject):
@@ -80,11 +88,17 @@ def format_note(subject: str) -> str:
     else:
         msg = subject.strip()
 
+    # Retire un éventuel préfixe d'application : "Fabtrack: ajout ..."
+    app_match = APP_PREFIX.match(msg)
+    if app_match:
+        msg = app_match.group(2).strip()
+
     # Première lettre en majuscule
     if msg:
         msg = msg[0].upper() + msg[1:]
 
-    # Supprimer le point final s'il y en a un
+    # Supprimer le point final s'il y en a un, et les numeros de PR ("... (#12)")
+    msg = re.sub(r"\s*\(#\d+\)\s*$", "", msg)
     msg = msg.rstrip(".")
 
     return msg
@@ -161,6 +175,35 @@ def build_notes_from_git(repo_path: Path, since: str | None) -> list[str]:
 
 
 # ──────────────────────────────────────────────────────────────
+# Historique existant
+# ──────────────────────────────────────────────────────────────
+
+
+def load_existing_history(dest: Path) -> list[dict]:
+    """Lit l'historique déjà présent (format "history" ou ancien format simple)."""
+    if not dest.is_file():
+        return []
+    try:
+        data = json.loads(dest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    if isinstance(data, dict):
+        history = data.get("history")
+        if isinstance(history, list):
+            return [entry for entry in history if isinstance(entry, dict)]
+        # Ancien format : un seul objet {version, date, title, notes}
+        if data.get("version") or data.get("notes"):
+            return [{
+                "version": data.get("version", ""),
+                "date": data.get("date", ""),
+                "title": data.get("title", ""),
+                "notes": data.get("notes", []),
+            }]
+    return []
+
+
+# ──────────────────────────────────────────────────────────────
 # Entrypoint
 # ──────────────────────────────────────────────────────────────
 
@@ -202,6 +245,12 @@ def main() -> None:
         action="store_true",
         help="Affiche le JSON sans écrire le fichier.",
     )
+    parser.add_argument(
+        "--max-entries",
+        type=int,
+        default=30,
+        help="Nombre maximum d'entrées conservées dans l'historique (défaut : 30).",
+    )
     args = parser.parse_args()
 
     app_path = Path(args.app).resolve()
@@ -233,23 +282,36 @@ def main() -> None:
     title = args.title or f"Version {args.version}"
 
     # ── JSON ───────────────────────────────────────────────────
-    payload = {
+    entry = {
         "version": args.version,
         "date": date.today().isoformat(),
         "title": title,
         "notes": notes,
-        "_source": source,
     }
 
+    dest = static_dir / "release-notes.json"
+    history = [e for e in load_existing_history(dest) if e.get("version") != args.version]
+    history.insert(0, entry)
+    if args.max_entries > 0:
+        history = history[: args.max_entries]
+
+    payload = {"history": history, "_source": source}
     output = json.dumps(payload, ensure_ascii=False, indent=2)
 
     if args.dry_run:
         print(output)
         return
 
-    dest = static_dir / "release-notes.json"
     dest.write_text(output, encoding="utf-8")
-    print(f"[OK] {dest.relative_to(Path.cwd())} — version {args.version} ({len(notes)} note{'s' if len(notes) > 1 else ''}, source: {source})")
+    try:
+        dest_label = dest.relative_to(Path.cwd())
+    except ValueError:
+        dest_label = dest
+    print(
+        f"[OK] {dest_label} — version {args.version} "
+        f"({len(notes)} note{'s' if len(notes) > 1 else ''}, source: {source}, "
+        f"{len(history)} version(s) au total)"
+    )
 
 
 if __name__ == "__main__":

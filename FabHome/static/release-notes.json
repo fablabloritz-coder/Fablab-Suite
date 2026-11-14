@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "1.7.1",
+      "date": "2026-05-14",
+      "title": "Lisibilite des cellules et des widgets",
+      "notes": [
+        "Cellules carrees restaurees : la mesure se fait sur la hauteur reelle de la cellule, sans debordement de la grille.",
+        "Libelles des raccourcis toujours visibles, y compris dans les petites cellules.",
+        "Dimensionnement de la grille et des widgets entierement en CSS pour un rendu stable a toutes les resolutions.",
+        "Correction de l'affichage des informations tronquees dans les widgets de liste."
+      ]
+    },
+    {
       "version": "1.7.0",
       "date": "2026-05-13",
       "title": "Grille 16:9, cellules carrées et bibliothèque d'icônes",
