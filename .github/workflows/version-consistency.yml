@@ -1,0 +1,30 @@
+name: Version consistency
+
+# Contrôle rapide et sans dépendances : versions du manifeste, tête des notes
+# de version et dernier tag <app>-vX.Y.Z de chaque application.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-versions:
+    name: Versions et tags
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (historique et tags complets)
+        uses: actions/checkout@v7
+        with:
+          # Les tags sont lus par tests/test_release_versions.py : un clone
+          # superficiel les omettrait et le contrôle se contenterait d'être ignoré.
+          fetch-depth: 0
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Tests de cohérence version / notes / tags
+        run: python3 -m unittest discover -s tests -v

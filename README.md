@@ -208,6 +208,9 @@ python3 -m unittest discover -s tests          # manifeste == tête des notes ==
 python release_notes_gen.py --app ./Fabtrack --version 9.9.9 --dry-run
 ```
 
+Ces contrôles sont rejoués à chaque push par `.github/workflows/version-consistency.yml` (checkout
+complet, sinon les tags seraient absents).
+
 ## Maintenance serveur
 
 ```bash
