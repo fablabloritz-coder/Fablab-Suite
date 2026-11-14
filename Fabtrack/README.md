@@ -581,6 +581,8 @@ Depuis la page **Export** :
 
 ## 📜 Changelog
 
+<!-- changelog:start -->
+
 ### v2.7.0 — 2026-11-14
 
 #### Garde-fou contre les doubles saisies
@@ -721,6 +723,27 @@ Depuis la page **Export** :
 - Securisation du flux de saisie pour reduire les erreurs operateur.
 
 ---
+
+### v2.2.0 — 2026-04-10
+
+#### Assistant de setup et bibliotheque d'images
+
+- Ajout d'un assistant de configuration initiale.
+- Ajout d'une bibliotheque d'images pour simplifier l'illustration des fiches.
+- Ameliorations UX successives sur le selecteur d'images.
+
+---
+
+### v2.1.0 — 2026-04-09
+
+#### Popup de nouveautes centralisee
+
+- Popup Nouveautes chargee depuis release-notes.json.
+- Lien footer pour consulter l'historique a tout moment.
+
+---
+
+<!-- changelog:end -->
 
 ## 📝 Licence
 

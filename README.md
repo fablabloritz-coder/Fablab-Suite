@@ -197,6 +197,10 @@ Le générateur renseigne aussi la clé `url` de l'entrée (lien vers la release
 historique déjà écrit, `python release_notes_gen.py --app ./Fabtrack --sync-release-links` la
 recalcule à partir des tags locaux, sans toucher aux notes.
 
+Le changelog du README (section encadrée par `<!-- changelog:start -->` et `<!-- changelog:end -->`)
+se synchronise avec `python3 changelog_gen.py --app ./Fabtrack` : les blocs déjà écrits sont conservés,
+les versions présentes dans les notes mais absentes du README sont ajoutées automatiquement.
+
 Sans `--since`, le générateur repart du dernier tag `<app>-v*` et ne garde que les commits touchant le
 dossier de l'application. S'il n'existe aucun tag, il lit les 50 derniers commits et écarte les notes
 déjà publiées. Une entrée de même numéro de version est remplacée, les autres sont conservées.
@@ -217,6 +221,7 @@ un tag sans entrée de notes fait échouer ce workflow plutôt que de créer une
 
 ```bash
 python3 -m unittest discover -s tests          # manifeste == tête des notes == dernier tag
+python3 changelog_gen.py --app ./Fabtrack --check      # changelog README complet
 for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
   python release_notes_gen.py --app "./$app" --check   # code 1 s'il reste une note à publier
 done

@@ -29,6 +29,9 @@ jobs:
       - name: Tests de cohérence version / notes / tags
         run: python3 -m unittest discover -s tests -v
 
+      - name: Changelog README synchronise avec les notes
+        run: python3 changelog_gen.py --app ./Fabtrack --check
+
       - name: Aucune note de version en attente
         run: |
           for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
