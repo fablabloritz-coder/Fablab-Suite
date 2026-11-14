@@ -67,6 +67,16 @@
     </div>
     <div class="pret-objects">
         <i class="bi bi-box text-primary"></i> {{ pret.descriptif_objets }}
+        {% set total_objets = objets_total.get(pret.id, 0) %}
+        {% set rendus_objets = objets_rendus.get(pret.id, 0) %}
+        {% if total_objets and rendus_objets %}
+            <span class="badge bg-warning text-dark ms-2">
+                <i class="bi bi-box-arrow-in-left"></i> Retour partiel : {{ rendus_objets }}/{{ total_objets }} rendus
+            </span>
+            <a href="{{ url_for('prets.detail_pret', pret_id=pret.id) }}" class="small ms-2">voir la fiche</a>
+        {% elif total_objets > 1 %}
+            <span class="text-muted small ms-2">{{ total_objets }} objets</span>
+        {% endif %}
     </div>
     <div class="d-flex justify-content-between align-items-center">
         <div class="pret-date">

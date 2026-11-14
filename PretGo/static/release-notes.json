@@ -1,6 +1,15 @@
 {
   "history": [
     {
+      "version": "1.10.1",
+      "date": "2026-11-14",
+      "title": "Retours partiels visibles dans la liste des retours",
+      "notes": [
+        "<strong>Progression affichée</strong> — chaque prêt de la page Retour indique le nombre d'objets qu'il contient, et remplace ce compteur par un badge « Retour partiel : 1/2 rendus » dès qu'un objet est revenu, avec un lien vers la fiche."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.1"
+    },
+    {
       "version": "1.10.0",
       "date": "2026-11-14",
       "title": "Retour partiel objet par objet",

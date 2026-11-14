@@ -204,6 +204,29 @@ class RetoursRetardsTests(unittest.TestCase):
         self.assertIsNotNone(pret['date_retour'])
         self.assertEqual(self._etats(), {'RET-A': 'disponible', 'RET-B': 'disponible'})
 
+    def test_liste_retour_indique_les_retours_partiels(self):
+        pret_id = self._inserer_pret(
+            [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],
+            datetime.datetime.now(),
+        )
+        self._inserer_pret(
+            [('Texte libre 1', None), ('Texte libre 2', None)],
+            datetime.datetime.now(),
+        )
+
+        page = self.client.get('/retour').get_data(as_text=True)
+        self.assertEqual(page.count('2 objets'), 2)
+        self.assertNotIn('Retour partiel', page)
+
+        pm_a = self._pm(pret_id, self.materiel_a)['id']
+        self.client.post(f'/pret/{pret_id}/retour-objet/{pm_a}', follow_redirects=True)
+
+        page = self.client.get('/retour').get_data(as_text=True)
+        self.assertIn('Retour partiel : 1/2 rendus', page)
+        self.assertIn(f'/pret/{pret_id}', page)
+        # Seul le prêt intact conserve le simple compteur d'objets.
+        self.assertEqual(page.count('2 objets'), 1)
+
     def test_retour_d_un_objet_deja_rendu_refuse(self):
         pret_id = self._inserer_pret(
             [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],

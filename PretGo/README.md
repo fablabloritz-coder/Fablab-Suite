@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.1 — 2026-11-14
+
+#### Retours partiels visibles dans la liste des retours
+
+- <strong>Progression affichée</strong> — chaque prêt de la page Retour indique le nombre d'objets qu'il contient, et remplace ce compteur par un badge « Retour partiel : 1/2 rendus » dès qu'un objet est revenu, avec un lien vers la fiche.
+
+---
+
 ### v1.10.0 — 2026-11-14
 
 #### Retour partiel objet par objet

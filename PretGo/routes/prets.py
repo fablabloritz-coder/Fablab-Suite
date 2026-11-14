@@ -428,7 +428,23 @@ def retour():
             ORDER BY p.date_emprunt DESC
         ''').fetchall()
 
-    return render_template('retour.html', prets=prets, recherche=recherche)
+    # Progression des retours partiels : objets rendus / objets du prêt.
+    objets_total = {}
+    objets_rendus = {}
+    if prets:
+        ids = [pret['id'] for pret in prets]
+        placeholders = ','.join('?' * len(ids))
+        for row in conn.execute(
+            f'SELECT pret_id, COUNT(*) AS total, '
+            f'SUM(CASE WHEN IFNULL(retour_confirme, 0) = 1 THEN 1 ELSE 0 END) AS rendus '
+            f'FROM pret_materiels WHERE pret_id IN ({placeholders}) GROUP BY pret_id',
+            ids,
+        ).fetchall():
+            objets_total[row['pret_id']] = row['total']
+            objets_rendus[row['pret_id']] = row['rendus'] or 0
+
+    return render_template('retour.html', prets=prets, recherche=recherche,
+                           objets_total=objets_total, objets_rendus=objets_rendus)
 
 
 
