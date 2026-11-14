@@ -204,7 +204,7 @@ git push origin main --tags
 4. Contrôler la cohérence version / notes et qu'il ne reste rien en attente :
 
 ```bash
-python3 -m unittest discover -s tests          # manifeste == tête des notes, versions uniques
+python3 -m unittest discover -s tests          # manifeste == tête des notes == dernier tag
 python release_notes_gen.py --app ./Fabtrack --version 9.9.9 --dry-run
 ```
 
