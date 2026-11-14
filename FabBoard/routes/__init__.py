@@ -6,6 +6,9 @@ from models import get_db
 from fabsuite_core.manifest import create_fabsuite_blueprint
 from fabsuite_core.widgets import counter
 
+# Source unique de la version : manifeste FabSuite et pages (À propos).
+APP_VERSION = "3.5.1"
+
 
 def _health_check():
     """Vérifie que la DB est accessible."""
@@ -77,7 +80,7 @@ def register_blueprints(app):
     fabsuite_bp = create_fabsuite_blueprint(
         app_id="fabboard",
         name="FabBoard",
-        version="3.5.1",
+        version=APP_VERSION,
         description="Dashboard TV temps réel pour le FabLab",
         icon="bi-tv",
         color="#6f42c1",
@@ -97,3 +100,6 @@ def register_blueprints(app):
         health_fn=_health_check,
     )
     app.register_blueprint(fabsuite_bp)
+
+    # Version exposée aux templates (carte « À propos » des paramètres).
+    app.jinja_env.globals["app_version"] = APP_VERSION

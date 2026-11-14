@@ -31,7 +31,11 @@ APPS = {
     ),
 }
 
-VERSION_PATTERN = re.compile(r'(?:"version"|version)\s*[:=]\s*["\']([0-9]+\.[0-9]+\.[0-9]+)["\']')
+# `version="1.2.3"` (manifeste) ou `APP_VERSION = "1.2.3"` (constante partagée).
+VERSION_PATTERN = re.compile(
+    r'(?:"version"|version)\s*[:=]\s*["\']([0-9]+\.[0-9]+\.[0-9]+)["\']'
+    r'|APP_VERSION\s*=\s*["\']([0-9]+\.[0-9]+\.[0-9]+)["\']'
+)
 SEMVER_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 
@@ -76,9 +80,10 @@ def read_manifest_version(relative_path):
     """Retourne la version declaree dans le manifeste FabLab Suite de l'application."""
     source = (ROOT / relative_path).read_text(encoding="utf-8")
     matches = VERSION_PATTERN.findall(source)
-    if not matches:
+    versions = [found for match in matches for found in (match if isinstance(match, tuple) else (match,)) if found]
+    if not versions:
         raise AssertionError(f"Aucune version trouvee dans {relative_path}")
-    return matches[0]
+    return versions[0]
 
 
 def read_notes_history(relative_path):
