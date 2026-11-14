@@ -60,10 +60,15 @@ def git_tags():
     return result.stdout.split(), None
 
 
+def app_tag_versions(tags, app):
+    """Versions ayant un tag `<app>-vX.Y.Z`."""
+    pattern = re.compile(rf"^{re.escape(app)}-v([0-9]+\.[0-9]+\.[0-9]+)$")
+    return {m.group(1) for m in (pattern.match(tag) for tag in tags) if m}
+
+
 def latest_app_tag(tags, app):
     """Retourne la version du tag `<app>-vX.Y.Z` le plus eleve, ou None si absent."""
-    pattern = re.compile(rf"^{re.escape(app)}-v([0-9]+\.[0-9]+\.[0-9]+)$")
-    versions = [m.group(1) for m in (pattern.match(tag) for tag in tags) if m]
+    versions = app_tag_versions(tags, app)
     return max(versions, key=version_tuple) if versions else None
 
 
@@ -115,6 +120,32 @@ class ReleaseVersionsTest(unittest.TestCase):
                     f"mais la version publiee est {published_version} "
                     f"(tete de {notes_path}) : taguer la release avant de pousser",
                 )
+
+    def test_release_links_only_target_tagged_versions(self):
+        """Une entree ne porte un lien que si sa version a un tag (donc une release)."""
+        tags, reason = git_tags()
+        if tags is None:
+            self.skipTest(reason)
+        for app, (_, notes_path) in sorted(APPS.items()):
+            with self.subTest(app=app):
+                tagged = app_tag_versions(tags, app)
+                for entry in read_notes_history(notes_path):
+                    url = entry.get("url")
+                    if not url:
+                        continue
+                    version = str(entry.get("version", ""))
+                    self.assertIn(
+                        version,
+                        tagged,
+                        f"{app} : lien vers {version} sans tag {app}-v{version} : "
+                        f"la popup afficherait une page GitHub inexistante",
+                    )
+                    self.assertEqual(
+                        url,
+                        "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/"
+                        f"{app}-v{version}",
+                        f"{app} : URL de release inattendue pour {version}",
+                    )
 
     def test_release_notes_versions_follow_semver(self):
         for app, (_, notes_path) in sorted(APPS.items()):

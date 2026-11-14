@@ -73,6 +73,9 @@ EXCLUDE_PATTERNS = [
 
 MAX_NOTES = 5
 
+# URL des releases GitHub, publiees automatiquement au push du tag <app>-vX.Y.Z.
+RELEASE_TAG_URL = "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag"
+
 
 def is_relevant(subject: str) -> bool:
     """Renvoie True si le commit est pertinent pour les release notes."""
@@ -242,6 +245,44 @@ def load_existing_history(dest: Path) -> list[dict]:
 # ──────────────────────────────────────────────────────────────
 
 
+def get_app_tag_versions(repo_path: Path, app_slug: str) -> set[str]:
+    """Versions ayant un tag local `<app>-vX.Y.Z` dans ce dépôt."""
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--list", f"{app_slug}-v*"],
+            cwd=repo_path,
+            capture_output=True,
+            timeout=15,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return set()
+    if result.returncode != 0:
+        return set()
+    pattern = re.compile(rf"^{re.escape(app_slug)}-v([0-9]+\.[0-9]+\.[0-9]+)$")
+    versions = set()
+    for tag in result.stdout.split():
+        match = pattern.match(tag)
+        if match:
+            versions.add(match.group(1))
+    return versions
+
+
+def apply_release_links(history: list[dict], app_slug: str, versions: set[str]) -> None:
+    """Renseigne `url` sur les entrées qui ont une release, et le retire des autres.
+
+    L'interface n'affiche le lien que si le champ est présent : aucune version sans
+    release ne doit mener à une page GitHub inexistante.
+    """
+    for entry in history:
+        version = str(entry.get("version", "")).strip()
+        if version in versions:
+            entry["url"] = f"{RELEASE_TAG_URL}/{app_slug}-v{version}"
+        else:
+            entry.pop("url", None)
+
+
 def collect_pending_notes(app_path: Path, since: str | None, existing_history: list[dict]) -> tuple[list[str], str | None]:
     """Notes candidates depuis le dernier tag de l'app, et la reference utilisee.
 
@@ -299,6 +340,12 @@ def main() -> None:
         help="Affiche le JSON sans écrire le fichier.",
     )
     parser.add_argument(
+        "--sync-release-links",
+        action="store_true",
+        help="Ajoute ou retire `url` sur chaque entrée selon les tags locaux "
+             "<app>-vX.Y.Z, sans toucher aux notes.",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="Vérifie qu'aucune note n'est en attente depuis le dernier tag, "
@@ -311,8 +358,8 @@ def main() -> None:
         help="Nombre maximum d'entrées conservées dans l'historique (défaut : 30).",
     )
     args = parser.parse_args()
-    if not args.check and not args.version:
-        parser.error("--version est requis (sauf avec --check)")
+    if not args.check and not args.sync_release_links and not args.version:
+        parser.error("--version est requis (sauf avec --check et --sync-release-links)")
 
     app_path = Path(args.app).resolve()
     if not app_path.is_dir():
@@ -340,6 +387,31 @@ def main() -> None:
                 print(f"  - {note}", file=sys.stderr)
             sys.exit(1)
         print(f"[OK] {app_path.name} : notes de version a jour ({reference or 'aucune note'})")
+        return
+
+    # ── Liens de release (mode dédié) ──────────────────────────
+    if args.sync_release_links:
+        app_slug = app_path.name.strip().lower()
+        versions = get_app_tag_versions(app_path, app_slug)
+        apply_release_links(existing_history, app_slug, versions)
+        raw = {}
+        if dest.is_file():
+            try:
+                raw = json.loads(dest.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raw = {}
+        payload = dict(raw) if isinstance(raw, dict) else {"_source": "manuel"}
+        payload["history"] = existing_history
+        output = json.dumps(payload, ensure_ascii=False, indent=2)
+        if args.dry_run:
+            print(output)
+            return
+        dest.write_text(output, encoding="utf-8")
+        linked = sum(1 for entry in existing_history if entry.get("url"))
+        print(
+            f"[OK] {app_slug} : {linked}/{len(existing_history)} entrée(s) liée(s) "
+            f"à une release ({len(versions)} tag(s) local(aux))"
+        )
         return
 
     # ── Notes ──────────────────────────────────────────────────
@@ -375,6 +447,11 @@ def main() -> None:
     history.insert(0, entry)
     if args.max_entries > 0:
         history = history[: args.max_entries]
+
+    # La version publiée reçoit son lien (le tag est posé juste après) et les
+    # versions déjà taguées le conservent ; les autres n'affichent aucun lien.
+    app_slug = app_path.name.strip().lower()
+    apply_release_links(history, app_slug, get_app_tag_versions(app_path, app_slug) | {args.version})
 
     payload = {"history": history, "_source": source}
     output = json.dumps(payload, ensure_ascii=False, indent=2)

@@ -7,7 +7,8 @@
       "notes": [
         "<strong>Prets longue duree sans date de fin</strong> — un pret peut desormais rester ouvert sans echeance.",
         "<strong>Onglet dedie</strong> — les prets longue duree se consultent dans leur propre onglet, sans polluer la liste classique."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.9.0"
     },
     {
       "version": "1.8.1",

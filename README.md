@@ -159,8 +159,10 @@ plus récente en tête :
 
 La popup s'affiche une fois par signature d'historique (clé `localStorage` propre à chaque application,
 par exemple `fabtrack:last_seen_release`) et reste consultable via le lien « Nouveautés » du pied de page.
-Chaque entrée renvoie vers sa release GitHub (`releases/tag/<app>-vX.Y.Z`, construite dans le template) :
-les versions jamais taguées mènent donc à une page GitHub inexistante.
+Une entrée peut porter une clé `url` vers sa release GitHub (`releases/tag/<app>-vX.Y.Z`) ; la popup
+n'affiche « Voir la release » que si ce champ existe. Le générateur le renseigne pour la version
+publiée et pour celles qui ont un tag local, et `--sync-release-links` resynchronise un historique
+existant, de sorte qu'aucune version sans tag ne produise de lien mort.
 Les notes sont injectées en HTML : le gras `<strong>` est utilisé dans PretGo. L'historique est plafonné
 à 30 entrées par le générateur.
 
@@ -190,6 +192,10 @@ quel point lire l'historique.
 python release_notes_gen.py --app ./Fabtrack --version 2.7.0 --title "Garde-fou contre les doubles saisies" --dry-run
 python release_notes_gen.py --app ./Fabtrack --version 2.7.0 --title "Garde-fou contre les doubles saisies"
 ```
+
+Le générateur renseigne aussi la clé `url` de l'entrée (lien vers la release GitHub) ; pour un
+historique déjà écrit, `python release_notes_gen.py --app ./Fabtrack --sync-release-links` la
+recalcule à partir des tags locaux, sans toucher aux notes.
 
 Sans `--since`, le générateur repart du dernier tag `<app>-v*` et ne garde que les commits touchant le
 dossier de l'application. S'il n'existe aucun tag, il lit les 50 derniers commits et écarte les notes

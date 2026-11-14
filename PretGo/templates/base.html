@@ -283,9 +283,6 @@
     <script>
     (function() {
         const STORAGE_KEY = 'pretgo:last_seen_release';
-        // Release GitHub publiee automatiquement au push du tag pretgo-vX.Y.Z.
-        const RELEASE_TAG_URL = 'https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag';
-        const RELEASE_APP = 'pretgo';
 
         function releaseEntries(info) {
             if (Array.isArray(info.history) && info.history.length) {
@@ -325,7 +322,8 @@
             timeline.innerHTML = entries.map((entry) => {
                 const title = entry.title ? ` - ${entry.title}` : '';
                 const versionPart = entry.version ? `Version ${entry.version}` : 'Mise a jour';
-                const releaseUrl = entry.version ? `${RELEASE_TAG_URL}/${RELEASE_APP}-v${entry.version}` : '';
+                // `url` n'est présent dans le JSON que pour les versions publiées.
+                const releaseUrl = entry.url || '';
                 const datePart = entry.date || 'Date non renseignee';
                 const notes = Array.isArray(entry.notes) ? entry.notes : [];
                 const notesHtml = notes.length

@@ -8,7 +8,8 @@
         "Les widgets partageant la meme source et la meme periode ne declenchent plus qu'un seul appel vers Fabtrack par rafraichissement (cache de 10 secondes).",
         "Un rechargement force reste possible avec le parametre refresh, et les erreurs ne sont jamais mises en cache.",
         "Nouvelle suite de tests FabBoard : bornes de periode, proxy Fabtrack et comportement du cache sont couverts automatiquement."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.5.1"
     },
     {
       "version": "3.5.0",

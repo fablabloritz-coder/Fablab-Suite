@@ -11,7 +11,8 @@
         "Champ « Deja present » dans la fenetre de demande, avec la couverture inventaire.",
         "Portail professeur : badge « Deja sur X poste(s) » et bouton desactive si une demande est deja en cours.",
         "Barre laterale admin : section Inventaire avec le lien Masters, et liens Outils restaures."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabinventory-v2.1.0"
     },
     {
       "version": "2.0.0",
