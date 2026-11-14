@@ -159,6 +159,8 @@ plus récente en tête :
 
 La popup s'affiche une fois par signature d'historique (clé `localStorage` propre à chaque application,
 par exemple `fabtrack:last_seen_release`) et reste consultable via le lien « Nouveautés » du pied de page.
+Chaque entrée renvoie vers sa release GitHub (`releases/tag/<app>-vX.Y.Z`, construite dans le template) :
+les versions jamais taguées mènent donc à une page GitHub inexistante.
 Les notes sont injectées en HTML : le gras `<strong>` est utilisé dans PretGo. L'historique est plafonné
 à 30 entrées par le générateur.
 

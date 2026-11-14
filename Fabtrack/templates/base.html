@@ -392,6 +392,9 @@ document.addEventListener('DOMContentLoaded', () => {
 <script>
 (function() {
     const STORAGE_KEY = 'fabtrack:last_seen_release';
+    // Release GitHub publiee automatiquement au push du tag fabtrack-vX.Y.Z.
+    const RELEASE_TAG_URL = 'https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag';
+    const RELEASE_APP = 'fabtrack';
 
     function releaseEntries(info) {
         if (Array.isArray(info.history) && info.history.length) {
@@ -430,6 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const datePart = entry.date || 'Date non renseignee';
             const versionPart = entry.version ? `Version ${entry.version}` : 'Mise a jour';
             const titlePart = entry.title ? ` - ${entry.title}` : '';
+            const releaseUrl = entry.version ? `${RELEASE_TAG_URL}/${RELEASE_APP}-v${entry.version}` : '';
             const notes = Array.isArray(entry.notes) ? entry.notes : [];
             const notesHtml = notes.length
                 ? notes.map(n => `<li class="mb-2">${n}</li>`).join('')
@@ -440,6 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span class="badge text-bg-primary">${datePart}</span>
                         <span class="small text-muted">${versionPart}${titlePart}</span>
+                        ${releaseUrl ? `<a class="small ms-auto" href="${releaseUrl}" target="_blank" rel="noopener">Voir la release</a>` : ''}
                     </div>
                     <ul class="mb-0">${notesHtml}</ul>
                 </section>
