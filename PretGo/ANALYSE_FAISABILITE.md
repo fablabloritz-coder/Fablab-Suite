@@ -1,7 +1,7 @@
 # Analyse de Faisabilité - Améliorations PretGo
 
 Date : 5 mars 2026
-Version actuelle : v1.0.0 (commit 565e8cd)
+Version au moment de l'analyse : v1.0.0 (commit 565e8cd)
 
 ## 🎯 Contrainte principale : Ne pas toucher aux données en production
 

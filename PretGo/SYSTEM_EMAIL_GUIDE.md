@@ -285,5 +285,5 @@ curl http://localhost:5000/api/fabsuite/notifications | jq
 ---
 
 **Last Updated**: 2026-03-30
-**Version**: 1.0.0
+**Version du guide**: 1.0.0 (PretGo : voir `static/release-notes.json`)
 **System Status**: Production-Ready ✅

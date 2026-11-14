@@ -7,7 +7,7 @@ Usage :
     fabsuite_bp = create_fabsuite_blueprint(
         app_id="fabtrack",
         name="Fabtrack",
-        version="2.1.0",
+        version="<version de l'app>",
         description="Suivi des consommations machines",
         icon="bi-printer",
         color="#198754",
