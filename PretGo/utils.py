@@ -777,9 +777,14 @@ def _calculer_retour_theorique_datetime(date_emprunt_str, duree_heures, duree_jo
     if date_retour_prevue:
         try:
             h_fin, m_fin = (int(x) for x in str(_heure_fin or '17:45').split(':'))
-            return datetime.strptime(date_retour_prevue, '%Y-%m-%d').replace(hour=h_fin, minute=m_fin, second=0)
+            echeance = datetime.strptime(date_retour_prevue, '%Y-%m-%d').replace(
+                hour=h_fin, minute=m_fin, second=0)
         except Exception:
             return None
+        # Prêt longue durée : la date sentinelle ne doit jamais servir d'échéance.
+        if echeance.year >= int(LONGUE_DUREE_DATE[:4]):
+            return None
+        return echeance
 
     if duree_heures is not None:
         try:

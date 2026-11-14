@@ -151,6 +151,34 @@ class PretsLongueDureeTests(unittest.TestCase):
             body = self.client.get(url).get_data(as_text=True)
             self.assertNotIn('2999', body, f"{url} affiche la date sentinelle")
 
+    def test_rappels_email_ignorent_les_prets_longue_duree(self):
+        """Ni la liste automatique ni un envoi ciblé ne retiennent un prêt sans échéance."""
+        pret = self._create('Serveur longue duree', 'longue_duree')
+
+        import app as app_module
+        import utils
+        with app_module.app.app_context():
+            conn = database.get_db()
+            try:
+                automatique = utils.lister_prets_pour_rappel_mail(conn)
+                cible = utils.lister_prets_pour_rappel_mail(conn, pret_ids=[pret['id']])
+            finally:
+                conn.close()
+
+        self.assertNotIn('Serveur longue duree', [p['descriptif_objets'] for p in automatique])
+        self.assertNotIn('Serveur longue duree', [p['descriptif_objets'] for p in cible])
+
+    def test_exports_csv_sans_date_sentinelle(self):
+        """Aucun export CSV ne contient 31/12/2999."""
+        self._create('Imprimante longue', 'longue_duree')
+        with self.client.session_transaction() as sess:
+            sess['admin_logged_in'] = True
+
+        for url in ('/export-prets', '/export-prets-en-cours', '/export-alertes',
+                    '/export-personnes', '/export-inventaire', '/export-reservations'):
+            body = self.client.get(url).get_data(as_text=True)
+            self.assertNotIn('2999', body, f"{url} contient la date sentinelle")
+
     def test_pages_detail_et_modification(self):
         pret = self._create('Clavier', 'longue_duree')
         detail = self.client.get(f"/pret/{pret['id']}")
