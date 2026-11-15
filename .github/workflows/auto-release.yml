@@ -48,6 +48,9 @@ jobs:
           for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
             nom=$(basename "$app")
 
+            slug=$(python3 -c "import release_publish as rp; from pathlib import Path; print(rp.app_slug(Path('$app')))")
+            tag=$(python3 -c "import release_publish as rp; from pathlib import Path; a = Path('$app'); print(rp.tag_for(rp.app_slug(a), rp.read_app_version(a)))")
+
             # Aligne les liens `url` sur les tags reellement presents (un premier
             # passage peut avoir des liens vers des tags jamais pousses) : la
             # validation ci-dessous refuse un lien sans tag, et doit donc passer
@@ -55,12 +58,19 @@ jobs:
             python3 release_notes_gen.py --app "./$app" --sync-release-links >/dev/null
 
             # Sans notes a jour, on ne publie rien pour cette application.
-            if ! python3 release_notes_gen.py --app "./$app" --check; then
-              echo "::notice::$nom : notes en attente, release ignoree"
-              continue
+            # Exception : application jamais taguee ici (publication initiale).
+            # Le garde-fou compte alors tous les commits depuis 50 revisions
+            # comme des notes en attente, ce qui interdirait a jamais le premier
+            # tag ; release_publish.py revalide de son cote version, tete des
+            # notes et liens avant de poser le tag.
+            if git tag --list "$slug-v*" | grep -q .; then
+              if ! python3 release_notes_gen.py --app "./$app" --check; then
+                echo "::notice::$nom : notes en attente, release ignoree"
+                continue
+              fi
+            else
+              echo "$nom : aucun tag $slug-v* sur ce depot, publication initiale"
             fi
-
-            tag=$(python3 -c "import release_publish as rp; from pathlib import Path; a = Path('$app'); print(rp.tag_for(rp.app_slug(a), rp.read_app_version(a)))")
 
             if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
               if gh release view "$tag" >/dev/null 2>&1; then
