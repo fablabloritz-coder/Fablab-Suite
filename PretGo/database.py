@@ -1,5 +1,5 @@
 """
-PretGo v1.10.1 — Module de gestion de la base de données SQLite.
+PretGo v1.10.2 — Module de gestion de la base de données SQLite.
 Toutes les données sont stockées localement dans le dossier 'data/'.
 """
 

@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.2 — 2026-11-14
+
+#### Filtre des retours partiels
+
+- <strong>Filtre « Retours partiels »</strong> — la page Retour n'affiche que les prêts entamés dont un objet au moins est déjà revenu, pour retrouver en un clic ce qu'il reste à récupérer ; la recherche par nom reste combinable avec le filtre.
+
+---
+
 ### v1.10.1 — 2026-11-14
 
 #### Retours partiels visibles dans la liste des retours

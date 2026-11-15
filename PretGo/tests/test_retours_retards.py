@@ -227,6 +227,26 @@ class RetoursRetardsTests(unittest.TestCase):
         # Seul le prêt intact conserve le simple compteur d'objets.
         self.assertEqual(page.count('2 objets'), 1)
 
+    def test_filtre_retours_partiels(self):
+        partiel = self._inserer_pret(
+            [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],
+            datetime.datetime.now(),
+        )
+        self._inserer_pret(
+            [('Texte libre 1', None), ('Texte libre 2', None)],
+            datetime.datetime.now(),
+        )
+        pm_a = self._pm(partiel, self.materiel_a)['id']
+        self.client.post(f'/pret/{partiel}/retour-objet/{pm_a}', follow_redirects=True)
+
+        page = self.client.get('/retour?filtre=partiels').get_data(as_text=True)
+        self.assertIn('Retour partiel : 1/2 rendus', page)
+        self.assertIn('avec retour partiel', page)
+        self.assertNotIn('Texte libre 1', page)
+
+        complet = self.client.get('/retour').get_data(as_text=True)
+        self.assertIn('Texte libre 1', complet)
+
     def test_retour_d_un_objet_deja_rendu_refuse(self):
         pret_id = self._inserer_pret(
             [('RET-A', self.materiel_a), ('RET-B', self.materiel_b)],

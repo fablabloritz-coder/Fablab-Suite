@@ -428,6 +428,8 @@ def retour():
             ORDER BY p.date_emprunt DESC
         ''').fetchall()
 
+    filtre = (request.args.get('filtre') or '').strip().lower()
+
     # Progression des retours partiels : objets rendus / objets du prêt.
     objets_total = {}
     objets_rendus = {}
@@ -443,7 +445,10 @@ def retour():
             objets_total[row['pret_id']] = row['total']
             objets_rendus[row['pret_id']] = row['rendus'] or 0
 
-    return render_template('retour.html', prets=prets, recherche=recherche,
+    if filtre == 'partiels':
+        prets = [pret for pret in prets if objets_rendus.get(pret['id'], 0) > 0]
+
+    return render_template('retour.html', prets=prets, recherche=recherche, filtre=filtre,
                            objets_total=objets_total, objets_rendus=objets_rendus)
 
 
