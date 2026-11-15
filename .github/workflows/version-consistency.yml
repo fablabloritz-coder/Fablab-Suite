@@ -2,12 +2,25 @@ name: Version consistency
 
 # Contrôle rapide et sans dépendances : versions du manifeste, tête des notes
 # de version et dernier tag <app>-vX.Y.Z de chaque application.
+#
+# Déclenché à la fin de `Auto release`, pas sur le push lui-même : le contrôle
+# compare la version publiée au dernier tag, il doit donc s'exécuter une fois les
+# tags créés. Lancé en parallèle du push, il échouait régulièrement pour une
+# release que `Auto release` venait de publier quelques secondes plus tard, ce qui
+# imposait de repousser un commit vide pour relancer la CI.
 on:
-  push:
+  workflow_run:
+    workflows: ["Auto release"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Deux pushes rapprochés enchaînent deux exécutions : seule la dernière compte.
+concurrency:
+  group: version-consistency
+  cancel-in-progress: true
 
 jobs:
   release-versions:

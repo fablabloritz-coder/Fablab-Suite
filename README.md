@@ -304,14 +304,19 @@ Réglages par application, utiles pour lancer une application seule :
 
 | Workflow | Déclencheur | Rôle |
 |---|---|---|
-| `version-consistency.yml` | push, manuel | Job « Versions et tags » (tests racine, changelogs, notes en attente, contrat FabSuite), matriciel « Tests Fabtrack / FabBoard / PretGo », puis « Demarrage des cinq applications » qui installe les dépendances et exécute `smoke_test_apps.py` une fois les tests unitaires verts |
+| `version-consistency.yml` | fin de `Auto release`, manuel | Job « Versions et tags » (tests racine, changelogs, notes en attente, contrat FabSuite), matriciel « Tests Fabtrack / FabBoard / PretGo / FabHome / FabInventory », puis « Demarrage des cinq applications » qui installe les dépendances et exécute `smoke_test_apps.py` une fois les tests unitaires verts |
 | `auto-release.yml` | push sur `main` | Crée les tags `<app>-vX.Y.Z` et les releases manquantes avec le `GITHUB_TOKEN`, puis commite les liens `url` des notes |
 | `github-release.yml` | push d'un tag `*-v*` | Publie la release dont le corps vient de `release_publish.py --tag … --output …` |
 
-Les deux premiers se complètent : `auto-release` couvre le cas où le tag n'est pas poussé à la main,
-`github-release` celui d'un tag poussé manuellement. Une application dont les notes sont en attente
-est ignorée par `auto-release` ; si elle n'a encore aucun tag, la publication initiale est autorisée
-(release_publish.py revalide version, tête des notes et liens avant de poser le tag).
+Les workflows sont **enchaînés** : `auto-release` crée les tags, puis `version-consistency`
+contrôle que chaque version publiée a bien le sien. Le contrôle n'est donc plus lancé sur le push
+lui-même — c'est ce qui provoquait des rouges sur une release publiée quelques secondes après le
+début du contrôle, et obligeait à repousser un commit vide pour relancer la CI.
+
+`github-release` couvre le cas d'un tag poussé à la main, `auto-release` celui d'un push sans tag.
+Une application dont les notes sont en attente est ignorée par `auto-release` ; si elle n'a encore
+aucun tag, la publication initiale est autorisée (`release_publish.py` revalide version, tête des
+notes et liens avant de poser le tag).
 
 ## Dépannage : ports et variables d'environnement
 
