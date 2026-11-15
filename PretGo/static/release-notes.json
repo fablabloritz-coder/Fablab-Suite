@@ -6,8 +6,7 @@
       "title": "Filtre des retours partiels",
       "notes": [
         "<strong>Filtre « Retours partiels »</strong> — la page Retour n'affiche que les prêts entamés dont un objet au moins est déjà revenu, pour retrouver en un clic ce qu'il reste à récupérer ; la recherche par nom reste combinable avec le filtre."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.2"
+      ]
     },
     {
       "version": "1.10.1",
@@ -15,8 +14,7 @@
       "title": "Retours partiels visibles dans la liste des retours",
       "notes": [
         "<strong>Progression affichée</strong> — chaque prêt de la page Retour indique le nombre d'objets qu'il contient, et remplace ce compteur par un badge « Retour partiel : 1/2 rendus » dès qu'un objet est revenu, avec un lien vers la fiche."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.1"
+      ]
     },
     {
       "version": "1.10.0",
@@ -26,8 +24,7 @@
         "<strong>Rendre un objet à la fois</strong> — la fiche d'un prêt liste chaque objet avec son bouton « Rendre cet objet » : l'objet repasse en stock et le prêt reste ouvert pour les autres.",
         "<strong>Clôture automatique</strong> — le prêt se ferme dès que le dernier objet est rendu ; « Enregistrer le retour » et le retour en masse continuent de clôturer l'ensemble d'un coup.",
         "<strong>Traçabilité</strong> — chaque objet porte sa propre date de retour, affichée dans la fiche du prêt."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.0"
+      ]
     },
     {
       "version": "1.9.1",
@@ -38,8 +35,7 @@
         "<strong>Plus de 31/12/2999 à l'écran</strong> — la date technique n'apparaît plus dans la fiche de modification, le sélecteur d'emprunteur ni le planning des réservations, qui étale le prêt sur le mois affiché.",
         "<strong>Rappels et exports protégés</strong> — une date sentinelle vaut désormais « pas d'échéance » dans les calculs : aucun rappel email ni export CSV ne peut la reprendre.",
         "<strong>Couverture de tests</strong> — saisie avec inventaire lié seul, texte libre seul, réservations hybrides (catégorie seule, conflits, capacité) et leur cycle de vie admin (conversion, annulation, suppression), refus de prêt en conflit (objet déjà prêté, marge de sécurité, réservation imminente, capacité), retours, prolongations et retards, compteurs, écrans, exports et rappels sont vérifiés automatiquement."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.9.1"
+      ]
     },
     {
       "version": "1.9.0",
@@ -48,8 +44,7 @@
       "notes": [
         "<strong>Prêts longue durée sans date de fin</strong> — un prêt peut désormais rester ouvert sans échéance.",
         "<strong>Onglet dédié</strong> — les prêts longue durée se consultent dans leur propre onglet et sont exclus de la liste d'accueil comme des compteurs « Prêts en cours » (accueil, tableau de bord admin, widget FabHome)."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.9.0"
+      ]
     },
     {
       "version": "1.8.1",

@@ -7,8 +7,7 @@
       "notes": [
         "La carte « À propos » des paramètres affiche la version réelle de FabBoard au lieu d'un « v1.0 » figé.",
         "Le numéro vient de la constante APP_VERSION, désormais seule source de version côté serveur et dans les templates."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.5.2"
+      ]
     },
     {
       "version": "3.5.1",
@@ -18,8 +17,7 @@
         "Les widgets partageant la même source et la même période ne déclenchent plus qu'un seul appel vers Fabtrack par rafraichissement (cache de 10 secondes).",
         "Un rechargement forcé reste possible avec le paramètre refresh, et les erreurs ne sont jamais mises en cache.",
         "Nouvelle suite de tests FabBoard : bornes de période, proxy Fabtrack et comportement du cache sont couverts automatiquement."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.5.1"
+      ]
     },
     {
       "version": "3.5.0",
