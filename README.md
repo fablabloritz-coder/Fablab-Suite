@@ -254,11 +254,16 @@ python3 -m unittest discover -s tests                     # racine : versions, n
 python3 -m unittest discover -s tests -p 'contract_*.py'  # contrat FabSuite (copies de fabsuite_core)
 ```
 
-Chaque application a sa propre suite, qui exige Flask et son `requirements.txt` :
+Chaque application a sa propre suite, qui exige Flask et son `requirements.txt` — les cinq sont
+lancées en CI :
 
 ```bash
-cd Fabtrack && python3 -m unittest discover -s tests     # idem FabBoard/, PretGo/
+cd Fabtrack && python3 -m unittest discover -s tests     # idem FabBoard/, PretGo/, FabHome/
+cd FabInventory/FabInventory && python3 tests/run_all.py # un processus par module de test
 ```
+
+FabInventory passe par `tests/run_all.py` parce que `app.py` fige son chemin de base à l'import :
+lancer chaque module dans son propre processus garantit à chacun sa base temporaire isolée.
 
 ### Smoke test des cinq applications
 

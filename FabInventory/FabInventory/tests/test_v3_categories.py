@@ -20,6 +20,23 @@ temp_dir = tempfile.mkdtemp()
 temp_db = os.path.join(temp_dir, "test.db")
 os.environ["DB_PATH"] = temp_db
 
+# Isole la base et les uploads de ce module : les tests peuvent tourner en CI
+# sans /data, et chaque fichier dispose de sa propre base temporaire.
+import os as _os
+import sys as _sys
+import tempfile as _tempfile
+
+_APP_DIR = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _APP_DIR not in _sys.path:
+    _sys.path.insert(0, _APP_DIR)
+
+from tests.support import reset_temp_db
+
+_MODULE_TMP = _tempfile.mkdtemp(prefix="fabinventory-tests-")
+_os.environ["DB_PATH"] = _os.path.join(_MODULE_TMP, "test.db")
+_os.environ["UPLOAD_FOLDER"] = _os.path.join(_MODULE_TMP, "uploads")
+_os.environ["SECRET_KEY"] = "tests"
+
 from app import app, parse_inventory_html, _normalize_software_fields, _upsert_snapshot_software_index, init_db, get_db
 
 
@@ -33,7 +50,7 @@ class V3CategoryIntegrationTests(unittest.TestCase):
         self.client = self.app.test_client()
         self.ctx = self.app.app_context()
         self.ctx.push()
-        init_db()
+        reset_temp_db(init_db)
 
     def tearDown(self):
         """Clean up test context."""

@@ -45,14 +45,24 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'contract_*.py' -v
 
   tests-apps:
-    name: Tests ${{ matrix.app }}
+    name: Tests ${{ matrix.label }}
     runs-on: ubuntu-latest
     # Les suites des applications exigent Flask : elles tournent par application
     # dans leur propre environnement plutôt que dans le job de cohérence.
     strategy:
       fail-fast: false
       matrix:
-        app: [Fabtrack, FabBoard, PretGo]
+        include:
+          - app: Fabtrack
+            label: Fabtrack
+          - app: FabBoard
+            label: FabBoard
+          - app: PretGo
+            label: PretGo
+          - app: FabHome
+            label: FabHome
+          - app: FabInventory/FabInventory
+            label: FabInventory
     defaults:
       run:
         working-directory: ${{ matrix.app }}
@@ -69,7 +79,14 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check -r requirements.txt
 
       - name: Tests unittest
-        run: python3 -m unittest discover -s tests -v
+        run: |
+          # FabInventory fige sa base a l'import de app.py : son runner lance
+          # chaque module dans un processus a part.
+          if [ -f tests/run_all.py ]; then
+            python3 tests/run_all.py
+          else
+            python3 -m unittest discover -s tests -v
+          fi
 
   smoke-apps:
     name: Demarrage des cinq applications

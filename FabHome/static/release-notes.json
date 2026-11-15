@@ -1,6 +1,15 @@
 {
   "history": [
     {
+      "version": "1.7.2",
+      "date": "2026-11-15",
+      "title": "Tests automatises dans la CI",
+      "notes": [
+        "Nouvelle suite de tests FabHome : accueil, API des profils (creation, renommage, suppression, refus du profil par defaut), sante et manifeste FabSuite.",
+        "Les tests FabHome et FabInventory tournent desormais a chaque push dans le job matriciel de la CI."
+      ]
+    },
+    {
       "version": "1.7.1",
       "date": "2026-05-14",
       "title": "Lisibilité des cellules et des widgets",

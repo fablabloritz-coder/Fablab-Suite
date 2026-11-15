@@ -19,7 +19,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
 
 app = Flask(__name__)
 app.jinja_env.globals["app_version"] = APP_VERSION
@@ -1997,7 +1997,7 @@ def master_export(master_id):
     output.close()
     return app.response_class(
         csv_bytes,
-        mimetype="text/csv; charset=utf-8",
+        mimetype="text/csv",
         headers={
             "Content-Disposition": f"attachment; filename=FabInventory-{master['pc_name']}.csv"
         },
@@ -2587,6 +2587,7 @@ def search_multi_master():
                 si.software_version,
                 si.software_editor,
                 si.software_source,
+                si.software_category,
                 si.id AS row_id
             FROM software_index si
             JOIN snapshots s ON s.id = si.snapshot_id
@@ -2669,7 +2670,7 @@ def search_multi_master():
         output.close()
         return app.response_class(
             csv_bytes,
-            mimetype="text/csv; charset=utf-8",
+            mimetype="text/csv",
             headers={
                 "Content-Disposition": "attachment; filename=FabInventory-Recherche-Globale.csv"
             },

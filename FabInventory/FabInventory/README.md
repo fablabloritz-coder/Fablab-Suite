@@ -92,6 +92,16 @@ FabInventory/
 
 <!-- changelog:start -->
 
+### v2.1.1 — 2026-11-15
+
+#### Export CSV de la recherche corrige
+
+- L'export CSV de la recherche globale fonctionne de nouveau : la requete ne selectionnait pas la categorie et l'export echouait en erreur.
+- La colonne software_category est bien presente dans le fichier exporte.
+- Les scripts de test historiques sont regroupes dans tests/ et executes par la CI.
+
+---
+
 ### v2.1.0 — 2026-05-19
 
 #### Admin unifié et couverture du catalogue

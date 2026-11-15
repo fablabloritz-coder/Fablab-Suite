@@ -1,5 +1,22 @@
 """Phase 3 Test: CSV Export with Software Categories"""
 import unittest, json, io, csv
+# Isole la base et les uploads de ce module : les tests peuvent tourner en CI
+# sans /data, et chaque fichier dispose de sa propre base temporaire.
+import os as _os
+import sys as _sys
+import tempfile as _tempfile
+
+_APP_DIR = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _APP_DIR not in _sys.path:
+    _sys.path.insert(0, _APP_DIR)
+
+from tests.support import reset_temp_db
+
+_MODULE_TMP = _tempfile.mkdtemp(prefix="fabinventory-tests-")
+_os.environ["DB_PATH"] = _os.path.join(_MODULE_TMP, "test.db")
+_os.environ["UPLOAD_FOLDER"] = _os.path.join(_MODULE_TMP, "uploads")
+_os.environ["SECRET_KEY"] = "tests"
+
 from app import app, init_db, get_db
 
 class CSVExportPhase3Tests(unittest.TestCase):
@@ -8,7 +25,7 @@ class CSVExportPhase3Tests(unittest.TestCase):
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
         with self.app.app_context():
-            init_db()
+            reset_temp_db(init_db)
             db = get_db()
             db.execute("INSERT INTO masters (pc_name, label, workflow_type) VALUES (?, ?, ?)",
                        ("TEST-001", "Test Master 001", "inventory"))
@@ -29,9 +46,9 @@ class CSVExportPhase3Tests(unittest.TestCase):
             db.commit()
 
     def test_search_csv_includes_category(self):
-        response = self.client.get("/search?query=Python&export=csv")
+        response = self.client.get("/search?q=Python&export=csv")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"text/csv", response.content_type)
+        self.assertIn("text/csv", response.content_type)
         csv_content = response.data.decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(csv_content), delimiter=";")
         self.assertIn("software_category", reader.fieldnames)
@@ -42,7 +59,7 @@ class CSVExportPhase3Tests(unittest.TestCase):
             master = db.execute("SELECT id FROM masters WHERE pc_name = ?", ("TEST-001",)).fetchone()
             response = self.client.get(f"/master/{master['id']}/export")
             self.assertEqual(response.status_code, 200)
-            self.assertIn(b"text/csv", response.content_type)
+            self.assertIn("text/csv", response.content_type)
 
     def test_master_export_has_categories(self):
         with self.app.app_context():

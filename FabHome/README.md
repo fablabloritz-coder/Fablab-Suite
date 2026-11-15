@@ -147,6 +147,15 @@ Supprimer le fichier `data/fabhome.db` et redémarrer — la base sera recréée
 
 <!-- changelog:start -->
 
+### v1.7.2 — 2026-11-15
+
+#### Tests automatises dans la CI
+
+- Nouvelle suite de tests FabHome : accueil, API des profils (creation, renommage, suppression, refus du profil par defaut), sante et manifeste FabSuite.
+- Les tests FabHome et FabInventory tournent desormais a chaque push dans le job matriciel de la CI.
+
+---
+
 ### v1.7.1 — 2026-05-14
 
 #### Lisibilité des cellules et des widgets

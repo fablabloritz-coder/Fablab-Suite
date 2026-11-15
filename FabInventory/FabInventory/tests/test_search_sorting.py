@@ -1,3 +1,20 @@
+# Isole la base et les uploads de ce module : les tests peuvent tourner en CI
+# sans /data, et chaque fichier dispose de sa propre base temporaire.
+import os as _os
+import sys as _sys
+import tempfile as _tempfile
+
+_APP_DIR = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _APP_DIR not in _sys.path:
+    _sys.path.insert(0, _APP_DIR)
+
+from tests.support import reset_temp_db
+
+_MODULE_TMP = _tempfile.mkdtemp(prefix="fabinventory-tests-")
+_os.environ["DB_PATH"] = _os.path.join(_MODULE_TMP, "test.db")
+_os.environ["UPLOAD_FOLDER"] = _os.path.join(_MODULE_TMP, "uploads")
+_os.environ["SECRET_KEY"] = "tests"
+
 import os
 import sqlite3
 import tempfile
@@ -120,8 +137,8 @@ class SearchSortingRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         html = response.get_data(as_text=True)
-        self.assertIn('option value="master" selected', html)
-        self.assertIn('option value="asc" selected', html)
+        self.assertRegex(html, r'<option value="master"\s+selected')
+        self.assertRegex(html, r'<option value="asc"\s+selected')
 
     def test_search_uses_latest_scope_when_scope_is_invalid(self):
         response = self.client.get("/search?q=office&scope=invalid-scope")
@@ -137,8 +154,8 @@ class SearchSortingRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         html = response.get_data(as_text=True)
-        self.assertIn('option value="date" selected', html)
-        self.assertIn('option value="desc" selected', html)
+        self.assertRegex(html, r'<option value="date"\s+selected')
+        self.assertRegex(html, r'<option value="desc"\s+selected')
 
     def test_pagination_links_keep_sort_parameters(self):
         self._seed_results_for_pagination(count=30)
@@ -178,11 +195,9 @@ class SearchSortingRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         html = response.get_data(as_text=True)
-        self.assertIn("function autoSubmitIfQueryPresent()", html)
-        self.assertIn("scopeSelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
-        self.assertIn("perPageSelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
-        self.assertIn("sortBySelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
-        self.assertIn("sortDirSelect.addEventListener('change', autoSubmitIfQueryPresent);", html)
+        self.assertIn("function autoSubmit()", html)
+        for selecteur in ("scopeSelect", "perPageSelect", "sortBySelect", "sortDirSelect", "pagingModeSelect"):
+            self.assertIn(f"{selecteur}.addEventListener('change', autoSubmit);", html)
 
     def test_search_page_contains_reset_preferences_hooks(self):
         response = self.client.get("/search")
@@ -190,7 +205,7 @@ class SearchSortingRouteTests(unittest.TestCase):
 
         html = response.get_data(as_text=True)
         self.assertIn('id="resetSearchPreferences"', html)
-        self.assertIn("localStorage.removeItem(key);", html)
+        self.assertIn("STORAGE_KEYS.forEach(k => localStorage.removeItem(k));", html)
         self.assertIn("'fabinventory.search.scope'", html)
         self.assertIn("'fabinventory.search.per_page'", html)
         self.assertIn("'fabinventory.search.sort_by'", html)
