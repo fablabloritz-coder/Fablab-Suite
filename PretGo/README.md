@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.5 — 2026-11-15
+
+#### Alertes sans recalcul a chaque page
+
+- Le badge d'alertes ne recalcule plus l'ensemble des risques de reservation a chaque page : le compte est conserve 60 secondes en cache et vide des qu'une action modifie les donnees, donc une action de l'utilisateur se voit immediatement. Mesure sur une base de 12 reservations : une page courante passe de 164 a 98 requetes SQL et ne recalcule les risques qu'une fois par minute.
+
+---
+
 ### v1.10.4 — 2026-11-15
 
 #### Cache et compression HTTP

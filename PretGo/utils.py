@@ -1575,6 +1575,39 @@ def register_filters(app):
             return ''
 
 
+# ============================================================
+#  CACHE DU NOMBRE D'ALERTES DE RESERVATION
+# ============================================================
+# Le badge d'alertes est affiche sur toutes les pages, or compter les risques de
+# reservation demande un calcul complet (une centaine de requetes sur une base
+# reelle). Le compte est donc garde 60 s en cache et invalide des qu'une requete
+# modifie les donnees : le delai ne sert qu'aux alertes qui apparaissent avec le
+# temps (un pret qui devient en retard), jamais a une action de l'utilisateur.
+_ALERTES_CACHE_TTL_SECONDS = 60
+_alertes_cache = {'valeur': 0, 'expire_at': 0.0}
+
+
+def _nombre_alertes_reservations(conn):
+    """Nombre d'alertes de reservation, sans recalcul complet a chaque page."""
+    cache = _alertes_cache
+    if cache['expire_at'] > _time.monotonic():
+        return cache['valeur']
+    valeur = len(get_reservation_risks(conn, now_dt=datetime.now()))
+    cache['valeur'] = valeur
+    cache['expire_at'] = _time.monotonic() + _ALERTES_CACHE_TTL_SECONDS
+    return valeur
+
+
+def register_alertes_cache_invalidation(app):
+    """Vide le cache d'alertes des qu'une requete ecrit dans la base."""
+
+    @app.after_request
+    def _invalider_cache_alertes(response):
+        if request.method not in ('GET', 'HEAD', 'OPTIONS') and response.status_code < 400:
+            _alertes_cache['expire_at'] = 0.0
+        return response
+
+
 def register_context_processors(app):
     """Enregistre les context processors Flask."""
 
@@ -1608,7 +1641,7 @@ def register_context_processors(app):
                 )
                 if depasse:
                     nb_alertes += 1
-            nb_alertes += len(get_reservation_risks(conn, now_dt=datetime.now()))
+            nb_alertes += _nombre_alertes_reservations(conn)
         except Exception:
             pass
 

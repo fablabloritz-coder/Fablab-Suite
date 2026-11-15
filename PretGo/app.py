@@ -9,7 +9,8 @@ Puis ouvrir http://localhost:5000
 
 from flask import Flask, request, session, g, abort, render_template
 from database import init_db, get_db, DATA_DIR, PRETGO_SCHEMA_VERSION
-from utils import get_app_db, register_filters, register_context_processors, check_and_run_backup
+from utils import (get_app_db, register_filters, register_context_processors,
+                   register_alertes_cache_invalidation, check_and_run_backup)
 from fabsuite_core.security import load_secret_key
 from fabsuite_core.schema import assert_min_schema_version, get_schema_version
 from routes import APP_VERSION, register_blueprints
@@ -152,6 +153,7 @@ def _close_db(exception):
 
 register_filters(app)
 register_context_processors(app)
+register_alertes_cache_invalidation(app)
 register_blueprints(app)
 
 # ── Démarrer le scheduler des rappels email automatiques ──

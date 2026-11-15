@@ -1,13 +1,21 @@
 {
   "history": [
     {
+      "version": "1.10.5",
+      "date": "2026-11-15",
+      "title": "Alertes sans recalcul a chaque page",
+      "notes": [
+        "Le badge d'alertes ne recalcule plus l'ensemble des risques de reservation a chaque page : le compte est conserve 60 secondes en cache et vide des qu'une action modifie les donnees, donc une action de l'utilisateur se voit immediatement. Mesure sur une base de 12 reservations : une page courante passe de 164 a 98 requetes SQL et ne recalcule les risques qu'une fois par minute."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.5"
+    },
+    {
       "version": "1.10.4",
       "date": "2026-11-15",
       "title": "Cache et compression HTTP",
       "notes": [
         "Le navigateur garde desormais les fichiers CSS, JavaScript et images une heure (Cache-Control public, max-age=3600), ce qui supprime une revalidation a chaque page ; les pages HTML et les reponses JSON sont compressees en gzip quand le navigateur l'accepte (Vary: Accept-Encoding)."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.4"
+      ]
     },
     {
       "version": "1.10.3",
@@ -15,8 +23,7 @@
       "title": "Attente de verrou SQLite",
       "notes": [
         "Attente de verrou : chaque application attend jusqu'a 5 secondes qu'une ecriture concurrente libere la base SQLite, au lieu d'echouer immediatement sur un \"database is locked\"."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.3"
+      ]
     },
     {
       "version": "1.10.2",
