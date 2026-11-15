@@ -245,6 +245,69 @@ done
 Ces contrôles sont rejoués à chaque push par `.github/workflows/version-consistency.yml` (checkout
 complet, sinon les tags seraient absents).
 
+## Tests et intégration continue
+
+### Tests unitaires
+
+```bash
+python3 -m unittest discover -s tests                     # racine : versions, notes, outils de release
+python3 -m unittest discover -s tests -p 'contract_*.py'  # contrat FabSuite (copies de fabsuite_core)
+```
+
+Chaque application a sa propre suite, qui exige Flask et son `requirements.txt` :
+
+```bash
+cd Fabtrack && python3 -m unittest discover -s tests     # idem FabBoard/, PretGo/
+```
+
+### Smoke test des cinq applications
+
+`smoke_test_apps.py` démarre chaque application, vérifie sa page d'accueil et son manifeste
+`/api/fabsuite/manifest`, puis l'arrête. Le script n'utilise que la bibliothèque standard, mais
+l'interpréteur qui lance les applications doit avoir leurs dépendances installées :
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r Fabtrack/requirements.txt -r FabBoard/requirements.txt \
+  -r PretGo/requirements.txt -r FabHome/requirements.txt -r FabInventory/FabInventory/requirements.txt
+.venv/bin/python smoke_test_apps.py
+```
+
+```
+Smoke test FabLab Suite — interpreteur : .venv/bin/python
+  Fabtrack (port 5555) … OK en 0.5s — / 200, /api/fabsuite/manifest 200
+  ...
+5 application(s) demarree(s) et verifiee(s) avec succes.
+```
+
+Options : `--list` (applications et ports), `--only Fabtrack` (répétable), `--timeout 45`,
+`--verbose`, `--python .venv/bin/python`. Code retour 0 si les cinq répondent, 1 sinon, 2 si
+l'application demandée n'existe pas. Un port déjà occupé ou une application qui ne répond pas
+est signalé avec les dernières lignes de son journal.
+
+Réglages par application, utiles pour lancer une application seule :
+
+| Application | Port du smoke test | Variable à connaître |
+|---|---|---|
+| Fabtrack | 5555 | port fixé dans `app.py` |
+| FabBoard | 5560 | `FABBOARD_PORT` (défaut 5580, `PORT` est ignoré) |
+| PretGo | 5000 | port fixé dans `app.py` |
+| FabHome | 3000 | `PORT` ou `FABHOME_APP_PORT` |
+| FabInventory | 5590 | `PORT` ; `DB_PATH` et `UPLOAD_FOLDER` visent `/data` par défaut (chemin de conteneur) et sont redirigés vers un dossier temporaire pendant le test |
+
+### Workflows GitHub Actions
+
+| Workflow | Déclencheur | Rôle |
+|---|---|---|
+| `version-consistency.yml` | push, manuel | Job « Versions et tags » (tests racine, changelogs, notes en attente, contrat FabSuite), matriciel « Tests Fabtrack / FabBoard / PretGo », puis « Demarrage des cinq applications » qui installe les dépendances et exécute `smoke_test_apps.py` une fois les tests unitaires verts |
+| `auto-release.yml` | push sur `main` | Crée les tags `<app>-vX.Y.Z` et les releases manquantes avec le `GITHUB_TOKEN`, puis commite les liens `url` des notes |
+| `github-release.yml` | push d'un tag `*-v*` | Publie la release dont le corps vient de `release_publish.py --tag … --output …` |
+
+Les deux premiers se complètent : `auto-release` couvre le cas où le tag n'est pas poussé à la main,
+`github-release` celui d'un tag poussé manuellement. Une application dont les notes sont en attente
+est ignorée par `auto-release` ; si elle n'a encore aucun tag, la publication initiale est autorisée
+(release_publish.py revalide version, tête des notes et liens avant de poser le tag).
+
 ## Maintenance serveur
 
 ```bash
