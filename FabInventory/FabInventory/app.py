@@ -19,7 +19,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.1.2"
 
 app = Flask(__name__)
 app.jinja_env.globals["app_version"] = APP_VERSION
@@ -44,6 +44,9 @@ def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
         g.db.row_factory = sqlite3.Row
+        # Attend jusqu'a 5 s qu'une ecriture concurrente libere la base au lieu
+        # d'echouer immediatement sur "database is locked".
+        g.db.execute("PRAGMA busy_timeout=5000")
     return g.db
 
 @app.teardown_appcontext
@@ -53,6 +56,7 @@ def close_db(exception):
 
 def init_db():
     db = sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA busy_timeout=5000")
     db.executescript("""
     CREATE TABLE IF NOT EXISTS masters (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

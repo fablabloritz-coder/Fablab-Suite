@@ -92,6 +92,14 @@ FabInventory/
 
 <!-- changelog:start -->
 
+### v2.1.2 — 2026-11-15
+
+#### Attente de verrou SQLite
+
+- Attente de verrou : chaque application attend jusqu'a 5 secondes qu'une ecriture concurrente libere la base SQLite, au lieu d'echouer immediatement sur un "database is locked".
+
+---
+
 ### v2.1.1 — 2026-11-15
 
 #### Export CSV de la recherche corrige

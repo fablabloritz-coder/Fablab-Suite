@@ -7,7 +7,7 @@ from flask import session
 import models
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "1.7.2"
+APP_VERSION = "1.7.3"
 
 
 def get_current_profile_id():

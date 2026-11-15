@@ -583,6 +583,14 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.7.1 — 2026-11-15
+
+#### Attente de verrou SQLite
+
+- Attente de verrou : chaque application attend jusqu'a 5 secondes qu'une ecriture concurrente libere la base SQLite, au lieu d'echouer immediatement sur un "database is locked".
+
+---
+
 ### v2.7.0 — 2026-11-14
 
 #### Garde-fou contre les doubles saisies

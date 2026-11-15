@@ -527,6 +527,14 @@ Navigation :
 
 <!-- changelog:start -->
 
+### v3.5.3 — 2026-11-15
+
+#### Attente de verrou SQLite
+
+- Attente de verrou : chaque application attend jusqu'a 5 secondes qu'une ecriture concurrente libere la base SQLite, au lieu d'echouer immediatement sur un "database is locked".
+
+---
+
 ### v3.5.2 — 2026-11-14
 
 #### Version affichée dans À propos

@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.3 — 2026-11-15
+
+#### Attente de verrou SQLite
+
+- Attente de verrou : chaque application attend jusqu'a 5 secondes qu'une ecriture concurrente libere la base SQLite, au lieu d'echouer immediatement sur un "database is locked".
+
+---
+
 ### v1.10.2 — 2026-11-14
 
 #### Filtre des retours partiels
