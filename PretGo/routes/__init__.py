@@ -7,7 +7,7 @@ from utils import get_app_db, calcul_depassement_heures, TYPE_LONGUE_DUREE
 from fabsuite_core.widgets import counter, item_list, chart, notification
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "1.10.8"
+APP_VERSION = "1.10.9"
 
 
 # ── Callbacks FabSuite widgets ──

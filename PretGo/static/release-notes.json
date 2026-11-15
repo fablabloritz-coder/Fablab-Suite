@@ -1,6 +1,15 @@
 {
   "history": [
     {
+      "version": "1.10.9",
+      "date": "2026-11-15",
+      "title": "Un seul contexte par formulaire de reservation",
+      "notes": [
+        "Un formulaire de reservation verifie plusieurs materiaux et plusieurs categories d'un coup : capacites, prets actifs, reglages de retard, reservations existantes et materiaux etaient relus a chaque ligne. Ces lectures sont desormais faites une seule fois par soumission, puis partagees par tous les controles : un formulaire de 4 materiaux et 3 categories passe de 55 a 13 requetes SQL, avec exactement les memes messages de conflit (30 cas de controle compares, aucun ecart). Les fonctions restent utilisables sans contexte partage, avec le comportement precedent."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.9"
+    },
+    {
       "version": "1.10.8",
       "date": "2026-11-15",
       "title": "Controles de creation sans requetes par ligne",

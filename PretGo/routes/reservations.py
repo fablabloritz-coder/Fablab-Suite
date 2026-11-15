@@ -6,6 +6,7 @@ import json
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from reservations_logic import (
+    build_creation_conflicts_context,
     compute_expected_return_datetime,
     expire_old_reservations,
     find_creation_conflicts_for_category_reservation,
@@ -82,8 +83,11 @@ def _extract_reservation_category_demands(row):
     return demands
 
 
-def _reservation_conflicts_for_items(conn, items, reservation_dt, reservation_end_dt, now_dt, exclude_reservation_id=None):
+def _reservation_conflicts_for_items(conn, items, reservation_dt, reservation_end_dt, now_dt,
+                                     exclude_reservation_id=None, contexte=None):
     """Vérifie les conflits pour tous les matériels liés aux items."""
+    if contexte is None:
+        contexte = build_creation_conflicts_context(conn, now_dt)
     conflicts = []
     seen_materials = set()
     for item in items:
@@ -98,6 +102,7 @@ def _reservation_conflicts_for_items(conn, items, reservation_dt, reservation_en
             reservation_end_dt=reservation_end_dt,
             now_dt=now_dt,
             exclude_reservation_id=exclude_reservation_id,
+            contexte=contexte,
         )
         if not messages:
             continue
@@ -105,8 +110,11 @@ def _reservation_conflicts_for_items(conn, items, reservation_dt, reservation_en
     return conflicts
 
 
-def _reservation_conflicts_for_categories(conn, category_demands, reservation_dt, reservation_end_dt, now_dt, exclude_reservation_id=None):
+def _reservation_conflicts_for_categories(conn, category_demands, reservation_dt, reservation_end_dt,
+                                          now_dt, exclude_reservation_id=None, contexte=None):
     """Vérifie les conflits de capacité pour des demandes par catégorie."""
+    if contexte is None:
+        contexte = build_creation_conflicts_context(conn, now_dt)
     conflicts = []
     for demand in category_demands:
         messages = find_creation_conflicts_for_category_reservation(
@@ -117,6 +125,7 @@ def _reservation_conflicts_for_categories(conn, category_demands, reservation_dt
             reservation_end_dt=reservation_end_dt,
             now_dt=now_dt,
             exclude_reservation_id=exclude_reservation_id,
+            contexte=contexte,
         )
         if messages:
             conflicts.extend(messages)
@@ -269,6 +278,9 @@ def reservations():
                 reservation_end_dt = reservation_dt
             
             main_materiel_id = _first_linked_material_id(items)
+            # Un seul contexte pour tout le formulaire : capacités, prêts,
+            # réglages, réservations et matériels ne sont lus qu'une fois.
+            contexte = build_creation_conflicts_context(conn, now_dt)
             conflicts = []
             conflicts.extend(_reservation_conflicts_for_items(
                 conn,
@@ -276,6 +288,7 @@ def reservations():
                 reservation_dt,
                 reservation_end_dt,
                 now_dt,
+                contexte=contexte,
             ))
             conflicts.extend(_reservation_conflicts_for_categories(
                 conn,
@@ -283,6 +296,7 @@ def reservations():
                 reservation_dt,
                 reservation_end_dt,
                 now_dt,
+                contexte=contexte,
             ))
             
             if conflicts:
@@ -497,6 +511,8 @@ def modifier_reservation(reservation_id):
                 reservation_end_dt = reservation_dt
 
             main_materiel_id = _first_linked_material_id(items)
+            # Un seul contexte pour tout le formulaire (voir la création).
+            contexte = build_creation_conflicts_context(conn, now_dt)
             conflicts = []
             conflicts.extend(_reservation_conflicts_for_items(
                 conn,
@@ -505,6 +521,7 @@ def modifier_reservation(reservation_id):
                 reservation_end_dt,
                 now_dt,
                 exclude_reservation_id=reservation_id,
+                contexte=contexte,
             ))
             conflicts.extend(_reservation_conflicts_for_categories(
                 conn,
@@ -513,6 +530,7 @@ def modifier_reservation(reservation_id):
                 reservation_end_dt,
                 now_dt,
                 exclude_reservation_id=reservation_id,
+                contexte=contexte,
             ))
             if conflicts:
                 for msg in conflicts:

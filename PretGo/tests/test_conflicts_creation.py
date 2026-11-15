@@ -217,6 +217,64 @@ class CreationConflictTests(unittest.TestCase):
         self.assertLessEqual(requetes_categorie, 12,
                              f"{requetes_categorie} requêtes pour un contrôle de réservation")
 
+    def _cout_formulaire(self, items, demandes):
+        """Requêtes SQL d'une soumission complète, contexte initial compris."""
+        from routes.reservations import (
+            _reservation_conflicts_for_categories,
+            _reservation_conflicts_for_items,
+        )
+
+        compteur = {'n': 0}
+        vrai_connect = sqlite3.connect
+
+        def connect_compte(*args, **kwargs):
+            conn = vrai_connect(*args, **kwargs)
+            conn.set_trace_callback(lambda _sql: compteur.__setitem__('n', compteur['n'] + 1))
+            return conn
+
+        sqlite3.connect = connect_compte
+        try:
+            conn = database.get_db()
+            try:
+                debut = self.maintenant + datetime.timedelta(days=5, hours=1)
+                fin = debut + datetime.timedelta(days=1)
+                compteur['n'] = 0
+                contexte = logic.build_creation_conflicts_context(conn, self.maintenant)
+                messages = _reservation_conflicts_for_items(
+                    conn, items, debut, fin, self.maintenant, contexte=contexte)
+                messages += _reservation_conflicts_for_categories(
+                    conn, demandes, debut, fin, self.maintenant, contexte=contexte)
+                requetes = compteur['n']
+            finally:
+                conn.close()
+        finally:
+            sqlite3.connect = vrai_connect
+
+        return requetes, messages
+
+    def test_formulaire_partage_un_seul_contexte(self):
+        """Un formulaire ne relit pas le contexte pour chaque matériel et catégorie."""
+        items_courts = [{'materiel_id': self.imprimante_1}, {'materiel_id': self.imprimante_2}]
+        demandes_courtes = [{'category': 'Imprimante 3D', 'quantity': 2}]
+        items_longs = items_courts + [
+            {'materiel_id': self.arduino}, {'materiel_id': self.imprimante_1},
+            {'materiel_id': self.imprimante_2}, {'materiel_id': self.arduino},
+        ]
+        demandes_longues = demandes_courtes + [
+            {'category': 'Arduino', 'quantity': 1},
+            {'category': 'Camera', 'quantity': 1},
+        ]
+
+        courtes, messages_courts = self._cout_formulaire(items_courts, demandes_courtes)
+        longues, messages_longs = self._cout_formulaire(items_longs, demandes_longues)
+
+        self.assertLessEqual(courtes, 15, f"{courtes} requêtes pour un petit formulaire")
+        self.assertLessEqual(longues, courtes + 6,
+                             f"{courtes} requêtes puis {longues} en ajoutant 3 matériels et 2 catégories")
+        # Le formulaire long examine plus de couples matériel/réservation :
+        # il doit remonter au moins autant de messages, sans perdre les courts.
+        self.assertGreaterEqual(len(messages_longs), len(messages_courts))
+
     def test_z_cout_independant_du_volume(self):
         """Doubler les réservations et les prêts ne doit pas doubler les requêtes."""
         conn = self._connexion()

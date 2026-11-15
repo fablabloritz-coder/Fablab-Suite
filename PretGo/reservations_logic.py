@@ -315,6 +315,55 @@ def _risky_loan_count(loans, latest_return_allowed: datetime, reglages: dict) ->
     return compte
 
 
+class ConflitsCreationContext:
+    """Contexte partagé par les contrôles d'une même soumission de formulaire.
+
+    Un formulaire de réservation vérifie plusieurs matériels et plusieurs
+    catégories d'un coup. Sans ce contexte, chaque vérification relisait
+    capacités, prêts actifs, réglages, réservations existantes et matériels :
+    un formulaire à trois catégories payait trois fois le même travail.
+
+    Les contrôles restent utilisables sans contexte : il est alors construit à
+    la demande, avec le comportement d'origine.
+    """
+
+    def __init__(self, conn, now_dt: datetime | None = None):
+        self.conn = conn
+        self.now_dt = now_dt or datetime.now()
+        self.buffer_hours, self.lock_hours = get_reservation_policy(conn)
+        self.stock_par_categorie = _stock_capacities(conn)
+        self.prets_par_categorie = _active_loan_rows_by_category(conn)
+        self.reglages_retour = _reglages_retour(conn)
+        self.reservations = conn.execute(
+            """
+            SELECT id, date_reservation, date_fin_reservation, statut,
+                   materiel_id, items_json, demande_categories_json
+            FROM reservations
+            WHERE statut IN ('demande', 'confirmee')
+            ORDER BY date_reservation ASC
+            """
+        ).fetchall()
+        self.materiels = _materials_by_ids(
+            conn,
+            {mid for row in self.reservations for mid in _reservation_material_ids(row)},
+        )
+        self._demandes: dict = {}
+
+    def demandes(self, reservation) -> dict[str, int]:
+        """Demandes d'une réservation, calculées à sa première utilisation."""
+        reservation_id = reservation['id']
+        if reservation_id not in self._demandes:
+            self._demandes[reservation_id] = _reservation_category_demands(
+                self.conn, reservation, self.materiels
+            )
+        return self._demandes[reservation_id]
+
+
+def build_creation_conflicts_context(conn, now_dt: datetime | None = None) -> ConflitsCreationContext:
+    """Construit le contexte partagé des contrôles de création."""
+    return ConflitsCreationContext(conn, now_dt)
+
+
 def expire_old_reservations(conn, now_dt: datetime | None = None) -> None:
     """Conservé pour compatibilité: plus d'expiration automatique des réservations."""
     return None
@@ -491,10 +540,18 @@ def find_creation_conflicts_for_category_reservation(
     reservation_end_dt: datetime | None = None,
     now_dt: datetime | None = None,
     exclude_reservation_id: int | None = None,
+    contexte: ConflitsCreationContext | None = None,
 ) -> list[str]:
-    """Retourne les conflits pour une demande de réservation par catégorie."""
+    """Retourne les conflits pour une demande de réservation par catégorie.
+
+    `contexte` permet de réutiliser les lectures d'un formulaire : capacités,
+    prêts actifs, réglages, réservations et matériels sont alors lus une fois
+    pour toutes les catégories et tous les matériels soumis.
+    """
+    if contexte is None:
+        contexte = ConflitsCreationContext(conn, now_dt)
     if now_dt is None:
-        now_dt = datetime.now()
+        now_dt = contexte.now_dt
     if reservation_end_dt is None:
         reservation_end_dt = reservation_dt
 
@@ -506,30 +563,14 @@ def find_creation_conflicts_for_category_reservation(
     if not category or qty <= 0:
         return []
 
-    stock_total = _stock_capacities(conn).get(category, 0)
+    stock_total = contexte.stock_par_categorie.get(category, 0)
     if stock_total < qty:
         return [f"Catégorie {category}: stock insuffisant ({stock_total} disponible(s), {qty} demandé(s))."]
 
-    buffer_hours, _ = get_reservation_policy(conn)
-    latest_return_allowed = reservation_dt - timedelta(hours=buffer_hours)
+    latest_return_allowed = reservation_dt - timedelta(hours=contexte.buffer_hours)
 
     reserved_overlap = 0
-    existing = conn.execute(
-        """
-        SELECT id, date_reservation, date_fin_reservation, statut, materiel_id, items_json, demande_categories_json
-        FROM reservations
-        WHERE statut IN ('demande', 'confirmee')
-        ORDER BY date_reservation ASC
-        """
-    ).fetchall()
-
-    # Matériels des réservations existantes : une seule lecture pour toute la boucle.
-    materiels = _materials_by_ids(
-        conn,
-        {mid for row in existing for mid in _reservation_material_ids(row)},
-    )
-
-    for row in existing:
+    for row in contexte.reservations:
         if exclude_reservation_id and row['id'] == exclude_reservation_id:
             continue
         existing_dt = parse_db_datetime(row['date_reservation'])
@@ -538,13 +579,13 @@ def find_creation_conflicts_for_category_reservation(
             continue
         # Chevauchement
         if reservation_dt < existing_end_dt and reservation_end_dt > existing_dt:
-            row_demands = _reservation_category_demands(conn, row, materiels)
+            row_demands = contexte.demandes(row)
             reserved_overlap += int(row_demands.get(category, 0) or 0)
 
     risky_active = _risky_loan_count(
-        _active_loan_rows_by_category(conn).get(category, []),
+        contexte.prets_par_categorie.get(category, []),
         latest_return_allowed,
-        _reglages_retour(conn),
+        contexte.reglages_retour,
     )
     available_effective = stock_total - reserved_overlap - risky_active
 
@@ -564,26 +605,25 @@ def find_creation_conflicts_for_reservation(
     reservation_end_dt: datetime | None = None,
     now_dt: datetime | None = None,
     exclude_reservation_id: int | None = None,
+    contexte: ConflitsCreationContext | None = None,
 ) -> list[str]:
-    """Retourne des messages de conflit pour une création de réservation."""
+    """Retourne des messages de conflit pour une création de réservation.
+
+    `contexte` évite de relire réglages et réservations existantes pour chaque
+    matériel soumis dans un même formulaire.
+    """
+    if contexte is None:
+        contexte = ConflitsCreationContext(conn, now_dt)
     if now_dt is None:
-        now_dt = datetime.now()
+        now_dt = contexte.now_dt
     if reservation_end_dt is None:
         reservation_end_dt = reservation_dt
 
-    buffer_hours, _ = get_reservation_policy(conn)
-    latest_return_allowed = reservation_dt - timedelta(hours=buffer_hours)
+    latest_return_allowed = reservation_dt - timedelta(hours=contexte.buffer_hours)
     conflicts = []
 
     # 1) Conflit avec une autre réservation qui chevauche cette plage.
-    existing = conn.execute(
-        """
-        SELECT id, date_reservation, date_fin_reservation, materiel_id, items_json
-        FROM reservations
-        WHERE statut IN ('demande', 'confirmee')
-        ORDER BY date_reservation ASC
-        """
-    ).fetchall()
+    existing = contexte.reservations
 
     for row in existing:
         if exclude_reservation_id and row['id'] == exclude_reservation_id:
@@ -617,8 +657,7 @@ def find_creation_conflicts_for_reservation(
         (materiel_id, materiel_id),
     ).fetchall()
 
-    # Réglages lus une fois : chaque prêt en aurait sinon relancé la lecture.
-    reglages_retour = _reglages_retour(conn)
+    reglages_retour = contexte.reglages_retour
     for pret in active_loans:
         base_dt = parse_db_datetime(pret['date_emprunt'])
         if not base_dt:

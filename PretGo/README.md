@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.9 — 2026-11-15
+
+#### Un seul contexte par formulaire de reservation
+
+- Un formulaire de reservation verifie plusieurs materiaux et plusieurs categories d'un coup : capacites, prets actifs, reglages de retard, reservations existantes et materiaux etaient relus a chaque ligne. Ces lectures sont desormais faites une seule fois par soumission, puis partagees par tous les controles : un formulaire de 4 materiaux et 3 categories passe de 55 a 13 requetes SQL, avec exactement les memes messages de conflit (30 cas de controle compares, aucun ecart). Les fonctions restent utilisables sans contexte partage, avec le comportement precedent.
+
+---
+
 ### v1.10.8 — 2026-11-15
 
 #### Controles de creation sans requetes par ligne
