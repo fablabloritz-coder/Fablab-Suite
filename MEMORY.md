@@ -17,6 +17,7 @@ If something conflicts with old notes, trust this file + current code in reposit
 - Fabtrack: machines, consumptions, stock, missions, Raise3D integration
 - PretGo: equipment loans
 - FabBoard: display dashboard (TV mode), reads Fabtrack data
+- FabInventory: IT inventory masters (nested project at `FabInventory/FabInventory`)
 
 Out of core suite:
 - FabStock: legacy/side app (features moved to Fabtrack stock module)
@@ -28,6 +29,7 @@ Default host ports:
 - Fabtrack: 5555
 - PretGo: 5000
 - FabBoard: 5580
+- FabInventory: 5590
 
 Important URL rules:
 - Local root compose: FabBoard -> Fabtrack uses service DNS (`http://fabtrack:5555`)
@@ -169,15 +171,25 @@ Server maintenance:
 - `./fabsuite-ubuntu.sh logs Fabtrack`
 
 ## 15) Current baseline snapshot
+App versions:
+- Fabtrack 2.7.2 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.3
+
 Recent commits (latest first):
-- `eff4048` docs(readme): promote single recommended installer command
-- `257b96e` feat(installer): one-line Windows launcher and robust server app registration
-- `7827937` feat(gui): separer UX actions communes et SSH-only
-- `6b27449` feat(gui): ajouter mode local et unifier workflows deploy_core
-- `9734009` feat(control-center): migrer audit GUI vers deploy_core
-- `e7e0fb4` feat(control-center): brancher status GUI sur deploy_core
-- `041eae6` feat(control-center): init memory and unified workflow scaffold
-- `27d448d` fix(installer): centraliser auto-config inter-app et transparence UI
+- `fbd1d02` PretGo: borner le badge d'alertes et indexer les chevauchements (1.10.10)
+- `1a3d15b` PretGo: un seul contexte de controle par formulaire de reservation (1.10.9)
+- `5785b51` Etendre le garde-fou de budget SQL aux quatre autres applications
+- `fd9f193` PretGo: alleger les controles de creation de pret et de reservation (1.10.8)
+- `8fb0ca3` PretGo: supprimer les requetes en boucle du calcul des alertes (1.10.7)
+- `99b2345` PretGo: lire les reglages de retard une seule fois par page (1.10.6)
+- `0943706` CI: lancer les controles apres la creation des tags, plus en parallele
+- `f80f094` Docs: lier les notes de version aux releases publiees
+
+Workflow guardrails now in place:
+- SQL budget tests in all five apps (`tests/test_sql_budget.py` per app)
+- Version gates: `release_notes_gen.py --check` + `changelog_gen.py` in CI
+- Chained CI after tag creation (`Version consistency on: workflow_run`)
+
+Session log: `docs/SESSION_LOG.md` (newest entry first).
 
 ## 16) If you are a new AI entering this repo
 Start here:
@@ -186,6 +198,7 @@ Start here:
 3. Read `INSTALL_UBUNTU.md`
 4. Read `fabsuite-ubuntu.sh` and `fabsuite_ssh_gui.py`
 5. Run `git log --oneline -n 10`
+6. Read the newest entry of `docs/SESSION_LOG.md`
 
 Then act with this assumption:
 - One monorepo, one update path, one clean orchestrated workflow.
