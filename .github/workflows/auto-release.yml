@@ -48,16 +48,17 @@ jobs:
           for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
             nom=$(basename "$app")
 
+            # Aligne les liens `url` sur les tags reellement presents (un premier
+            # passage peut avoir des liens vers des tags jamais pousses) : la
+            # validation ci-dessous refuse un lien sans tag, et doit donc passer
+            # apres cette synchro, sans quoi l'application serait ignoree.
+            python3 release_notes_gen.py --app "./$app" --sync-release-links >/dev/null
+
             # Sans notes a jour, on ne publie rien pour cette application.
             if ! python3 release_notes_gen.py --app "./$app" --check; then
               echo "::notice::$nom : notes en attente, release ignoree"
               continue
             fi
-
-            # Aligne les liens `url` sur les tags reellement presents (un premier
-            # passage peut avoir des liens vers des tags jamais pousses) : la
-            # validation ci-dessous refuse un lien sans tag.
-            python3 release_notes_gen.py --app "./$app" --sync-release-links >/dev/null
 
             tag=$(python3 -c "import release_publish as rp; from pathlib import Path; a = Path('$app'); print(rp.tag_for(rp.app_slug(a), rp.read_app_version(a)))")
 
