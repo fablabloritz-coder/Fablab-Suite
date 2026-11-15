@@ -40,7 +40,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Tags et releases manquants
-        id: releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -54,6 +53,11 @@ jobs:
               echo "::notice::$nom : notes en attente, release ignoree"
               continue
             fi
+
+            # Aligne les liens `url` sur les tags reellement presents (un premier
+            # passage peut avoir des liens vers des tags jamais pousses) : la
+            # validation ci-dessous refuse un lien sans tag.
+            python3 release_notes_gen.py --app "./$app" --sync-release-links >/dev/null
 
             tag=$(python3 -c "import release_publish as rp; from pathlib import Path; a = Path('$app'); print(rp.tag_for(rp.app_slug(a), rp.read_app_version(a)))")
 
@@ -75,10 +79,9 @@ jobs:
             echo "$nom : release $tag publiee"
             publiees=$((publiees + 1))
           done
-          echo "publiees=$publiees" >> "$GITHUB_OUTPUT"
+          echo "$publiees release(s) publiee(s)"
 
       - name: Lier les notes aux releases publiees
-        if: steps.releases.outputs.publiees != '0' && steps.releases.outputs.publiees != ''
         run: |
           set -euo pipefail
           for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
@@ -94,4 +97,6 @@ jobs:
           # Sujet en "Docs:" : le generateur de notes ignore ces commits, donc
           # ce retour d'ecriture ne laisse pas de note en attente.
           git commit -m "Docs: lier les notes de version aux releases publiees"
-          git push
+          # Explicitement vers main : le checkout d'Actions peut ne pas avoir de
+          # branche locale de meme nom que sa branche de suivi.
+          git push origin HEAD:main
