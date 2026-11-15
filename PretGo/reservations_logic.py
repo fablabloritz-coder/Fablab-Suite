@@ -168,20 +168,30 @@ def _reservation_material_ids(row) -> set[int]:
 
 
 def _materials_by_ids(conn, ids) -> dict:
-    """Matériels demandés, lus en une seule requête plutôt qu'un SELECT par id."""
+    """Matériels demandés, lus par paquets plutôt qu'un SELECT par id.
+
+    Les identifiants sont découpés par lots : SQLite refuse plus de 999
+    paramètres liés dans une même instruction sur les versions anciennes
+    (SQLite < 3.32), plafond qu'une page très fournie pourrait atteindre.
+    """
     ids = sorted({int(i) for i in ids if i is not None})
     if not ids:
         return {}
-    placeholders = ','.join('?' * len(ids))
-    rows = conn.execute(
-        f"""
-        SELECT id, type_materiel, marque, modele, numero_inventaire
-        FROM inventaire
-        WHERE id IN ({placeholders})
-        """,
-        ids,
-    ).fetchall()
-    return {row['id']: row for row in rows}
+    materiels: dict = {}
+    taille_lot = 900
+    for debut in range(0, len(ids), taille_lot):
+        lot = ids[debut:debut + taille_lot]
+        placeholders = ','.join('?' * len(lot))
+        rows = conn.execute(
+            f"""
+            SELECT id, type_materiel, marque, modele, numero_inventaire
+            FROM inventaire
+            WHERE id IN ({placeholders})
+            """,
+            lot,
+        ).fetchall()
+        materiels.update({row['id']: row for row in rows})
+    return materiels
 
 
 def _reservation_category_demands(conn, row, materiels=None) -> dict[str, int]:
@@ -263,51 +273,46 @@ def _active_loans_by_category(conn) -> dict[str, list]:
     return par_categorie
 
 
-def _stock_capacity_for_category(conn, category: str) -> int:
-    row = conn.execute(
-        """
-        SELECT COUNT(*) AS c
-        FROM inventaire
-        WHERE actif = 1
-          AND etat != 'hors_service'
-          AND type_materiel = ?
-        """,
-        (category,),
-    ).fetchone()
-    return int(row['c']) if row else 0
+def _active_loan_rows_by_category(conn) -> dict[str, list]:
+    """Prêts actifs par catégorie, pour les contrôles de création.
 
-
-def _risk_active_loan_count_for_category(conn, category: str, latest_return_allowed: datetime) -> int:
-    """Compte les prêts actifs de la catégorie qui risquent d'empiéter la réservation."""
-    loans = conn.execute(
+    Mêmes filtres que le comptage historique (un prêt par matériel prêté) :
+    une seule requête sert ensuite toutes les catégories et tous les seuils.
+    """
+    rows = conn.execute(
         """
-        SELECT p.id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours, p.date_retour_prevue,
-               pm.id AS pm_id
+        SELECT p.id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
+               p.date_retour_prevue, inv.type_materiel
         FROM prets p
         JOIN pret_materiels pm ON pm.pret_id = p.id
         JOIN inventaire inv ON inv.id = pm.materiel_id
         WHERE p.retour_confirme = 0
-          AND inv.type_materiel = ?
           AND inv.actif = 1
-        """,
-        (category,),
+        """
     ).fetchall()
+    par_categorie: dict[str, list] = {}
+    for row in rows:
+        par_categorie.setdefault(row['type_materiel'], []).append(row)
+    return par_categorie
 
-    risk_count = 0
+
+def _risky_loan_count(loans, latest_return_allowed: datetime, reglages: dict) -> int:
+    """Compte les prêts dont le retour théorique dépasse l'échéance demandée."""
+    compte = 0
     for loan in loans:
         base_dt = parse_db_datetime(loan['date_emprunt'])
         if not base_dt:
             continue
-        expected_return = compute_expected_return_datetime(
-            conn,
+        expected_return = _expected_return_from(
             base_dt,
             loan['duree_pret_heures'],
             loan['duree_pret_jours'],
             loan['date_retour_prevue'],
+            reglages,
         )
         if expected_return > latest_return_allowed:
-            risk_count += 1
-    return risk_count
+            compte += 1
+    return compte
 
 
 def expire_old_reservations(conn, now_dt: datetime | None = None) -> None:
@@ -339,9 +344,20 @@ def find_reservation_conflicts_for_loan(
         """,
     ).fetchall()
 
+    # Contexte lu une fois : capacités, prêts actifs, réglages de retour et
+    # matériels servent ensuite toutes les réservations et toutes les catégories.
+    stock_par_categorie = _stock_capacities(conn)
+    prets_par_categorie = _active_loan_rows_by_category(conn)
+    reglages_retour = _reglages_retour(conn)
+    materiels = _materials_by_ids(
+        conn,
+        set(material_ids)
+        | {mid for row in rows for mid in _reservation_material_ids(row)},
+    )
+
     # 1) Verrou exact: un objet réservé précisément reste bloquant pour ce même objet.
     for materiel_id in sorted(set(material_ids)):
-        mat = _get_material_info(conn, materiel_id)
+        mat = materiels.get(materiel_id)
         material_label = _material_label(mat)
 
         for row in rows:
@@ -387,7 +403,7 @@ def find_reservation_conflicts_for_loan(
     # Le prêt en cours de création occupe X unités par catégorie.
     demanded_by_category: dict[str, int] = {}
     for materiel_id in sorted(set(material_ids)):
-        mat = _get_material_info(conn, materiel_id)
+        mat = materiels.get(materiel_id)
         if not mat:
             continue
         category = (mat['type_materiel'] or '').strip()
@@ -407,7 +423,7 @@ def find_reservation_conflicts_for_loan(
         if not reservation_dt or reservation_end_dt <= now_dt:
             continue
 
-        row_demands = _reservation_category_demands(conn, row)
+        row_demands = _reservation_category_demands(conn, row, materiels)
         if not row_demands:
             continue
 
@@ -416,7 +432,7 @@ def find_reservation_conflicts_for_loan(
             if requested_qty <= 0:
                 continue
 
-            stock_total = _stock_capacity_for_category(conn, category)
+            stock_total = stock_par_categorie.get(category, 0)
             if stock_total <= 0:
                 conflicts.append({
                     'materiel_id': None,
@@ -429,7 +445,9 @@ def find_reservation_conflicts_for_loan(
                 continue
 
             safe_latest_return = reservation_dt - timedelta(hours=buffer_hours)
-            risky_active = _risk_active_loan_count_for_category(conn, category, safe_latest_return)
+            risky_active = _risky_loan_count(
+                prets_par_categorie.get(category, []), safe_latest_return, reglages_retour
+            )
             projected_risky = risky_active + added_count
             projected_available = stock_total - projected_risky
 
@@ -488,7 +506,7 @@ def find_creation_conflicts_for_category_reservation(
     if not category or qty <= 0:
         return []
 
-    stock_total = _stock_capacity_for_category(conn, category)
+    stock_total = _stock_capacities(conn).get(category, 0)
     if stock_total < qty:
         return [f"Catégorie {category}: stock insuffisant ({stock_total} disponible(s), {qty} demandé(s))."]
 
@@ -505,6 +523,12 @@ def find_creation_conflicts_for_category_reservation(
         """
     ).fetchall()
 
+    # Matériels des réservations existantes : une seule lecture pour toute la boucle.
+    materiels = _materials_by_ids(
+        conn,
+        {mid for row in existing for mid in _reservation_material_ids(row)},
+    )
+
     for row in existing:
         if exclude_reservation_id and row['id'] == exclude_reservation_id:
             continue
@@ -514,10 +538,14 @@ def find_creation_conflicts_for_category_reservation(
             continue
         # Chevauchement
         if reservation_dt < existing_end_dt and reservation_end_dt > existing_dt:
-            row_demands = _reservation_category_demands(conn, row)
+            row_demands = _reservation_category_demands(conn, row, materiels)
             reserved_overlap += int(row_demands.get(category, 0) or 0)
 
-    risky_active = _risk_active_loan_count_for_category(conn, category, latest_return_allowed)
+    risky_active = _risky_loan_count(
+        _active_loan_rows_by_category(conn).get(category, []),
+        latest_return_allowed,
+        _reglages_retour(conn),
+    )
     available_effective = stock_total - reserved_overlap - risky_active
 
     if available_effective < qty:
@@ -589,16 +617,18 @@ def find_creation_conflicts_for_reservation(
         (materiel_id, materiel_id),
     ).fetchall()
 
+    # Réglages lus une fois : chaque prêt en aurait sinon relancé la lecture.
+    reglages_retour = _reglages_retour(conn)
     for pret in active_loans:
         base_dt = parse_db_datetime(pret['date_emprunt'])
         if not base_dt:
             continue
-        expected_return = compute_expected_return_datetime(
-            conn,
+        expected_return = _expected_return_from(
             base_dt,
             pret['duree_pret_heures'],
             pret['duree_pret_jours'],
             pret['date_retour_prevue'],
+            reglages_retour,
         )
         if expected_return > latest_return_allowed:
             conflicts.append(
@@ -752,17 +782,27 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
         (format_db_datetime(now_dt),),
     ).fetchall()
 
-    # Tout ce qui suit est précalculé une fois : demandes par réservation,
-    # capacité par catégorie et prêts actifs par catégorie. Sans cela, chaque
+    # Capacités, prêts actifs et matériels sont lus une fois : sans cela, chaque
     # couple (réservation × catégorie) relançait ses propres requêtes.
     materiels = _materials_by_ids(
         conn,
         {mid for reservation in active_reservations for mid in _reservation_material_ids(reservation)},
     )
-    demands_par_reservation = {
-        reservation['reservation_id']: _reservation_category_demands(conn, reservation, materiels)
-        for reservation in active_reservations
-    }
+    demandes_calculees: dict = {}
+
+    def _demandes(reservation):
+        """Demandes d'une réservation, calculées à sa première utilisation.
+
+        Le parcours s'arrête dès que `limit` est atteint : précalculer toutes les
+        demandes ferait du travail pour des réservations jamais affichées.
+        """
+        reservation_id = reservation['reservation_id']
+        if reservation_id not in demandes_calculees:
+            demandes_calculees[reservation_id] = _reservation_category_demands(
+                conn, reservation, materiels
+            )
+        return demandes_calculees[reservation_id]
+
     stock_par_categorie = _stock_capacities(conn)
     prets_par_categorie = _active_loans_by_category(conn)
 
@@ -775,7 +815,7 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
         if not reservation_dt2 or not reservation_end_dt2 or reservation_end_dt2 <= now_dt:
             continue
 
-        row_demands = demands_par_reservation.get(cat_row['reservation_id']) or {}
+        row_demands = _demandes(cat_row)
         if not row_demands:
             continue
 
@@ -801,7 +841,7 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
                 if not other_dt or not other_end_dt or other_end_dt <= now_dt:
                     continue
                 if reservation_dt2 < other_end_dt and reservation_end_dt2 > other_dt:
-                    other_demands = demands_par_reservation.get(other['reservation_id']) or {}
+                    other_demands = _demandes(other)
                     reserved_overlap += int(other_demands.get(category, 0) or 0)
 
             loans_in_cat = prets_par_categorie.get(category, [])

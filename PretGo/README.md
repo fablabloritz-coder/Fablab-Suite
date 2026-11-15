@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.8 — 2026-11-15
+
+#### Controles de creation sans requetes par ligne
+
+- Les controles de creation d'un pret et d'une reservation par categorie relisent desormais capacites, prets actifs, reglages de retard et materiaux une seule fois par verification, au lieu d'une requete par reservation, par categorie et par materiel : sur un jeu de 30 prets et 30 reservations, la verification d'un pret passe de 254 a 9 requetes SQL. La lecture des materiaux est aussi decoupee en lots de 900 identifiants, pour rester sous la limite de parametres des anciennes versions de SQLite. Six tests couvrent ces controles, dont les demandes portees par materiel_id historique et par items_json multi-materiels, et mesurent leur budget SQL.
+
+---
+
 ### v1.10.7 — 2026-11-15
 
 #### Alertes de reservation sans requetes en boucle
