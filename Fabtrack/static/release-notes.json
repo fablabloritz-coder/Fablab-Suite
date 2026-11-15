@@ -15,7 +15,8 @@
       "title": "Attente de verrou SQLite",
       "notes": [
         "Attente de verrou : chaque application attend jusqu'a 5 secondes qu'une ecriture concurrente libere la base SQLite, au lieu d'echouer immediatement sur un \"database is locked\"."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.7.1"
     },
     {
       "version": "2.7.0",
