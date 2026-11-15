@@ -40,3 +40,33 @@ jobs:
           for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
             python3 release_notes_gen.py --app "./$app" --check
           done
+
+      - name: Contrat FabSuite (copies de fabsuite_core et manifestes)
+        run: python3 -m unittest discover -s tests -p 'contract_*.py' -v
+
+  tests-apps:
+    name: Tests ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    # Les suites des applications exigent Flask : elles tournent par application
+    # dans leur propre environnement plutôt que dans le job de cohérence.
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [Fabtrack, FabBoard, PretGo]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Dépendances de l'application
+        run: python3 -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Tests unittest
+        run: python3 -m unittest discover -s tests -v
