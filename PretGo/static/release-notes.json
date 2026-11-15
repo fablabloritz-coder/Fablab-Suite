@@ -1,6 +1,15 @@
 {
   "history": [
     {
+      "version": "1.10.7",
+      "date": "2026-11-15",
+      "title": "Alertes de reservation sans requetes en boucle",
+      "notes": [
+        "Le calcul des alertes de reservation ne relance plus une requete par couple (reservation x categorie) : demandes, capacites de stock et prets actifs sont lus une seule fois puis reutilises, et les materiels d'une reservation arrivent en une requete au lieu d'un SELECT par identifiant. Sur un jeu de 40 prets et 40 reservations generant 40 alertes, une page passe de 5038 a 42 requetes SQL. Un test mesure desormais le budget SQL des pages pour empecher le retour de ces requetes en boucle."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.7"
+    },
+    {
       "version": "1.10.6",
       "date": "2026-11-15",
       "title": "Reglages lus une seule fois par page",

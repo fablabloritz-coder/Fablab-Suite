@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.7 — 2026-11-15
+
+#### Alertes de reservation sans requetes en boucle
+
+- Le calcul des alertes de reservation ne relance plus une requete par couple (reservation x categorie) : demandes, capacites de stock et prets actifs sont lus une seule fois puis reutilises, et les materiels d'une reservation arrivent en une requete au lieu d'un SELECT par identifiant. Sur un jeu de 40 prets et 40 reservations generant 40 alertes, une page passe de 5038 a 42 requetes SQL. Un test mesure desormais le budget SQL des pages pour empecher le retour de ces requetes en boucle.
+
+---
+
 ### v1.10.6 — 2026-11-15
 
 #### Reglages lus une seule fois par page

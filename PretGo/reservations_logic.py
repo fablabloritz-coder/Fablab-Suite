@@ -64,18 +64,30 @@ def get_reservation_policy(conn) -> tuple[float, float]:
     return buffer_hours, lock_hours
 
 
-def compute_expected_return_datetime(
-    conn,
-    base_datetime: datetime,
-    duree_heures,
-    duree_jours,
-    date_retour_prevue: str | None,
-) -> datetime:
-    """Calcule la date de retour théorique d'un prêt."""
+def _reglages_retour(conn) -> dict:
+    """Réglages utilisés par les calculs de retour, lus une seule fois.
+
+    `compute_expected_return_datetime` est appelée une fois par prêt dans les
+    calculs de risques : relire les paramètres à chaque appel ajoutait jusqu'à
+    trois requêtes par ligne.
+    """
+    try:
+        duree_defaut = float(get_setting('duree_alerte_defaut', '7', conn=conn) or 7)
+    except (TypeError, ValueError):
+        duree_defaut = 7.0
+    return {
+        'heure_fin_journee': get_setting('heure_fin_journee', '17:45', conn=conn),
+        'duree_alerte_defaut': duree_defaut,
+        'duree_alerte_unite': get_setting('duree_alerte_unite', 'jours', conn=conn),
+    }
+
+
+def _expected_return_from(base_datetime: datetime, duree_heures, duree_jours,
+                          date_retour_prevue: str | None, reglages: dict) -> datetime:
+    """Date de retour théorique, à partir de réglages déjà chargés."""
     if date_retour_prevue:
         try:
-            heure_fin = get_setting('heure_fin_journee', '17:45', conn=conn)
-            h_fin, m_fin = (int(x) for x in heure_fin.split(':'))
+            h_fin, m_fin = (int(x) for x in str(reglages['heure_fin_journee']).split(':'))
             dt_precise = datetime.strptime(date_retour_prevue, '%Y-%m-%d')
             return dt_precise.replace(hour=h_fin, minute=m_fin, second=0, microsecond=0)
         except Exception:
@@ -86,15 +98,22 @@ def compute_expected_return_datetime(
     if duree_jours is not None:
         return base_datetime + timedelta(days=float(duree_jours))
 
-    try:
-        duree_defaut = float(get_setting('duree_alerte_defaut', '7', conn=conn) or 7)
-    except (TypeError, ValueError):
-        duree_defaut = 7.0
-    unite_defaut = get_setting('duree_alerte_unite', 'jours', conn=conn)
+    if reglages['duree_alerte_unite'] == 'heures':
+        return base_datetime + timedelta(hours=reglages['duree_alerte_defaut'])
+    return base_datetime + timedelta(days=reglages['duree_alerte_defaut'])
 
-    if unite_defaut == 'heures':
-        return base_datetime + timedelta(hours=duree_defaut)
-    return base_datetime + timedelta(days=duree_defaut)
+
+def compute_expected_return_datetime(
+    conn,
+    base_datetime: datetime,
+    duree_heures,
+    duree_jours,
+    date_retour_prevue: str | None,
+) -> datetime:
+    """Calcule la date de retour théorique d'un prêt."""
+    return _expected_return_from(
+        base_datetime, duree_heures, duree_jours, date_retour_prevue, _reglages_retour(conn)
+    )
 
 
 def _get_material_info(conn, materiel_id: int):
@@ -148,8 +167,29 @@ def _reservation_material_ids(row) -> set[int]:
     return ids
 
 
-def _reservation_category_demands(conn, row) -> dict[str, int]:
-    """Retourne les quantités demandées par catégorie pour une réservation."""
+def _materials_by_ids(conn, ids) -> dict:
+    """Matériels demandés, lus en une seule requête plutôt qu'un SELECT par id."""
+    ids = sorted({int(i) for i in ids if i is not None})
+    if not ids:
+        return {}
+    placeholders = ','.join('?' * len(ids))
+    rows = conn.execute(
+        f"""
+        SELECT id, type_materiel, marque, modele, numero_inventaire
+        FROM inventaire
+        WHERE id IN ({placeholders})
+        """,
+        ids,
+    ).fetchall()
+    return {row['id']: row for row in rows}
+
+
+def _reservation_category_demands(conn, row, materiels=None) -> dict[str, int]:
+    """Retourne les quantités demandées par catégorie pour une réservation.
+
+    `materiels` permet de réutiliser une lecture groupée (`_materials_by_ids`) :
+    sans elle, chaque matériel d'une réservation déclenchait sa propre requête.
+    """
     demands: dict[str, int] = {}
 
     def _add(cat_name, qty=1):
@@ -179,11 +219,48 @@ def _reservation_category_demands(conn, row) -> dict[str, int]:
 
     # Compatibilité legacy: un matériel précis compte comme une demande de 1 dans sa catégorie.
     for mid in _reservation_material_ids(row):
-        mat = _get_material_info(conn, mid)
+        mat = materiels.get(mid) if materiels is not None else _get_material_info(conn, mid)
         if mat:
             _add(mat['type_materiel'], 1)
 
     return demands
+
+
+def _stock_capacities(conn) -> dict[str, int]:
+    """Capacité disponible par catégorie, en une seule requête agrégée."""
+    rows = conn.execute(
+        """
+        SELECT type_materiel, COUNT(*) AS c
+        FROM inventaire
+        WHERE actif = 1
+          AND etat != 'hors_service'
+        GROUP BY type_materiel
+        """
+    ).fetchall()
+    return {row['type_materiel']: int(row['c']) for row in rows}
+
+
+def _active_loans_by_category(conn) -> dict[str, list]:
+    """Prêts actifs regroupés par catégorie de matériel, en une seule requête."""
+    rows = conn.execute(
+        """
+        SELECT DISTINCT p.id AS pret_id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
+               p.date_retour_prevue, p.descriptif_objets,
+               pe2.nom, pe2.prenom, pe2.categorie,
+               inv2.id AS materiel_id, inv2.numero_inventaire, inv2.type_materiel,
+               inv2.marque, inv2.modele
+        FROM prets p
+        JOIN personnes pe2 ON pe2.id = p.personne_id
+        JOIN pret_materiels pm ON pm.pret_id = p.id
+        JOIN inventaire inv2 ON inv2.id = pm.materiel_id
+        WHERE p.retour_confirme = 0
+          AND inv2.actif = 1
+        """
+    ).fetchall()
+    par_categorie: dict[str, list] = {}
+    for row in rows:
+        par_categorie.setdefault(row['type_materiel'], []).append(row)
+    return par_categorie
 
 
 def _stock_capacity_for_category(conn, category: str) -> int:
@@ -600,6 +677,8 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
     ).fetchall()
 
     buffer_hours, lock_hours = get_reservation_policy(conn)
+    # Réglages lus une fois : les calculs de retour en dépendent pour chaque prêt.
+    reglages_retour = _reglages_retour(conn)
     lock_deadline = now_dt + timedelta(hours=lock_hours)
     risks = []
     seen = set()
@@ -610,12 +689,12 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
         if not base_dt or not reservation_dt:
             continue
 
-        expected_return = compute_expected_return_datetime(
-            conn,
+        expected_return = _expected_return_from(
             base_dt,
             row['duree_pret_heures'],
             row['duree_pret_jours'],
             row['date_retour_prevue'],
+            reglages_retour,
         )
         latest_return_allowed = reservation_dt - timedelta(hours=buffer_hours)
 
@@ -673,6 +752,20 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
         (format_db_datetime(now_dt),),
     ).fetchall()
 
+    # Tout ce qui suit est précalculé une fois : demandes par réservation,
+    # capacité par catégorie et prêts actifs par catégorie. Sans cela, chaque
+    # couple (réservation × catégorie) relançait ses propres requêtes.
+    materiels = _materials_by_ids(
+        conn,
+        {mid for reservation in active_reservations for mid in _reservation_material_ids(reservation)},
+    )
+    demands_par_reservation = {
+        reservation['reservation_id']: _reservation_category_demands(conn, reservation, materiels)
+        for reservation in active_reservations
+    }
+    stock_par_categorie = _stock_capacities(conn)
+    prets_par_categorie = _active_loans_by_category(conn)
+
     for cat_row in active_reservations:
         if limit is not None and len(risks) >= limit:
             break
@@ -682,7 +775,7 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
         if not reservation_dt2 or not reservation_end_dt2 or reservation_end_dt2 <= now_dt:
             continue
 
-        row_demands = _reservation_category_demands(conn, cat_row)
+        row_demands = demands_par_reservation.get(cat_row['reservation_id']) or {}
         if not row_demands:
             continue
 
@@ -694,7 +787,7 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
             if requested_qty <= 0:
                 continue
 
-            stock_total = _stock_capacity_for_category(conn, category)
+            stock_total = stock_par_categorie.get(category, 0)
             if stock_total <= 0:
                 continue
 
@@ -708,38 +801,22 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
                 if not other_dt or not other_end_dt or other_end_dt <= now_dt:
                     continue
                 if reservation_dt2 < other_end_dt and reservation_end_dt2 > other_dt:
-                    other_demands = _reservation_category_demands(conn, other)
+                    other_demands = demands_par_reservation.get(other['reservation_id']) or {}
                     reserved_overlap += int(other_demands.get(category, 0) or 0)
 
-            loans_in_cat = conn.execute(
-                """
-                SELECT DISTINCT p.id AS pret_id, p.date_emprunt, p.duree_pret_heures, p.duree_pret_jours,
-                       p.date_retour_prevue, p.descriptif_objets,
-                       pe2.nom, pe2.prenom, pe2.categorie,
-                       inv2.id AS materiel_id, inv2.numero_inventaire, inv2.type_materiel,
-                       inv2.marque, inv2.modele
-                FROM prets p
-                JOIN personnes pe2 ON pe2.id = p.personne_id
-                JOIN pret_materiels pm ON pm.pret_id = p.id
-                JOIN inventaire inv2 ON inv2.id = pm.materiel_id
-                WHERE p.retour_confirme = 0
-                  AND inv2.type_materiel = ?
-                  AND inv2.actif = 1
-                """,
-                (category,),
-            ).fetchall()
+            loans_in_cat = prets_par_categorie.get(category, [])
 
             risky_loans = []
             for loan in loans_in_cat:
                 base_dt2 = parse_db_datetime(loan['date_emprunt'])
                 if not base_dt2:
                     continue
-                expected_return2 = compute_expected_return_datetime(
-                    conn,
+                expected_return2 = _expected_return_from(
                     base_dt2,
                     loan['duree_pret_heures'],
                     loan['duree_pret_jours'],
                     loan['date_retour_prevue'],
+                    reglages_retour,
                 )
                 if expected_return2 > latest_return_allowed2:
                     risky_loans.append((loan, expected_return2))
