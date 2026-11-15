@@ -229,6 +229,26 @@ TYPE_LONGUE_DUREE = 'longue_duree'
 LONGUE_DUREE_DATE = '2999-12-31'
 
 
+def _reglage_alerte(cle, defaut):
+    """Réglage lu une seule fois par requête.
+
+    `calcul_depassement_heures` est appelée une fois par prêt affiché : sans ce
+    cache, chaque ligne relisait les paramètres en ouvrant sa propre connexion.
+    Le cache de la requête est alimenté ici et par le context processor ; hors
+    contexte d'application (fil de rappels), on lit directement la base.
+    """
+    try:
+        cache = getattr(g, '_settings_cache', None)
+        if cache is None:
+            cache = {}
+            g._settings_cache = cache
+    except RuntimeError:
+        return get_setting(cle, defaut)
+    if cle not in cache:
+        cache[cle] = get_setting(cle, defaut, conn=get_app_db())
+    return cache[cle]
+
+
 def calcul_depassement_heures(date_emprunt_str, duree_heures, duree_jours,
                               _duree_defaut=None, _unite_defaut=None,
                               date_retour_prevue=None, _heure_fin=None):
@@ -246,7 +266,7 @@ def calcul_depassement_heures(date_emprunt_str, duree_heures, duree_jours,
         # Date de retour précise : dépassement à l'heure de fin de journée
         if date_retour_prevue:
             try:
-                heure_fin = _heure_fin or get_setting('heure_fin_journee', '17:45')
+                heure_fin = _heure_fin or _reglage_alerte('heure_fin_journee', '17:45')
                 h_fin, m_fin = (int(x) for x in heure_fin.split(':'))
                 retour_theorique = datetime.strptime(date_retour_prevue, '%Y-%m-%d').replace(
                     hour=h_fin, minute=m_fin, second=0)
@@ -258,8 +278,10 @@ def calcul_depassement_heures(date_emprunt_str, duree_heures, duree_jours,
                     return True, delta.total_seconds() / 3600
                 return False, 0
 
-        duree_defaut = _duree_defaut if _duree_defaut is not None else float(get_setting('duree_alerte_defaut', '7'))
-        unite_defaut = _unite_defaut if _unite_defaut is not None else get_setting('duree_alerte_unite', 'jours')
+        duree_defaut = (_duree_defaut if _duree_defaut is not None
+                        else float(_reglage_alerte('duree_alerte_defaut', '7')))
+        unite_defaut = (_unite_defaut if _unite_defaut is not None
+                        else _reglage_alerte('duree_alerte_unite', 'jours'))
 
         if duree_heures is not None:
             retour_theorique = dt + timedelta(hours=duree_heures)

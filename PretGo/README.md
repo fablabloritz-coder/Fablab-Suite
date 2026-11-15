@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.6 — 2026-11-15
+
+#### Reglages lus une seule fois par page
+
+- Les reglages de retard ne sont plus relus pour chaque pret affiche : ils viennent du cache de la requete au lieu d'ouvrir une connexion par ligne. Sur un jeu de 40 prets et 40 reservations, une page courante passe de 90 a 18 requetes SQL (292 avant les deux corrections).
+
+---
+
 ### v1.10.5 — 2026-11-15
 
 #### Alertes sans recalcul a chaque page
