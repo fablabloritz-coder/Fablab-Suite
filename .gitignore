@@ -45,6 +45,9 @@ CORRECTIONS_APPLIQUEES.md
 INTEGRATION_RESUME.md
 google_business_extraction.md
 
+# Captures et artefacts de verification (revues visuelles, smoke tests)
+artifacts/
+
 # Local research/debug scripts not required by the suite
 analyse_raise3d_proto.ps1
 explore_raise3d_data.ps1
