@@ -172,9 +172,12 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.7.2 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.3
+- Fabtrack 2.7.3 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Check-up production : statuts Raise3D paralleles et memorises (Fabtrack 2.7.3),
+  manifeste FabInventory conforme au contrat (2.1.4), campagne de tests reparee
+  et etendue aux cinq applications
 - `fbd1d02` PretGo: borner le badge d'alertes et indexer les chevauchements (1.10.10)
 - `1a3d15b` PretGo: un seul contexte de controle par formulaire de reservation (1.10.9)
 - `5785b51` Etendre le garde-fou de budget SQL aux quatre autres applications

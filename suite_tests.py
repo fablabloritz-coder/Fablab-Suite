@@ -27,7 +27,9 @@ import urllib.request
 from datetime import datetime
 
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_VENV_PYTHON = os.path.join(WORKSPACE, 'FabStock', '.venv', 'Scripts', 'python.exe')
+# Par défaut : l'interpréteur qui lance la campagne (celui où les dépendances
+# des applications sont installées). Surchargeable avec --venv-python.
+DEFAULT_VENV_PYTHON = sys.executable
 
 # ──────────────────────────────────────────────────────────────
 # Registre des applications
@@ -39,15 +41,17 @@ APPS = {
         'port': 5555,
         'unit_tests_dir': 'tests',
         'contract_tests': 'tests/contract_fabsuite.py',
-        'pages': ['/', '/machines', '/consommations', '/stock', '/missions', '/parametres'],
+        'pages': ['/', '/historique', '/statistiques', '/etat-machines',
+                  '/stock', '/missions', '/parametres'],
         'api_endpoints': [
             '/api/stats/summary',
-            '/api/machines',
+            '/api/consommations',
+            '/api/reference',
             '/missions/api/list',
         ],
         'fabsuite_widgets': [
             'monthly-consumptions', 'machine-status', 'top-machines',
-            'recent-activity', 'stock-low', 'stock-summary',
+            'recent-activity', 'raise3d-status', 'stock-low', 'stock-summary',
             'pending-tasks', 'missions-board',
         ],
     },
@@ -55,12 +59,12 @@ APPS = {
         'name': 'PretGo',
         'dir': os.path.join(WORKSPACE, 'PretGo'),
         'port': 5000,
-        'unit_tests_dir': None,  # tests à la racine, pas de discover
+        'unit_tests_dir': 'tests',
         'contract_tests': 'tests/contract_fabsuite.py',
         'pages': ['/', '/nouveau-pret', '/historique', '/admin/login', '/reservations'],
         'api_endpoints': [
-            '/api/autocomplete/personnes',
-            '/api/inventaire/search?q=',
+            '/api/personnes?q=',
+            '/api/inventaire?q=',
         ],
         'fabsuite_widgets': ['active-loans', 'overdue-loans', 'equipment-status'],
     },
@@ -68,9 +72,8 @@ APPS = {
         'name': 'FabBoard',
         'dir': os.path.join(WORKSPACE, 'FabBoard'),
         'port': 5580,
-        'venv_python': os.path.join(WORKSPACE, 'FabBoard', 'venv', 'Scripts', 'python.exe'),
-        'unit_tests_dir': None,
-        'contract_tests': 'tests/contract_fabsuite.py',
+        'unit_tests_dir': 'tests',
+        'contract_tests': 'tests/test_contract_fabsuite.py',
         'pages': ['/'],
         'api_endpoints': ['/api/slides', '/api/sources'],
         'fabsuite_widgets': ['active-slides'],
@@ -79,10 +82,23 @@ APPS = {
         'name': 'FabHome',
         'dir': os.path.join(WORKSPACE, 'FabHome'),
         'port': 3001,
-        'unit_tests_dir': None,
+        'unit_tests_dir': 'tests',
         'contract_tests': 'tests/contract_fabsuite.py',
         'pages': ['/'],
         'api_endpoints': ['/api/suite/apps', '/api/suite/dashboard'],
+        'fabsuite_widgets': [],
+    },
+    'fabinventory': {
+        'name': 'FabInventory',
+        'dir': os.path.join(WORKSPACE, 'FabInventory', 'FabInventory'),
+        'port': 5590,
+        'unit_tests_dir': 'tests',
+        # FabInventory fige sa base à l'import de app.py : son runner lance
+        # chaque module dans un processus séparé (même choix que la CI).
+        'unit_tests_runner': 'tests/run_all.py',
+        'contract_tests': None,
+        'pages': ['/', '/admin/login'],
+        'api_endpoints': ['/api/fabsuite/manifest'],
         'fabsuite_widgets': [],
     },
 }
@@ -173,6 +189,21 @@ def _python(args_cli):
     """Chemin Python à utiliser."""
     return args_cli.venv_python
 
+
+def _resolve_python(cfg, args_cli):
+    """Interpréteur réellement utilisable pour les tests d'une app.
+
+    Un venv configuré mais absent (autre poste, venv supprimé) ne doit pas
+    interrompre la campagne : on retombe sur l'interpréteur courant.
+    """
+    candidates = [cfg.get('venv_python'), _python(args_cli), sys.executable]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate):
+            if candidate != candidates[0] and candidates[0]:
+                warn(f'Interpréteur introuvable : {candidates[0]} — repli sur {candidate}')
+            return candidate
+    return sys.executable
+
 def run_discover(app_dir, tests_dir, python_exe):
     env = os.environ.copy()
     env['PYTHONPATH'] = app_dir
@@ -183,6 +214,19 @@ def run_discover(app_dir, tests_dir, python_exe):
         encoding='utf-8', errors='replace',
         timeout=180,
     )
+
+def run_script(app_dir, rel_path, python_exe):
+    """Exécute un script de test autonome (runner propre à une app)."""
+    env = os.environ.copy()
+    env['PYTHONPATH'] = app_dir
+    return subprocess.run(
+        [python_exe, rel_path],
+        cwd=app_dir, env=env,
+        capture_output=True, text=True,
+        encoding='utf-8', errors='replace',
+        timeout=180,
+    )
+
 
 def run_test_file(app_dir, rel_path, python_exe):
     env = os.environ.copy()
@@ -343,8 +387,12 @@ def run_campaign(args):
                 continue
 
             t1 = time.time()
-            python_exe = cfg.get('venv_python') or _python(args)
-            proc = run_discover(app_dir, tdir, python_exe)
+            python_exe = _resolve_python(cfg, args)
+            runner = cfg.get('unit_tests_runner')
+            if runner:
+                proc = run_script(app_dir, runner, python_exe)
+            else:
+                proc = run_discover(app_dir, tdir, python_exe)
             elapsed = time.time() - t1
             summary = _extract_summary(proc)
 
@@ -363,7 +411,7 @@ def run_campaign(args):
         for key in target_apps:
             cfg = APPS[key]
             app_dir = cfg['dir']
-            rel = cfg.get('contract_tests', '')
+            rel = cfg.get('contract_tests') or ''
             full = os.path.join(app_dir, rel)
             print(f'\n  [{cfg["name"]}]')
 
@@ -378,7 +426,7 @@ def run_campaign(args):
                 module = module[:-3]
 
             t1 = time.time()
-            python_exe = cfg.get('venv_python') or _python(args)
+            python_exe = _resolve_python(cfg, args)
             env = os.environ.copy()
             env['PYTHONPATH'] = app_dir
             proc = subprocess.run(
@@ -518,7 +566,7 @@ def main():
                         help='Exporter le rapport en JSON')
     parser.add_argument('--venv-python', default=DEFAULT_VENV_PYTHON,
                         dest='venv_python', metavar='PYTHON',
-                        help='Chemin vers python du venv')
+                        help='Interpréteur Python des tests (défaut : Python courant)')
     args = parser.parse_args()
 
     print(f'{BOLD}{"═" * 62}')

@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
     # Source unique de la version : manifeste FabSuite, bannière et pied de page.
-APP_VERSION = '2.7.2'
+APP_VERSION = '2.7.3'
 
 
 def register_blueprints(app):
@@ -206,7 +206,9 @@ def _widget_recent_activity():
 
 def _widget_raise3d_status():
     try:
-        statuses = raise3d.get_all_status(timeout=5)
+        # Budget court + cache : un widget ne doit jamais bloquer sur une
+        # imprimante hors ligne (30 s de cache, rafraîchi par le widget).
+        statuses = raise3d.get_all_status(timeout=2, max_age=20)
         items = []
         for p in statuses:
             if not p.get("online"):
@@ -351,7 +353,7 @@ def _get_notifications():
 
         # Imprimantes Raise3D en erreur ou hors ligne
         try:
-            r3d_statuses = raise3d.get_all_status(timeout=3)
+            r3d_statuses = raise3d.get_all_status(timeout=2, max_age=60)
             for p in r3d_statuses:
                 if not p.get("online"):
                     notifs.append(widgets.notification(

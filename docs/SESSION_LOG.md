@@ -6,6 +6,66 @@ action imperative.
 
 ---
 
+## 2026-11-15 — Check-up production de la suite avant deploiement
+
+**Objectif** : passer en revue les cinq applications avant une mise en
+production reelle, et corriger ce qui peut provoquer des erreurs ou des lenteurs
+cote utilisateur.
+
+**Completed**
+- Fabtrack 2.7.3 : les statuts Raise3D sont interroges **en parallele** puis
+  memorises 30 s (`raise3d.get_all_status(max_age=...)`). Le widget et les
+  notifications plafonnent chaque appel a 2 s. Une imprimante hors ligne ne
+  bloque plus la page ni la collecte des notifications FabHome.
+- FabInventory 2.1.4 : le manifeste FabSuite expose le champ `status` exige par
+  le contrat commun (`status=ok` deja fourni par `/api/fabsuite/health`).
+- `suite_tests.py` : la campagne ne s'arrete plus au demarrage. L'interpreteur
+  par defaut devient le Python courant (l'ancien chemin `FabStock/.venv/Scripts/
+  python.exe` n'existe plus, ni sous Linux), avec repli automatique si
+  un venv configure est absent.
+- Couverture completee : FabBoard, FabHome et PretGo ont enfin leur couche 1
+  (`unit_tests_dir`) et leur contrat offline (chemin corrige pour FabBoard),
+  FabInventory entre dans la campagne (tests via `tests/run_all.py`, pages,
+  manifeste). Les pages/API Fabtrack et PretGo du registre pointaient sur des
+  routes inexistantes et produisaient sept faux echecs.
+- Quatre tests permanents (`Fabtrack/tests/test_raise3d_status.py`) :
+  parallelisme, cache, `max_age=0`, etancheite du cache aux modifications de
+  l'appelant.
+
+**Mesures** (instance locale, imprimantes injoignables = pire cas)
+
+| Appel | Avant | Apres |
+|---|---|---|
+| `widget/raise3d-status` (premier appel) | > 6 s (timeout client) | 2,1 s |
+| `widget/raise3d-status` (appel suivant) | > 6 s | 1 ms |
+| `api/fabsuite/notifications` (cache chaud) | > 6 s | 3 ms |
+| Campagne `suite_tests.py --online` | 12,5 s, 7 echecs | 2,3 s, 56/56 |
+
+**Verifications executees**
+- `python suite_tests.py --offline` : 9/9 (5 apps, contrat offline 4/4).
+- `python suite_tests.py --online` : 56/56, 0 echec.
+- `python smoke_test_apps.py` : 5 applications demarrees et verifiees.
+- `python -m unittest discover -s tests` : 21 tests ; 4 echecs attendus et
+  temporaires sur `tests/test_release_versions.py`, qui exige un tag par version
+  (les tags `fabtrack-v2.7.3` / `fabinventory-v2.1.4` sont crees par le workflow
+  de release apres le push).
+- `release_notes_gen --check` et `changelog_gen --check` : OK sur Fabtrack et
+  FabInventory.
+
+**Risques ouverts / non couverts**
+- Aucune verification navigateur dans ce tour : les ecrans sont valides par les
+  tests et la campagne HTTP seulement.
+- FabInventory n'a pas de `tests/contract_fabsuite.py` : sa couche 2 est ignoree
+  (sa couche 1 et la couche reseau sont couvertes).
+- Les adresses des imprimantes Raise3D restent en dur dans `raise3d.py` ; le
+  premier chargement apres le cache coute jusqu'a 2 s par imprimante hors ligne.
+
+**Prochaine action** : deployer puis remonter les incidents ; surveiller en
+priorite les logs Fabtrack (`raise3d`, widgets) et FabHome (timeouts FabSuite)
+pendant la premiere semaine d'exploitation.
+
+---
+
 ## 2026-11-15 — PretGo 1.10.10 : badge d'alertes borne et chevauchements indexes
 
 **Objectif** : le badge d'alertes, present sur toutes les pages, ne doit plus

@@ -583,6 +583,16 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.7.3 — 2026-11-15
+
+#### Statut des imprimantes sans blocage
+
+- Les statuts Raise3D sont interroges en parallele puis memorises 30 s : un widget ou une notification ne bloque plus sur une imprimante hors ligne
+- Notifications et widget Raise3D bornes a 2 s par appel, ce qui rend de nouveau visibles dans FabHome les notifications Fabtrack
+- Tests permanents sur le cache et le parallelisme des statuts d'imprimantes
+
+---
+
 ### v2.7.2 — 2026-11-15
 
 #### Cache et compression HTTP

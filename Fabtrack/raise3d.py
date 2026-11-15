@@ -8,7 +8,9 @@ Auth    : GET /v1/login?sign=md5(sha1("password={pwd}&timestamp={ms}"))&timestam
 
 import hashlib
 import json
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib import request as urllib_req
 from urllib.error import URLError, HTTPError
 
@@ -39,6 +41,12 @@ RAISE3D_PRINTERS = [
 # Cache des tokens : ip -> {"token": str, "expires": float}
 _TOKEN_CACHE: dict = {}
 _TOKEN_TTL = 1700  # secondes (< 30 min pour rester dans la validité serveur)
+
+# Cache des statuts agrégés : évite d'interroger les imprimantes à chaque
+# affichage de widget ou de notification.
+_STATUS_CACHE: dict = {"at": 0.0, "data": None}
+_STATUS_CACHE_TTL = 30.0  # secondes
+_STATUS_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Authentification
@@ -158,16 +166,49 @@ def get_printer_status(ip: str, password: str, timeout: int = 5) -> dict:
         return {"online": False, "error": str(e)}
 
 
-def get_all_status(timeout: int = 5) -> list:
-    """Retourne le statut de toutes les imprimantes configurées."""
+def _cached_status(max_age: float):
+    """Copie du dernier statut connu si elle est plus jeune que max_age."""
+    with _STATUS_LOCK:
+        data = _STATUS_CACHE["data"]
+        age = time.time() - _STATUS_CACHE["at"]
+    if data is not None and age <= max_age:
+        return [dict(p) for p in data]
+    return None
+
+
+def get_all_status(timeout: int = 5, max_age: float = _STATUS_CACHE_TTL) -> list:
+    """Retourne le statut de toutes les imprimantes configurées.
+
+    Les imprimantes sont interrogées en parallèle : une imprimante éteinte ou
+    hors du réseau ne doit pas retarder les autres, ni bloquer le rendu d'une
+    page (widgets, notifications). Le résultat est mémorisé max_age secondes ;
+    max_age=0 force un rafraîchissement immédiat.
+    """
+    cached = _cached_status(max_age)
+    if cached is not None:
+        return cached
+
+    if not RAISE3D_PRINTERS:
+        return []
+
+    with ThreadPoolExecutor(max_workers=len(RAISE3D_PRINTERS)) as pool:
+        statuts = list(pool.map(
+            lambda p: get_printer_status(p["ip"], p["password"], timeout),
+            RAISE3D_PRINTERS,
+        ))
+
     result = []
-    for p in RAISE3D_PRINTERS:
-        s = get_printer_status(p["ip"], p["password"], timeout)
-        s["id"]   = p["id"]
-        s["name"] = p["name"]
-        s["ip"]   = p["ip"]
-        result.append(s)
-    return result
+    for printer, s in zip(RAISE3D_PRINTERS, statuts):
+        entry = dict(s)
+        entry["id"]   = printer["id"]
+        entry["name"] = printer["name"]
+        entry["ip"]   = printer["ip"]
+        result.append(entry)
+
+    with _STATUS_LOCK:
+        _STATUS_CACHE["at"] = time.time()
+        _STATUS_CACHE["data"] = result
+    return [dict(p) for p in result]
 
 
 # ---------------------------------------------------------------------------

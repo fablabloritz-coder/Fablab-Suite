@@ -92,6 +92,14 @@ FabInventory/
 
 <!-- changelog:start -->
 
+### v2.1.4 — 2026-11-15
+
+#### Manifeste conforme au contrat FabSuite
+
+- Le manifeste FabSuite de FabInventory expose desormais le champ status attendu par le contrat commun aux cinq applications
+
+---
+
 ### v2.1.3 — 2026-11-15
 
 #### Cache, compression et serveur waitress

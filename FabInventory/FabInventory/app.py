@@ -20,7 +20,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "2.1.3"
+APP_VERSION = "2.1.4"
 
 app = Flask(__name__)
 app.jinja_env.globals["app_version"] = APP_VERSION
@@ -1203,6 +1203,7 @@ def fabsuite_manifest():
         "name": "FabInventory",
         "version": APP_VERSION,
         "suite_version": "1.0.0",
+        "status": "running",
         "description": "Gestionnaire d'inventaire de masters informatique",
         "icon": "bi-pc-display",
         "color": "#0ea5e9",
