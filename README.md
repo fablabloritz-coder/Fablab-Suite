@@ -216,6 +216,11 @@ python3 release_publish.py --app ./Fabtrack           # pose le tag fabtrack-vX.
 python3 release_publish.py --app ./Fabtrack --push    # pousse la branche et le tag
 ```
 
+Le push des tags peut aussi être laissé à GitHub : `.github/workflows/auto-release.yml` crée à
+chaque push sur `main` les tags et releases manquants, avec le `GITHUB_TOKEN` du workflow (aucun
+secret à configurer). Une application dont les notes sont en attente est ignorée, et les liens `url`
+des notes sont complétés automatiquement après publication.
+
 `release_publish.py` refuse un tag déjà posé sur une version qui a encore des notes en attente :
 incrémenter `APP_VERSION` plutôt que déplacer un tag. Le mode
 `--tag <app>-vX.Y.Z --output release-body.md` produit le corps Markdown de la GitHub Release

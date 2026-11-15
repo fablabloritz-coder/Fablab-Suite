@@ -1,0 +1,97 @@
+name: Auto release
+
+# Un push sur main cree les tags <app>-vX.Y.Z et les releases GitHub manquants,
+# sans secret supplementaire : le GITHUB_TOKEN du workflow a contents: write.
+# Une application dont les notes sont en attente (release_notes_gen --check en
+# echec) est ignoree : aucune release n'est publiee sans notes.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tags et releases manquants
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (historique et tags complets)
+        uses: actions/checkout@v7
+        with:
+          # Les tags existants sont relus par release_publish.py : un clone
+          # superficiel les omettrait et republierait tout.
+          fetch-depth: 0
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Identite git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Tags et releases manquants
+        id: releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          publiees=0
+          for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
+            nom=$(basename "$app")
+
+            # Sans notes a jour, on ne publie rien pour cette application.
+            if ! python3 release_notes_gen.py --app "./$app" --check; then
+              echo "::notice::$nom : notes en attente, release ignoree"
+              continue
+            fi
+
+            tag=$(python3 -c "import release_publish as rp; from pathlib import Path; a = Path('$app'); print(rp.tag_for(rp.app_slug(a), rp.read_app_version(a)))")
+
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              if gh release view "$tag" >/dev/null 2>&1; then
+                echo "$nom : $tag deja publie"
+                continue
+              fi
+              echo "$nom : tag $tag present, release manquante"
+            else
+              python3 release_publish.py --app "./$app"
+              git push origin "refs/tags/$tag"
+            fi
+
+            python3 release_publish.py --tag "$tag" --output "$RUNNER_TEMP/release-body.md" > "$RUNNER_TEMP/release-title.txt"
+            gh release create "$tag" \
+              --title "$(cat "$RUNNER_TEMP/release-title.txt")" \
+              --notes-file "$RUNNER_TEMP/release-body.md"
+            echo "$nom : release $tag publiee"
+            publiees=$((publiees + 1))
+          done
+          echo "publiees=$publiees" >> "$GITHUB_OUTPUT"
+
+      - name: Lier les notes aux releases publiees
+        if: steps.releases.outputs.publiees != '0' && steps.releases.outputs.publiees != ''
+        run: |
+          set -euo pipefail
+          for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
+            python3 release_notes_gen.py --app "./$app" --sync-release-links
+          done
+
+          if git diff --quiet; then
+            echo "Aucun lien de release a ajouter."
+            exit 0
+          fi
+
+          git add -A -- '*/static/release-notes.json'
+          # Sujet en "Docs:" : le generateur de notes ignore ces commits, donc
+          # ce retour d'ecriture ne laisse pas de note en attente.
+          git commit -m "Docs: lier les notes de version aux releases publiees"
+          git push
