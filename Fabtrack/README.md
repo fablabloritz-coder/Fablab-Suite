@@ -587,7 +587,7 @@ Depuis la page **Export** :
 
 #### Garde-fou contre les doubles saisies
 
-- Une saisie identique à une autre (même type, machine, matériau, quantités et projet) à moins de deux minutes d'intervalle est maintenant signalée.
+- Une saisie identique à une autre (même type, machine, matériau, quantités et projet, ainsi que même préparateur lorsqu'il est renseigné de part et d'autre) à moins de deux minutes d'intervalle est maintenant signalée.
 - Un message demande confirmation avant d'enregistrer malgré tout, ce qui évite les doublons créés par un double clic sur Enregistrer.
 - Le garde-fou fonctionne aussi sur la saisie multi-actions : la ligne concernée est indiquée et rien n'est enregistré tant que l'on n'a pas confirmé.
 
