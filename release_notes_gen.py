@@ -283,14 +283,40 @@ def apply_release_links(history: list[dict], app_slug: str, versions: set[str]) 
             entry.pop("url", None)
 
 
+APP_VERSION_PATTERN = re.compile(r"""APP_VERSION\s*=\s*["']([^"']+)["']""")
+
+
+def read_app_version(app_path: Path) -> str | None:
+    """Lit APP_VERSION dans le code de l'application, ou None."""
+    for rel in ("routes/__init__.py", "app.py"):
+        path = app_path / rel
+        if not path.is_file():
+            continue
+        match = APP_VERSION_PATTERN.search(path.read_text(encoding="utf-8", errors="replace"))
+        if match:
+            return match.group(1).strip()
+    return None
+
+
 def collect_pending_notes(app_path: Path, since: str | None, existing_history: list[dict]) -> tuple[list[str], str | None]:
     """Notes candidates depuis le dernier tag de l'app, et la reference utilisee.
 
     Sans tag, la lecture repart de HEAD~50 : les notes deja publiees sont ecartees
     pour ne pas les reproposer.
+
+    Une note ecrite pour la version courante couvre les commits posterieurs au
+    dernier tag : elle decrit exactement la release que le workflow va taguer.
+    Sans cette exception, un commit dont le sujet commence par le nom de
+    l'application resterait "en attente" indefiniment, et le tag qui leverait
+    l'attente ne serait jamais cree.
     """
     app_slug = app_path.name.strip().lower()
     resolved_since = since or get_latest_app_tag(app_path, app_slug)
+
+    version = read_app_version(app_path)
+    if version and resolved_since and version not in get_app_tag_versions(app_path, app_slug):
+        if any(str(entry.get("version", "")).strip() == version for entry in existing_history):
+            return [], resolved_since
     notes = build_notes_from_git(app_path, resolved_since, app_slug)
     if not resolved_since:
         known = {
