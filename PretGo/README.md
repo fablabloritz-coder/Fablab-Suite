@@ -477,6 +477,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.10.10 — 2026-11-15
+
+#### Badge d'alertes borne et chevauchements indexes
+
+- Le badge d'alertes affiche sur toutes les pages ne calcule plus la liste complete des alertes : il est plafonne a 99 et affiche "99+" au-dela, avec un calcul lui-meme borne (limite de risques et parcours des couples pret/reservation sans materialisation prealable). Le cumul des demandes des reservations chevauchantes passe d'une boucle par reservation a un index trie avec sommes cumulees, ce qui ramene N carres analyses de dates a N log N. Sur un jeu de 800 reservations actives, le badge tombe de 8 897 ms a 73 ms et le comptage complet de 8 584 ms a 1 102 ms. Les 84 alertes produites par le jeu de controle sont identiques a la version precedente, comme les 30 cas de conflits de creation.
+
+---
+
 ### v1.10.9 — 2026-11-15
 
 #### Un seul contexte par formulaire de reservation

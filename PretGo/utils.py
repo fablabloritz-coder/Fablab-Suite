@@ -1608,16 +1608,27 @@ def register_filters(app):
 _ALERTES_CACHE_TTL_SECONDS = 60
 _alertes_cache = {'valeur': 0, 'expire_at': 0.0}
 
+# Plafond du badge : au-dela, l'interface affiche « 99+ ». Compter 30 000 alertes
+# pour afficher un nombre sur trois caracteres n'a aucun interet et coutait
+# plusieurs secondes par page sur une base volumineuse.
+_ALERTES_BADGE_MAX = 99
+
 
 def _nombre_alertes_reservations(conn):
-    """Nombre d'alertes de reservation, sans recalcul complet a chaque page."""
+    """Nombre d'alertes de reservation, plafonne et sans recalcul complet.
+
+    Le calcul est borne par le plafond du badge : son cout ne depend plus du
+    nombre de reservations actives.
+    """
     cache = _alertes_cache
     if cache['expire_at'] > _time.monotonic():
         return cache['valeur']
-    valeur = len(get_reservation_risks(conn, now_dt=datetime.now()))
-    cache['valeur'] = valeur
+    valeur = len(get_reservation_risks(
+        conn, now_dt=datetime.now(), limit=_ALERTES_BADGE_MAX + 1
+    ))
+    cache['valeur'] = min(valeur, _ALERTES_BADGE_MAX)
     cache['expire_at'] = _time.monotonic() + _ALERTES_CACHE_TTL_SECONDS
-    return valeur
+    return cache['valeur']
 
 
 def register_alertes_cache_invalidation(app):
@@ -1637,6 +1648,7 @@ def register_context_processors(app):
     def utility_processor():
         """Variables disponibles dans tous les templates."""
         nb_alertes = 0
+        nb_alertes_plafonne = False
         conn = None
         try:
             conn = get_app_db()
@@ -1666,6 +1678,11 @@ def register_context_processors(app):
             nb_alertes += _nombre_alertes_reservations(conn)
         except Exception:
             pass
+
+        # Au-dela du plafond, le badge affiche « 99+ » plutot qu'un nombre exact.
+        if nb_alertes >= _ALERTES_BADGE_MAX:
+            nb_alertes_plafonne = True
+            nb_alertes = _ALERTES_BADGE_MAX
 
         # Vérifier si admin connecté
         is_admin = bool(session.get('admin_logged_in'))
@@ -1697,6 +1714,7 @@ def register_context_processors(app):
         return {
             'now': datetime.now,
             'nb_alertes': nb_alertes,
+            'nb_alertes_plafonne': nb_alertes_plafonne,
             'is_admin': is_admin,
             'cats_personnes': cats_personnes,
             'mode_scanner': get_setting('mode_scanner', 'les_deux', conn=conn),

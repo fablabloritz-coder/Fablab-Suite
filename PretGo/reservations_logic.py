@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import json
 
 from datetime import datetime, timedelta
@@ -362,6 +363,68 @@ class ConflitsCreationContext:
 def build_creation_conflicts_context(conn, now_dt: datetime | None = None) -> ConflitsCreationContext:
     """Construit le contexte partagé des contrôles de création."""
     return ConflitsCreationContext(conn, now_dt)
+
+
+def _index_chevauchement(reservations, demandes, categorie: str, now_dt: datetime):
+    """Prépare les demandes qui chevauchent une réservation, pour une catégorie.
+
+    Le cumul des demandes se faisait en parcourant toutes les autres
+    réservations, pour chaque réservation et chaque catégorie : N réservations
+    coûtaient N² analyses de dates. L'index trie une fois les débuts et les fins
+    avec leurs sommes cumulées, ce qui ramène chaque réservation à deux
+    recherches dichotomiques.
+
+    Renvoie (débuts, cumuls_débuts, fins, cumuls_fins, quantités par réservation).
+    """
+    debuts = []
+    fins = []
+    quantites: dict = {}
+    for reservation in reservations:
+        debut = parse_db_datetime(reservation['date_reservation'])
+        fin = parse_db_datetime(reservation['date_fin_reservation']) if reservation['date_fin_reservation'] else debut
+        if not debut or not fin or fin <= now_dt:
+            continue
+        quantite = int((demandes(reservation) or {}).get(categorie, 0) or 0)
+        quantites[reservation['reservation_id']] = quantite
+        debuts.append((debut, quantite))
+        fins.append((fin, quantite))
+
+    debuts.sort(key=lambda paire: paire[0])
+    fins.sort(key=lambda paire: paire[0])
+
+    cumuls_debuts = []
+    total = 0
+    for _, quantite in debuts:
+        total += quantite
+        cumuls_debuts.append(total)
+
+    cumuls_fins = []
+    total = 0
+    for _, quantite in fins:
+        total += quantite
+        cumuls_fins.append(total)
+
+    return (
+        [paire[0] for paire in debuts], cumuls_debuts,
+        [paire[0] for paire in fins], cumuls_fins,
+        quantites,
+    )
+
+
+def _somme_chevauchements(index, reservation_id, debut: datetime, fin: datetime) -> int:
+    """Somme des demandes des réservations qui chevauchent [debut, fin]."""
+    debuts, cumuls_debuts, fins, cumuls_fins, quantites = index
+    avant_fin = bisect.bisect_left(debuts, fin)     # début strictement avant notre fin
+    avant_debut = bisect.bisect_right(fins, debut)   # fin antérieure ou égale à notre début
+    total = (cumuls_debuts[avant_fin - 1] if avant_fin else 0)
+    total -= cumuls_fins[avant_debut - 1] if avant_debut else 0
+    # La réservation elle-même n'entre pas dans son propre cumul.
+    propre = quantites.get(reservation_id, 0)
+    if debut < fin:
+        total -= propre
+    else:
+        total += propre
+    return total
 
 
 def expire_old_reservations(conn, now_dt: datetime | None = None) -> None:
@@ -743,7 +806,10 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
         ORDER BY r.date_reservation ASC, p.date_emprunt ASC
         """,
         (format_db_datetime(now_dt),),
-    ).fetchall()
+    )
+    # Parcours sans fetchall : avec une limite (badge d'alertes), SQLite ne
+    # fournit que les lignes réellement consommées au lieu de matérialiser
+    # tous les couples (prêt × réservation) avant de s'arrêter.
 
     buffer_hours, lock_hours = get_reservation_policy(conn)
     # Réglages lus une fois : les calculs de retour en dépendent pour chaque prêt.
@@ -844,6 +910,7 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
 
     stock_par_categorie = _stock_capacities(conn)
     prets_par_categorie = _active_loans_by_category(conn)
+    index_chevauchements: dict = {}
 
     for cat_row in active_reservations:
         if limit is not None and len(risks) >= limit:
@@ -871,17 +938,12 @@ def get_reservation_risks(conn, now_dt: datetime | None = None, limit: int | Non
                 continue
 
             # Cumuler les autres réservations chevauchantes sur la même catégorie.
-            reserved_overlap = 0
-            for other in active_reservations:
-                if other['reservation_id'] == cat_row['reservation_id']:
-                    continue
-                other_dt = parse_db_datetime(other['date_reservation'])
-                other_end_dt = parse_db_datetime(other['date_fin_reservation']) if other['date_fin_reservation'] else other_dt
-                if not other_dt or not other_end_dt or other_end_dt <= now_dt:
-                    continue
-                if reservation_dt2 < other_end_dt and reservation_end_dt2 > other_dt:
-                    other_demands = _demandes(other)
-                    reserved_overlap += int(other_demands.get(category, 0) or 0)
+            if category not in index_chevauchements:
+                index_chevauchements[category] = _index_chevauchement(
+                    active_reservations, _demandes, category, now_dt)
+            reserved_overlap = _somme_chevauchements(
+                index_chevauchements[category], cat_row['reservation_id'],
+                reservation_dt2, reservation_end_dt2)
 
             loans_in_cat = prets_par_categorie.get(category, [])
 

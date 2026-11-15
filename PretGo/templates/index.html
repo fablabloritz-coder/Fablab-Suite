@@ -28,7 +28,7 @@
             <i class="bi bi-exclamation-triangle-fill"></i>
             Alertes
             {% if nb_alertes > 0 %}
-                <span class="badge bg-white text-danger fw-bold">{{ nb_alertes }}</span>
+                <span class="badge bg-white text-danger fw-bold">{{ nb_alertes }}{% if nb_alertes_plafonne %}+{% endif %}</span>
             {% endif %}
         </a>
     </div>

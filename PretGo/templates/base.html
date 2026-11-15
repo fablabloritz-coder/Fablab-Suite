@@ -95,7 +95,7 @@
                         <a class="nav-link btn-nav btn-nav-highlight-alert" href="{{ url_for('core.alertes') }}">
                             <i class="bi bi-exclamation-triangle-fill"></i> Alertes
                             {% if nb_alertes > 0 %}
-                            <span class="badge-alerte-nav">{{ nb_alertes }}</span>
+                            <span class="badge-alerte-nav">{{ nb_alertes }}{% if nb_alertes_plafonne %}+{% endif %}</span>
                             {% endif %}
                         </a>
                     </li>
