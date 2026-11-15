@@ -6,8 +6,7 @@
       "title": "Filtre des retours partiels",
       "notes": [
         "<strong>Filtre « Retours partiels »</strong> — la page Retour n'affiche que les prêts entamés dont un objet au moins est déjà revenu, pour retrouver en un clic ce qu'il reste à récupérer ; la recherche par nom reste combinable avec le filtre."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.10.2"
+      ]
     },
     {
       "version": "1.10.1",
