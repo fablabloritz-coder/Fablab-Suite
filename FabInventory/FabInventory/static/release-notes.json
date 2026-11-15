@@ -8,7 +8,8 @@
         "L'export CSV de la recherche globale fonctionne de nouveau : la requete ne selectionnait pas la categorie et l'export echouait en erreur.",
         "La colonne software_category est bien presente dans le fichier exporte.",
         "Les scripts de test historiques sont regroupes dans tests/ et executes par la CI."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabinventory-v2.1.1"
     },
     {
       "version": "2.1.0",
