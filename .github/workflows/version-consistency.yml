@@ -70,3 +70,30 @@ jobs:
 
       - name: Tests unittest
         run: python3 -m unittest discover -s tests -v
+
+  smoke-apps:
+    name: Demarrage des cinq applications
+    runs-on: ubuntu-latest
+    # Apres les suites unitaires : ce job verifie que chaque application demarre
+    # reellement et repond, pas seulement que ses tests passent.
+    needs: [tests-apps]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Dependances des applications
+        run: |
+          python3 -m pip install --disable-pip-version-check \
+            -r Fabtrack/requirements.txt \
+            -r FabBoard/requirements.txt \
+            -r PretGo/requirements.txt \
+            -r FabHome/requirements.txt \
+            -r FabInventory/FabInventory/requirements.txt
+
+      - name: Smoke test des cinq applications
+        run: python3 smoke_test_apps.py --verbose
