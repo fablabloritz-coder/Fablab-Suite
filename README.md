@@ -308,6 +308,69 @@ Les deux premiers se complètent : `auto-release` couvre le cas où le tag n'est
 est ignorée par `auto-release` ; si elle n'a encore aucun tag, la publication initiale est autorisée
 (release_publish.py revalide version, tête des notes et liens avant de poser le tag).
 
+## Dépannage : ports et variables d'environnement
+
+Chaque application choisit son port différemment : c'est la première cause de « ça ne répond pas » en
+local. Tableau des réglages réellement lus par le code (hors Docker) :
+
+| Application | Port local | Variables reconnues | Particularité |
+|---|---|---|---|
+| Fabtrack | 5555 | `FLASK_DEBUG` | Port fixé dans `app.py`, non configurable ; `FLASK_SECRET_KEY` et `TZ` viennent de `docker-compose.yml` |
+| FabBoard | 5580 | `FABBOARD_PORT`, `FABTRACK_URL`, `FABBOARD_FABTRACK_CACHE_TTL`, `FLASK_DEBUG` | `PORT` est **ignoré** : sans `FABBOARD_PORT`, l'app écoute sur 5580 |
+| PretGo | 5000 | — | Port fixé dans `app.py` (aucune variable de port) |
+| FabHome | 3000 | `PORT`, `FABHOME_APP_PORT` (prioritaire), `FABHOME_DB`, `FABHOME_DATA`, `FLASK_DEBUG` | Base `data/fabhome.db` et dossier `data/` par défaut, déplaçables par `FABHOME_DB`/`FABHOME_DATA` |
+| FabInventory | 5590 | `PORT`, `DB_PATH`, `UPLOAD_FOLDER`, `SECRET_KEY`, `DEBUG`, `PERF_LOG` | `DB_PATH` et `UPLOAD_FOLDER` visent `/data` par défaut, chemin de conteneur |
+
+En Docker, ce sont les ports **hôtes** de `docker-compose.yml` qui changent (variables du `.env`) :
+
+| Service | Hôte → conteneur | Variable du `.env` |
+|---|---|---|
+| fabhome | 3001 → 3000 | `FABHOME_PORT` |
+| fabtrack | 5555 → 5555 | `FABTRACK_PORT` |
+| pretgo | 5000 → 5000 | `PRETGO_PORT` |
+| fabboard | 5580 → 5580 | `FABBOARD_PORT` |
+| fabinventory | 5590 → 5590 | `FABINVENTORY_PORT` |
+
+### Symptômes courants
+
+**`port 55xx deja utilise` (smoke test) ou `Address already in use`** — une instance tourne encore.
+Identifiez-la puis arrêtez ce PID précis :
+
+```bash
+ss -ltnp | grep 5555        # Linux : donne le PID à l'écoute
+netstat -ano | findstr :5555  # Windows : dernière colonne = PID, puis taskkill /PID <pid>
+```
+
+**L'application démarre mais la page ne répond pas sur le port attendu** — vérifiez la variable :
+FabBoard répond sur 5580 (et non 5000/5560) sans `FABBOARD_PORT` ; FabHome répond sur 3000 en local
+mais sur **3001** via Docker, puisque le compose mappe 3001 → 3000.
+
+**`PermissionError: [Errno 13] Permission denied: '/data'` (FabInventory)** — l'application attend les
+chemins du conteneur. En local, pointez-les vers un dossier inscriptible :
+
+```bash
+DB_PATH=./data/fabinventory.db UPLOAD_FOLDER=./data/uploads python3 app.py
+```
+
+**`ModuleNotFoundError: No module named 'flask' / 'apscheduler' / 'caldav'`** — l'interpréteur utilisé
+n'a pas les dépendances de l'application : créez un venv et installez le `requirements.txt` concerné
+(voir « Smoke test des cinq applications »). C'est le cas typique de PretGo, qui a besoin
+`d'apscheduler` en plus de Flask.
+
+**Fabtrack affiche une redirection au lieu de l'accueil** — sur une base vide, `/` renvoie `302` vers
+`/setup` : c'est l'assistant de première installation, pas une panne. Le smoke test accepte ce code.
+
+**Un serveur reste actif après un `Ctrl+C` ou un script interrompu** — le processus enfant a survécu au
+shell. Arrêtez-le par PID (jamais par motif de nom, qui peut viser d'autres processus) :
+
+```bash
+kill <pid>          # puis kill -9 <pid> si nécessaire
+```
+
+**Une variable modifiée n'a aucun effet** — elles sont lues au démarrage : redémarrez l'application
+(et non seulement le navigateur). Sous Docker, `docker compose up -d` recrée le conteneur ;
+`docker compose restart` conserve l'environnement d'origine.
+
 ## Maintenance serveur
 
 ```bash
