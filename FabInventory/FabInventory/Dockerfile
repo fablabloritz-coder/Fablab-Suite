@@ -15,4 +15,5 @@ ENV UPLOAD_FOLDER=/data/uploads
 
 EXPOSE 5590
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5590", "--workers", "2", "--timeout", "120", "app:app"]
+# Meme serveur de production que les autres applications de la suite.
+CMD ["waitress-serve", "--listen=0.0.0.0:5590", "app:app"]

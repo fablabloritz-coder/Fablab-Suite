@@ -15,6 +15,7 @@ from fabsuite_core.schema import assert_min_schema_version, get_schema_version
 from routes import APP_VERSION, register_blueprints
 from scheduler import email_scheduler
 import os
+import gzip
 import secrets
 
 # ============================================================
@@ -22,6 +23,34 @@ import secrets
 # ============================================================
 
 app = Flask(__name__)
+
+# Cache navigateur des fichiers statiques : evite une revalidation a chaque page.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 3600
+
+_COMPRESSIBLE_TYPES = ('text/', 'application/json', 'application/javascript', 'image/svg+xml')
+
+
+@app.after_request
+def _compress_text_response(response):
+    """Compresse les reponses texte construites en memoire (HTML, JSON, SVG).
+
+    Les fichiers statiques sont servis en flux direct avec ETag : ils ne
+    passent pas par ici, leur cache est gere par SEND_FILE_MAX_AGE_DEFAULT.
+    """
+    if (
+        response.status_code == 200
+        and not response.direct_passthrough
+        and not response.headers.get('Content-Encoding')
+        and 'gzip' in request.headers.get('Accept-Encoding', '')
+        and (response.content_length or 0) > 500
+        and response.mimetype
+        and any(response.mimetype.startswith(t) or response.mimetype == t
+                for t in _COMPRESSIBLE_TYPES)
+    ):
+        response.set_data(gzip.compress(response.get_data(), 6))
+        response.headers['Content-Encoding'] = 'gzip'
+        response.headers.add('Vary', 'Accept-Encoding')
+    return response
 
 # ── Clé secrète : env > fichier persisté > génération automatique ──
 app.secret_key = load_secret_key(DATA_DIR, env_var='FLASK_SECRET_KEY')

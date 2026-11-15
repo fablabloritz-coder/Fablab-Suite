@@ -4,6 +4,7 @@ Flask + SQLite - Compatible Fablab-Suite
 """
 
 import os
+import gzip
 import json
 import sqlite3
 import re
@@ -19,12 +20,39 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "2.1.2"
+APP_VERSION = "2.1.3"
 
 app = Flask(__name__)
 app.jinja_env.globals["app_version"] = APP_VERSION
 app.secret_key = os.environ.get("SECRET_KEY", "fabinventory-secret-change-me")
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
+# Cache navigateur des fichiers statiques : evite une revalidation a chaque page.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600
+
+_COMPRESSIBLE_TYPES = ("text/", "application/json", "application/javascript", "image/svg+xml")
+
+
+@app.after_request
+def _compress_text_response(response):
+    """Compresse les reponses texte construites en memoire (HTML, JSON, SVG).
+
+    Les fichiers statiques sont servis en flux direct avec ETag : ils ne
+    passent pas par ici, leur cache est gere par SEND_FILE_MAX_AGE_DEFAULT.
+    """
+    if (
+        response.status_code == 200
+        and not response.direct_passthrough
+        and not response.headers.get("Content-Encoding")
+        and "gzip" in request.headers.get("Accept-Encoding", "")
+        and (response.content_length or 0) > 500
+        and response.mimetype
+        and any(response.mimetype.startswith(t) or response.mimetype == t
+                for t in _COMPRESSIBLE_TYPES)
+    ):
+        response.set_data(gzip.compress(response.get_data(), 6))
+        response.headers["Content-Encoding"] = "gzip"
+        response.headers.add("Vary", "Accept-Encoding")
+    return response
 
 DB_PATH = os.environ.get("DB_PATH", "/data/fabinventory.db")
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/data/uploads")

@@ -92,6 +92,14 @@ FabInventory/
 
 <!-- changelog:start -->
 
+### v2.1.3 — 2026-11-15
+
+#### Cache, compression et serveur waitress
+
+- Le navigateur garde desormais les fichiers CSS, JavaScript et images une heure (Cache-Control public, max-age=3600), ce qui supprime une revalidation a chaque page ; les pages HTML et les reponses JSON sont compressees en gzip quand le navigateur l'accepte (Vary: Accept-Encoding). FabInventory passe de gunicorn a waitress, le serveur de production deja utilise par les autres applications.
+
+---
+
 ### v2.1.2 — 2026-11-15
 
 #### Attente de verrou SQLite

@@ -527,6 +527,14 @@ Navigation :
 
 <!-- changelog:start -->
 
+### v3.5.4 — 2026-11-15
+
+#### Cache et compression HTTP
+
+- Le navigateur garde desormais les fichiers CSS, JavaScript et images une heure (Cache-Control public, max-age=3600), ce qui supprime une revalidation a chaque page ; les pages HTML et les reponses JSON sont compressees en gzip quand le navigateur l'accepte (Vary: Accept-Encoding).
+
+---
+
 ### v3.5.3 — 2026-11-15
 
 #### Attente de verrou SQLite

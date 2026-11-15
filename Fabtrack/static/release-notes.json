@@ -1,13 +1,21 @@
 {
   "history": [
     {
+      "version": "2.7.2",
+      "date": "2026-11-15",
+      "title": "Cache et compression HTTP",
+      "notes": [
+        "Le navigateur garde desormais les fichiers CSS, JavaScript et images une heure (Cache-Control public, max-age=3600), ce qui supprime une revalidation a chaque page ; les pages HTML et les reponses JSON sont compressees en gzip quand le navigateur l'accepte (Vary: Accept-Encoding)."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.7.2"
+    },
+    {
       "version": "2.7.1",
       "date": "2026-11-15",
       "title": "Attente de verrou SQLite",
       "notes": [
         "Attente de verrou : chaque application attend jusqu'a 5 secondes qu'une ecriture concurrente libere la base SQLite, au lieu d'echouer immediatement sur un \"database is locked\"."
-      ],
-      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.7.1"
+      ]
     },
     {
       "version": "2.7.0",
