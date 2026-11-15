@@ -26,7 +26,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from release_notes_gen import build_notes_from_git, get_app_tag_versions, load_existing_history
+from release_notes_gen import (
+    RELEASE_TAG_URL,
+    build_notes_from_git,
+    get_app_tag_versions,
+    load_existing_history,
+)
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_BRANCH = "main"
@@ -185,6 +190,41 @@ def collect_errors(app_dir: Path, prefix=None):
     }
 
 
+def link_release_note(app_dir: Path, version: str, slug: str, prefix=None) -> bool:
+    """Renseigne le lien de release de `version` dans les notes, sans interroger git.
+
+    Le tag vient d'etre cree : le lien est ecrit directement plutot que deduit de
+    `git tag`, dont la visibilite peut varier selon l'environnement d'execution.
+    Retourne True si le fichier a change.
+    """
+    notes_path = app_dir / "static" / "release-notes.json"
+    if not notes_path.is_file():
+        return False
+
+    raw = json.loads(notes_path.read_text(encoding="utf-8"))
+    history = raw.get("history") if isinstance(raw, dict) else raw
+    if not isinstance(history, list):
+        return False
+
+    url = f"{RELEASE_TAG_URL}/{tag_for(slug, version, prefix)}"
+    changed = False
+    for entry in history:
+        if isinstance(entry, dict) and str(entry.get("version", "")).strip() == version:
+            if entry.get("url") != url:
+                entry["url"] = url
+                changed = True
+
+    if not changed:
+        return False
+
+    payload = dict(raw) if isinstance(raw, dict) else {"_source": "manuel"}
+    payload["history"] = history
+    notes_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return True
+
+
 def _git(app_dir: Path, *args: str):
     return subprocess.run(
         ["git", *args],
@@ -275,6 +315,9 @@ def publish_app(app_dir: Path, prefix, check_only: bool, push_changes: bool,
             print(f"[ERREUR] creation du tag {tag} impossible")
             return 1
         print(f"[OK] tag {tag} cree sur {head[:8]}")
+
+    if link_release_note(app_dir, version, slug, prefix):
+        print(f"[OK] note {version} liee a la release {tag}")
 
     if not push_changes:
         print(f"[INFO] push non demande : git push {remote} HEAD:{branch} && git push {remote} {tag}")

@@ -81,15 +81,13 @@ jobs:
           done
           echo "$publiees release(s) publiee(s)"
 
-      - name: Lier les notes aux releases publiees
+      - name: Committer les liens de release
         run: |
           set -euo pipefail
-          for app in Fabtrack FabBoard PretGo FabHome FabInventory/FabInventory; do
-            python3 release_notes_gen.py --app "./$app" --sync-release-links
-          done
-
+          # release_publish.py ecrit le lien de chaque version qu'il vient de
+          # taguer : le commit ne depend pas de la visibilite des tags par git.
           if git diff --quiet; then
-            echo "Aucun lien de release a ajouter."
+            echo "Aucun lien de release a publier."
             exit 0
           fi
 

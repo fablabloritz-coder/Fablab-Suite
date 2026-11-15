@@ -61,6 +61,22 @@ class ReleasePublishTests(unittest.TestCase):
         history = [{"version": "1.2.3", "url": "https://x/releases/tag/pretgo-v1.2.3"}]
         self.assertEqual(rp.check_note_urls(history, "pretgo", {"1.2.3"}), [])
 
+    def test_lien_de_release_ecrit_sans_interroger_git(self):
+        app = self._app()
+        self.assertTrue(rp.link_release_note(app, "1.2.3", "pretgo"))
+
+        entry = json.loads((app / "static" / "release-notes.json").read_text(encoding="utf-8"))["history"][0]
+        self.assertEqual(
+            entry["url"],
+            "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.2.3",
+        )
+        # Second passage : rien ne change.
+        self.assertFalse(rp.link_release_note(app, "1.2.3", "pretgo"))
+
+    def test_lien_de_release_version_absente(self):
+        app = self._app()
+        self.assertFalse(rp.link_release_note(app, "9.9.9", "pretgo"))
+
     def test_corps_de_release_markdown(self):
         body = rp.build_body({
             "date": "2026-11-14",
