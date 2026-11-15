@@ -211,9 +211,15 @@ déjà publiées. Une entrée de même numéro de version est remplacée, les au
 3. Poser le tag et publier :
 
 ```bash
-git tag -a fabtrack-v2.7.0 -m "Fabtrack 2.7.0 - garde-fou contre les doubles saisies"
-git push origin main --tags
+python3 release_publish.py --app ./Fabtrack --check   # version, tête des notes et liens
+python3 release_publish.py --app ./Fabtrack           # pose le tag fabtrack-vX.Y.Z
+python3 release_publish.py --app ./Fabtrack --push    # pousse la branche et le tag
 ```
+
+`release_publish.py` refuse un tag déjà posé sur une version qui a encore des notes en attente :
+incrémenter `APP_VERSION` plutôt que déplacer un tag. Le mode
+`--tag <app>-vX.Y.Z --output release-body.md` produit le corps Markdown de la GitHub Release
+(utilisé par le workflow de publication).
 
 Le push du tag publie automatiquement une GitHub Release titrée d'après l'entrée de notes
 correspondante (`.github/workflows/github-release.yml`, corps préparé par `release_publish.py`) :
