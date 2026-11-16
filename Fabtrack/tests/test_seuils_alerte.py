@@ -1,9 +1,11 @@
 """Tests : seuils d'alerte par categorie d'activite.
 
+
 Couvre l'enregistrement des seuils (table `parametres`, sans migration de
 schema) et leur application au tableau des plus grosses saisies, unite par
 unite : g pour l'impression 3D, m2 pour la decoupe, feuilles pour le papier.
 """
+import json
 import os
 import shutil
 import sys
@@ -314,6 +316,29 @@ class SeuilsAlerteTests(unittest.TestCase):
                 db.commit()
             finally:
                 db.close()
+
+    def test_un_seuil_unique_date_couvre_l_historique(self):
+        # Seuil enregistre par la 2.9.0 : une seule entree, mais datee.
+        db = models.get_db()
+        try:
+            models._set_param(
+                db, models.SEUILS_ALERTE_KEY,
+                json.dumps({str(self.type_ids['3d']): [
+                    {'valeur': 500, 'depuis': '2026-11-16'},
+                ]}),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        trois_d = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
+        self.assertEqual(trois_d['seuil'], 500.0)
+        self.assertEqual(trois_d['depuis'], '2026-11-16')
+
+        # Les saisies de septembre precedent la date enregistree, mais un
+        # historique d'une seule entree vaut premier seuil : elles sont vues.
+        corps = self._saisies(type_id=self.type_ids['3d'])
+        self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
 
     def test_une_notification_signale_un_depassement_recent(self):
         from datetime import datetime as dt

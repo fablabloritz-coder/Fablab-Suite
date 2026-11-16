@@ -583,6 +583,15 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.9.2 — 2026-11-16
+
+#### Seuils existants rattaches a l'historique
+
+- Un seuil enregistre en 2.9.0, reduit a une seule entree datee, couvre desormais tout l'historique : les anciennes saisies hors seuil redeviennent visibles
+- Des qu'un seuil est modifie, la nouvelle valeur reste datee et ne requalifie pas les saisies anterieures
+
+---
+
 ### v2.9.1 — 2026-11-16
 
 #### Premier seuil applique a l'historique

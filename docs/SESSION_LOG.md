@@ -6,6 +6,26 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.9.2 : seuils 2.9.0 rattaches a l'historique
+
+**Objectif** : les seuils enregistres en 2.9.0 portent une date ; leurs
+anciennes saisies restaient invisibles malgre le correctif 2.9.1.
+
+**Completed**
+- `seuil_depuis_historique` (models) et `_seuil_effectif` (audit CLI) : un
+  historique reduit a une seule entree est traite comme un premier seuil et
+  s'applique a tout l'historique, meme si cette entree porte une date.
+- Des qu'une deuxieme entree existe, les dates reprennent leur role : la
+  modification ne requalifie pas les saisies anterieures.
+- Tests : `test_un_seuil_unique_date_couvre_l_historique` (API, seuil 2.9.0
+  date du 16/11 qui signale une saisie de septembre) et son equivalent pour
+  l'audit CLI.
+
+**Verifications**
+- 77 tests Fabtrack OK. Gates notes/changelog OK. Campagne offline 9/9.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.9.1 : premier seuil applique a l'historique
 
 **Objectif** : un seuil defini pour la premiere fois ne signalait pas les

@@ -62,9 +62,10 @@ class AuditSurfaceTests(unittest.TestCase):
             str(cls.imp3d): [{'valeur': 500, 'depuis': '2026-09-01'}],
             str(cls.papier): [{'valeur': 50, 'depuis': '2026-09-01'}],
         }
+        cls.seuils_json = json.dumps(seuils)
         db.execute(
             'INSERT OR REPLACE INTO parametres (cle, valeur) VALUES (?,?)',
-            ('seuils_alerte_types', json.dumps(seuils)),
+            ('seuils_alerte_types', cls.seuils_json),
         )
         cls.lignes_laser = [
             (row['id'], row['surface_m2'])
@@ -95,6 +96,35 @@ class AuditSurfaceTests(unittest.TestCase):
         self.assertEqual(seuils['Impression 3D'], 500.0)
         self.assertEqual(seuils['Impression Papier'], 50.0)
         self.assertEqual(seuils['Découpe Laser'], 1.0)
+
+    def test_un_seuil_unique_date_couvre_l_historique(self):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute(
+                'UPDATE parametres SET valeur=? WHERE cle=?',
+                (json.dumps({str(self.imp3d): [
+                    {'valeur': 500, 'depuis': '2026-11-16'},
+                ]}), 'seuils_alerte_types'),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        try:
+            rapport = self._rapport()
+            depasses = {(r['type'], r['valeur'])
+                        for r in rapport['suspectes']['depassements_seuils']}
+            self.assertIn(('Impression 3D', 1200.0), depasses)
+        finally:
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.execute(
+                    'UPDATE parametres SET valeur=? WHERE cle=?',
+                    (self.seuils_json, 'seuils_alerte_types'),
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
     def test_les_depassements_de_seuil_sont_signales(self):
         rapport = self._rapport()

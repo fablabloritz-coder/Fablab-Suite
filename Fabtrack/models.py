@@ -289,7 +289,12 @@ def seuil_depuis_historique(entrees, date_saisie):
 
     Un seuil sans date d'application (ancien format) vaut pour toutes les
     saisies ; un seuil date ne s'applique qu'aux saisies posterieures.
+    Un historique reduit a une seule entree est un premier seuil : meme
+    date, il couvre tout l'historique (cas des seuils enregistres en 2.9.0).
     """
+    entrees = entrees or []
+    if len(entrees) == 1:
+        return entrees[0]['valeur']
     jour = str(date_saisie or '')[:10]
     seuil = None
     for entree in entrees or []:

@@ -102,10 +102,17 @@ def _seuils_par_type(conn):
 
 
 def _seuil_effectif(entrees, date_saisie):
-    """Seuil en vigueur a la date de la saisie, ou None."""
+    """Seuil en vigueur a la date de la saisie, ou None.
+
+    Un historique d'une seule entree est un premier seuil : il s'applique a
+    tout l'historique, meme si cette entree porte une date (seuils 2.9.0).
+    """
+    entrees = entrees or []
+    if len(entrees) == 1:
+        return entrees[0]['valeur']
     jour = str(date_saisie or '')[:10]
     seuil = None
-    for entree in entrees or []:
+    for entree in entrees:
         if not entree['depuis'] or not jour or entree['depuis'] <= jour:
             seuil = entree['valeur']
         else:

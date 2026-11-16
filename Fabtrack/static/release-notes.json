@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "2.9.2",
+      "date": "2026-11-16",
+      "title": "Seuils existants rattaches a l'historique",
+      "notes": [
+        "Un seuil enregistre en 2.9.0, reduit a une seule entree datee, couvre desormais tout l'historique : les anciennes saisies hors seuil redeviennent visibles",
+        "Des qu'un seuil est modifie, la nouvelle valeur reste datee et ne requalifie pas les saisies anterieures"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.9.2"
+    },
+    {
       "version": "2.9.1",
       "date": "2026-11-16",
       "title": "Premier seuil applique a l'historique",
