@@ -583,6 +583,16 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.10.0 — 2026-11-16
+
+#### Historique des seuils dans Statistiques
+
+- Statistiques : nouvel historique des seuils par categorie, avec les valeurs, les dates de changement et les periodes desactivees
+- La periode en cours est mise en evidence et l'historique se rafraichit apres l'enregistrement des seuils
+- L'API des seuils expose aussi l'historique complet, deja stocke par l'application
+
+---
+
 ### v2.9.4 — 2026-11-16
 
 #### Reactivation de seuil datee

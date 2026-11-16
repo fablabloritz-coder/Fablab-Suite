@@ -260,6 +260,33 @@ class SeuilsAlerteTests(unittest.TestCase):
             [(1200.0, True), (900.0, False), (300.0, False)],
         )
 
+    def test_l_historique_des_seuils_est_affiche(self):
+        trois_d = str(self.type_ids['3d'])
+        self._enregistrer({trois_d: 500}, depuis=None)
+        self._enregistrer({trois_d: ''}, depuis='2026-10-01')
+        self._enregistrer({trois_d: 100}, depuis='2026-11-01')
+
+        categorie = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
+        self.assertEqual(
+            [(e['valeur'], e['depuis']) for e in categorie['historique']],
+            [(500.0, ''), (0.0, '2026-10-01'), (100.0, '2026-11-01')],
+        )
+
+        reponse = self.client.get('/statistiques')
+        self.assertEqual(reponse.status_code, 200)
+        page = reponse.get_data(as_text=True)
+
+        self.assertIn('Historique des seuils', page)
+        self.assertIn('Impression 3D', page)
+        self.assertIn('3 changements', page)
+        self.assertIn('Jusqu&#39;au 30/09/2026', page)
+        self.assertIn('Du 01/10/2026 au 31/10/2026', page)
+        self.assertIn('Depuis le 01/11/2026', page)
+        self.assertIn('désactivé', page)
+        self.assertIn('<strong>500</strong> g', page)
+        self.assertIn('<strong>100</strong> g', page)
+        self.assertIn('actuel', page)
+
     def test_la_date_du_seuil_est_exposee(self):
         self._enregistrer({str(self.type_ids['3d']): 999}, depuis=None)
         self._enregistrer({str(self.type_ids['3d']): 500}, depuis='2026-09-20')

@@ -333,6 +333,83 @@ def seuil_a_la_date(db, type_id, date_saisie):
     return seuil_depuis_historique(historique, date_saisie)
 
 
+def _libelle_date(valeur):
+    try:
+        return datetime.strptime(str(valeur)[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+    except (TypeError, ValueError):
+        return ''
+
+
+def _libelle_veille(valeur):
+    try:
+        jour = datetime.strptime(str(valeur)[:10], '%Y-%m-%d') - timedelta(days=1)
+        return jour.strftime('%d/%m/%Y')
+    except (TypeError, ValueError):
+        return ''
+
+
+def get_historique_seuils_affiche(db=None):
+    """Historique des seuils pret a afficher, par categorie.
+
+    Retourne, pour chaque categorie ayant deja un seuil, ses periodes :
+    valeur, date de debut, date de fin (veille du changement suivant) et
+    indicateur de periode de desactivation. Les entrees sans date (premier
+    seuil) s'affichent « depuis toujours ».
+    """
+    from surface_checks import UNITES_QUANTITE, normaliser_unite
+
+    own_conn = db is None
+    if own_conn:
+        db = get_db()
+    try:
+        historique = _seuils_historique(db)
+        categories = []
+        for row in db.execute(
+            'SELECT id, nom, icone, unite_defaut FROM types_activite '
+            'WHERE actif=1 ORDER BY nom'
+        ):
+            unite = normaliser_unite(row['unite_defaut'])
+            if unite not in UNITES_QUANTITE:
+                continue
+            entrees = historique.get(row['id']) or []
+            if not entrees:
+                continue
+
+            affichees = []
+            for index, entree in enumerate(entrees):
+                debut = _libelle_date(entree['depuis'])
+                suivante = (entrees[index + 1]['depuis']
+                            if index + 1 < len(entrees) else '')
+                fin = _libelle_veille(suivante) if suivante else ''
+                if debut and fin:
+                    periode = f'Du {debut} au {fin}'
+                elif debut:
+                    periode = f'Depuis le {debut}'
+                elif fin:
+                    periode = f"Jusqu'au {fin}"
+                else:
+                    periode = 'Depuis toujours'
+                affichees.append({
+                    'periode': periode,
+                    'valeur': entree['valeur'],
+                    'valeur_label': f"{entree['valeur']:g}",
+                    'desactive': entree['valeur'] <= 0,
+                    'actuel': index == len(entrees) - 1,
+                })
+
+            categories.append({
+                'type_id': row['id'],
+                'nom': row['nom'],
+                'icone': row['icone'] or '',
+                'unite': unite,
+                'entrees': affichees,
+            })
+        return categories
+    finally:
+        if own_conn:
+            db.close()
+
+
 def set_seuils_alerte(db, seuils, depuis=None):
     """Enregistre les seuils par type ; une valeur vide ou <= 0 desactive le seuil.
 

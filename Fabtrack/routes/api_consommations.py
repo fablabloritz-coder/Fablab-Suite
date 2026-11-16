@@ -1194,6 +1194,7 @@ def api_stats_seuils():
                 'depuis': (historique.get(row['id']) or [{}])[-1].get('depuis', ''),
                 'desactive': bool(historique.get(row['id']))
                              and historique[row['id']][-1]['valeur'] <= 0,
+                'historique': historique.get(row['id']) or [],
             })
         return jsonify({'success': True, 'categories': categories})
     finally:

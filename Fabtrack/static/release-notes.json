@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "2.10.0",
+      "date": "2026-11-16",
+      "title": "Historique des seuils dans Statistiques",
+      "notes": [
+        "Statistiques : nouvel historique des seuils par categorie, avec les valeurs, les dates de changement et les periodes desactivees",
+        "La periode en cours est mise en evidence et l'historique se rafraichit apres l'enregistrement des seuils",
+        "L'API des seuils expose aussi l'historique complet, deja stocke par l'application"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.10.0"
+    },
+    {
       "version": "2.9.4",
       "date": "2026-11-16",
       "title": "Reactivation de seuil datee",

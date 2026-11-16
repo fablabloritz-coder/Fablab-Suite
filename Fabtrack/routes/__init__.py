@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
     # Source unique de la version : manifeste FabSuite, bannière et pied de page.
-APP_VERSION = '2.9.4'
+APP_VERSION = '2.10.0'
 
 
 def register_blueprints(app):

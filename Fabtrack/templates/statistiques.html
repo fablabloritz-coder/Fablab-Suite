@@ -176,6 +176,80 @@
     </div>
 </div>
 
+<!-- Historique complet des seuils -->
+<div class="card border-0 shadow-sm mb-4" id="seuilsHistoryCard">
+    <div class="card-header">
+        <strong><i class="bi bi-clock-history me-1"></i> Historique des seuils</strong>
+    </div>
+    <div class="card-body">
+        {% if historique_seuils %}
+        <p class="text-muted small mb-3">
+            Pour chaque catégorie : la valeur en vigueur, la période correspondante,
+            les changements de seuil et les périodes de désactivation.
+            La période en cours est mise en évidence.
+        </p>
+        <div class="accordion accordion-flush" id="seuilsHistoryAccordion">
+            {% for cat in historique_seuils %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="seuilsHistoryHeading{{ cat.type_id }}">
+                    <button class="accordion-button collapsed py-2" type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#seuilsHistoryBody{{ cat.type_id }}"
+                            aria-expanded="false"
+                            aria-controls="seuilsHistoryBody{{ cat.type_id }}">
+                        <span class="me-2">{{ cat.icone }}</span>
+                        <span class="fw-semibold">{{ cat.nom }}</span>
+                        <span class="badge text-bg-secondary ms-2">
+                            {{ cat.entrees|length }} changement{{ 's' if cat.entrees|length > 1 else '' }}
+                        </span>
+                    </button>
+                </h2>
+                <div id="seuilsHistoryBody{{ cat.type_id }}"
+                     class="accordion-collapse collapse"
+                     aria-labelledby="seuilsHistoryHeading{{ cat.type_id }}"
+                     data-bs-parent="#seuilsHistoryAccordion">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Période</th>
+                                        <th class="text-end">Valeur</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for entree in cat.entrees %}
+                                    <tr{% if entree.actuel %} class="table-active"{% endif %}>
+                                        <td class="small">{{ entree.periode }}</td>
+                                        <td class="text-end small">
+                                            {% if entree.desactive %}
+                                            <span class="badge text-bg-secondary">désactivé</span>
+                                            {% else %}
+                                            <strong>{{ entree.valeur_label }}</strong> {{ cat.unite }}
+                                            {% endif %}
+                                            {% if entree.actuel %}
+                                            <span class="badge text-bg-success ms-1">actuel</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">
+            Aucun seuil enregistré pour l'instant : définissez un seuil ci-dessus,
+            son historique apparaîtra ici.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
 <!-- Plus grosses saisies de la periode -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header flex-wrap gap-2">
@@ -660,8 +734,22 @@ async function saveSeuilsAlerte() {
         rendreSelectCategories();
         if (statut) statut.innerHTML = '<span class="text-success">Seuils enregistrés.</span>';
         loadLargestEntries();
+        rafraichirHistoriqueSeuils();
     } catch (err) {
         if (statut) statut.innerHTML = '<span class="text-danger">Erreur réseau</span>';
+    }
+}
+
+async function rafraichirHistoriqueSeuils() {
+    try {
+        const res = await fetch('/statistiques');
+        if (!res.ok) return;
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const source = doc.getElementById('seuilsHistoryCard');
+        const cible = document.getElementById('seuilsHistoryCard');
+        if (source && cible) cible.replaceWith(source);
+    } catch (err) {
+        console.error('Erreur historique seuils:', err);
     }
 }
 

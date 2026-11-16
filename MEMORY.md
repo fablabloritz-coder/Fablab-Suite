@@ -172,9 +172,11 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.9.4 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.10.0 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Fabtrack 2.10.0 : carte « Historique des seuils » dans Statistiques
+  (periodes, valeurs, desactivations) et `historique` dans l'API des seuils
 - Fabtrack 2.9.4 : desactivation datee (entree a 0), reactivation datee ;
   une categorie desactivee n'est plus signalee sur la periode concernee
 - Fabtrack 2.9.3 : un seuil 2.9.0 (une entree datee) modifie est normalise

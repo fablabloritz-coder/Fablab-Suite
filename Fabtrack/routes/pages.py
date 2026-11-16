@@ -1,7 +1,7 @@
 """Routes pages HTML de Fabtrack."""
 
 from flask import Blueprint, render_template, redirect, url_for
-from models import get_setup_status
+from models import get_historique_seuils_affiche, get_setup_status
 
 bp = Blueprint('pages', __name__)
 
@@ -34,7 +34,11 @@ def statistiques():
     redirect_response = _redirect_if_setup_needed()
     if redirect_response:
         return redirect_response
-    return render_template('statistiques.html', page='statistiques')
+    return render_template(
+        'statistiques.html',
+        page='statistiques',
+        historique_seuils=get_historique_seuils_affiche(),
+    )
 
 
 @bp.route('/parametres')

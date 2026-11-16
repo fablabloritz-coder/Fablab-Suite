@@ -6,6 +6,36 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.10.0 : historique des seuils dans Statistiques
+
+**Objectif** : afficher dans l'interface l'historique complet des seuils deja
+stocke et expose par l'API, au lieu de le laisser inaccessible.
+
+**Completed**
+- `models.get_historique_seuils_affiche` : periodes par categorie (valeur,
+  date de debut, veille du changement suivant, periode de desactivation,
+  entree en cours). Un premier seuil sans date s'affiche « depuis toujours ».
+- `GET /api/stats/seuils` expose `historique` (valeurs et dates brutes) en
+  plus du seuil courant.
+- Statistiques : nouvelle carte « Historique des seuils », accordeon par
+  categorie avec periode / valeur / badge « desactive » / badge « actuel ».
+- Apres un enregistrement de seuils, la carte d'historique est rechargee
+  sans perdre les filtres de la page.
+- Test `test_l_historique_des_seuils_est_affiche` : verifie le payload API
+  (500 → desactive → 100) et le rendu HTML (3 changements, "Jusqu'au
+  30/09/2026", "Du 01/10/2026 au 31/10/2026", "Depuis le 01/11/2026",
+  "desactive", valeurs 500 g et 100 g, badge actuel).
+
+**Verifications**
+- 81 tests Fabtrack OK. Page `/statistiques` verifiee en direct avec un seuil
+  (carte historique rendue, seuil remis a zero ensuite). Gates OK.
+
+**Risques / non couverts**
+- Rendu visuel de l'accordeon non inspecte (structure HTML seulement) ;
+  l'ouverture/fermeture repose sur le data-api Bootstrap deja utilise ailleurs.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.9.4 : reactivation de seuil datee
 
 **Objectif** : desactiver puis reactiver un seuil le traitait comme un premier
