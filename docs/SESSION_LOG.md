@@ -6,6 +6,47 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.8.0 : seuils d'alerte par categorie
+
+**Objectif** : saisir un seuil propre a chaque categorie d'activite et mettre en
+evidence les saisies qui le depassent.
+
+**Completed**
+- `models.get_seuils_alerte` / `set_seuils_alerte` : seuils stockes en JSON dans
+  la table `parametres` (aucune migration de schema). Une valeur vide ou nulle
+  desactive le seuil de la categorie.
+- `GET /api/stats/seuils` liste les categories actives avec leur unite (g, m2,
+  feuilles) et leur seuil ; `PUT` enregistre `{"seuils": {"<type_id>": valeur}}`.
+- `/api/stats/surfaces` accepte `type_id` : quantite calculee dans l'unite de la
+  categorie, tri par valeur ou par date, champs `seuil` / `depasse` par ligne et
+  comptage des lignes signalees sur toute la periode (une ligne signalee n'est
+  comptee qu'une fois).
+- Statistiques : bloc « Seuils d'alerte par categorie » (un champ par categorie
+  + Enregistrer), selecteur de categorie dans le tableau, quantite affichee dans
+  la bonne unite et badge « > seuil » quand elle depasse.
+- `surface_checks` : helpers `valeur_saisie`, `depasse_seuil` et table
+  `COLONNES_QUANTITE` pour les trois unites.
+- Huit tests (`tests/test_seuils_alerte.py`) : listing, enregistrement,
+  valeurs invalides, depassements 3D / papier / decoupe, refus d'une categorie
+  sans unite (400) et d'une categorie inconnue (404).
+
+**Verifications**
+- Suite Fabtrack complete : 64 tests OK. Campagne offline 9/9.
+- Page `/statistiques` rendue en 200 avec les deux blocs ; `GET` et `PUT`
+  `/api/stats/seuils` verifies sur l'instance locale (seuils remis a vide apres).
+- `release_notes_gen --check` et `changelog_gen --check` : OK.
+
+**Risques / non couverts**
+- Rendu navigateur non inspecte (pas de capture) : structure HTML et API
+  verifiees seulement.
+- `audit_surface.py` conserve son seuil global `--seuil` ; les seuils par
+  categorie sont ceux de l'ecran Statistiques.
+
+**Prochaine action** : deployer, definir les seuils par categorie, puis
+traiter les saisies signalees sur la page Statistiques.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.7.5 : plus grosses surfaces visibles dans Statistiques
 
 **Objectif** : rendre consultables dans l'ecran Statistiques les tris de

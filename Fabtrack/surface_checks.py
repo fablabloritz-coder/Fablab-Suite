@@ -20,6 +20,46 @@ SEUIL_SURFACE_UNITAIRE_M2 = 2.0
 # erreur d'unite (cm2 ou mm2 au lieu de m2).
 UNIT_RATIOS = (10.0, 100.0, 1000.0, 10000.0, 1000000.0)
 
+# Unites de quantite et colonne correspondante dans la table consommations.
+COLONNES_QUANTITE = {
+    'g': 'c.poids_grammes',
+    'm²': 'c.surface_m2',
+    'feuilles': 'c.nb_feuilles',
+}
+UNITES_QUANTITE = tuple(COLONNES_QUANTITE)
+
+
+def normaliser_unite(unite):
+    """Ramene les variantes d'ecriture de l'unite a la forme de reference."""
+    valeur = (unite or '').strip()
+    if valeur in ('m2', 'm²'):
+        return 'm²'
+    return valeur
+
+
+def valeur_saisie(unite, poids_grammes=None, surface_m2=None, nb_feuilles=None):
+    """Quantite d'une saisie exprimee dans l'unite de son type d'activite."""
+    cible = normaliser_unite(unite)
+    source = {
+        'g': poids_grammes,
+        'm²': surface_m2,
+        'feuilles': nb_feuilles,
+    }.get(cible)
+    try:
+        valeur = float(source or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return valeur if valeur > 0 else 0.0
+
+
+def depasse_seuil(valeur, seuil):
+    """Vrai si la valeur depasse le seuil configure (seuil absent = jamais)."""
+    try:
+        seuil = float(seuil or 0)
+    except (TypeError, ValueError):
+        return False
+    return seuil > 0 and float(valeur or 0) > seuil
+
 
 def surface_attendue(longueur_mm, largeur_mm):
     """Surface deduite des dimensions en mm, ou None si elles manquent."""

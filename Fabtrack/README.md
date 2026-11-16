@@ -583,6 +583,16 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.8.0 — 2026-11-16
+
+#### Seuils d'alerte par categorie
+
+- Statistiques : un seuil d'alerte saisissable pour chaque categorie (g, m2 ou feuilles), avec mise en evidence des saisies qui le depassent
+- Le tableau des plus grosses saisies suit la categorie choisie et affiche sa quantite dans la bonne unite, triee par valeur ou par date
+- Une saisie signalee reste comptee une seule fois, meme si elle cumule depassement de seuil et incoherence d'unite
+
+---
+
 ### v2.7.5 — 2026-11-16
 
 #### Plus grosses surfaces triables

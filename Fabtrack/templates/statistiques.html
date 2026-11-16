@@ -156,11 +156,38 @@
     </div>
 </div>
 
-<!-- Plus grosses saisies de la periode -->
+<!-- Seuils d'alerte par categorie -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <strong><i class="bi bi-sort-down me-1"></i> Plus grosses saisies de la période</strong>
-        <small class="text-muted" id="largestEntriesInfo">Cliquez sur « Surface » ou « Date » pour changer le tri</small>
+        <strong><i class="bi bi-sliders me-1"></i> Seuils d'alerte par catégorie</strong>
+        <button type="button" class="btn btn-sm btn-primary" onclick="saveSeuilsAlerte()">
+            <i class="bi bi-check2 me-1"></i> Enregistrer
+        </button>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Une saisie qui dépasse le seuil de sa catégorie est mise en évidence dans le tableau ci-dessous.
+            Laissez vide pour désactiver un seuil.
+        </p>
+        <div class="row g-3" id="seuilsAlerteInputs">
+            <div class="col-12 text-muted small">Chargement…</div>
+        </div>
+        <div class="small mt-2" id="seuilsAlerteStatut"></div>
+    </div>
+</div>
+
+<!-- Plus grosses saisies de la periode -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header flex-wrap gap-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <strong><i class="bi bi-sort-down me-1"></i> Plus grosses saisies de la période</strong>
+            <div class="d-flex align-items-center gap-2">
+                <label class="small text-muted mb-0" for="largestTypeSelect">Catégorie</label>
+                <select id="largestTypeSelect" class="form-select form-select-sm"
+                        style="width:auto;min-width:180px;" onchange="loadLargestEntries()"></select>
+            </div>
+        </div>
+        <small class="text-muted d-block mt-1" id="largestEntriesInfo">Chargement…</small>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -171,7 +198,7 @@
                         <th>Type</th>
                         <th>Projet</th>
                         <th class="text-end d-none d-md-table-cell">Dimensions</th>
-                        <th class="text-end" role="button" onclick="toggleLargestSort('surface')">Surface (m²) <span id="largestSortSurface"></span></th>
+                        <th class="text-end" role="button" onclick="toggleLargestSort('valeur')">Quantité <span id="largestSortValeur"></span></th>
                         <th>Contrôle</th>
                     </tr>
                 </thead>
@@ -349,7 +376,8 @@ async function onReferenceDataLoaded() {
         claSel.innerHTML += `<option value="${cl.id}">${cl.nom}</option>`;
     });
 
-    // Par défaut : consommation de l'année scolaire en cours uniquement
+    // Seuils d'alerte, puis consommation de l'année scolaire en cours
+    await loadSeuilsAlerte();
     await loadSchoolYears();
     setPreset('schoolyear', document.querySelector('.filter-tab[data-preset="schoolyear"]'));
 }
@@ -537,10 +565,98 @@ function formatGrammes(grammes) {
     return value > 1000 ? `${(value / 1000).toFixed(2)} kg` : `${value} g`;
 }
 
+/* ===== Seuils d'alerte par categorie ===== */
+let seuilsCategories = [];
+
+async function loadSeuilsAlerte() {
+    const zone = document.getElementById('seuilsAlerteInputs');
+    if (!zone) return;
+    try {
+        const res = await fetch('/api/stats/seuils');
+        const body = await res.json();
+        if (!body.success) return;
+        seuilsCategories = body.categories || [];
+        renderSeuilsAlerte();
+        rendreSelectCategories();
+    } catch (err) {
+        console.error('Erreur seuils:', err);
+    }
+}
+
+function renderSeuilsAlerte() {
+    const zone = document.getElementById('seuilsAlerteInputs');
+    if (!zone) return;
+    if (!seuilsCategories.length) {
+        zone.innerHTML = '<div class="col-12 text-muted small">Aucune catégorie avec une unité de quantité (g, m², feuilles).</div>';
+        return;
+    }
+    zone.innerHTML = seuilsCategories.map(cat => `
+        <div class="col-6 col-md-4 col-lg-3">
+            <label class="form-label small fw-bold mb-1" for="seuil-${cat.type_id}">
+                ${escHtml((cat.icone ? cat.icone + ' ' : '') + cat.nom)}
+            </label>
+            <div class="input-group input-group-sm">
+                <input type="number" min="0" step="0.01" class="form-control"
+                       id="seuil-${cat.type_id}" value="${cat.seuil ?? ''}" placeholder="Aucun">
+                <span class="input-group-text">${escHtml(cat.unite)}</span>
+            </div>
+        </div>`).join('');
+}
+
+async function saveSeuilsAlerte() {
+    const seuils = {};
+    seuilsCategories.forEach(cat => {
+        const champ = document.getElementById(`seuil-${cat.type_id}`);
+        if (champ) seuils[cat.type_id] = champ.value;
+    });
+    const statut = document.getElementById('seuilsAlerteStatut');
+    try {
+        const res = await fetch('/api/stats/seuils', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({seuils: seuils}),
+        });
+        const body = await res.json();
+        if (!res.ok || !body.success) {
+            if (statut) statut.innerHTML = `<span class="text-danger">${escHtml(body.error || 'Erreur')}</span>`;
+            return;
+        }
+        seuilsCategories = body.categories || [];
+        renderSeuilsAlerte();
+        rendreSelectCategories();
+        if (statut) statut.innerHTML = '<span class="text-success">Seuils enregistrés.</span>';
+        loadLargestEntries();
+    } catch (err) {
+        if (statut) statut.innerHTML = '<span class="text-danger">Erreur réseau</span>';
+    }
+}
+
+function formatSeuil(value) {
+    return Number(value || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+}
+
 /* ===== Plus grosses saisies de la periode ===== */
 let largestRows = [];
-let largestSeuil = 2;
-let largestSort = { key: 'surface', dir: 'desc' };
+let largestSeuil = 0;
+let largestUnite = '';
+let largestTypeId = '';
+let largestSort = { key: 'valeur', dir: 'desc' };
+
+function rendreSelectCategories() {
+    const sel = document.getElementById('largestTypeSelect');
+    if (!sel) return;
+    const previous = sel.value || largestTypeId;
+    if (!seuilsCategories.length) {
+        sel.innerHTML = '';
+        return;
+    }
+    sel.innerHTML = seuilsCategories.map(cat =>
+        `<option value="${cat.type_id}">${escHtml(cat.nom)} (${escHtml(cat.unite)})</option>`).join('');
+    if (previous && seuilsCategories.some(cat => String(cat.type_id) === String(previous))) {
+        sel.value = previous;
+    }
+    largestTypeId = sel.value;
+}
 
 function toggleLargestSort(key) {
     if (largestSort.key === key) {
@@ -555,8 +671,8 @@ function renderLargestEntries() {
     const tbody = document.querySelector('#largestEntriesTable tbody');
     if (!tbody) return;
 
-    document.getElementById('largestSortSurface').textContent =
-        largestSort.key === 'surface' ? (largestSort.dir === 'desc' ? '▼' : '▲') : '';
+    document.getElementById('largestSortValeur').textContent =
+        largestSort.key === 'valeur' ? (largestSort.dir === 'desc' ? '▼' : '▲') : '';
     document.getElementById('largestSortDate').textContent =
         largestSort.key === 'date' ? (largestSort.dir === 'desc' ? '▼' : '▲') : '';
 
@@ -570,20 +686,21 @@ function renderLargestEntries() {
         if (largestSort.key === 'date') {
             return direction * String(a.date_saisie).localeCompare(String(b.date_saisie));
         }
-        return direction * (Number(a.surface_m2) - Number(b.surface_m2));
+        return direction * (Number(a.valeur) - Number(b.valeur));
     });
 
-    const formatNombre = value => Number(value || 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+    const formatNombre = (value, decimales = 1) => Number(value || 0)
+        .toLocaleString('fr-FR', { maximumFractionDigits: decimales });
 
     tbody.innerHTML = rows.map(row => {
         const dimensions = (row.longueur_mm && row.largeur_mm)
             ? `${formatNombre(row.longueur_mm)} × ${formatNombre(row.largeur_mm)} mm`
             : '—';
-        let controle = '<span class="badge text-bg-success">cohérent</span>';
+        let controle = '<span class="badge text-bg-success">sous le seuil</span>';
         if (row.alerte === 'unite') {
             controle = `<span class="badge text-bg-danger">×${formatNombre(row.facteur)} vs dimensions</span>`;
-        } else if (row.alerte === 'trop_grande') {
-            controle = `<span class="badge text-bg-warning">&gt; ${formatNombre(largestSeuil)} m²</span>`;
+        } else if (row.depasse) {
+            controle = `<span class="badge text-bg-warning">&gt; ${formatNombre(row.seuil, 2)} ${escHtml(row.unite || '')}</span>`;
         } else if (row.sans_dimensions) {
             controle = '<span class="badge text-bg-secondary">sans dimensions</span>';
         }
@@ -592,18 +709,21 @@ function renderLargestEntries() {
             <td class="small">${escHtml(row.type || '—')}</td>
             <td class="small">${escHtml(row.projet || '—')}</td>
             <td class="small text-end d-none d-md-table-cell">${dimensions}</td>
-            <td class="text-end fw-semibold">${Number(row.surface_m2).toFixed(4)}</td>
+            <td class="text-end fw-semibold">${formatNombre(row.valeur, 4)} ${escHtml(row.unite || '')}</td>
             <td>${controle}</td>
         </tr>`;
     }).join('');
 }
 
 async function loadLargestEntries() {
+    const select = document.getElementById('largestTypeSelect');
+    if (select && select.value) largestTypeId = select.value;
     const params = new URLSearchParams({
         date_debut: document.getElementById('statDateDebut').value,
         date_fin: document.getElementById('statDateFin').value,
         limit: '50',
     });
+    if (largestTypeId) params.set('type_id', largestTypeId);
     const referentId = document.getElementById('exportFilterReferent').value;
     const classeId   = document.getElementById('exportFilterClasse').value;
     const keyword    = document.getElementById('exportFilterKeyword').value.trim();
@@ -616,14 +736,17 @@ async function loadLargestEntries() {
         const body = await res.json();
         if (!body.success) return;
         largestRows = body.rows || [];
-        largestSeuil = Number(body.seuil_m2 || 2);
+        largestSeuil = Number(body.seuil || 0);
+        largestUnite = body.unite || '';
         renderLargestEntries();
         const info = document.getElementById('largestEntriesInfo');
         if (info) {
             const signalees = Number(body.suspectes || 0);
-            info.innerHTML = `${body.count} saisie(s) avec surface sur la période, `
+            const categorie = body.type ? escHtml(body.type.nom) : 'Découpe (toutes catégories)';
+            info.innerHTML = `${categorie} · ${body.count} saisie(s), `
                 + `<span class="${signalees ? 'text-danger fw-semibold' : 'text-muted'}">${signalees} signalée(s)</span>`
-                + ' · cliquez sur « Surface » ou « Date » pour trier';
+                + (largestSeuil ? ` · seuil ${formatSeuil(largestSeuil)} ${escHtml(largestUnite)}` : ' · aucun seuil défini')
+                + ' · cliquez sur « Quantité » ou « Date » pour trier';
         }
     } catch (err) {
         console.error('Erreur surfaces:', err);

@@ -172,9 +172,11 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.7.5 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.8.0 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Fabtrack 2.8.0 : seuils d'alerte par categorie (stockes dans `parametres`),
+  tableau des plus grosses saisies filtre par categorie et badge « > seuil »
 - Fabtrack 2.7.5 : tableau « Plus grosses saisies » dans Statistiques
   (`/api/stats/surfaces`), diagnostic partage avec `audit_surface.py`
 - Fabtrack 2.7.4 : audit des surfaces de decoupe (`audit_surface.py`), surface

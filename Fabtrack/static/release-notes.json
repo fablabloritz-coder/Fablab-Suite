@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "2.8.0",
+      "date": "2026-11-16",
+      "title": "Seuils d'alerte par categorie",
+      "notes": [
+        "Statistiques : un seuil d'alerte saisissable pour chaque categorie (g, m2 ou feuilles), avec mise en evidence des saisies qui le depassent",
+        "Le tableau des plus grosses saisies suit la categorie choisie et affiche sa quantite dans la bonne unite, triee par valeur ou par date",
+        "Une saisie signalee reste comptee une seule fois, meme si elle cumule depassement de seuil et incoherence d'unite"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.8.0"
+    },
+    {
       "version": "2.7.5",
       "date": "2026-11-16",
       "title": "Plus grosses surfaces triables",

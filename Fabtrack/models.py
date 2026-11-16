@@ -6,6 +6,7 @@ Matériaux liés aux machines via table de jonction (pas de doublons).
 Consommations dénormalisées (noms en brut) pour résilience aux suppressions.
 """
 
+import json
 import sqlite3
 import os
 import random
@@ -201,6 +202,62 @@ def list_school_years(db=None):
     finally:
         if own_conn:
             db.close()
+
+
+SEUILS_ALERTE_KEY = 'seuils_alerte_types'
+
+
+def get_seuils_alerte(db=None):
+    """Seuils d'alerte par type d'activite : {type_id: valeur}, {} si aucun.
+
+    Stockes dans la table `parametres` (aucune migration de schema), pour que
+    l'ecran Statistiques et les outils d'audit lisent la meme configuration.
+    """
+    own_conn = db is None
+    if own_conn:
+        db = get_db()
+    try:
+        brut = _get_param(db, SEUILS_ALERTE_KEY, '') or ''
+        try:
+            data = json.loads(brut) if brut else {}
+        except (TypeError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        seuils = {}
+        for cle, valeur in data.items():
+            try:
+                type_id = int(cle)
+                seuil = float(valeur)
+            except (TypeError, ValueError):
+                continue
+            if seuil > 0:
+                seuils[type_id] = seuil
+        return seuils
+    finally:
+        if own_conn:
+            db.close()
+
+
+def set_seuils_alerte(db, seuils):
+    """Enregistre les seuils par type ; une valeur vide ou <= 0 desactive le seuil."""
+    propres = {}
+    for cle, valeur in (seuils or {}).items():
+        try:
+            type_id = int(cle)
+        except (TypeError, ValueError):
+            continue
+        if valeur in (None, ''):
+            continue
+        try:
+            seuil = float(valeur)
+        except (TypeError, ValueError):
+            continue
+        if seuil > 0:
+            propres[str(type_id)] = round(seuil, 4)
+    _set_param(db, SEUILS_ALERTE_KEY, json.dumps(propres, sort_keys=True))
+    db.commit()
+    return {int(cle): valeur for cle, valeur in propres.items()}
 
 
 def _has_meaningful_data(c):

@@ -1,7 +1,8 @@
 """Routes API consommations — CRUD, batch, statistiques, export/import CSV."""
 
 from flask import Blueprint, request, jsonify, Response
-from models import get_db, list_school_years
+from models import (get_db, get_seuils_alerte, list_school_years,
+                    set_seuils_alerte)
 from routes.api_reference import rows_to_list, _resolve_nom
 from datetime import datetime
 import csv, io
@@ -1029,16 +1030,68 @@ def api_stats_school_years():
         db.close()
 
 
+@bp.route('/api/stats/seuils', methods=['GET', 'PUT'])
+def api_stats_seuils():
+    """Seuils d'alerte par categorie d'activite (unites g, m2 et feuilles).
+
+    GET : liste des categories et de leur seuil configure.
+    PUT : enregistre {"seuils": {"<type_id>": valeur}} ; une valeur vide ou
+    nulle desactive le seuil de la categorie.
+    """
+    from surface_checks import UNITES_QUANTITE, normaliser_unite
+
+    db = get_db()
+    try:
+        if request.method == 'PUT':
+            data = request.get_json(silent=True) or {}
+            seuils = data.get('seuils')
+            if not isinstance(seuils, dict):
+                return jsonify({
+                    'success': False,
+                    'error': 'Format attendu : {"seuils": {"<type_id>": valeur}}',
+                }), 400
+            set_seuils_alerte(db, seuils)
+
+        seuils = get_seuils_alerte(db)
+        categories = []
+        for row in db.execute(
+            "SELECT id, nom, icone, unite_defaut FROM types_activite "
+            "WHERE actif=1 ORDER BY nom"
+        ):
+            unite = normaliser_unite(row['unite_defaut'])
+            if unite not in UNITES_QUANTITE:
+                continue
+            categories.append({
+                'type_id': row['id'],
+                'nom': row['nom'],
+                'icone': row['icone'] or '',
+                'unite': unite,
+                'seuil': seuils.get(row['id']),
+            })
+        return jsonify({'success': True, 'categories': categories})
+    finally:
+        db.close()
+
+
 @bp.route('/api/stats/surfaces')
 def api_stats_surfaces():
-    """Plus grosses surfaces saisies sur une periode, avec controle des unites.
+    """Plus grosses saisies d'une categorie sur une periode.
 
-    Alimente le tableau "Plus grosses saisies" de l'ecran Statistiques : les
-    lignes sont triees par surface (decroissante par defaut) et signalees
-    lorsqu'elles ne peuvent pas correspondre a longueur x largeur, ou qu'elles
-    depassent le seuil d'une saisie unique.
+    Alimente le tableau "Plus grosses saisies" de l'ecran Statistiques :
+    lignes triees par quantite (decroissante par defaut), dans l'unite de la
+    categorie (g, m2 ou feuilles). Chaque ligne est signalee lorsqu'elle
+    depasse le seuil configure pour sa categorie, ou que la surface ne peut
+    pas correspondre a longueur x largeur.
     """
-    from surface_checks import SEUIL_SURFACE_UNITAIRE_M2, diagnose_surface
+    from surface_checks import (
+        COLONNES_QUANTITE,
+        SEUIL_SURFACE_UNITAIRE_M2,
+        UNITES_QUANTITE,
+        depasse_seuil,
+        diagnose_surface,
+        normaliser_unite,
+        valeur_saisie,
+    )
 
     db = get_db()
     try:
@@ -1075,23 +1128,64 @@ def api_stats_surfaces():
             w += ' AND c.projet_nom LIKE ?'
             params.append(f'%{q}%')
 
+        # Categorie choisie : restreint les lignes a ce type d'activite et
+        # travaille dans son unite (g, m2 ou feuilles). Sans categorie, on
+        # conserve le comportement historique : surfaces de decoupe.
+        seuils = get_seuils_alerte(db)
+        type_id = (request.args.get('type_id') or '').strip()
+        type_info = None
+        if type_id:
+            try:
+                type_id = int(type_id)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Catégorie invalide'}), 400
+            type_row = db.execute(
+                'SELECT id, nom, unite_defaut FROM types_activite '
+                'WHERE id=? AND actif=1',
+                (type_id,),
+            ).fetchone()
+            if not type_row:
+                return jsonify({'success': False, 'error': 'Catégorie introuvable'}), 404
+            unite = normaliser_unite(type_row['unite_defaut'])
+            if unite not in UNITES_QUANTITE:
+                return jsonify({
+                    'success': False,
+                    'error': 'Cette catégorie ne mesure pas de quantité',
+                }), 400
+            colonne = COLONNES_QUANTITE[unite]
+            w += ' AND c.type_activite_id = ?'
+            params.append(type_id)
+            type_info = {'id': type_row['id'], 'nom': type_row['nom'], 'unite': unite}
+            seuil = float(seuils.get(type_id, SEUIL_SURFACE_UNITAIRE_M2 if unite == 'm²' else 0))
+        else:
+            unite = 'm²'
+            colonne = COLONNES_QUANTITE['m²']
+            seuil = SEUIL_SURFACE_UNITAIRE_M2
+
         # Controle de toutes les saisies de la periode (borne de securite),
         # pour compter les alertes independamment du nombre de lignes affichees.
         scan = db.execute(f'''
-            SELECT c.id, c.surface_m2, c.longueur_mm, c.largeur_mm
+            SELECT c.id, c.poids_grammes, c.surface_m2, c.nb_feuilles,
+                   c.longueur_mm, c.largeur_mm
             FROM consommations c
-            WHERE {w} AND COALESCE(c.surface_m2, 0) > 0
-            ORDER BY c.surface_m2 DESC
+            WHERE {w} AND COALESCE({colonne}, 0) > 0
+            ORDER BY {colonne} DESC
             LIMIT 5000
         ''', params).fetchall()
-        nb_suspectes = sum(
-            1 for row in scan
-            if diagnose_surface(row['surface_m2'], row['longueur_mm'], row['largeur_mm'])['alerte']
-        )
+        nb_suspectes = 0
+        for row in scan:
+            valeur = valeur_saisie(
+                unite, row['poids_grammes'], row['surface_m2'], row['nb_feuilles'])
+            alerte = ''
+            if unite == 'm²':
+                alerte = diagnose_surface(
+                    row['surface_m2'], row['longueur_mm'], row['largeur_mm'])['alerte']
+            if alerte or depasse_seuil(valeur, seuil):
+                nb_suspectes += 1
 
         rows = db.execute(f'''
-            SELECT c.id, c.date_saisie, c.surface_m2, c.longueur_mm, c.largeur_mm,
-                   c.projet_nom,
+            SELECT c.id, c.date_saisie, c.poids_grammes, c.surface_m2, c.nb_feuilles,
+                   c.longueur_mm, c.largeur_mm, c.projet_nom,
                    COALESCE(t.nom, c.nom_type_activite, '') AS type_nom,
                    COALESCE(m.nom, c.nom_machine, '') AS machine_nom,
                    COALESCE(mat.nom, c.nom_materiau, '') AS materiau_nom,
@@ -1101,14 +1195,25 @@ def api_stats_surfaces():
             LEFT JOIN machines m ON m.id = c.machine_id
             LEFT JOIN materiaux mat ON mat.id = c.materiau_id
             LEFT JOIN preparateurs pr ON pr.id = c.preparateur_id
-            WHERE {w} AND COALESCE(c.surface_m2, 0) > 0
-            ORDER BY c.surface_m2 {ordre}, c.date_saisie {ordre}
+            WHERE {w} AND COALESCE({colonne}, 0) > 0
+            ORDER BY {colonne} {ordre}, c.date_saisie {ordre}
             LIMIT ?
         ''', [*params, limit]).fetchall()
 
         elements = []
         for row in rows:
-            diag = diagnose_surface(row['surface_m2'], row['longueur_mm'], row['largeur_mm'])
+            valeur = valeur_saisie(
+                unite, row['poids_grammes'], row['surface_m2'], row['nb_feuilles'])
+            if unite == 'm²':
+                diag = diagnose_surface(
+                    row['surface_m2'], row['longueur_mm'], row['largeur_mm'])
+            else:
+                diag = {
+                    'surface_dimensions_m2': None,
+                    'facteur': None,
+                    'alerte': '',
+                    'sans_dimensions': False,
+                }
             elements.append({
                 'id': row['id'],
                 'date_saisie': row['date_saisie'],
@@ -1120,6 +1225,12 @@ def api_stats_surfaces():
                 'longueur_mm': row['longueur_mm'],
                 'largeur_mm': row['largeur_mm'],
                 'surface_m2': round(float(row['surface_m2'] or 0), 4),
+                'poids_grammes': round(float(row['poids_grammes'] or 0), 1),
+                'nb_feuilles': int(row['nb_feuilles'] or 0),
+                'unite': unite,
+                'valeur': round(valeur, 4),
+                'seuil': round(seuil, 4) if seuil else None,
+                'depasse': depasse_seuil(valeur, seuil),
                 'surface_dimensions_m2': diag['surface_dimensions_m2'],
                 'facteur': diag['facteur'],
                 'alerte': diag['alerte'],
@@ -1128,6 +1239,9 @@ def api_stats_surfaces():
 
         return jsonify({
             'success': True,
+            'type': type_info,
+            'unite': unite,
+            'seuil': round(seuil, 4) if seuil else None,
             'count': len(scan),
             'suspectes': nb_suspectes,
             'seuil_m2': SEUIL_SURFACE_UNITAIRE_M2,
