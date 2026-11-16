@@ -243,7 +243,7 @@ def _seuils_historique(db):
                 seuil = float(entree.get('valeur'))
             except (TypeError, ValueError):
                 continue
-            if seuil <= 0:
+            if seuil < 0:
                 continue
             propres.append({
                 'valeur': round(seuil, 4),
@@ -253,6 +253,23 @@ def _seuils_historique(db):
             propres.sort(key=lambda e: e['depuis'] or '0000-00-00')
             historique[type_id] = propres
     return historique
+
+
+def _desactiver_seuil(entrees, date_jour):
+    """Ajoute une entree a 0 pour dire « plus de seuil a partir de ce jour ».
+
+    L'historique est conserve : les saisies anterieures gardent le seuil de
+    leur epoque, et une reactivation posterieure reste datee au lieu d'etre
+    traitee comme un premier seuil.
+    """
+    if not entrees:
+        return
+    if entrees[-1]['valeur'] <= 0:
+        return
+    if entrees[-1]['depuis'] == date_jour:
+        entrees[-1] = {'valeur': 0.0, 'depuis': date_jour}
+    else:
+        entrees.append({'valeur': 0.0, 'depuis': date_jour})
 
 
 def get_seuils_alerte(db=None):
@@ -266,7 +283,8 @@ def get_seuils_alerte(db=None):
         db = get_db()
     try:
         return {type_id: entrees[-1]['valeur']
-                for type_id, entrees in _seuils_historique(db).items()}
+                for type_id, entrees in _seuils_historique(db).items()
+                if entrees[-1]['valeur'] > 0}
     finally:
         if own_conn:
             db.close()
@@ -320,6 +338,8 @@ def set_seuils_alerte(db, seuils, depuis=None):
 
     Chaque changement est date (aujourd'hui par defaut) et conserve dans
     l'historique : les saisies anterieures gardent le seuil de leur epoque.
+    Une desactivation est elle aussi datee (entree a 0) : une reactivation
+    ulterieure n'est pas un premier seuil et ne couvre pas le passe.
     """
     aujourd_hui = str(depuis or datetime.now().date().isoformat())[:10]
     historique = _seuils_historique(db)
@@ -332,15 +352,15 @@ def set_seuils_alerte(db, seuils, depuis=None):
         fournis.add(type_id)
 
         if valeur in (None, ''):
-            historique.pop(type_id, None)
+            _desactiver_seuil(historique.get(type_id), aujourd_hui)
             continue
         try:
             seuil = float(valeur)
         except (TypeError, ValueError):
-            historique.pop(type_id, None)
+            _desactiver_seuil(historique.get(type_id), aujourd_hui)
             continue
         if seuil <= 0:
-            historique.pop(type_id, None)
+            _desactiver_seuil(historique.get(type_id), aujourd_hui)
             continue
 
         seuil = round(seuil, 4)
@@ -365,7 +385,8 @@ def set_seuils_alerte(db, seuils, depuis=None):
         else:
             entrees.append({'valeur': seuil, 'depuis': aujourd_hui})
 
-    # Un seuil absent de la requete est desactive, comme avant l'historique.
+    # Un seuil absent de la requete est retire (les clients envoient toutes
+    # les categories, y compris celles desactivees avec une valeur vide).
     historique = {type_id: entrees for type_id, entrees in historique.items()
                   if type_id in fournis}
     for entrees in historique.values():
@@ -375,7 +396,8 @@ def set_seuils_alerte(db, seuils, depuis=None):
     _set_param(db, SEUILS_ALERTE_KEY, json.dumps(charge, sort_keys=True))
     db.commit()
     return {type_id: entrees[-1]['valeur']
-            for type_id, entrees in historique.items() if entrees}
+            for type_id, entrees in historique.items()
+            if entrees and entrees[-1]['valeur'] > 0}
 
 
 def _has_meaningful_data(c):

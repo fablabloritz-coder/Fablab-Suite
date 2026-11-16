@@ -90,7 +90,7 @@ def _seuils_par_type(conn):
                 seuil = float(entree.get('valeur'))
             except (TypeError, ValueError):
                 continue
-            if seuil > 0:
+            if seuil >= 0:
                 propres.append({
                     'valeur': round(seuil, 4),
                     'depuis': str(entree.get('depuis') or '')[:10],
@@ -389,7 +389,11 @@ def afficher(rapport):
     if not rapport['seuils_categories']:
         print('  Aucun seuil configure (ecran Statistiques > Seuils).')
     for cat in rapport['seuils_categories']:
-        print(f"  {cat['type'][:30]:<30} {cat['seuil']:>10g} {cat['unite']:<8}"
+        if cat['seuil'] <= 0:
+            valeur = 'desactive'
+        else:
+            valeur = f"{cat['seuil']:g} {cat['unite']}"
+        print(f"  {cat['type'][:30]:<30} {valeur:<14}"
               f" depuis {cat['depuis'] or 'toujours'}")
     if s['depassements_seuils']:
         print(f"  Saisies au-dela du seuil de leur categorie : "

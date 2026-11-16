@@ -629,9 +629,11 @@ function renderSeuilsAlerte() {
                        id="seuil-${cat.type_id}" value="${cat.seuil ?? ''}" placeholder="Aucun">
                 <span class="input-group-text">${escHtml(cat.unite)}</span>
             </div>
-            <div class="form-text small">${cat.depuis
-                ? `depuis le ${formatJour(cat.depuis)}`
-                : 'appliqué à tout l\'historique'}</div>
+            <div class="form-text small">${cat.desactive
+                ? (cat.depuis ? `désactivé le ${formatJour(cat.depuis)}` : 'désactivé')
+                : (cat.depuis
+                    ? `depuis le ${formatJour(cat.depuis)}`
+                    : 'appliqué à tout l\'historique')}</div>
         </div>`).join('');
 }
 

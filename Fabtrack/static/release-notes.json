@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "2.9.4",
+      "date": "2026-11-16",
+      "title": "Reactivation de seuil datee",
+      "notes": [
+        "Desactiver un seuil puis le reactiver ne le traite plus comme un premier seuil : la reactivation est datee et ne s'applique qu'aux saisies posterieures",
+        "Les saisies anterieures a la desactivation gardent l'ancien seuil, et celles de la periode desactivee ne sont plus signalees"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.9.4"
+    },
+    {
       "version": "2.9.3",
       "date": "2026-11-16",
       "title": "Seuil 2.9.0 conserve apres modification",

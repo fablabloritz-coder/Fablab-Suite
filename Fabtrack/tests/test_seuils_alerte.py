@@ -143,6 +143,14 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertEqual(models.get_seuils_alerte()[self.type_ids['3d']], 500.0)
 
     def test_les_valeurs_invalides_ne_creent_pas_de_seuil(self):
+        # Repart d'une configuration vide : une valeur invalide ne doit rien
+        # creer du tout (ni seuil, ni entree de desactivation).
+        db = models.get_db()
+        try:
+            models._set_param(db, models.SEUILS_ALERTE_KEY, '')
+            db.commit()
+        finally:
+            db.close()
         self._enregistrer({str(self.type_ids['3d']): 'abc'})
         self.assertNotIn(self.type_ids['3d'], models.get_seuils_alerte())
 
@@ -181,6 +189,90 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
         self.assertEqual(corps['suspectes'], 1)
         self.assertEqual(corps['rows'][0]['seuil'], 10.0)
+
+    def test_desactiver_puis_reactiver_reste_date(self):
+        trois_d = str(self.type_ids['3d'])
+        self._enregistrer({})
+        self._enregistrer({trois_d: 500}, depuis=None)
+
+        # Desactivation datee du 01/10 : plus d'alerte a partir de la.
+        self._enregistrer({trois_d: ''}, depuis='2026-10-01')
+        db = models.get_db()
+        try:
+            self.assertEqual(
+                models.seuil_a_la_date(db, self.type_ids['3d'], '2026-10-15'), 0.0)
+            self.assertNotIn(self.type_ids['3d'], models.get_seuils_alerte(db))
+        finally:
+            db.close()
+
+        categorie = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
+        self.assertIsNone(categorie['seuil'])
+        self.assertTrue(categorie['desactive'])
+        self.assertEqual(categorie['depuis'], '2026-10-01')
+
+        try:
+            # Reactivation datee du 01/11 : changement, pas premier seuil.
+            self._enregistrer({trois_d: 100}, depuis='2026-11-01')
+            db = models.get_db()
+            try:
+                self.assertEqual(
+                    models.seuil_a_la_date(db, self.type_ids['3d'], '2026-09-10'),
+                    500.0)
+                self.assertEqual(
+                    models.seuil_a_la_date(db, self.type_ids['3d'], '2026-10-15'),
+                    0.0)
+                self.assertEqual(
+                    models.seuil_a_la_date(db, self.type_ids['3d'], '2026-11-05'),
+                    100.0)
+            finally:
+                db.close()
+
+            categorie = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
+            self.assertEqual(categorie['seuil'], 100.0)
+            self.assertFalse(categorie['desactive'])
+            self.assertEqual(categorie['depuis'], '2026-11-01')
+
+            historique = models.get_seuils_alerte_historique()[self.type_ids['3d']]
+            self.assertEqual([e['valeur'] for e in historique], [500.0, 0.0, 100.0])
+            self.assertEqual(
+                [e['depuis'] for e in historique],
+                ['', '2026-10-01', '2026-11-01'],
+            )
+
+            # Une saisie pendant la periode desactivee ne doit pas etre signalee.
+            db = models.get_db()
+            try:
+                db.execute(
+                    '''INSERT INTO consommations
+                       (date_saisie, type_activite_id, poids_grammes, projet_nom)
+                       VALUES (?,?,?,?)''',
+                    ('2026-10-15 12:00', self.type_ids['3d'], 900,
+                     'Periode desactivee'),
+                )
+                db.commit()
+            finally:
+                db.close()
+
+            corps = self._saisies(
+                type_id=self.type_ids['3d'],
+                date_debut='2026-09-01',
+                date_fin='2026-11-30',
+            )
+            self.assertEqual(
+                [(row['valeur'], row['depasse']) for row in corps['rows']],
+                [(1200.0, True), (900.0, False), (300.0, False)],
+            )
+        finally:
+            db = models.get_db()
+            try:
+                db.execute(
+                    'DELETE FROM consommations WHERE projet_nom=?',
+                    ('Periode desactivee',),
+                )
+                models._set_param(db, models.SEUILS_ALERTE_KEY, '')
+                db.commit()
+            finally:
+                db.close()
 
     def test_la_date_du_seuil_est_exposee(self):
         self._enregistrer({str(self.type_ids['3d']): 999}, depuis=None)

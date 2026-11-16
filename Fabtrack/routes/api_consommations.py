@@ -1192,6 +1192,8 @@ def api_stats_seuils():
                 'unite': unite,
                 'seuil': seuils.get(row['id']),
                 'depuis': (historique.get(row['id']) or [{}])[-1].get('depuis', ''),
+                'desactive': bool(historique.get(row['id']))
+                             and historique[row['id']][-1]['valeur'] <= 0,
             })
         return jsonify({'success': True, 'categories': categories})
     finally:
@@ -1360,7 +1362,10 @@ def api_stats_surfaces():
             w += ' AND c.type_activite_id = ?'
             params.append(type_id)
             type_info = {'id': type_row['id'], 'nom': type_row['nom'], 'unite': unite}
-            seuil = float(seuils.get(type_id, SEUIL_SURFACE_UNITAIRE_M2 if unite == 'm²' else 0))
+            seuil_config = seuils.get(type_id)
+            if seuil_config is None and not historique.get(type_id):
+                seuil_config = SEUIL_SURFACE_UNITAIRE_M2 if unite == 'm²' else 0
+            seuil = float(seuil_config or 0)
         else:
             unite = 'm²'
             colonne = COLONNES_QUANTITE['m²']

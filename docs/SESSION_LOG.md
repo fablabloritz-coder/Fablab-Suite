@@ -6,6 +6,38 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.9.4 : reactivation de seuil datee
+
+**Objectif** : desactiver puis reactiver un seuil le traitait comme un premier
+seuil, qui couvrait alors tout l'historique.
+
+**Decision** : une reactivation est un changement comme un autre. Elle est
+datee et ne s'applique qu'aux saisies posterieures ; la desactivation est
+datee elle aussi (entree a 0), pour que les saisies anterieures gardent
+l'ancien seuil et que la periode desactivee ne soit plus signalee.
+
+**Completed**
+- `_desactiver_seuil` : la desactivation ajoute une entree `{valeur: 0,
+  depuis: jour}` au lieu d'effacer l'historique.
+- `get_seuils_alerte` ignore une derniere entree a 0 (categorie sans seuil
+  courant) ; l'API expose `desactive` et l'ecran affiche « desactive le ... ».
+- Audit CLI : les entrees a 0 sont conservees et affichees « desactive ».
+- Test `test_desactiver_puis_reactiver_reste_date` : seuil 500 g, desactive
+  le 01/10, reactive a 100 g le 01/11 ; septembre garde 500 g (1200 signale,
+  300 non), une saisie du 15/10 n'est pas signalee, le 05/11 suit 100 g.
+- Les categories absentes d'un PUT restent retirees (les clients envoient
+  toutes les categories, y compris desactivees).
+
+**Verifications**
+- 79 tests Fabtrack OK. Gates notes/changelog OK. Campagne offline 9/9.
+
+**Risques / non couverts**
+- L'ecran affiche l'etat « desactive le ... » mais l'historique complet n'est
+  pas consultable dans l'interface (seulement via `get_seuils_alerte_historique`
+  et l'audit).
+
+---
+
 ## 2026-11-16 — Fabtrack 2.9.3 : seuil 2.9.0 conserve apres modification
 
 **Objectif** : un seuil herite de 2.9.0 (une entree datee) qui etait modifie

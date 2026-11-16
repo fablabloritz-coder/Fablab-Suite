@@ -583,6 +583,15 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.9.4 — 2026-11-16
+
+#### Reactivation de seuil datee
+
+- Desactiver un seuil puis le reactiver ne le traite plus comme un premier seuil : la reactivation est datee et ne s'applique qu'aux saisies posterieures
+- Les saisies anterieures a la desactivation gardent l'ancien seuil, et celles de la periode desactivee ne sont plus signalees
+
+---
+
 ### v2.9.3 — 2026-11-16
 
 #### Seuil 2.9.0 conserve apres modification
