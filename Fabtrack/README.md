@@ -583,6 +583,16 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.7.4 — 2026-11-16
+
+#### Surfaces de decoupe verifiables
+
+- Corriger une longueur ou une largeur dans l'historique met desormais a jour la surface enregistree, au lieu de conserver l'ancienne valeur
+- Nouveau script audit_surface.py (lecture seule) : totaux par annee scolaire et par mois, plus grosses saisies, et signalement des surfaces incoherentes avec les dimensions (erreur cm2 ou mm2)
+- Tests permanents sur les bornes de l'annee scolaire et sur le multiplicateur d'occurrences
+
+---
+
 ### v2.7.3 — 2026-11-15
 
 #### Statut des imprimantes sans blocage

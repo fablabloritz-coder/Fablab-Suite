@@ -152,11 +152,13 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold">Longueur (mm)</label>
-                        <input type="number" step="0.01" min="0" id="editLongueurMm" class="form-control">
+                        <input type="number" step="0.01" min="0" id="editLongueurMm" class="form-control"
+                               oninput="recalcEditSurface()">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold">Largeur (mm)</label>
-                        <input type="number" step="0.01" min="0" id="editLargeurMm" class="form-control">
+                        <input type="number" step="0.01" min="0" id="editLargeurMm" class="form-control"
+                               oninput="recalcEditSurface()">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold">Surface (m²)</label>
@@ -437,6 +439,17 @@ async function openEditEntry(id) {
         console.error(err);
         showToast('Erreur de chargement de la saisie', 'error');
     }
+}
+
+/* Recalcule la surface (m²) quand les dimensions changent, comme sur la saisie.
+   Sans cela, corriger une longueur ou une largeur laissait l'ancienne surface
+   enregistree, donc un total de decoupe faux. */
+function recalcEditSurface() {
+    const longueur = parseFloat(document.getElementById('editLongueurMm').value) || 0;
+    const largeur = parseFloat(document.getElementById('editLargeurMm').value) || 0;
+    const champ = document.getElementById('editSurfaceM2');
+    const surface = (longueur * largeur) / 1e6;
+    if (champ) champ.value = surface > 0 ? surface.toFixed(4) : '';
 }
 
 async function submitEditEntry() {

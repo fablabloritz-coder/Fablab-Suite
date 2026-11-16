@@ -172,9 +172,11 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.7.3 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.7.4 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Fabtrack 2.7.4 : audit des surfaces de decoupe (`audit_surface.py`), surface
+  recalculee a l'edition d'une saisie, tests annee scolaire / occurrences
 - Check-up production : statuts Raise3D paralleles et memorises (Fabtrack 2.7.3),
   manifeste FabInventory conforme au contrat (2.1.4), campagne de tests reparee
   et etendue aux cinq applications

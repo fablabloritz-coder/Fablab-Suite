@@ -6,6 +6,51 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.7.4 : audit des surfaces de decoupe
+
+**Objectif** : expliquer un total de surface de decoupe de 6 700 m2, dont 6 500 m2
+sur l'annee scolaire en cours, juge incoherent avec l'activite reelle.
+
+**Ce que l'investigation a etabli**
+- Le calcul est juste et verifie de bout en bout (client de test Flask) :
+  300 x 200 mm donne 0,06 m2 ; 3 occurrences 0,18 m2 ; 5 occurrences 0,30 m2 ;
+  une surface manuelle de 0,5 m2 reste 0,5 m2. Le multiplicateur d'occurrences
+  n'est applique qu'une fois.
+- Les bornes d'annee scolaire sont justes : `annee_scolaire_debut/fin` sinon
+  1er septembre -> 31 aout, decalage d'un an par annee precedente, borne haute
+  `fin + 23:59:59`. Sur le jeu de controle : 1,04 m2 sur l'annee en cours,
+  0,06 m2 sur l'annee precedente, 1,10 m2 au total.
+- L'ecart vient donc des valeurs stockees, pas de l'agregation. Signature la
+  plus probable : une surface saisie a la main en cm2 ou mm2 (0,06 m2 tape
+  `600` ou `60000`), ou des dimensions saisies avec la mauvaise unite (mm vs cm,
+  facteur 100).
+- Bug reel corrige : dans l'historique, corriger une longueur ou une largeur ne
+  recalculait pas la surface ; l'ancienne valeur restait enregistree.
+
+**Completed**
+- `Fabtrack/audit_surface.py` : audit en lecture seule (totaux par annee scolaire
+  et par mois, surface par type, 15 plus grosses saisies, valeurs suspectes :
+  au-dela du seuil, ecart x10/x100/x1 000/x10 000 avec les dimensions, surface
+  sans dimensions). Options `--db`, `--json`, `--seuil`.
+- `Fabtrack/tests/test_stats_annee_scolaire.py` : trois tests permanents sur les
+  bornes de l'annee, le total par annee et le multiplicateur d'occurrences.
+- `Fabtrack/templates/historique.html` : la surface se recalcule des que
+  longueur ou largeur change dans la fenetre d'edition.
+- Fabtrack 2.7.4, notes de version et changelog mis a jour.
+
+**Verifications**
+- Nouveaux tests : 3/3 OK. Suite Fabtrack complete : OK.
+- Tests racine : 21 OK. `release_notes_gen --check` et `changelog_gen --check` : OK.
+- Audit execute sur une base synthetique : 600 m2 et 60 000 m2 signales pour une
+  piece de 0,06 m2 (facteurs x10 000 et x1 000 000), plus la saisie manuelle.
+
+**Prochaine action** : lancer `python audit_surface.py` sur la base de production
+(`docker compose exec fabtrack python audit_surface.py`) et corriger les saisies
+listees ; envisager un avertissement a la saisie quand la surface manuelle
+s'ecarte fortement des dimensions.
+
+---
+
 ## 2026-11-15 — Check-up production de la suite avant deploiement
 
 **Objectif** : passer en revue les cinq applications avant une mise en
