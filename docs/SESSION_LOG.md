@@ -30,6 +30,10 @@ l'ancien seuil et que la periode desactivee ne soit plus signalee.
 
 **Verifications**
 - 79 tests Fabtrack OK. Gates notes/changelog OK. Campagne offline 9/9.
+- Completude (meme version) : `test_saisie_pendant_desactivation_sans_alerte_ni_notification`
+  verifie qu'une saisie datee pendant la periode desactivee (900 g, seuil 500 g
+  desactive le jour meme) passe sans 409 `alertes`, ne cree pas de notification
+  `seuil-depasse-*` et ressort non signalee dans le tableau des statistiques.
 
 **Risques / non couverts**
 - L'ecran affiche l'etat « desactive le ... » mais l'historique complet n'est

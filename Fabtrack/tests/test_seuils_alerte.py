@@ -465,6 +465,65 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertEqual(historique[-1]['valeur'], 100.0)
         self.assertEqual(historique[-1]['depuis'], aujourd_hui)
 
+    def test_saisie_pendant_desactivation_sans_alerte_ni_notification(self):
+        from datetime import datetime as dt
+
+        trois_d = str(self.type_ids['3d'])
+        aujourd_hui = dt.now().strftime('%Y-%m-%d')
+        self._enregistrer({trois_d: 500}, depuis=None)
+
+        payload = {
+            'date_saisie': f'{aujourd_hui} 10:00',
+            'preparateur_id': self.prep_id,
+            'projet_nom': 'Saisie periode desactivee',
+            'actions': [{
+                'type_activite_id': self.type_ids['3d'],
+                'poids_grammes': 900,
+            }],
+        }
+
+        # Avec le seuil actif, la meme saisie demande confirmation.
+        reponse = self.client.post('/api/consommations/batch', json=payload)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.get_json()['code'], 'alertes')
+
+        # Seuil desactive a partir d'aujourd'hui : plus d'avertissement.
+        self._enregistrer({trois_d: ''}, depuis=aujourd_hui)
+        try:
+            reponse = self.client.post('/api/consommations/batch', json=payload)
+            self.assertEqual(reponse.status_code, 201, reponse.data)
+            conso_id = reponse.get_json()['ids'][0]
+
+            # Ni notification de depassement...
+            from routes import _get_notifications
+            notifs = _get_notifications()
+            self.assertEqual(
+                [n for n in notifs if n.get('id') == f'seuil-depasse-{conso_id}'],
+                [],
+            )
+
+            # ... ni ligne signalee dans le tableau des statistiques.
+            corps = self._saisies(
+                type_id=self.type_ids['3d'],
+                date_debut=aujourd_hui,
+                date_fin=aujourd_hui,
+            )
+            ligne = next(r for r in corps['rows'] if r['id'] == conso_id)
+            self.assertFalse(ligne['depasse'])
+            self.assertIsNone(ligne['seuil'])
+            self.assertEqual(corps['suspectes'], 0)
+        finally:
+            db = models.get_db()
+            try:
+                db.execute(
+                    'DELETE FROM consommations WHERE projet_nom=?',
+                    ('Saisie periode desactivee',),
+                )
+                models._set_param(db, models.SEUILS_ALERTE_KEY, '')
+                db.commit()
+            finally:
+                db.close()
+
     def test_une_notification_signale_un_depassement_recent(self):
         from datetime import datetime as dt
         aujourd_hui = dt.now().strftime('%Y-%m-%d 12:00')
