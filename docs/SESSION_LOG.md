@@ -6,6 +6,35 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.11.0 : periodes de seuil cliquables
+
+**Objectif** : depuis l'historique des seuils, voir directement les saisies
+qui ont produit les alertes d'une configuration donnee.
+
+**Completed**
+- `get_historique_seuils_affiche` expose les bornes ISO de chaque periode
+  (`date_debut`, `date_fin`) en plus du libelle ; une periode ouverte n'a pas
+  de borne.
+- Chaque ligne de l'historique est cliquable (souris, Entree ou Espace) et
+  applique ses dates aux champs de periode de la page, puis recharge les
+  statistiques et le tableau des plus grosses saisies.
+- Une periode en cours va jusqu'au jour meme ; un premier seuil sans date
+  laisse le debut vide (tout l'historique).
+- Test `test_les_periodes_de_l_historique_sont_cliquables` : presence du
+  gestionnaire et des bornes ISO dans le HTML, puis verification que les
+  dates de chaque periode isolent les bonnes saisies (septembre 1200 g
+  signale, octobre desactive non signale, novembre 200 g signale).
+
+**Verifications**
+- 82 tests Fabtrack OK. Page `/statistiques` verifiee en direct : bornes ISO
+  presentes et gestionnaire rendu. Gates OK.
+
+**Risques / non couverts**
+- Le clic n'est pas execute dans un navigateur (pas de test DOM) : le test
+  verifie le cablage HTML et les donnees renvoyees pour les memes dates.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.10.0 : historique des seuils dans Statistiques
 
 **Objectif** : afficher dans l'interface l'historique complet des seuils deja

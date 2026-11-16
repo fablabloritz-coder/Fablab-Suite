@@ -219,8 +219,17 @@
                                 </thead>
                                 <tbody>
                                     {% for entree in cat.entrees %}
-                                    <tr{% if entree.actuel %} class="table-active"{% endif %}>
-                                        <td class="small">{{ entree.periode }}</td>
+                                    <tr class="seuil-periode{% if entree.actuel %} table-active{% endif %}"
+                                        role="button" tabindex="0" style="cursor:pointer;"
+                                        title="Appliquer cette période aux statistiques"
+                                        data-date-debut="{{ entree.date_debut }}"
+                                        data-date-fin="{{ entree.date_fin }}"
+                                        onclick="appliquerPeriodeSeuil(this)"
+                                        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();appliquerPeriodeSeuil(this);}">
+                                        <td class="small">
+                                            {{ entree.periode }}
+                                            <i class="bi bi-funnel ms-1 text-muted" aria-hidden="true"></i>
+                                        </td>
                                         <td class="text-end small">
                                             {% if entree.desactive %}
                                             <span class="badge text-bg-secondary">désactivé</span>
@@ -738,6 +747,29 @@ async function saveSeuilsAlerte() {
     } catch (err) {
         if (statut) statut.innerHTML = '<span class="text-danger">Erreur réseau</span>';
     }
+}
+
+function appliquerPeriodeSeuil(ligne) {
+    if (!ligne) return;
+    const champDebut = document.getElementById('statDateDebut');
+    const champFin = document.getElementById('statDateFin');
+    if (!champDebut || !champFin) return;
+
+    // Une periode sans date de fin est la periode en cours : on va jusqu'au
+    // jour meme. Une periode sans date de debut (premier seuil) ne borne pas
+    // le passe : le champ reste vide et l'API renvoie tout l'historique.
+    const maintenant = new Date();
+    const aujourdHui = [
+        maintenant.getFullYear(),
+        String(maintenant.getMonth() + 1).padStart(2, '0'),
+        String(maintenant.getDate()).padStart(2, '0'),
+    ].join('-');
+    champDebut.value = ligne.dataset.dateDebut || '';
+    champFin.value = ligne.dataset.dateFin || aujourdHui;
+
+    loadStats();
+    document.getElementById('largestEntriesTable')
+        ?.scrollIntoView({behavior: 'smooth', block: 'center'});
 }
 
 async function rafraichirHistoriqueSeuils() {

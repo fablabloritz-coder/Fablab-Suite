@@ -348,6 +348,14 @@ def _libelle_veille(valeur):
         return ''
 
 
+def _iso_veille(valeur):
+    try:
+        jour = datetime.strptime(str(valeur)[:10], '%Y-%m-%d') - timedelta(days=1)
+        return jour.strftime('%Y-%m-%d')
+    except (TypeError, ValueError):
+        return ''
+
+
 def get_historique_seuils_affiche(db=None):
     """Historique des seuils pret a afficher, par categorie.
 
@@ -391,6 +399,8 @@ def get_historique_seuils_affiche(db=None):
                     periode = 'Depuis toujours'
                 affichees.append({
                     'periode': periode,
+                    'date_debut': entree['depuis'] or '',
+                    'date_fin': _iso_veille(suivante) if suivante else '',
                     'valeur': entree['valeur'],
                     'valeur_label': f"{entree['valeur']:g}",
                     'desactive': entree['valeur'] <= 0,

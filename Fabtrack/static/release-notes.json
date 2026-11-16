@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "2.11.0",
+      "date": "2026-11-16",
+      "title": "Periodes de seuil cliquables",
+      "notes": [
+        "Historique des seuils : un clic sur une periode applique ses dates aux statistiques et au tableau des plus grosses saisies",
+        "On voit ainsi les saisies qui ont produit les alertes de cette configuration, y compris pendant les periodes desactivees ; la periode en cours s'arrete a aujourd'hui"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.11.0"
+    },
+    {
       "version": "2.10.0",
       "date": "2026-11-16",
       "title": "Historique des seuils dans Statistiques",

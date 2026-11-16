@@ -583,6 +583,15 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.11.0 — 2026-11-16
+
+#### Periodes de seuil cliquables
+
+- Historique des seuils : un clic sur une periode applique ses dates aux statistiques et au tableau des plus grosses saisies
+- On voit ainsi les saisies qui ont produit les alertes de cette configuration, y compris pendant les periodes desactivees ; la periode en cours s'arrete a aujourd'hui
+
+---
+
 ### v2.10.0 — 2026-11-16
 
 #### Historique des seuils dans Statistiques

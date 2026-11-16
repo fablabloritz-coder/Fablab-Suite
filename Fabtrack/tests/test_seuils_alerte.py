@@ -287,6 +287,77 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertIn('<strong>100</strong> g', page)
         self.assertIn('actuel', page)
 
+    def test_les_periodes_de_l_historique_sont_cliquables(self):
+        trois_d = str(self.type_ids['3d'])
+        self._enregistrer({trois_d: 500}, depuis=None)
+        self._enregistrer({trois_d: ''}, depuis='2026-10-01')
+        self._enregistrer({trois_d: 100}, depuis='2026-11-01')
+
+        # Une saisie pendant la desactivation, une apres reactivation.
+        db = models.get_db()
+        try:
+            db.execute(
+                '''INSERT INTO consommations
+                   (date_saisie, type_activite_id, poids_grammes, projet_nom)
+                   VALUES (?,?,?,?)''',
+                ('2026-10-15 12:00', self.type_ids['3d'], 900, 'Periode 10'),
+            )
+            db.execute(
+                '''INSERT INTO consommations
+                   (date_saisie, type_activite_id, poids_grammes, projet_nom)
+                   VALUES (?,?,?,?)''',
+                ('2026-11-05 12:00', self.type_ids['3d'], 200, 'Periode 11'),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        page = self.client.get('/statistiques').get_data(as_text=True)
+        self.assertIn('onclick="appliquerPeriodeSeuil(this)"', page)
+        self.assertIn('function appliquerPeriodeSeuil', page)
+
+        # Chaque periode porte ses bornes ISO, pretes a remplir les filtres.
+        self.assertIn('data-date-debut=""', page)
+        self.assertIn('data-date-fin="2026-09-30"', page)
+        self.assertIn('data-date-debut="2026-10-01"', page)
+        self.assertIn('data-date-fin="2026-10-31"', page)
+        self.assertIn('data-date-debut="2026-11-01"', page)
+        self.assertIn('data-date-fin=""', page)
+
+        # Les dates de la periode desactivee isolent la saisie concernee.
+        periode_desactivee = self._saisies(
+            type_id=self.type_ids['3d'],
+            date_debut='2026-10-01',
+            date_fin='2026-10-31',
+        )
+        self.assertEqual(
+            [(r['valeur'], r['depasse'], r['seuil'])
+             for r in periode_desactivee['rows']],
+            [(900.0, False, None)],
+        )
+
+        # Celles du premier seuil montrent bien les alertes de l'epoque.
+        premier_seuil = self._saisies(
+            type_id=self.type_ids['3d'],
+            date_debut='2026-09-01',
+            date_fin='2026-09-30',
+        )
+        self.assertEqual(
+            [(r['valeur'], r['depasse']) for r in premier_seuil['rows']],
+            [(1200.0, True), (300.0, False)],
+        )
+
+        # Et celles de la reactivation suivent le nouveau seuil.
+        reactivation = self._saisies(
+            type_id=self.type_ids['3d'],
+            date_debut='2026-11-01',
+            date_fin='2026-11-30',
+        )
+        self.assertEqual(
+            [(r['valeur'], r['depasse']) for r in reactivation['rows']],
+            [(200.0, True)],
+        )
+
     def test_la_date_du_seuil_est_exposee(self):
         self._enregistrer({str(self.type_ids['3d']): 999}, depuis=None)
         self._enregistrer({str(self.type_ids['3d']): 500}, depuis='2026-09-20')
