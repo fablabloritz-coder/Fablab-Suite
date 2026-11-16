@@ -1,10 +1,11 @@
 """Routes API consommations — CRUD, batch, statistiques, export/import CSV."""
 
 from flask import Blueprint, request, jsonify, Response
-from models import (get_db, get_seuils_alerte, list_school_years,
+from models import (get_db, get_seuils_alerte, get_seuils_alerte_historique,
+                    list_school_years, seuil_depuis_historique,
                     set_seuils_alerte)
 from routes.api_reference import rows_to_list, _resolve_nom
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv, io
 
 bp = Blueprint('api_consommations', __name__)
@@ -223,6 +224,77 @@ def _serialize_consumption_detail(db, consommation_id):
     if not payload['referent_ids'] and payload.get('referent_id'):
         payload['referent_ids'] = [int(payload['referent_id'])]
     return payload
+
+
+def _alertes_saisie(db, action, surface, date_saisie, historique=None):
+    """Avertissements avant enregistrement d'une saisie.
+
+    Deux cas sont signales sans bloquer : une surface incoherente avec les
+    dimensions (unite cm2/mm2) et une quantite qui depasse le seuil configure
+    de la categorie. Le client peut reenvoyer la saisie avec
+    `confirmer_alertes` pour passer outre.
+    """
+    from surface_checks import (SEUIL_SURFACE_UNITAIRE_M2, depasse_seuil,
+                                diagnose_surface, normaliser_unite,
+                                valeur_saisie)
+
+    type_row = _get_type_row(db, action.get('type_activite_id'))
+    if not type_row:
+        return []
+    unite = normaliser_unite(type_row['unite_defaut'])
+
+    alertes = []
+    if unite == 'm²':
+        diag = diagnose_surface(
+            surface, action.get('longueur_mm'), action.get('largeur_mm'))
+        if diag['alerte'] == 'unite':
+            alertes.append({
+                'code': 'unite',
+                'type': type_row['nom'],
+                'message': (
+                    f"{type_row['nom']} : surface {float(surface or 0):g} m², soit "
+                    f"{diag['facteur']:g}× les dimensions "
+                    f"({diag['surface_dimensions_m2']:g} m² attendu) — "
+                    f"unité probablement saisie en cm²/mm² ?"
+                ),
+                'surface_m2': round(float(surface or 0), 4),
+                'proposition_m2': diag['surface_dimensions_m2'],
+                'facteur': diag['facteur'],
+            })
+
+    if historique is None:
+        historique = get_seuils_alerte_historique(db)
+    seuil = seuil_depuis_historique(historique.get(type_row['id']), date_saisie)
+    if seuil is None and unite == 'm²':
+        seuil = SEUIL_SURFACE_UNITAIRE_M2
+    valeur = valeur_saisie(
+        unite, action.get('poids_grammes'), surface,
+        action.get('nb_feuilles'))
+    if depasse_seuil(valeur, seuil):
+        alertes.append({
+            'code': 'seuil',
+            'type': type_row['nom'],
+            'message': (
+                f"{type_row['nom']} : {valeur:g} {unite} dépasse le seuil "
+                f"de {seuil:g} {unite}"
+            ),
+            'valeur': round(valeur, 4),
+            'seuil': round(float(seuil), 4),
+            'unite': unite,
+        })
+    return alertes
+
+
+def _alertes_response(alertes, prefix=''):
+    messages = [a['message'] for a in alertes]
+    if prefix:
+        messages = [f"{prefix} : {m}" for m in messages]
+    return jsonify({
+        'success': False,
+        'code': 'alertes',
+        'error': 'Vérifiez la saisie : ' + ' ; '.join(messages),
+        'alertes': [dict(a, action=a.get('action', 0)) for a in alertes],
+    }), 409
 
 
 def _surface_from_action(action):
@@ -663,6 +735,13 @@ def api_create_consommation():
 
         surface = _surface_from_action(payload)
 
+        if not _to_bool_int(payload.get('confirmer_alertes', 0)):
+            alertes = _alertes_saisie(
+                db, payload, surface,
+                payload.get('date_saisie') or datetime.now().strftime('%Y-%m-%d %H:%M'))
+            if alertes:
+                return _alertes_response(alertes)
+
         if not _to_bool_int(payload.get('confirmer_doublon', 0)):
             duplicate_id = _find_recent_duplicate(db, payload, payload.get('date_saisie'), surface)
             if duplicate_id:
@@ -744,6 +823,7 @@ def api_create_consommation_batch():
         'projet_nom': data.get('projet_nom', ''),
         'projet_personnel': _to_bool_int(data.get('projet_personnel', 0)),
         'confirmer_doublon': _to_bool_int(data.get('confirmer_doublon', 0)),
+        'confirmer_alertes': _to_bool_int(data.get('confirmer_alertes', 0)),
     }
 
     db = get_db()
@@ -765,6 +845,13 @@ def api_create_consommation_batch():
                 return jsonify({'success': False, 'error': f'Action {index}: {validation_error}'}), 400
 
             surface = _surface_from_action(action_payload)
+
+            if not common['confirmer_alertes']:
+                alertes = _alertes_saisie(
+                    db, action_payload, surface, common['date_saisie'])
+                if alertes:
+                    db.rollback()
+                    return _alertes_response(alertes, prefix=f'Action {index}')
 
             if not common['confirmer_doublon']:
                 # Le projet et le préparateur viennent de la saisie commune, pas de l'action.
@@ -828,6 +915,42 @@ def api_create_consommation_batch():
     except Exception as e:
         db.rollback()
         return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        db.close()
+
+
+@bp.route('/api/consommations/<int:id>/surface', methods=['PUT'])
+def api_update_consommation_surface(id):
+    """Corrige la surface d'une saisie existante (et elle seule).
+
+    Utilise par le bouton « Corriger » du tableau des plus grosses saisies :
+    quand la surface stockee vaut 10, 100 ou 10 000 fois longueur x largeur,
+    la correction proposee est la surface deduite des dimensions.
+    """
+    data = request.get_json(silent=True) or {}
+    surface = _to_float(data.get('surface_m2'))
+    if surface is None or surface < 0:
+        return jsonify({'success': False, 'error': 'Surface invalide'}), 400
+
+    db = get_db()
+    try:
+        row = db.execute(
+            'SELECT id, surface_m2 FROM consommations WHERE id=?', (id,)
+        ).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Saisie introuvable'}), 404
+
+        db.execute(
+            'UPDATE consommations SET surface_m2=? WHERE id=?',
+            (round(surface, 4), id),
+        )
+        db.commit()
+        return jsonify({
+            'success': True,
+            'id': id,
+            'ancienne_surface_m2': row['surface_m2'],
+            'surface_m2': round(surface, 4),
+        })
     finally:
         db.close()
 
@@ -1050,9 +1173,10 @@ def api_stats_seuils():
                     'success': False,
                     'error': 'Format attendu : {"seuils": {"<type_id>": valeur}}',
                 }), 400
-            set_seuils_alerte(db, seuils)
+            set_seuils_alerte(db, seuils, depuis=data.get('depuis'))
 
         seuils = get_seuils_alerte(db)
+        historique = get_seuils_alerte_historique(db)
         categories = []
         for row in db.execute(
             "SELECT id, nom, icone, unite_defaut FROM types_activite "
@@ -1067,8 +1191,87 @@ def api_stats_seuils():
                 'icone': row['icone'] or '',
                 'unite': unite,
                 'seuil': seuils.get(row['id']),
+                'depuis': (historique.get(row['id']) or [{}])[-1].get('depuis', ''),
             })
         return jsonify({'success': True, 'categories': categories})
+    finally:
+        db.close()
+
+
+@bp.route('/api/stats/depassements')
+def api_stats_depassements():
+    """Saisies recentes qui depassent le seuil de leur categorie.
+
+    Alimente le widget FabBoard « Depassements de seuil » et les notifications
+    FabSuite : toutes categories confondues (g, m2, feuilles), du plus fort
+    depassement au plus faible.
+    """
+    from surface_checks import (COLONNES_QUANTITE, SEUIL_SURFACE_UNITAIRE_M2,
+                                depasse_seuil, normaliser_unite,
+                                valeur_saisie)
+
+    try:
+        jours = int(request.args.get('jours', 30))
+    except (TypeError, ValueError):
+        jours = 30
+    jours = min(max(1, jours), 365)
+    try:
+        limite = int(request.args.get('limit', 20))
+    except (TypeError, ValueError):
+        limite = 20
+    limite = min(max(1, limite), 100)
+
+    debut = (datetime.now().date() - timedelta(days=jours - 1)).isoformat()
+    db = get_db()
+    try:
+        historique = get_seuils_alerte_historique(db)
+        rows = db.execute(
+            '''SELECT c.id, c.date_saisie, c.type_activite_id, c.poids_grammes,
+                      c.surface_m2, c.nb_feuilles,
+                      COALESCE(t.nom, c.nom_type_activite, '') AS type_nom,
+                      COALESCE(t.unite_defaut, '') AS unite_defaut,
+                      c.projet_nom, c.nom_preparateur
+               FROM consommations c
+               LEFT JOIN types_activite t ON t.id = c.type_activite_id
+               WHERE c.date_saisie >= ?
+               ORDER BY c.date_saisie DESC
+               LIMIT 5000''',
+            (debut,),
+        ).fetchall()
+
+        depassements = []
+        for row in rows:
+            unite = normaliser_unite(row['unite_defaut'])
+            if unite not in COLONNES_QUANTITE:
+                continue
+            seuil = seuil_depuis_historique(
+                historique.get(row['type_activite_id']), row['date_saisie'])
+            if seuil is None and unite == 'm²':
+                seuil = SEUIL_SURFACE_UNITAIRE_M2
+            valeur = valeur_saisie(
+                unite, row['poids_grammes'], row['surface_m2'], row['nb_feuilles'])
+            if not depasse_seuil(valeur, seuil):
+                continue
+            depassements.append({
+                'id': row['id'],
+                'date_saisie': row['date_saisie'],
+                'type': row['type_nom'],
+                'projet': row['projet_nom'] or '',
+                'preparateur': row['nom_preparateur'] or '',
+                'valeur': round(valeur, 2),
+                'unite': unite,
+                'seuil': round(float(seuil), 4),
+                'ratio': round(valeur / float(seuil), 2) if seuil else None,
+            })
+
+        depassements.sort(key=lambda d: (d['ratio'] or 0, d['date_saisie']), reverse=True)
+        return jsonify({
+            'success': True,
+            'jours': jours,
+            'depuis': debut,
+            'count': len(depassements),
+            'rows': depassements[:limite],
+        })
     finally:
         db.close()
 
@@ -1132,6 +1335,7 @@ def api_stats_surfaces():
         # travaille dans son unite (g, m2 ou feuilles). Sans categorie, on
         # conserve le comportement historique : surfaces de decoupe.
         seuils = get_seuils_alerte(db)
+        historique = get_seuils_alerte_historique(db)
         type_id = (request.args.get('type_id') or '').strip()
         type_info = None
         if type_id:
@@ -1164,9 +1368,19 @@ def api_stats_surfaces():
 
         # Controle de toutes les saisies de la periode (borne de securite),
         # pour compter les alertes independamment du nombre de lignes affichees.
+        def _seuil_ligne(date_saisie):
+            """Seuil en vigueur a la date de la saisie (dates ignorees avant 2.9)."""
+            if not type_id:
+                return seuil
+            valeur = seuil_depuis_historique(
+                historique.get(type_id), date_saisie)
+            if valeur is None and unite == 'm²':
+                return SEUIL_SURFACE_UNITAIRE_M2
+            return valeur or 0
+
         scan = db.execute(f'''
-            SELECT c.id, c.poids_grammes, c.surface_m2, c.nb_feuilles,
-                   c.longueur_mm, c.largeur_mm
+            SELECT c.id, c.date_saisie, c.poids_grammes, c.surface_m2,
+                   c.nb_feuilles, c.longueur_mm, c.largeur_mm
             FROM consommations c
             WHERE {w} AND COALESCE({colonne}, 0) > 0
             ORDER BY {colonne} DESC
@@ -1180,7 +1394,7 @@ def api_stats_surfaces():
             if unite == 'm²':
                 alerte = diagnose_surface(
                     row['surface_m2'], row['longueur_mm'], row['largeur_mm'])['alerte']
-            if alerte or depasse_seuil(valeur, seuil):
+            if alerte or depasse_seuil(valeur, _seuil_ligne(row['date_saisie'])):
                 nb_suspectes += 1
 
         rows = db.execute(f'''
@@ -1204,6 +1418,7 @@ def api_stats_surfaces():
         for row in rows:
             valeur = valeur_saisie(
                 unite, row['poids_grammes'], row['surface_m2'], row['nb_feuilles'])
+            seuil_ligne = _seuil_ligne(row['date_saisie'])
             if unite == 'm²':
                 diag = diagnose_surface(
                     row['surface_m2'], row['longueur_mm'], row['largeur_mm'])
@@ -1229,8 +1444,8 @@ def api_stats_surfaces():
                 'nb_feuilles': int(row['nb_feuilles'] or 0),
                 'unite': unite,
                 'valeur': round(valeur, 4),
-                'seuil': round(seuil, 4) if seuil else None,
-                'depasse': depasse_seuil(valeur, seuil),
+                'seuil': round(seuil_ligne, 4) if seuil_ligne else None,
+                'depasse': depasse_seuil(valeur, seuil_ligne),
                 'surface_dimensions_m2': diag['surface_dimensions_m2'],
                 'facteur': diag['facteur'],
                 'alerte': diag['alerte'],

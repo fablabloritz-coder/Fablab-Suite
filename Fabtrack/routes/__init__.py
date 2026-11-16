@@ -1,6 +1,6 @@
 """Enregistrement des blueprints Fabtrack + configuration FabSuite."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from models import get_db
 from fabsuite_core.manifest import create_fabsuite_blueprint
 from fabsuite_core import widgets
@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
     # Source unique de la version : manifeste FabSuite, bannière et pied de page.
-APP_VERSION = '2.8.0'
+APP_VERSION = '2.9.0'
 
 
 def register_blueprints(app):
@@ -400,6 +400,60 @@ def _get_notifications():
                 ))
         except Exception as e:
             logger.warning(f"Stock notifications check failed: {e}")
+
+        # Saisies au-dessus du seuil de leur categorie (7 derniers jours)
+        try:
+            from models import (get_seuils_alerte_historique,
+                                seuil_depuis_historique)
+            from surface_checks import (COLONNES_QUANTITE,
+                                        SEUIL_SURFACE_UNITAIRE_M2,
+                                        depasse_seuil, normaliser_unite,
+                                        valeur_saisie)
+
+            depuis = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            historique = get_seuils_alerte_historique(db)
+            lignes = db.execute(
+                '''SELECT c.id, c.date_saisie, c.type_activite_id,
+                          c.poids_grammes, c.surface_m2, c.nb_feuilles,
+                          c.projet_nom,
+                          COALESCE(t.nom, c.nom_type_activite, '') AS type_nom,
+                          COALESCE(t.unite_defaut, '') AS unite_defaut
+                   FROM consommations c
+                   LEFT JOIN types_activite t ON t.id = c.type_activite_id
+                   WHERE c.date_saisie >= ?
+                   ORDER BY c.date_saisie DESC
+                   LIMIT 500''',
+                (depuis,),
+            ).fetchall()
+
+            depasses = []
+            for ligne in lignes:
+                unite = normaliser_unite(ligne['unite_defaut'])
+                if unite not in COLONNES_QUANTITE:
+                    continue
+                seuil = seuil_depuis_historique(
+                    historique.get(ligne['type_activite_id']), ligne['date_saisie'])
+                if seuil is None and unite == 'm²':
+                    seuil = SEUIL_SURFACE_UNITAIRE_M2
+                valeur = valeur_saisie(
+                    unite, ligne['poids_grammes'], ligne['surface_m2'],
+                    ligne['nb_feuilles'])
+                if depasse_seuil(valeur, seuil):
+                    depasses.append((valeur / float(seuil), ligne, valeur, seuil, unite))
+            depasses.sort(key=lambda d: d[0], reverse=True)
+
+            for _, ligne, valeur, seuil, unite in depasses[:3]:
+                projet = f" · {ligne['projet_nom']}" if ligne['projet_nom'] else ''
+                notifs.append(widgets.notification(
+                    id=f"seuil-depasse-{ligne['id']}",
+                    type="warning",
+                    title=f"Dépassement de seuil — {ligne['type_nom']}",
+                    message=f"{valeur:g} {unite} (seuil {seuil:g} {unite}){projet}",
+                    link="/statistiques",
+                    created_at=ligne['date_saisie'],
+                ))
+        except Exception as e:
+            logger.warning(f"Seuils notifications check failed: {e}")
 
         # Missions en retard
         try:

@@ -269,6 +269,7 @@ def init_db():
             ('fabtrack_conso', 'Consommations Fabtrack', 'Dernières consommations Fabtrack', '📉', 'fabtrack'),
             ('fabtrack_machines', 'État machines', 'État des machines Fabtrack', '🔧', 'fabtrack'),
             ('fabtrack_missions', 'Missions Fabtrack', 'Tableau missions depuis Fabtrack (lecture seule)', '✅', 'fabtrack'),
+            ('fabtrack_depassements', 'Dépassements de seuil', 'Saisies au-dessus du seuil de leur catégorie (lecture seule)', '⚠️', 'fabtrack'),
             ('imprimantes', 'Imprimantes 3D', 'État des imprimantes 3D', '🖨️', 'imprimantes'),
             ('meteo', 'Météo', 'Météo locale', '🌤️', 'general'),
             ('texte_libre', 'Texte libre', 'Zone de texte personnalisée', '📝', 'general'),
@@ -402,6 +403,14 @@ def migrate_db():
             ('fabtrack_conso', 'Consommations Fabtrack', 'Dernières consommations Fabtrack', '📉', 'fabtrack')
         )
         print('[FabBoard] Migration : widget fabtrack_conso ajouté')
+
+    # Migration : ajouter le widget des depassements de seuil s'il n'existe pas
+    if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'fabtrack_depassements'").fetchone()[0] == 0:
+        c.execute(
+            "INSERT INTO widgets_disponibles (code, nom, description, icone, categorie) VALUES (?, ?, ?, ?, ?)",
+            ('fabtrack_depassements', 'Dépassements de seuil', 'Saisies au-dessus du seuil de leur catégorie (lecture seule)', '⚠️', 'fabtrack')
+        )
+        print('[FabBoard] Migration : widget fabtrack_depassements ajouté')
 
     # Migration : remapper les anciens codes de widgets vers les codes canoniques.
     legacy_map = {
@@ -609,6 +618,7 @@ def generate_demo_slides():
         ('fabtrack_stats', 'Stats Fabtrack', 'Données et graphiques Fabtrack', '⚡', 'fabtrack'),
         ('fabtrack_machines', 'État machines', 'Statut des machines Fabtrack', '🔧', 'fabtrack'),
         ('fabtrack_missions', 'Missions Fabtrack', 'Tableau des missions Fabtrack', '✅', 'fabtrack'),
+        ('fabtrack_depassements', 'Dépassements de seuil', 'Saisies au-dessus du seuil de leur catégorie', '⚠️', 'fabtrack'),
         ('calendrier', 'Événements', 'Prochains événements du calendrier', '📅', 'calendrier'),
         ('meteo', 'Météo', 'Prévisions météorologiques', '⛅', 'general'),
         ('fabtrack_conso', 'Graphique consommations', 'Évolution des consommations', '📈', 'fabtrack'),
@@ -653,6 +663,8 @@ def generate_demo_slides():
             config_json = '{"max_items": 6}'
         elif widget_code == 'fabtrack_missions':
             config_json = '{"max_items": 6, "show_priorities": true}'
+        elif widget_code == 'fabtrack_depassements':
+            config_json = '{"max_items": 6}'
         elif widget_code == 'calendrier':
             config_json = '{"max_events": 5, "show_today": true}'
         

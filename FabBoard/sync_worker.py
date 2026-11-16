@@ -206,6 +206,16 @@ class SyncWorker:
                 conso_resp.raise_for_status()
                 conso = conso_resp.json()
 
+                # Saisies au-dessus du seuil de leur catégorie (optionnel)
+                depassements = []
+                try:
+                    dep_resp = requests.get(
+                        f"{candidate}/api/stats/depassements?jours=7&limit=10", timeout=4)
+                    if dep_resp.status_code == 200:
+                        depassements = dep_resp.json().get('rows', [])
+                except requests.RequestException:
+                    pass
+
                 # Reference (machines, etc)
                 ref_resp = requests.get(f"{candidate}/api/reference", timeout=4)
                 ref_resp.raise_for_status()
@@ -237,6 +247,7 @@ class SyncWorker:
                     'consommations': conso.get('data', []),
                     'machines': machines,
                     'missions': missions,
+                    'depassements': depassements,
                     'fetched_at': datetime.now().isoformat(),
                 }, ''
             except requests.RequestException as e:

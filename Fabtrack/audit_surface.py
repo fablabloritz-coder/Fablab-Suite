@@ -6,9 +6,12 @@ Usage :
     python audit_surface.py --db copie.db       # copie d'une base de production
     python audit_surface.py --json              # sortie JSON (scripts)
     python audit_surface.py --seuil 1.5         # seuil de surface "une seule saisie"
+    python audit_surface.py --corriger          # liste les corrections proposees
+    python audit_surface.py --corriger --appliquer   # ecrit (sauvegarde .bak)
 
-Le script ouvre la base en lecture seule : il ne modifie rien. Il repond a la
-question "d'ou vient ce total de m2 ?" en affichant :
+Par defaut le script ouvre la base en lecture seule : il ne modifie rien.
+Seul `--corriger --appliquer` ecrit, apres une copie de sauvegarde de la base.
+Il repond a la question "d'ou vient ce total de m2 ?" en affichant :
 
 - les totaux par annee scolaire puis par mois ;
 - les plus grosses saisies, avec leurs dimensions et leur projet ;
@@ -23,6 +26,7 @@ question "d'ou vient ce total de m2 ?" en affichant :
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import sys
 from datetime import datetime
@@ -31,17 +35,82 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
 
-from surface_checks import SEUIL_SURFACE_UNITAIRE_M2, diagnose_surface  # noqa: E402
+from surface_checks import (  # noqa: E402
+    COLONNES_QUANTITE,
+    SEUIL_SURFACE_UNITAIRE_M2,
+    depasse_seuil,
+    diagnose_surface,
+    normaliser_unite,
+    valeur_saisie,
+)
 
 DEFAULT_DB = os.path.join(APP_DIR, 'data', 'fabtrack.db')
 
 
-def _open(db_path):
+def _open(db_path, writable=False):
     if not os.path.isfile(db_path):
         sys.exit(f"Base introuvable : {db_path}")
-    conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+    mode = 'rw' if writable else 'ro'
+    conn = sqlite3.connect(f'file:{db_path}?mode={mode}', uri=True)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _seuils_par_type(conn):
+    """Seuils d'alerte configures : {type_id: [{'valeur', 'depuis'}]}.
+
+    Meme lecture que `models._seuils_historique`, sans dependre de Flask :
+    accepte l'ancien format {id: valeur} comme le nouveau format date.
+    """
+    brut = _param(conn, 'seuils_alerte_types') or ''
+    try:
+        data = json.loads(brut) if brut else {}
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+
+    historique = {}
+    for cle, valeur in data.items():
+        try:
+            type_id = int(cle)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(valeur, list):
+            entrees = valeur
+        elif isinstance(valeur, dict):
+            entrees = [valeur]
+        else:
+            entrees = [{'valeur': valeur, 'depuis': ''}]
+        propres = []
+        for entree in entrees:
+            if not isinstance(entree, dict):
+                entree = {'valeur': entree, 'depuis': ''}
+            try:
+                seuil = float(entree.get('valeur'))
+            except (TypeError, ValueError):
+                continue
+            if seuil > 0:
+                propres.append({
+                    'valeur': round(seuil, 4),
+                    'depuis': str(entree.get('depuis') or '')[:10],
+                })
+        if propres:
+            propres.sort(key=lambda e: e['depuis'] or '0000-00-00')
+            historique[type_id] = propres
+    return historique
+
+
+def _seuil_effectif(entrees, date_saisie):
+    """Seuil en vigueur a la date de la saisie, ou None."""
+    jour = str(date_saisie or '')[:10]
+    seuil = None
+    for entree in entrees or []:
+        if not entree['depuis'] or not jour or entree['depuis'] <= jour:
+            seuil = entree['valeur']
+        else:
+            break
+    return seuil
 
 
 def _param(conn, cle, defaut=''):
@@ -172,19 +241,45 @@ def audit(conn, seuil):
             'unite': row['unite'],
         })
 
-    suspectes = {'trop_grandes': [], 'ecart_unites': [], 'sans_dimensions': []}
+    seuils_types = _seuils_par_type(conn)
+    seuils_categories = []
+    for row in conn.execute(
+        'SELECT id, nom, unite_defaut FROM types_activite ORDER BY nom'
+    ):
+        entrees = seuils_types.get(row['id'])
+        if not entrees:
+            continue
+        seuils_categories.append({
+            'type_id': row['id'],
+            'type': row['nom'],
+            'unite': normaliser_unite(row['unite_defaut']),
+            'seuil': entrees[-1]['valeur'],
+            'depuis': entrees[-1]['depuis'],
+        })
+
+    suspectes = {'trop_grandes': [], 'ecart_unites': [], 'sans_dimensions': [],
+                 'depassements_seuils': []}
+    corrections = []
     for row in conn.execute(
         '''SELECT c.id, c.date_saisie, c.surface_m2, c.longueur_mm, c.largeur_mm,
+                  c.poids_grammes, c.nb_feuilles, c.type_activite_id AS type_id,
+                  COALESCE(t.unite_defaut, '') AS unite_defaut,
                   c.projet_nom,
                   COALESCE(t.nom, c.nom_type_activite, '') AS type
            FROM consommations c
            LEFT JOIN types_activite t ON t.id = c.type_activite_id
            WHERE COALESCE(c.surface_m2, 0) > 0
+              OR COALESCE(c.poids_grammes, 0) > 0
+              OR COALESCE(c.nb_feuilles, 0) > 0
            ORDER BY c.surface_m2 DESC'''
     ):
-        surface = float(row['surface_m2'])
+        surface = float(row['surface_m2'] or 0)
+        unite = normaliser_unite(row['unite_defaut'])
+        seuil_effectif = _seuil_effectif(
+            seuils_types.get(row['type_id']), row['date_saisie'])
         diag = diagnose_surface(
-            surface, row['longueur_mm'], row['largeur_mm'], seuil=seuil)
+            surface, row['longueur_mm'], row['largeur_mm'],
+            seuil=seuil_effectif or seuil)
         entree = {
             'id': row['id'],
             'date': row['date_saisie'],
@@ -200,20 +295,44 @@ def audit(conn, seuil):
                 'surface_dimensions_m2': diag['surface_dimensions_m2'],
                 'facteur': diag['facteur'],
             })
-        if surface > seuil:
-            suspectes['trop_grandes'].append(entree)
-        if diag['sans_dimensions']:
+            corrections.append({
+                'id': row['id'],
+                'date': row['date_saisie'],
+                'type': row['type'],
+                'projet': row['projet_nom'],
+                'surface_actuelle': round(surface, 4),
+                'surface_proposee': diag['surface_dimensions_m2'],
+                'facteur': diag['facteur'],
+                'longueur_mm': row['longueur_mm'],
+                'largeur_mm': row['largeur_mm'],
+            })
+        if unite == 'm²' or not unite:
+            if surface > (seuil_effectif or seuil):
+                suspectes['trop_grandes'].append(entree)
+        if diag['sans_dimensions'] and surface > 0:
             suspectes['sans_dimensions'].append(entree)
+        if unite in COLONNES_QUANTITE:
+            valeur = valeur_saisie(
+                unite, row['poids_grammes'], surface, row['nb_feuilles'])
+            if depasse_seuil(valeur, seuil_effectif):
+                suspectes['depassements_seuils'].append({
+                    **entree,
+                    'unite': unite,
+                    'valeur': round(valeur, 2),
+                    'seuil': round(float(seuil_effectif), 4),
+                })
 
     return {
         'base': os.path.abspath(conn.execute('PRAGMA database_list').fetchone()['file']),
         'annee_scolaire': {'debut': debut, 'fin': fin, 'label': f'{debut[:4]}-{fin[:4]}'},
         'seuil_m2': seuil,
+        'seuils_categories': seuils_categories,
         'annees': annees,
         'mois': mois,
         'types': types,
         'plus_grosses': plus_grosses,
         'suspectes': suspectes,
+        'corrections': corrections,
     }
 
 
@@ -258,6 +377,55 @@ def afficher(rapport):
     for r in s['sans_dimensions'][:10]:
         print(f"    #{r['id']} {r['date']} {r['surface_m2']} m2  {r['type'][:22]}  {r['projet'] or ''}")
 
+    print()
+    print('== Seuils configures par categorie ==')
+    if not rapport['seuils_categories']:
+        print('  Aucun seuil configure (ecran Statistiques > Seuils).')
+    for cat in rapport['seuils_categories']:
+        print(f"  {cat['type'][:30]:<30} {cat['seuil']:>10g} {cat['unite']:<8}"
+              f" depuis {cat['depuis'] or 'toujours'}")
+    if s['depassements_seuils']:
+        print(f"  Saisies au-dela du seuil de leur categorie : "
+              f"{len(s['depassements_seuils'])}")
+        for r in s['depassements_seuils'][:10]:
+            print(f"    #{r['id']} {r['date']} {r['valeur']:g} {r['unite']} "
+                  f"(seuil {r['seuil']:g})  {r['type'][:22]}")
+
+    print()
+    print(f"== Corrections de surface proposees : {len(rapport['corrections'])} ==")
+    for c in rapport['corrections'][:20]:
+        print(f"  #{c['id']:<6} {c['date']}  {c['surface_actuelle']:.4f} -> "
+              f"{c['surface_proposee']:.4f} m2 (x{c['facteur']:g})"
+              f"  {c['type'][:20]}")
+    if rapport['corrections']:
+        print('  Pour appliquer : --corriger --appliquer (sauvegarde .bak automatique)')
+
+
+def appliquer_corrections(db_path, corrections):
+    """Ecrit les corrections de surface, apres copie de sauvegarde de la base."""
+    if not corrections:
+        print('Aucune correction de surface a appliquer.')
+        return 0
+
+    sauvegarde = f"{db_path}.bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    shutil.copy2(db_path, sauvegarde)
+    print(f"Sauvegarde : {sauvegarde}")
+
+    conn = _open(db_path, writable=True)
+    try:
+        for correction in corrections:
+            conn.execute(
+                'UPDATE consommations SET surface_m2=? WHERE id=?',
+                (correction['surface_proposee'], correction['id']),
+            )
+            print(f"  #{correction['id']} : {correction['surface_actuelle']:.4f} -> "
+                  f"{correction['surface_proposee']:.4f} m2")
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"{len(corrections)} surface(s) corrigee(s).")
+    return len(corrections)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -267,13 +435,23 @@ def main():
     parser.add_argument('--seuil', type=float, default=SEUIL_SURFACE_UNITAIRE_M2,
                         help='seuil de surface suspecte pour une seule saisie (m2)')
     parser.add_argument('--json', action='store_true', help='sortie JSON')
+    parser.add_argument('--corriger', action='store_true',
+                        help='liste les corrections de surface proposees (lecture seule)')
+    parser.add_argument('--appliquer', action='store_true',
+                        help='avec --corriger : ecrit les corrections (sauvegarde .bak avant)')
     args = parser.parse_args()
 
-    conn = _open(args.db)
+    if args.appliquer and not args.corriger:
+        sys.exit('--appliquer exige --corriger (ajoutez --corriger pour voir les corrections)')
+
+    conn = _open(args.db, writable=args.corriger and args.appliquer)
     try:
         rapport = audit(conn, args.seuil)
     finally:
         conn.close()
+
+    if args.corriger and args.appliquer:
+        appliquer_corrections(args.db, rapport['corrections'])
 
     if args.json:
         print(json.dumps(rapport, indent=2, ensure_ascii=False))

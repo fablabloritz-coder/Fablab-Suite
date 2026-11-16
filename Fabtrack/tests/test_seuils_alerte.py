@@ -31,6 +31,10 @@ class SeuilsAlerteTests(unittest.TestCase):
         models.init_db()
 
         db = models.get_db()
+        db.execute("INSERT INTO preparateurs (nom, actif) VALUES ('Prep Seuils', 1)")
+        cls.prep_id = db.execute(
+            "SELECT id FROM preparateurs WHERE nom='Prep Seuils'"
+        ).fetchone()['id']
         types = {
             'laser': ('Découpe Laser', 'm²'),
             '3d': ('Impression 3D', 'g'),
@@ -98,8 +102,9 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         return reponse.get_json()['categories']
 
-    def _enregistrer(self, seuils):
-        reponse = self.client.put('/api/stats/seuils', json={'seuils': seuils})
+    def _enregistrer(self, seuils, depuis='2026-09-01'):
+        reponse = self.client.put(
+            '/api/stats/seuils', json={'seuils': seuils, 'depuis': depuis})
         self.assertEqual(reponse.status_code, 200, reponse.data)
         return reponse.get_json()['categories']
 
@@ -158,6 +163,129 @@ class SeuilsAlerteTests(unittest.TestCase):
         valeurs = [row['valeur'] for row in corps['rows']]
         self.assertEqual(valeurs, [80.0, 12.0])
         self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
+
+    def test_un_seuil_date_ne_signale_pas_les_saisies_anterieures(self):
+        self._enregistrer({str(self.type_ids['papier']): 10}, depuis='2026-09-14')
+        corps = self._saisies(type_id=self.type_ids['papier'])
+
+        valeurs = [row['valeur'] for row in corps['rows']]
+        self.assertEqual(valeurs, [80.0, 12.0])
+        # 12 feuilles depassent 10, mais la saisie precede le seuil du 14/09.
+        self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
+        self.assertEqual(corps['suspectes'], 1)
+        self.assertEqual(corps['rows'][0]['seuil'], 10.0)
+
+    def test_la_date_du_seuil_est_exposee(self):
+        self._enregistrer({str(self.type_ids['3d']): 500}, depuis='2026-09-20')
+        categories = self._seuils()
+        trois_d = next(c for c in categories if c['nom'] == 'Impression 3D')
+        self.assertEqual(trois_d['depuis'], '2026-09-20')
+        self.assertEqual(trois_d['seuil'], 500.0)
+
+    def test_correction_d_une_surface_signalee(self):
+        db = models.get_db()
+        try:
+            ligne = db.execute(
+                'SELECT id FROM consommations WHERE type_activite_id=? AND surface_m2=600',
+                (self.type_ids['laser'],),
+            ).fetchone()
+        finally:
+            db.close()
+
+        try:
+            reponse = self.client.put(
+                f'/api/consommations/{ligne["id"]}/surface',
+                json={'surface_m2': 0.06},
+            )
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            corps = self._saisies(type_id=self.type_ids['laser'])
+            self.assertEqual(corps['rows'][0]['valeur'], 0.06)
+            self.assertEqual(corps['rows'][0]['alerte'], '')
+            self.assertEqual(corps['rows'][0]['depasse'], False)
+
+            invalide = self.client.put(
+                f'/api/consommations/{ligne["id"]}/surface',
+                json={'surface_m2': 'abc'},
+            )
+            self.assertEqual(invalide.status_code, 400)
+            inconnue = self.client.put(
+                '/api/consommations/999999/surface', json={'surface_m2': 1})
+            self.assertEqual(inconnue.status_code, 404)
+        finally:
+            db = models.get_db()
+            try:
+                db.execute(
+                    'UPDATE consommations SET surface_m2=600 WHERE id=?',
+                    (ligne['id'],),
+                )
+                db.commit()
+            finally:
+                db.close()
+
+    def test_une_saisie_au_dessus_du_seuil_demande_confirmation(self):
+        self._enregistrer({str(self.type_ids['3d']): 500})
+        payload = {
+            'date_saisie': '2026-11-16 10:00',
+            'preparateur_id': self.prep_id,
+            'projet_nom': 'Garde-fou',
+            'actions': [{
+                'type_activite_id': self.type_ids['3d'],
+                'poids_grammes': 900,
+            }],
+        }
+
+        reponse = self.client.post('/api/consommations/batch', json=payload)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        corps = reponse.get_json()
+        self.assertEqual(corps['code'], 'alertes')
+        self.assertEqual(corps['alertes'][0]['code'], 'seuil')
+
+        payload['confirmer_alertes'] = 1
+        reponse = self.client.post('/api/consommations/batch', json=payload)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+
+        db = models.get_db()
+        try:
+            db.execute('DELETE FROM consommations WHERE projet_nom=?', ('Garde-fou',))
+            db.commit()
+        finally:
+            db.close()
+
+    def test_une_notification_signale_un_depassement_recent(self):
+        from datetime import datetime as dt
+        aujourd_hui = dt.now().strftime('%Y-%m-%d 12:00')
+        depuis = (dt.now().date().replace(day=1)).isoformat()
+        self._enregistrer({str(self.type_ids['3d']): 500}, depuis=depuis)
+
+        db = models.get_db()
+        try:
+            db.execute(
+                '''INSERT INTO consommations
+                   (date_saisie, type_activite_id, poids_grammes, projet_nom)
+                   VALUES (?,?,?,?)''',
+                (aujourd_hui, self.type_ids['3d'], 700, 'Notif'),
+            )
+            db.commit()
+            conso_id = db.execute(
+                "SELECT id FROM consommations WHERE projet_nom='Notif'"
+            ).fetchone()['id']
+        finally:
+            db.close()
+
+        try:
+            from routes import _get_notifications
+            notifs = _get_notifications()
+            cible = [n for n in notifs if n.get('id') == f'seuil-depasse-{conso_id}']
+            self.assertEqual(len(cible), 1)
+            self.assertIn('700 g', cible[0]['message'])
+            self.assertIn('500 g', cible[0]['message'])
+        finally:
+            db = models.get_db()
+            try:
+                db.execute('DELETE FROM consommations WHERE id=?', (conso_id,))
+                db.commit()
+            finally:
+                db.close()
 
     def test_une_decoupe_au_dessus_du_seuil_reste_signalee(self):
         self._enregistrer({str(self.type_ids['laser']): 2})

@@ -583,6 +583,18 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.9.0 — 2026-11-16
+
+#### Seuils dates et corrections guidees
+
+- Un avertissement non bloquant signale des la saisie une surface incoherente avec les dimensions ou un depassement de seuil, et la saisie peut etre confirmee
+- Le tableau des plus grosses saisies propose « Corriger » pour remplacer une surface en cm2/mm2 par celle deduite des dimensions
+- L'audit en ligne de commande lit les seuils par categorie et peut appliquer les corrections avec --corriger --appliquer, apres sauvegarde de la base
+- Les seuils sont dates : modifier un seuil ne signale plus retroactivement les saisies anterieures
+- Notification FabSuite et widget FabBoard « Depassements de seuil » pour les saisies des 7 derniers jours
+
+---
+
 ### v2.8.0 — 2026-11-16
 
 #### Seuils d'alerte par categorie

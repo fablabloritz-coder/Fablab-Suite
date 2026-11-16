@@ -172,9 +172,13 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.8.0 | FabBoard 3.5.4 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.9.0 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Fabtrack 2.9.0 + FabBoard 3.6.0 : garde-fou a la saisie (409 `alertes`),
+  correction de surface (`PUT /api/consommations/<id>/surface`), audit CLI
+  `--corriger --appliquer` avec sauvegarde, seuils dates (`seuil_a_la_date`),
+  notification `seuil-depasse-*` et widget FabBoard `fabtrack_depassements`
 - Fabtrack 2.8.0 : seuils d'alerte par categorie (stockes dans `parametres`),
   tableau des plus grosses saisies filtre par categorie et badge « > seuil »
 - Fabtrack 2.7.5 : tableau « Plus grosses saisies » dans Statistiques

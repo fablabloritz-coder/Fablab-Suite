@@ -200,12 +200,41 @@
                         <th class="text-end d-none d-md-table-cell">Dimensions</th>
                         <th class="text-end" role="button" onclick="toggleLargestSort('valeur')">Quantité <span id="largestSortValeur"></span></th>
                         <th>Contrôle</th>
+                        <th class="text-end">Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="6" class="text-center text-muted py-3">Chargement…</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-3">Chargement…</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Correction d'une surface signalee -->
+<div class="modal fade" id="correctionSurfaceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-wrench-adjustable me-1"></i> Corriger la surface</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted" id="correctionSurfaceInfo"></p>
+                <label class="form-label small fw-bold" for="correctionSurfaceValue">Surface (m²)</label>
+                <input type="number" min="0" step="0.0001" class="form-control" id="correctionSurfaceValue">
+                <div class="form-text">
+                    Surface déduite des dimensions :
+                    <span id="correctionSurfaceAttendue">—</span>
+                </div>
+                <div class="small mt-2" id="correctionSurfaceStatut"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="appliquerCorrectionSurface()">
+                    <i class="bi bi-check2 me-1"></i> Appliquer
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -600,6 +629,9 @@ function renderSeuilsAlerte() {
                        id="seuil-${cat.type_id}" value="${cat.seuil ?? ''}" placeholder="Aucun">
                 <span class="input-group-text">${escHtml(cat.unite)}</span>
             </div>
+            <div class="form-text small">${cat.depuis
+                ? `depuis le ${formatJour(cat.depuis)}`
+                : 'seuil sans date d\'application'}</div>
         </div>`).join('');
 }
 
@@ -633,6 +665,55 @@ async function saveSeuilsAlerte() {
 
 function formatSeuil(value) {
     return Number(value || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+}
+
+function formatJour(iso) {
+    const [annee, mois, jour] = String(iso || '').split('-');
+    return (annee && mois && jour) ? `${jour}/${mois}/${annee}` : '';
+}
+
+let correctionRowId = null;
+
+function ouvrirCorrectionSurface(id) {
+    const row = largestRows.find(r => Number(r.id) === Number(id));
+    if (!row) return;
+    correctionRowId = row.id;
+    document.getElementById('correctionSurfaceInfo').textContent =
+        `${row.type || 'Saisie'} · ${String(row.date_saisie || '').replace('T', ' ')}`
+        + (row.projet ? ` · ${row.projet}` : '');
+    const attendue = row.surface_dimensions_m2;
+    document.getElementById('correctionSurfaceAttendue').textContent = attendue != null
+        ? `${formatSeuil(attendue)} m² (${formatSeuil(row.longueur_mm)} × ${formatSeuil(row.largeur_mm)} mm)`
+        : '—';
+    document.getElementById('correctionSurfaceValue').value = attendue != null ? attendue : '';
+    document.getElementById('correctionSurfaceStatut').innerHTML = '';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('correctionSurfaceModal')).show();
+}
+
+async function appliquerCorrectionSurface() {
+    const statut = document.getElementById('correctionSurfaceStatut');
+    const valeur = parseFloat(document.getElementById('correctionSurfaceValue').value);
+    if (!isFinite(valeur) || valeur < 0) {
+        if (statut) statut.innerHTML = '<span class="text-danger">Surface invalide</span>';
+        return;
+    }
+    try {
+        const res = await fetch(`/api/consommations/${correctionRowId}/surface`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({surface_m2: valeur}),
+        });
+        const body = await res.json();
+        if (!res.ok || !body.success) {
+            if (statut) statut.innerHTML = `<span class="text-danger">${escHtml(body.error || 'Erreur')}</span>`;
+            return;
+        }
+        bootstrap.Modal.getInstance(document.getElementById('correctionSurfaceModal'))?.hide();
+        await loadLargestEntries();
+        loadStats();
+    } catch (err) {
+        if (statut) statut.innerHTML = '<span class="text-danger">Erreur réseau</span>';
+    }
 }
 
 /* ===== Plus grosses saisies de la periode ===== */
@@ -677,7 +758,7 @@ function renderLargestEntries() {
         largestSort.key === 'date' ? (largestSort.dir === 'desc' ? '▼' : '▲') : '';
 
     if (!largestRows.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Aucune surface saisie sur la période.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Aucune saisie sur la période.</td></tr>';
         return;
     }
 
@@ -711,6 +792,12 @@ function renderLargestEntries() {
             <td class="small text-end d-none d-md-table-cell">${dimensions}</td>
             <td class="text-end fw-semibold">${formatNombre(row.valeur, 4)} ${escHtml(row.unite || '')}</td>
             <td>${controle}</td>
+            <td class="text-end">${row.alerte === 'unite' && row.surface_dimensions_m2 != null
+                ? `<button type="button" class="btn btn-sm btn-outline-primary"
+                           onclick="ouvrirCorrectionSurface(${row.id})" title="Remplacer par la surface déduite des dimensions">
+                       <i class="bi bi-wrench-adjustable"></i> Corriger
+                   </button>`
+                : ''}</td>
         </tr>`;
     }).join('');
 }

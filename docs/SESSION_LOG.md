@@ -6,6 +6,51 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.9.0 + FabBoard 3.6.0 : seuils dates et corrections guidees
+
+**Objectif** : mettre en oeuvre, dans l'ordre recommande, les suites du suivi des
+surfaces et des seuils : garde-fou a la saisie, correction assistee, audit
+aligne sur les seuils, notification + widget TV, puis seuils dates.
+
+**Completed**
+- **Garde-fou a la saisie** : `_alertes_saisie` detecte une surface incoherente
+  avec les dimensions (cm2/mm2) et un depassement de seuil, avant toute
+  ecriture sur `POST /api/consommations` et `/batch`. Reponse 409
+  `code: alertes` ; la saisie est rejouee avec `confirmer_alertes` apres
+  confirmation, combinable avec la confirmation de doublon.
+- **Correction assistee** : `PUT /api/consommations/<id>/surface`, bouton
+  « Corriger » dans le tableau des plus grosses saisies (proposition = surface
+  deduite des dimensions) et modale de confirmation.
+- **Audit** : `audit_surface.py` lit les seuils par categorie et leur date,
+  signale les depassements toutes unites et liste les corrections ;
+  `--corriger --appliquer` ecrit les surfaces apres copie `.bak-<horodatage>`.
+- **Seuils dates** : historique `[{valeur, depuis}]` dans `parametres`,
+  `seuil_a_la_date` applique le seuil de l'epoque de chaque saisie ; `depuis`
+  expose dans l'API et sous chaque champ de l'ecran Statistiques.
+- **Suivi** : notification FabSuite `seuil-depasse-<id>` (3 plus forts
+  depassements des 7 jours), `GET /api/stats/depassements`, et widget FabBoard
+  `fabtrack_depassements` (modele, migration, sync worker, template).
+
+**Verifications**
+- 74 tests Fabtrack OK (11 nouveaux : garde-fou, correction, seuils dates,
+  audit et sauvegarde, notification). 37 tests FabBoard OK.
+- Page `/statistiques` en 200 avec la modale ; `GET /api/stats/seuils` (5
+  categories), `GET /api/stats/depassements`, `GET /api/stats/surfaces` verifies
+  sur l'instance locale. Gates notes/changelog OK.
+
+**Risques / non couverts**
+- Rendu navigateur non inspecte : la confirmation de saisie et la modale de
+  correction ne sont pas verifiees visuellement.
+- Widget FabBoard non rendu dans un dashboard reel (necessite Fabtrack en
+  marche et une source synchronisee) ; presence et contrat couverts par les
+  tests FabBoard.
+
+**Prochaine action** : deployer, regler les seuils par categorie, puis utiliser
+« Corriger » sur les saisies signalees ; `audit_surface.py --corriger` permet
+un traitement en masse avec sauvegarde.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.8.0 : seuils d'alerte par categorie
 
 **Objectif** : saisir un seuil propre a chaque categorie d'activite et mettre en

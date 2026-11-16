@@ -981,14 +981,32 @@ async function doSubmit(andNew) {
         });
         let result = await res.json();
 
-        // Garde-fou serveur : saisie identique (double clic) → confirmation explicite.
-        if (!result.success && result.code === 'doublon') {
-            const confirmer = window.confirm(
-                `${result.error}\n\nEnregistrer quand même cette saisie ?`
-            );
-            if (!confirmer) return;
+        // Garde-fous serveur : avertissement de seuil/unite, puis doublon.
+        // Chaque confirmation rejoue la requete avec le drapeau correspondant.
+        let alertesConfirmees = false;
+        let doublonConfirme = false;
+        for (let tentative = 0; tentative < 4; tentative++) {
+            if (!result.success && result.code === 'alertes' && !alertesConfirmees) {
+                const details = (result.alertes || []).map(a => `• ${a.message}`).join('\n');
+                const confirmer = window.confirm(
+                    `${details || result.error}\n\nEnregistrer quand même cette saisie ?`
+                );
+                if (!confirmer) return;
 
-            payload.confirmer_doublon = 1;
+                payload.confirmer_alertes = 1;
+                alertesConfirmees = true;
+            } else if (!result.success && result.code === 'doublon' && !doublonConfirme) {
+                const confirmer = window.confirm(
+                    `${result.error}\n\nEnregistrer quand même cette saisie ?`
+                );
+                if (!confirmer) return;
+
+                payload.confirmer_doublon = 1;
+                doublonConfirme = true;
+            } else {
+                break;
+            }
+
             const retry = await fetch('/api/consommations/batch', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},

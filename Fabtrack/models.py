@@ -207,8 +207,56 @@ def list_school_years(db=None):
 SEUILS_ALERTE_KEY = 'seuils_alerte_types'
 
 
+def _seuils_historique(db):
+    """Historique des seuils : {type_id: [{'valeur': x, 'depuis': 'AAAA-MM-JJ'}]}.
+
+    Le format d'origine etait un simple {type_id: valeur}. Il reste lu comme
+    un seuil valable depuis toujours ; les nouvelles ecritures ajoutent une
+    entree datee, pour ne pas signaler retroactivement des saisies anciennes.
+    """
+    brut = _get_param(db, SEUILS_ALERTE_KEY, '') or ''
+    try:
+        data = json.loads(brut) if brut else {}
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+
+    historique = {}
+    for cle, valeur in data.items():
+        try:
+            type_id = int(cle)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(valeur, list):
+            entrees = valeur
+        elif isinstance(valeur, dict):
+            entrees = [valeur]
+        else:
+            entrees = [{'valeur': valeur, 'depuis': ''}]
+
+        propres = []
+        for entree in entrees:
+            if not isinstance(entree, dict):
+                entree = {'valeur': entree, 'depuis': ''}
+            try:
+                seuil = float(entree.get('valeur'))
+            except (TypeError, ValueError):
+                continue
+            if seuil <= 0:
+                continue
+            propres.append({
+                'valeur': round(seuil, 4),
+                'depuis': str(entree.get('depuis') or '')[:10],
+            })
+        if propres:
+            propres.sort(key=lambda e: e['depuis'] or '0000-00-00')
+            historique[type_id] = propres
+    return historique
+
+
 def get_seuils_alerte(db=None):
-    """Seuils d'alerte par type d'activite : {type_id: valeur}, {} si aucun.
+    """Seuils d'alerte actuels par type d'activite : {type_id: valeur}.
 
     Stockes dans la table `parametres` (aucune migration de schema), pour que
     l'ecran Statistiques et les outils d'audit lisent la meme configuration.
@@ -217,47 +265,100 @@ def get_seuils_alerte(db=None):
     if own_conn:
         db = get_db()
     try:
-        brut = _get_param(db, SEUILS_ALERTE_KEY, '') or ''
-        try:
-            data = json.loads(brut) if brut else {}
-        except (TypeError, ValueError):
-            return {}
-        if not isinstance(data, dict):
-            return {}
-        seuils = {}
-        for cle, valeur in data.items():
-            try:
-                type_id = int(cle)
-                seuil = float(valeur)
-            except (TypeError, ValueError):
-                continue
-            if seuil > 0:
-                seuils[type_id] = seuil
-        return seuils
+        return {type_id: entrees[-1]['valeur']
+                for type_id, entrees in _seuils_historique(db).items()}
     finally:
         if own_conn:
             db.close()
 
 
-def set_seuils_alerte(db, seuils):
-    """Enregistre les seuils par type ; une valeur vide ou <= 0 desactive le seuil."""
-    propres = {}
+def get_seuils_alerte_historique(db=None):
+    """Historique complet des seuils par type (liste triee par date)."""
+    own_conn = db is None
+    if own_conn:
+        db = get_db()
+    try:
+        return _seuils_historique(db)
+    finally:
+        if own_conn:
+            db.close()
+
+
+def seuil_depuis_historique(entrees, date_saisie):
+    """Seuil en vigueur a une date, a partir d'une liste d'entrees triees.
+
+    Un seuil sans date d'application (ancien format) vaut pour toutes les
+    saisies ; un seuil date ne s'applique qu'aux saisies posterieures.
+    """
+    jour = str(date_saisie or '')[:10]
+    seuil = None
+    for entree in entrees or []:
+        if not entree.get('depuis') or not jour or entree['depuis'] <= jour:
+            seuil = entree['valeur']
+        else:
+            break
+    return seuil
+
+
+def seuil_a_la_date(db, type_id, date_saisie):
+    """Seuil en vigueur a la date d'une saisie, ou None si aucun."""
+    try:
+        type_id = int(type_id)
+    except (TypeError, ValueError):
+        return None
+    historique = _seuils_historique(db).get(type_id) or []
+    return seuil_depuis_historique(historique, date_saisie)
+
+
+def set_seuils_alerte(db, seuils, depuis=None):
+    """Enregistre les seuils par type ; une valeur vide ou <= 0 desactive le seuil.
+
+    Chaque changement est date (aujourd'hui par defaut) et conserve dans
+    l'historique : les saisies anterieures gardent le seuil de leur epoque.
+    """
+    aujourd_hui = str(depuis or datetime.now().date().isoformat())[:10]
+    historique = _seuils_historique(db)
+    fournis = set()
     for cle, valeur in (seuils or {}).items():
         try:
             type_id = int(cle)
         except (TypeError, ValueError):
             continue
+        fournis.add(type_id)
+
         if valeur in (None, ''):
+            historique.pop(type_id, None)
             continue
         try:
             seuil = float(valeur)
         except (TypeError, ValueError):
+            historique.pop(type_id, None)
             continue
-        if seuil > 0:
-            propres[str(type_id)] = round(seuil, 4)
-    _set_param(db, SEUILS_ALERTE_KEY, json.dumps(propres, sort_keys=True))
+        if seuil <= 0:
+            historique.pop(type_id, None)
+            continue
+
+        seuil = round(seuil, 4)
+        entrees = historique.setdefault(type_id, [])
+        if (entrees and entrees[-1]['valeur'] == seuil
+                and entrees[-1]['depuis'] <= aujourd_hui):
+            continue
+        if entrees and entrees[-1]['depuis'] == aujourd_hui:
+            entrees[-1] = {'valeur': seuil, 'depuis': aujourd_hui}
+        else:
+            entrees.append({'valeur': seuil, 'depuis': aujourd_hui})
+
+    # Un seuil absent de la requete est desactive, comme avant l'historique.
+    historique = {type_id: entrees for type_id, entrees in historique.items()
+                  if type_id in fournis}
+    for entrees in historique.values():
+        entrees.sort(key=lambda e: e['depuis'] or '0000-00-00')
+    charge = {str(type_id): entrees
+              for type_id, entrees in sorted(historique.items())}
+    _set_param(db, SEUILS_ALERTE_KEY, json.dumps(charge, sort_keys=True))
     db.commit()
-    return {int(cle): valeur for cle, valeur in propres.items()}
+    return {type_id: entrees[-1]['valeur']
+            for type_id, entrees in historique.items() if entrees}
 
 
 def _has_meaningful_data(c):

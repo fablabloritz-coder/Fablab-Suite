@@ -527,6 +527,15 @@ Navigation :
 
 <!-- changelog:start -->
 
+### v3.6.0 — 2026-11-16
+
+#### Depassements de seuil sur la TV
+
+- Nouveau widget « Depassements de seuil » : saisies au-dessus du seuil de leur categorie sur les 7 derniers jours, toutes unites confondues
+- Le widget se rafraichit avec le tableau de bord et affiche un etat vert quand toutes les saisies sont sous les seuils
+
+---
+
 ### v3.5.4 — 2026-11-15
 
 #### Cache et compression HTTP
