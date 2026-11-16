@@ -6,6 +6,33 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.9.1 : premier seuil applique a l'historique
+
+**Objectif** : un seuil defini pour la premiere fois ne signalait pas les
+saisies deja enregistrees, qui restaient invisibles.
+
+**Completed**
+- `set_seuils_alerte` : le premier seuil d'une categorie est enregistre sans
+  date (`depuis: ''`) et s'applique donc a tout l'historique existant ; les
+  changements suivants restent dates et ne requalifient pas le passe.
+- Ecran Statistiques : la mention sous un seuil sans date devient « applique a
+  tout l'historique ».
+- Test `test_un_premier_seuil_couvre_l_historique_existant` : premier seuil
+  500 g → la saisie de 1200 g de septembre est signalee, celle de 300 g non ;
+  changement date a 100 g → 300 g n'est pas requalifie, mais une saisie du jour
+  de 200 g l'est. Deux tests de seuils dates creent desormais un seuil de
+  reference avant le changement date.
+
+**Verifications**
+- 75 tests Fabtrack OK. Gates notes/changelog OK. Campagne offline 9/9.
+
+**Risques / non couverts**
+- Reactiver un seuil apres l'avoir desactive le traite comme un premier seuil
+  (il couvre alors l'historique) ; comportement coherent avec la demande mais
+  non dote d'un test dedie.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.9.0 + FabBoard 3.6.0 : seuils dates et corrections guidees
 
 **Objectif** : mettre en oeuvre, dans l'ordre recommande, les suites du suivi des

@@ -340,10 +340,16 @@ def set_seuils_alerte(db, seuils, depuis=None):
 
         seuil = round(seuil, 4)
         entrees = historique.setdefault(type_id, [])
-        if (entrees and entrees[-1]['valeur'] == seuil
+        if not entrees:
+            # Premier seuil de la categorie : il n'y a pas de date de
+            # reference, donc il s'applique a tout l'historique deja saisi.
+            # Les changements suivants, eux, restent dates.
+            entrees.append({'valeur': seuil, 'depuis': ''})
+            continue
+        if (entrees[-1]['valeur'] == seuil
                 and entrees[-1]['depuis'] <= aujourd_hui):
             continue
-        if entrees and entrees[-1]['depuis'] == aujourd_hui:
+        if entrees[-1]['depuis'] == aujourd_hui:
             entrees[-1] = {'valeur': seuil, 'depuis': aujourd_hui}
         else:
             entrees.append({'valeur': seuil, 'depuis': aujourd_hui})

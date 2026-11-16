@@ -103,8 +103,10 @@ class SeuilsAlerteTests(unittest.TestCase):
         return reponse.get_json()['categories']
 
     def _enregistrer(self, seuils, depuis='2026-09-01'):
-        reponse = self.client.put(
-            '/api/stats/seuils', json={'seuils': seuils, 'depuis': depuis})
+        payload = {'seuils': seuils}
+        if depuis is not None:
+            payload['depuis'] = depuis
+        reponse = self.client.put('/api/stats/seuils', json=payload)
         self.assertEqual(reponse.status_code, 200, reponse.data)
         return reponse.get_json()['categories']
 
@@ -165,6 +167,9 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
 
     def test_un_seuil_date_ne_signale_pas_les_saisies_anterieures(self):
+        # Premier seuil (non date) puis changement date : seul le changement
+        # s'applique a partir du 14/09.
+        self._enregistrer({str(self.type_ids['papier']): 999}, depuis=None)
         self._enregistrer({str(self.type_ids['papier']): 10}, depuis='2026-09-14')
         corps = self._saisies(type_id=self.type_ids['papier'])
 
@@ -176,6 +181,7 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertEqual(corps['rows'][0]['seuil'], 10.0)
 
     def test_la_date_du_seuil_est_exposee(self):
+        self._enregistrer({str(self.type_ids['3d']): 999}, depuis=None)
         self._enregistrer({str(self.type_ids['3d']): 500}, depuis='2026-09-20')
         categories = self._seuils()
         trois_d = next(c for c in categories if c['nom'] == 'Impression 3D')
@@ -250,6 +256,64 @@ class SeuilsAlerteTests(unittest.TestCase):
             db.commit()
         finally:
             db.close()
+
+    def test_un_premier_seuil_couvre_l_historique_existant(self):
+        from datetime import datetime as dt
+
+        # Aucun seuil pour la categorie : le premier seuil n'a pas de date
+        # et doit s'appliquer aux saisies deja enregistrees (ici en septembre).
+        self._enregistrer({})
+        self._enregistrer({str(self.type_ids['3d']): 500}, depuis=None)
+
+        trois_d = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
+        self.assertEqual(trois_d['seuil'], 500.0)
+        self.assertEqual(trois_d['depuis'], '')
+
+        corps = self._saisies(type_id=self.type_ids['3d'])
+        self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
+
+        # Modification ulterieure : elle est datee, donc les saisies de
+        # septembre gardent l'ancien seuil de 500 g.
+        aujourd_hui = dt.now().date().isoformat()
+        self._enregistrer(
+            {str(self.type_ids['3d']): 100}, depuis=aujourd_hui)
+        corps = self._saisies(type_id=self.type_ids['3d'])
+        self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
+
+        # Une saisie du jour, elle, suit le nouveau seuil de 100 g.
+        db = models.get_db()
+        try:
+            db.execute(
+                '''INSERT INTO consommations
+                   (date_saisie, type_activite_id, poids_grammes, projet_nom)
+                   VALUES (?,?,?,?)''',
+                (dt.now().strftime('%Y-%m-%d 12:00'), self.type_ids['3d'],
+                 200, 'Premier seuil'),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        try:
+            corps = self._saisies(
+                type_id=self.type_ids['3d'],
+                date_debut='2026-09-01',
+                date_fin=aujourd_hui,
+            )
+            self.assertEqual(
+                [(row['valeur'], row['depasse']) for row in corps['rows']],
+                [(1200.0, True), (300.0, False), (200.0, True)],
+            )
+        finally:
+            db = models.get_db()
+            try:
+                db.execute(
+                    'DELETE FROM consommations WHERE projet_nom=?',
+                    ('Premier seuil',),
+                )
+                db.commit()
+            finally:
+                db.close()
 
     def test_une_notification_signale_un_depassement_recent(self):
         from datetime import datetime as dt

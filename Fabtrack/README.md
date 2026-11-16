@@ -583,6 +583,15 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.9.1 — 2026-11-16
+
+#### Premier seuil applique a l'historique
+
+- Un seuil defini pour la premiere fois s'applique a toutes les saisies deja enregistrees : les anciennes saisies hors seuil deviennent visibles
+- Les modifications ulterieures restent datees : elles ne requalifient pas les saisies anterieures, qui gardent le seuil de leur epoque
+
+---
+
 ### v2.9.0 — 2026-11-16
 
 #### Seuils dates et corrections guidees
