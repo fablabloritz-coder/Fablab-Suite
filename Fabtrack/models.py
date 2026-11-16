@@ -351,6 +351,12 @@ def set_seuils_alerte(db, seuils, depuis=None):
             # Les changements suivants, eux, restent dates.
             entrees.append({'valeur': seuil, 'depuis': ''})
             continue
+        if len(entrees) == 1:
+            # Seuil herite de 2.9.0 : une seule entree, mais datee. Il n'a
+            # jamais eu de date de reference et couvre tout l'historique ;
+            # on le normalise avant d'ajouter le changement date, pour que
+            # les saisies anterieures ne perdent pas leur seuil.
+            entrees[0]['depuis'] = ''
         if (entrees[-1]['valeur'] == seuil
                 and entrees[-1]['depuis'] <= aujourd_hui):
             continue

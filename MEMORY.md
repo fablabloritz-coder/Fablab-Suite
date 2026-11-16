@@ -172,9 +172,11 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.9.2 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.9.3 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Fabtrack 2.9.3 : un seuil 2.9.0 (une entree datee) modifie est normalise
+  en premier seuil et conserve la couverture de l'historique
 - Fabtrack 2.9.2 : un historique de seuil reduit a une seule entree datee
   (seuils 2.9.0) s'applique a tout l'historique
 - Fabtrack 2.9.1 : un premier seuil par categorie s'applique a tout

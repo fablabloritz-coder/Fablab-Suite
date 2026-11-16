@@ -340,6 +340,39 @@ class SeuilsAlerteTests(unittest.TestCase):
         corps = self._saisies(type_id=self.type_ids['3d'])
         self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
 
+    def test_un_seuil_2_9_0_reste_historique_apres_modification(self):
+        from datetime import datetime as dt
+
+        # Seuil herite de 2.9.0 : une seule entree, datee du 16/11/2026.
+        db = models.get_db()
+        try:
+            models._set_param(
+                db, models.SEUILS_ALERTE_KEY,
+                json.dumps({str(self.type_ids['3d']): [
+                    {'valeur': 500, 'depuis': '2026-11-16'},
+                ]}),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        # Modification datee : l'historique passe a deux entrees.
+        aujourd_hui = dt.now().date().isoformat()
+        self._enregistrer(
+            {str(self.type_ids['3d']): 100}, depuis=aujourd_hui)
+
+        # Le premier seuil (500 g) couvre toujours les saisies de septembre :
+        # 1200 g reste signale, 300 g non (le nouveau seuil de 100 g ne
+        # s'applique qu'aux saisies du jour).
+        corps = self._saisies(type_id=self.type_ids['3d'])
+        self.assertEqual([row['depasse'] for row in corps['rows']], [True, False])
+        self.assertEqual([row['seuil'] for row in corps['rows']], [500.0, 500.0])
+
+        historique = models.get_seuils_alerte_historique()[self.type_ids['3d']]
+        self.assertEqual(historique[0], {'valeur': 500.0, 'depuis': ''})
+        self.assertEqual(historique[-1]['valeur'], 100.0)
+        self.assertEqual(historique[-1]['depuis'], aujourd_hui)
+
     def test_une_notification_signale_un_depassement_recent(self):
         from datetime import datetime as dt
         aujourd_hui = dt.now().strftime('%Y-%m-%d 12:00')

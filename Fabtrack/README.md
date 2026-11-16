@@ -583,6 +583,15 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.9.3 — 2026-11-16
+
+#### Seuil 2.9.0 conserve apres modification
+
+- Un seuil herite de 2.9.0 puis modifie continue de couvrir tout l'historique : les saisies anterieures gardent l'ancien seuil au lieu de perdre toute alerte
+- Le changement date s'applique a partir du jour de la modification, sans requalifier le passe
+
+---
+
 ### v2.9.2 — 2026-11-16
 
 #### Seuils existants rattaches a l'historique

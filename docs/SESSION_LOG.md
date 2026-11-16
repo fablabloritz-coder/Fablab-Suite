@@ -6,6 +6,27 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.9.3 : seuil 2.9.0 conserve apres modification
+
+**Objectif** : un seuil herite de 2.9.0 (une entree datee) qui etait modifie
+passait a deux entrees ; les saisies anterieures a la premiere date perdaient
+alors tout seuil.
+
+**Completed**
+- `set_seuils_alerte` : avant d'ajouter un changement date, une entree unique
+  datee est normalisee en premier seuil (`depuis: ''`). Les saisies
+  anterieures gardent donc l'ancien seuil, et le nouveau s'applique a partir
+  du jour de la modification.
+- Test `test_un_seuil_2_9_0_reste_historique_apres_modification` : seuil 3D
+  de 500 g daté du 16/11, modifie a 100 g le jour meme ; les saisies de
+  septembre restent comparees a 500 g (1200 g signale, 300 g non) et
+  l'historique stocke commence par `depuis: ''`.
+
+**Verifications**
+- 78 tests Fabtrack OK. Gates notes/changelog OK. Campagne offline 9/9.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.9.2 : seuils 2.9.0 rattaches a l'historique
 
 **Objectif** : les seuils enregistres en 2.9.0 portent une date ; leurs
