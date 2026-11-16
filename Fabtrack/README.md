@@ -583,6 +583,16 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.7.5 — 2026-11-16
+
+#### Plus grosses surfaces triables
+
+- Statistiques : nouveau tableau des plus grosses saisies de la periode, triable par surface (decroissant par defaut) ou par date
+- Chaque saisie est confrontee a ses dimensions : une surface en cm2 ou mm2, une valeur au-dela de 2 m2 ou une surface sans dimensions est signalee
+- Le diagnostic est partage avec audit_surface.py, donc les seuils sont identiques a l'audit en ligne de commande
+
+---
+
 ### v2.7.4 — 2026-11-16
 
 #### Surfaces de decoupe verifiables

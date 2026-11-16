@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "2.7.5",
+      "date": "2026-11-16",
+      "title": "Plus grosses surfaces triables",
+      "notes": [
+        "Statistiques : nouveau tableau des plus grosses saisies de la periode, triable par surface (decroissant par defaut) ou par date",
+        "Chaque saisie est confrontee a ses dimensions : une surface en cm2 ou mm2, une valeur au-dela de 2 m2 ou une surface sans dimensions est signalee",
+        "Le diagnostic est partage avec audit_surface.py, donc les seuils sont identiques a l'audit en ligne de commande"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.7.5"
+    },
+    {
       "version": "2.7.4",
       "date": "2026-11-16",
       "title": "Surfaces de decoupe verifiables",

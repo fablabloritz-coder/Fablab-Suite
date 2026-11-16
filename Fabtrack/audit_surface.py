@@ -28,11 +28,12 @@ import sys
 from datetime import datetime
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DB = os.path.join(APP_DIR, 'data', 'fabtrack.db')
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
 
-# Ecarts surface stockee / surface deduite des dimensions qui trahissent une
-# erreur d'unite (cm2 ou mm2 au lieu de m2).
-UNIT_RATIOS = (10.0, 100.0, 1000.0, 10000.0, 1000000.0)
+from surface_checks import SEUIL_SURFACE_UNITAIRE_M2, diagnose_surface  # noqa: E402
+
+DEFAULT_DB = os.path.join(APP_DIR, 'data', 'fabtrack.db')
 
 
 def _open(db_path):
@@ -182,8 +183,8 @@ def audit(conn, seuil):
            ORDER BY c.surface_m2 DESC'''
     ):
         surface = float(row['surface_m2'])
-        longueur = float(row['longueur_mm'] or 0)
-        largeur = float(row['largeur_mm'] or 0)
+        diag = diagnose_surface(
+            surface, row['longueur_mm'], row['largeur_mm'], seuil=seuil)
         entree = {
             'id': row['id'],
             'date': row['date_saisie'],
@@ -193,21 +194,15 @@ def audit(conn, seuil):
             'longueur_mm': row['longueur_mm'],
             'largeur_mm': row['largeur_mm'],
         }
+        if diag['alerte'] == 'unite':
+            suspectes['ecart_unites'].append({
+                **entree,
+                'surface_dimensions_m2': diag['surface_dimensions_m2'],
+                'facteur': diag['facteur'],
+            })
         if surface > seuil:
             suspectes['trop_grandes'].append(entree)
-        if longueur > 0 and largeur > 0:
-            attendue = (longueur * largeur) / 1e6
-            if attendue > 0:
-                ratio = surface / attendue
-                for facteur in UNIT_RATIOS:
-                    if facteur * 0.9 <= ratio <= facteur * 1.1:
-                        suspectes['ecart_unites'].append({
-                            **entree,
-                            'surface_dimensions_m2': round(attendue, 4),
-                            'facteur': facteur,
-                        })
-                        break
-        else:
+        if diag['sans_dimensions']:
             suspectes['sans_dimensions'].append(entree)
 
     return {
@@ -269,7 +264,7 @@ def main():
         description='Audit en lecture seule des surfaces de decoupe FabTrack',
     )
     parser.add_argument('--db', default=DEFAULT_DB, help='chemin de la base SQLite')
-    parser.add_argument('--seuil', type=float, default=2.0,
+    parser.add_argument('--seuil', type=float, default=SEUIL_SURFACE_UNITAIRE_M2,
                         help='seuil de surface suspecte pour une seule saisie (m2)')
     parser.add_argument('--json', action='store_true', help='sortie JSON')
     args = parser.parse_args()

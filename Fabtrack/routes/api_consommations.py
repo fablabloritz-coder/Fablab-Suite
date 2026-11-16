@@ -1029,6 +1029,115 @@ def api_stats_school_years():
         db.close()
 
 
+@bp.route('/api/stats/surfaces')
+def api_stats_surfaces():
+    """Plus grosses surfaces saisies sur une periode, avec controle des unites.
+
+    Alimente le tableau "Plus grosses saisies" de l'ecran Statistiques : les
+    lignes sont triees par surface (decroissante par defaut) et signalees
+    lorsqu'elles ne peuvent pas correspondre a longueur x largeur, ou qu'elles
+    depassent le seuil d'une saisie unique.
+    """
+    from surface_checks import SEUIL_SURFACE_UNITAIRE_M2, diagnose_surface
+
+    db = get_db()
+    try:
+        dd = request.args.get('date_debut', '')
+        df = request.args.get('date_fin', '')
+        referent_id = request.args.get('referent_id', '')
+        classe_id = request.args.get('classe_id', '')
+        q = request.args.get('q', '').strip()
+        try:
+            limit = int(request.args.get('limit', 50))
+        except (TypeError, ValueError):
+            limit = 50
+        limit = min(max(1, limit), 500)
+        ordre = 'ASC' if request.args.get('order', 'desc').lower() == 'asc' else 'DESC'
+
+        w = '1=1'
+        params = []
+        if dd:
+            w += ' AND c.date_saisie >= ?'
+            params.append(dd)
+        if df:
+            w += ' AND c.date_saisie <= ?'
+            params.append(df + ' 23:59:59' if len(df) == 10 else df)
+        if referent_id:
+            ref_val = int(referent_id)
+            w += (' AND (c.referent_id = ? OR EXISTS '
+                  '(SELECT 1 FROM consommation_referents crf '
+                  'WHERE crf.consommation_id = c.id AND crf.referent_id = ?))')
+            params.extend([ref_val, ref_val])
+        if classe_id:
+            w += ' AND c.classe_id = ?'
+            params.append(int(classe_id))
+        if q:
+            w += ' AND c.projet_nom LIKE ?'
+            params.append(f'%{q}%')
+
+        # Controle de toutes les saisies de la periode (borne de securite),
+        # pour compter les alertes independamment du nombre de lignes affichees.
+        scan = db.execute(f'''
+            SELECT c.id, c.surface_m2, c.longueur_mm, c.largeur_mm
+            FROM consommations c
+            WHERE {w} AND COALESCE(c.surface_m2, 0) > 0
+            ORDER BY c.surface_m2 DESC
+            LIMIT 5000
+        ''', params).fetchall()
+        nb_suspectes = sum(
+            1 for row in scan
+            if diagnose_surface(row['surface_m2'], row['longueur_mm'], row['largeur_mm'])['alerte']
+        )
+
+        rows = db.execute(f'''
+            SELECT c.id, c.date_saisie, c.surface_m2, c.longueur_mm, c.largeur_mm,
+                   c.projet_nom,
+                   COALESCE(t.nom, c.nom_type_activite, '') AS type_nom,
+                   COALESCE(m.nom, c.nom_machine, '') AS machine_nom,
+                   COALESCE(mat.nom, c.nom_materiau, '') AS materiau_nom,
+                   COALESCE(pr.nom, c.nom_preparateur, '') AS preparateur_nom
+            FROM consommations c
+            LEFT JOIN types_activite t ON t.id = c.type_activite_id
+            LEFT JOIN machines m ON m.id = c.machine_id
+            LEFT JOIN materiaux mat ON mat.id = c.materiau_id
+            LEFT JOIN preparateurs pr ON pr.id = c.preparateur_id
+            WHERE {w} AND COALESCE(c.surface_m2, 0) > 0
+            ORDER BY c.surface_m2 {ordre}, c.date_saisie {ordre}
+            LIMIT ?
+        ''', [*params, limit]).fetchall()
+
+        elements = []
+        for row in rows:
+            diag = diagnose_surface(row['surface_m2'], row['longueur_mm'], row['largeur_mm'])
+            elements.append({
+                'id': row['id'],
+                'date_saisie': row['date_saisie'],
+                'type': row['type_nom'],
+                'machine': row['machine_nom'],
+                'materiau': row['materiau_nom'],
+                'preparateur': row['preparateur_nom'],
+                'projet': row['projet_nom'] or '',
+                'longueur_mm': row['longueur_mm'],
+                'largeur_mm': row['largeur_mm'],
+                'surface_m2': round(float(row['surface_m2'] or 0), 4),
+                'surface_dimensions_m2': diag['surface_dimensions_m2'],
+                'facteur': diag['facteur'],
+                'alerte': diag['alerte'],
+                'sans_dimensions': diag['sans_dimensions'],
+            })
+
+        return jsonify({
+            'success': True,
+            'count': len(scan),
+            'suspectes': nb_suspectes,
+            'seuil_m2': SEUIL_SURFACE_UNITAIRE_M2,
+            'scan_limite': len(scan) >= 5000,
+            'rows': elements,
+        })
+    finally:
+        db.close()
+
+
 @bp.route('/api/stats/activity')
 def api_stats_activity():
     """Statistiques d'activité journalière : répartition par heure, par jour de semaine, filtrable."""

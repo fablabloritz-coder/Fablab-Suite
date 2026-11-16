@@ -6,6 +6,36 @@ action imperative.
 
 ---
 
+## 2026-11-16 — Fabtrack 2.7.5 : plus grosses surfaces visibles dans Statistiques
+
+**Objectif** : rendre consultables dans l'ecran Statistiques les tris de
+l'audit des surfaces (plus grosses saisies, incoherences), sans passer par la
+ligne de commande.
+
+**Completed**
+- `GET /api/stats/surfaces` : plus grosses surfaces de la periode (meme filtres
+  que les stats : dates, referent, classe, mot-cle), tri `desc` par defaut ou
+  `asc`, `limit` borne a 500. Le comptage des alertes porte sur toute la
+  periode, pas seulement sur les lignes affichees.
+- `Fabtrack/surface_checks.py` : seuils et diagnostic partages (ecart d'unite
+  x10/x100/x1 000/x10 000/x1 000 000, depassement du seuil de 2 m2, surface
+  sans dimensions). `audit_surface.py` et l'API utilisent la meme fonction,
+  donc les deux signalent exactement les memes lignes.
+- Statistiques : nouveau tableau « Plus grosses saisies de la periode »,
+  triable par surface ou par date (clic sur l'en-tete), badge de controle par
+  ligne et compteur « X saisie(s), Y signalee(s) ».
+
+**Verifications**
+- 9 nouveaux tests `tests/test_stats_surfaces.py` (diagnostic + API) : OK.
+- Suite Fabtrack complete : OK. Page `/statistiques` rendue en 200 avec le
+  tableau, API repond en JSON. Audit CLI inchange sur la base piegee.
+- `release_notes_gen --check` et `changelog_gen --check` : OK.
+
+**Prochaine action** : deployer, puis lancer l'audit sur la base de production
+pour corriger les saisies signalees.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.7.4 : audit des surfaces de decoupe
 
 **Objectif** : expliquer un total de surface de decoupe de 6 700 m2, dont 6 500 m2

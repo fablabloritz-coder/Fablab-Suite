@@ -156,6 +156,33 @@
     </div>
 </div>
 
+<!-- Plus grosses saisies de la periode -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <strong><i class="bi bi-sort-down me-1"></i> Plus grosses saisies de la période</strong>
+        <small class="text-muted" id="largestEntriesInfo">Cliquez sur « Surface » ou « Date » pour changer le tri</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" id="largestEntriesTable">
+                <thead>
+                    <tr>
+                        <th role="button" onclick="toggleLargestSort('date')">Date <span id="largestSortDate"></span></th>
+                        <th>Type</th>
+                        <th>Projet</th>
+                        <th class="text-end d-none d-md-table-cell">Dimensions</th>
+                        <th class="text-end" role="button" onclick="toggleLargestSort('surface')">Surface (m²) <span id="largestSortSurface"></span></th>
+                        <th>Contrôle</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="6" class="text-center text-muted py-3">Chargement…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- Charts -->
 <div class="row g-4">
     <!-- By Type -->
@@ -510,6 +537,99 @@ function formatGrammes(grammes) {
     return value > 1000 ? `${(value / 1000).toFixed(2)} kg` : `${value} g`;
 }
 
+/* ===== Plus grosses saisies de la periode ===== */
+let largestRows = [];
+let largestSeuil = 2;
+let largestSort = { key: 'surface', dir: 'desc' };
+
+function toggleLargestSort(key) {
+    if (largestSort.key === key) {
+        largestSort.dir = largestSort.dir === 'desc' ? 'asc' : 'desc';
+    } else {
+        largestSort = { key: key, dir: 'desc' };
+    }
+    renderLargestEntries();
+}
+
+function renderLargestEntries() {
+    const tbody = document.querySelector('#largestEntriesTable tbody');
+    if (!tbody) return;
+
+    document.getElementById('largestSortSurface').textContent =
+        largestSort.key === 'surface' ? (largestSort.dir === 'desc' ? '▼' : '▲') : '';
+    document.getElementById('largestSortDate').textContent =
+        largestSort.key === 'date' ? (largestSort.dir === 'desc' ? '▼' : '▲') : '';
+
+    if (!largestRows.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Aucune surface saisie sur la période.</td></tr>';
+        return;
+    }
+
+    const direction = largestSort.dir === 'desc' ? -1 : 1;
+    const rows = largestRows.slice().sort((a, b) => {
+        if (largestSort.key === 'date') {
+            return direction * String(a.date_saisie).localeCompare(String(b.date_saisie));
+        }
+        return direction * (Number(a.surface_m2) - Number(b.surface_m2));
+    });
+
+    const formatNombre = value => Number(value || 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+
+    tbody.innerHTML = rows.map(row => {
+        const dimensions = (row.longueur_mm && row.largeur_mm)
+            ? `${formatNombre(row.longueur_mm)} × ${formatNombre(row.largeur_mm)} mm`
+            : '—';
+        let controle = '<span class="badge text-bg-success">cohérent</span>';
+        if (row.alerte === 'unite') {
+            controle = `<span class="badge text-bg-danger">×${formatNombre(row.facteur)} vs dimensions</span>`;
+        } else if (row.alerte === 'trop_grande') {
+            controle = `<span class="badge text-bg-warning">&gt; ${formatNombre(largestSeuil)} m²</span>`;
+        } else if (row.sans_dimensions) {
+            controle = '<span class="badge text-bg-secondary">sans dimensions</span>';
+        }
+        return `<tr>
+            <td class="small text-nowrap">${escHtml(String(row.date_saisie || '').replace('T', ' '))}</td>
+            <td class="small">${escHtml(row.type || '—')}</td>
+            <td class="small">${escHtml(row.projet || '—')}</td>
+            <td class="small text-end d-none d-md-table-cell">${dimensions}</td>
+            <td class="text-end fw-semibold">${Number(row.surface_m2).toFixed(4)}</td>
+            <td>${controle}</td>
+        </tr>`;
+    }).join('');
+}
+
+async function loadLargestEntries() {
+    const params = new URLSearchParams({
+        date_debut: document.getElementById('statDateDebut').value,
+        date_fin: document.getElementById('statDateFin').value,
+        limit: '50',
+    });
+    const referentId = document.getElementById('exportFilterReferent').value;
+    const classeId   = document.getElementById('exportFilterClasse').value;
+    const keyword    = document.getElementById('exportFilterKeyword').value.trim();
+    if (referentId) params.set('referent_id', referentId);
+    if (classeId)   params.set('classe_id', classeId);
+    if (keyword)    params.set('q', keyword);
+
+    try {
+        const res = await fetch(`/api/stats/surfaces?${params}`);
+        const body = await res.json();
+        if (!body.success) return;
+        largestRows = body.rows || [];
+        largestSeuil = Number(body.seuil_m2 || 2);
+        renderLargestEntries();
+        const info = document.getElementById('largestEntriesInfo');
+        if (info) {
+            const signalees = Number(body.suspectes || 0);
+            info.innerHTML = `${body.count} saisie(s) avec surface sur la période, `
+                + `<span class="${signalees ? 'text-danger fw-semibold' : 'text-muted'}">${signalees} signalée(s)</span>`
+                + ' · cliquez sur « Surface » ou « Date » pour trier';
+        }
+    } catch (err) {
+        console.error('Erreur surfaces:', err);
+    }
+}
+
 async function loadStats() {
     const params = new URLSearchParams({
         date_debut: document.getElementById('statDateDebut').value,
@@ -534,6 +654,7 @@ async function loadStats() {
         updateCards(summary);
         renderCharts(summary, timeline);
         loadActivity();
+        loadLargestEntries();
     } catch (err) {
         console.error('Stats error:', err);
         showToast('Erreur chargement statistiques', 'error');
