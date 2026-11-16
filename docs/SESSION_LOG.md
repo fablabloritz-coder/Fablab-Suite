@@ -34,6 +34,11 @@ l'ancien seuil et que la periode desactivee ne soit plus signalee.
   verifie qu'une saisie datee pendant la periode desactivee (900 g, seuil 500 g
   desactive le jour meme) passe sans 409 `alertes`, ne cree pas de notification
   `seuil-depasse-*` et ressort non signalee dans le tableau des statistiques.
+- Isolation (meme version) : `setUp` vide consommations, types, preparateurs et
+  seuils puis rejoue les donnees de reference. Les 18 tests de
+  `test_seuils_alerte.py` passent seuls, dans l'ordre normal et dans l'ordre
+  inverse, sans affaiblir les assertions ; les nettoyages manuels des tests
+  ont ete retires.
 
 **Risques / non couverts**
 - L'ecran affiche l'etat « desactive le ... » mais l'historique complet n'est

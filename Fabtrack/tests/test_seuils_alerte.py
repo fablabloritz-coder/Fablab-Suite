@@ -1,9 +1,11 @@
 """Tests : seuils d'alerte par categorie d'activite.
 
-
 Couvre l'enregistrement des seuils (table `parametres`, sans migration de
 schema) et leur application au tableau des plus grosses saisies, unite par
 unite : g pour l'impression 3D, m2 pour la decoupe, feuilles pour le papier.
+
+Chaque test repart d'une base reinitialisee et de ses propres donnees
+(`setUp`), pour rester independant de l'ordre d'execution.
 """
 import json
 import os
@@ -19,6 +21,24 @@ if _APP_DIR not in sys.path:
 import app as app_module  # noqa: E402
 import models  # noqa: E402
 
+# Donnees de reference rejouees avant chaque test :
+# (date, cle de type, surface_m2, longueur_mm, largeur_mm, poids_g, feuilles)
+LIGNES_REFERENCE = [
+    ('2026-09-10 10:00', 'laser', 0.06, None, None, None, None),
+    ('2026-09-11 10:00', 'laser', 600.0, 300, 200, None, None),
+    ('2026-09-12 10:00', '3d', None, None, None, 300, None),
+    ('2026-09-13 10:00', 'papier', None, None, None, None, 12),
+    ('2026-09-14 10:00', '3d', None, None, None, 1200, None),
+    ('2026-09-15 10:00', 'papier', None, None, None, None, 80),
+]
+
+TYPES_REFERENCE = [
+    ('laser', 'Découpe Laser', 'm²'),
+    ('3d', 'Impression 3D', 'g'),
+    ('papier', 'Impression Papier', 'feuilles'),
+    ('bricolage', 'Bricolage', ''),
+]
+
 
 class SeuilsAlerteTests(unittest.TestCase):
 
@@ -32,63 +52,6 @@ class SeuilsAlerteTests(unittest.TestCase):
         models.DB_PATH = os.path.join(cls._tmpdir, 'fabtrack_test.db')
         models.init_db()
 
-        db = models.get_db()
-        db.execute("INSERT INTO preparateurs (nom, actif) VALUES ('Prep Seuils', 1)")
-        cls.prep_id = db.execute(
-            "SELECT id FROM preparateurs WHERE nom='Prep Seuils'"
-        ).fetchone()['id']
-        types = {
-            'laser': ('Découpe Laser', 'm²'),
-            '3d': ('Impression 3D', 'g'),
-            'papier': ('Impression Papier', 'feuilles'),
-            'bricolage': ('Bricolage', ''),
-        }
-        cls.type_ids = {}
-        for cle, (nom, unite) in types.items():
-            db.execute(
-                'INSERT INTO types_activite (nom, unite_defaut) VALUES (?,?)',
-                (nom, unite),
-            )
-            cls.type_ids[cle] = db.execute(
-                'SELECT id FROM types_activite WHERE nom=?', (nom,)
-            ).fetchone()['id']
-
-        lignes = [
-            ('2026-09-10 10:00', 'laser', 0.06, None, None),
-            ('2026-09-11 10:00', 'laser', 600.0, 300, 200),
-            ('2026-09-12 10:00', '3d', None, None, None),
-            ('2026-09-13 10:00', 'papier', None, None, None),
-            ('2026-09-14 10:00', '3d', None, None, None),
-            ('2026-09-15 10:00', 'papier', None, None, None),
-        ]
-        for date_saisie, cle, surface, longueur, largeur in lignes:
-            db.execute(
-                '''INSERT INTO consommations
-                   (date_saisie, type_activite_id, surface_m2, longueur_mm,
-                    largeur_mm, projet_nom)
-                   VALUES (?,?,?,?,?,?)''',
-                (date_saisie, cls.type_ids[cle], surface, longueur, largeur, 'Projet'),
-            )
-        # Quantites 3D et papier, ajoutees apres coup pour rester lisible.
-        db.execute(
-            "UPDATE consommations SET poids_grammes=300 WHERE type_activite_id=? AND date_saisie LIKE '2026-09-12%'",
-            (cls.type_ids['3d'],),
-        )
-        db.execute(
-            "UPDATE consommations SET poids_grammes=1200 WHERE type_activite_id=? AND date_saisie LIKE '2026-09-14%'",
-            (cls.type_ids['3d'],),
-        )
-        db.execute(
-            "UPDATE consommations SET nb_feuilles=12 WHERE type_activite_id=? AND date_saisie LIKE '2026-09-13%'",
-            (cls.type_ids['papier'],),
-        )
-        db.execute(
-            "UPDATE consommations SET nb_feuilles=80 WHERE type_activite_id=? AND date_saisie LIKE '2026-09-15%'",
-            (cls.type_ids['papier'],),
-        )
-        db.commit()
-        db.close()
-
         app_module.app.config.update(TESTING=True)
         app_module._db_initialized = True
         cls.client = app_module.app.test_client()
@@ -98,6 +61,48 @@ class SeuilsAlerteTests(unittest.TestCase):
         models.DATA_DIR = cls._orig_data_dir
         models.DB_PATH = cls._orig_db_path
         shutil.rmtree(cls._tmpdir, ignore_errors=True)
+
+    def setUp(self):
+        """Remet la base a zero puis rejoue les donnees de reference."""
+        db = models.get_db()
+        try:
+            db.execute('DELETE FROM consommation_referents')
+            db.execute('DELETE FROM consommations')
+            db.execute('DELETE FROM preparateurs')
+            db.execute('DELETE FROM types_activite')
+            models._ensure_parametres_table(db)
+            db.execute(
+                'DELETE FROM parametres WHERE cle=?',
+                (models.SEUILS_ALERTE_KEY,),
+            )
+
+            cur = db.execute(
+                "INSERT INTO preparateurs (nom, actif) VALUES ('Prep Seuils', 1)"
+            )
+            self.prep_id = cur.lastrowid
+
+            self.type_ids = {}
+            for cle, nom, unite in TYPES_REFERENCE:
+                cur = db.execute(
+                    'INSERT INTO types_activite (nom, unite_defaut) VALUES (?,?)',
+                    (nom, unite),
+                )
+                self.type_ids[cle] = cur.lastrowid
+
+            for (date_saisie, cle, surface, longueur, largeur,
+                 poids, feuilles) in LIGNES_REFERENCE:
+                db.execute(
+                    '''INSERT INTO consommations
+                       (date_saisie, type_activite_id, surface_m2,
+                        longueur_mm, largeur_mm, poids_grammes,
+                        nb_feuilles, projet_nom)
+                       VALUES (?,?,?,?,?,?,?,?)''',
+                    (date_saisie, self.type_ids[cle], surface, longueur,
+                     largeur, poids, feuilles, 'Projet'),
+                )
+            db.commit()
+        finally:
+            db.close()
 
     def _seuils(self):
         reponse = self.client.get('/api/stats/seuils')
@@ -143,14 +148,8 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertEqual(models.get_seuils_alerte()[self.type_ids['3d']], 500.0)
 
     def test_les_valeurs_invalides_ne_creent_pas_de_seuil(self):
-        # Repart d'une configuration vide : une valeur invalide ne doit rien
-        # creer du tout (ni seuil, ni entree de desactivation).
-        db = models.get_db()
-        try:
-            models._set_param(db, models.SEUILS_ALERTE_KEY, '')
-            db.commit()
-        finally:
-            db.close()
+        # Aucun seuil au depart : une valeur invalide ne doit rien creer du
+        # tout (ni seuil, ni entree de desactivation).
         self._enregistrer({str(self.type_ids['3d']): 'abc'})
         self.assertNotIn(self.type_ids['3d'], models.get_seuils_alerte())
 
@@ -192,7 +191,6 @@ class SeuilsAlerteTests(unittest.TestCase):
 
     def test_desactiver_puis_reactiver_reste_date(self):
         trois_d = str(self.type_ids['3d'])
-        self._enregistrer({})
         self._enregistrer({trois_d: 500}, depuis=None)
 
         # Desactivation datee du 01/10 : plus d'alerte a partir de la.
@@ -210,69 +208,57 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertTrue(categorie['desactive'])
         self.assertEqual(categorie['depuis'], '2026-10-01')
 
+        # Reactivation datee du 01/11 : changement, pas premier seuil.
+        self._enregistrer({trois_d: 100}, depuis='2026-11-01')
+        db = models.get_db()
         try:
-            # Reactivation datee du 01/11 : changement, pas premier seuil.
-            self._enregistrer({trois_d: 100}, depuis='2026-11-01')
-            db = models.get_db()
-            try:
-                self.assertEqual(
-                    models.seuil_a_la_date(db, self.type_ids['3d'], '2026-09-10'),
-                    500.0)
-                self.assertEqual(
-                    models.seuil_a_la_date(db, self.type_ids['3d'], '2026-10-15'),
-                    0.0)
-                self.assertEqual(
-                    models.seuil_a_la_date(db, self.type_ids['3d'], '2026-11-05'),
-                    100.0)
-            finally:
-                db.close()
-
-            categorie = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
-            self.assertEqual(categorie['seuil'], 100.0)
-            self.assertFalse(categorie['desactive'])
-            self.assertEqual(categorie['depuis'], '2026-11-01')
-
-            historique = models.get_seuils_alerte_historique()[self.type_ids['3d']]
-            self.assertEqual([e['valeur'] for e in historique], [500.0, 0.0, 100.0])
             self.assertEqual(
-                [e['depuis'] for e in historique],
-                ['', '2026-10-01', '2026-11-01'],
-            )
-
-            # Une saisie pendant la periode desactivee ne doit pas etre signalee.
-            db = models.get_db()
-            try:
-                db.execute(
-                    '''INSERT INTO consommations
-                       (date_saisie, type_activite_id, poids_grammes, projet_nom)
-                       VALUES (?,?,?,?)''',
-                    ('2026-10-15 12:00', self.type_ids['3d'], 900,
-                     'Periode desactivee'),
-                )
-                db.commit()
-            finally:
-                db.close()
-
-            corps = self._saisies(
-                type_id=self.type_ids['3d'],
-                date_debut='2026-09-01',
-                date_fin='2026-11-30',
-            )
+                models.seuil_a_la_date(db, self.type_ids['3d'], '2026-09-10'),
+                500.0)
             self.assertEqual(
-                [(row['valeur'], row['depasse']) for row in corps['rows']],
-                [(1200.0, True), (900.0, False), (300.0, False)],
-            )
+                models.seuil_a_la_date(db, self.type_ids['3d'], '2026-10-15'),
+                0.0)
+            self.assertEqual(
+                models.seuil_a_la_date(db, self.type_ids['3d'], '2026-11-05'),
+                100.0)
         finally:
-            db = models.get_db()
-            try:
-                db.execute(
-                    'DELETE FROM consommations WHERE projet_nom=?',
-                    ('Periode desactivee',),
-                )
-                models._set_param(db, models.SEUILS_ALERTE_KEY, '')
-                db.commit()
-            finally:
-                db.close()
+            db.close()
+
+        categorie = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
+        self.assertEqual(categorie['seuil'], 100.0)
+        self.assertFalse(categorie['desactive'])
+        self.assertEqual(categorie['depuis'], '2026-11-01')
+
+        historique = models.get_seuils_alerte_historique()[self.type_ids['3d']]
+        self.assertEqual([e['valeur'] for e in historique], [500.0, 0.0, 100.0])
+        self.assertEqual(
+            [e['depuis'] for e in historique],
+            ['', '2026-10-01', '2026-11-01'],
+        )
+
+        # Une saisie pendant la periode desactivee ne doit pas etre signalee.
+        db = models.get_db()
+        try:
+            db.execute(
+                '''INSERT INTO consommations
+                   (date_saisie, type_activite_id, poids_grammes, projet_nom)
+                   VALUES (?,?,?,?)''',
+                ('2026-10-15 12:00', self.type_ids['3d'], 900,
+                 'Periode desactivee'),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        corps = self._saisies(
+            type_id=self.type_ids['3d'],
+            date_debut='2026-09-01',
+            date_fin='2026-11-30',
+        )
+        self.assertEqual(
+            [(row['valeur'], row['depasse']) for row in corps['rows']],
+            [(1200.0, True), (900.0, False), (300.0, False)],
+        )
 
     def test_la_date_du_seuil_est_exposee(self):
         self._enregistrer({str(self.type_ids['3d']): 999}, depuis=None)
@@ -292,35 +278,24 @@ class SeuilsAlerteTests(unittest.TestCase):
         finally:
             db.close()
 
-        try:
-            reponse = self.client.put(
-                f'/api/consommations/{ligne["id"]}/surface',
-                json={'surface_m2': 0.06},
-            )
-            self.assertEqual(reponse.status_code, 200, reponse.data)
-            corps = self._saisies(type_id=self.type_ids['laser'])
-            self.assertEqual(corps['rows'][0]['valeur'], 0.06)
-            self.assertEqual(corps['rows'][0]['alerte'], '')
-            self.assertEqual(corps['rows'][0]['depasse'], False)
+        reponse = self.client.put(
+            f'/api/consommations/{ligne["id"]}/surface',
+            json={'surface_m2': 0.06},
+        )
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        corps = self._saisies(type_id=self.type_ids['laser'])
+        self.assertEqual(corps['rows'][0]['valeur'], 0.06)
+        self.assertEqual(corps['rows'][0]['alerte'], '')
+        self.assertEqual(corps['rows'][0]['depasse'], False)
 
-            invalide = self.client.put(
-                f'/api/consommations/{ligne["id"]}/surface',
-                json={'surface_m2': 'abc'},
-            )
-            self.assertEqual(invalide.status_code, 400)
-            inconnue = self.client.put(
-                '/api/consommations/999999/surface', json={'surface_m2': 1})
-            self.assertEqual(inconnue.status_code, 404)
-        finally:
-            db = models.get_db()
-            try:
-                db.execute(
-                    'UPDATE consommations SET surface_m2=600 WHERE id=?',
-                    (ligne['id'],),
-                )
-                db.commit()
-            finally:
-                db.close()
+        invalide = self.client.put(
+            f'/api/consommations/{ligne["id"]}/surface',
+            json={'surface_m2': 'abc'},
+        )
+        self.assertEqual(invalide.status_code, 400)
+        inconnue = self.client.put(
+            '/api/consommations/999999/surface', json={'surface_m2': 1})
+        self.assertEqual(inconnue.status_code, 404)
 
     def test_une_saisie_au_dessus_du_seuil_demande_confirmation(self):
         self._enregistrer({str(self.type_ids['3d']): 500})
@@ -344,19 +319,11 @@ class SeuilsAlerteTests(unittest.TestCase):
         reponse = self.client.post('/api/consommations/batch', json=payload)
         self.assertEqual(reponse.status_code, 201, reponse.data)
 
-        db = models.get_db()
-        try:
-            db.execute('DELETE FROM consommations WHERE projet_nom=?', ('Garde-fou',))
-            db.commit()
-        finally:
-            db.close()
-
     def test_un_premier_seuil_couvre_l_historique_existant(self):
         from datetime import datetime as dt
 
         # Aucun seuil pour la categorie : le premier seuil n'a pas de date
         # et doit s'appliquer aux saisies deja enregistrees (ici en septembre).
-        self._enregistrer({})
         self._enregistrer({str(self.type_ids['3d']): 500}, depuis=None)
 
         trois_d = next(c for c in self._seuils() if c['nom'] == 'Impression 3D')
@@ -388,26 +355,15 @@ class SeuilsAlerteTests(unittest.TestCase):
         finally:
             db.close()
 
-        try:
-            corps = self._saisies(
-                type_id=self.type_ids['3d'],
-                date_debut='2026-09-01',
-                date_fin=aujourd_hui,
-            )
-            self.assertEqual(
-                [(row['valeur'], row['depasse']) for row in corps['rows']],
-                [(1200.0, True), (300.0, False), (200.0, True)],
-            )
-        finally:
-            db = models.get_db()
-            try:
-                db.execute(
-                    'DELETE FROM consommations WHERE projet_nom=?',
-                    ('Premier seuil',),
-                )
-                db.commit()
-            finally:
-                db.close()
+        corps = self._saisies(
+            type_id=self.type_ids['3d'],
+            date_debut='2026-09-01',
+            date_fin=aujourd_hui,
+        )
+        self.assertEqual(
+            [(row['valeur'], row['depasse']) for row in corps['rows']],
+            [(1200.0, True), (300.0, False), (200.0, True)],
+        )
 
     def test_un_seuil_unique_date_couvre_l_historique(self):
         # Seuil enregistre par la 2.9.0 : une seule entree, mais datee.
@@ -489,40 +445,28 @@ class SeuilsAlerteTests(unittest.TestCase):
 
         # Seuil desactive a partir d'aujourd'hui : plus d'avertissement.
         self._enregistrer({trois_d: ''}, depuis=aujourd_hui)
-        try:
-            reponse = self.client.post('/api/consommations/batch', json=payload)
-            self.assertEqual(reponse.status_code, 201, reponse.data)
-            conso_id = reponse.get_json()['ids'][0]
+        reponse = self.client.post('/api/consommations/batch', json=payload)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        conso_id = reponse.get_json()['ids'][0]
 
-            # Ni notification de depassement...
-            from routes import _get_notifications
-            notifs = _get_notifications()
-            self.assertEqual(
-                [n for n in notifs if n.get('id') == f'seuil-depasse-{conso_id}'],
-                [],
-            )
+        # Ni notification de depassement...
+        from routes import _get_notifications
+        notifs = _get_notifications()
+        self.assertEqual(
+            [n for n in notifs if n.get('id') == f'seuil-depasse-{conso_id}'],
+            [],
+        )
 
-            # ... ni ligne signalee dans le tableau des statistiques.
-            corps = self._saisies(
-                type_id=self.type_ids['3d'],
-                date_debut=aujourd_hui,
-                date_fin=aujourd_hui,
-            )
-            ligne = next(r for r in corps['rows'] if r['id'] == conso_id)
-            self.assertFalse(ligne['depasse'])
-            self.assertIsNone(ligne['seuil'])
-            self.assertEqual(corps['suspectes'], 0)
-        finally:
-            db = models.get_db()
-            try:
-                db.execute(
-                    'DELETE FROM consommations WHERE projet_nom=?',
-                    ('Saisie periode desactivee',),
-                )
-                models._set_param(db, models.SEUILS_ALERTE_KEY, '')
-                db.commit()
-            finally:
-                db.close()
+        # ... ni ligne signalee dans le tableau des statistiques.
+        corps = self._saisies(
+            type_id=self.type_ids['3d'],
+            date_debut=aujourd_hui,
+            date_fin=aujourd_hui,
+        )
+        ligne = next(r for r in corps['rows'] if r['id'] == conso_id)
+        self.assertFalse(ligne['depasse'])
+        self.assertIsNone(ligne['seuil'])
+        self.assertEqual(corps['suspectes'], 0)
 
     def test_une_notification_signale_un_depassement_recent(self):
         from datetime import datetime as dt
@@ -545,20 +489,12 @@ class SeuilsAlerteTests(unittest.TestCase):
         finally:
             db.close()
 
-        try:
-            from routes import _get_notifications
-            notifs = _get_notifications()
-            cible = [n for n in notifs if n.get('id') == f'seuil-depasse-{conso_id}']
-            self.assertEqual(len(cible), 1)
-            self.assertIn('700 g', cible[0]['message'])
-            self.assertIn('500 g', cible[0]['message'])
-        finally:
-            db = models.get_db()
-            try:
-                db.execute('DELETE FROM consommations WHERE id=?', (conso_id,))
-                db.commit()
-            finally:
-                db.close()
+        from routes import _get_notifications
+        notifs = _get_notifications()
+        cible = [n for n in notifs if n.get('id') == f'seuil-depasse-{conso_id}']
+        self.assertEqual(len(cible), 1)
+        self.assertIn('700 g', cible[0]['message'])
+        self.assertIn('500 g', cible[0]['message'])
 
     def test_une_decoupe_au_dessus_du_seuil_reste_signalee(self):
         self._enregistrer({str(self.type_ids['laser']): 2})
