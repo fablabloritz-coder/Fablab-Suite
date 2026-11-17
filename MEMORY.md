@@ -172,9 +172,11 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.12.0 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.13.0 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Fabtrack 2.13.0 : semaines ISO, depassements encadres sur la timeline,
+  liste + export CSV des depassements, message de periode vide, test DOM
 - Fabtrack 2.12.0 : le pas de la timeline (jour/semaine/mois) s'adapte a
   la duree de la periode de seuil appliquee
 - Fabtrack 2.11.1 : le selecteur d'annee scolaire passe sur « Periode

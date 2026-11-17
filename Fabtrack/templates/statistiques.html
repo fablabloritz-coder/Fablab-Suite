@@ -98,6 +98,9 @@
 <div id="printFilterSummary" class="print-only mb-3"></div>
 
 <!-- Summary Cards -->
+<div id="statsEmptyState" class="alert alert-info d-none" role="status">
+    <i class="bi bi-info-circle me-1"></i><span id="statsEmptyText"></span>
+</div>
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="stat-card">
@@ -295,6 +298,44 @@
     </div>
 </div>
 
+<!-- Depassements de seuil de la periode -->
+<div class="card border-0 shadow-sm mb-4" id="depassementsCard">
+    <div class="card-header flex-wrap gap-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <strong><i class="bi bi-exclamation-triangle me-1 text-danger"></i> Dépassements de seuil</strong>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge text-bg-danger" id="depassementsCount">0</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        onclick="exportDepassementsCSV()">
+                    <i class="bi bi-download me-1"></i> Exporter CSV
+                </button>
+            </div>
+        </div>
+        <small class="text-muted d-block mt-1" id="depassementsInfo">Chargement…</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" id="depassementsTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Projet</th>
+                        <th class="text-end">Quantité</th>
+                        <th class="text-end">Seuil</th>
+                        <th class="text-end">Écart</th>
+                        <th class="d-none d-lg-table-cell">Référent</th>
+                        <th class="d-none d-lg-table-cell">Classe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="8" class="text-center text-muted py-3">Chargement…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- Correction d'une surface signalee -->
 <div class="modal fade" id="correctionSurfaceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -346,6 +387,7 @@
         <div class="chart-card">
             <h3><i class="bi bi-graph-up me-1"></i> Évolution des interventions</h3>
             <canvas id="chartTimeline"></canvas>
+            <p class="small text-muted mb-0" id="timelineAlertInfo"></p>
         </div>
     </div>
 
@@ -468,6 +510,7 @@ let rawData3D = [];
 let rawDataLaser = [];
 let SCHOOL_YEAR_CONFIG = null;
 let SCHOOL_YEARS = [];
+let currentGroupBy = 'month';
 
 async function onReferenceDataLoaded() {
     // Populate activity filters
@@ -975,11 +1018,67 @@ async function loadLargestEntries() {
     }
 }
 
-async function loadStats() {
+function renderDepassements(data) {
+    const rows = (data && data.depassements_rows) || [];
+    const seuils = (data && data.seuils_periode) || [];
+    const parPeriode = (data && data.depassements) || [];
+    const total = parPeriode.reduce((somme, d) => somme + Number(d.count || 0), 0);
+    const formatNombre = (value, decimales = 2) => Number(value || 0)
+        .toLocaleString('fr-FR', { maximumFractionDigits: decimales });
+
+    const badge = document.getElementById('depassementsCount');
+    if (badge) badge.textContent = total;
+
+    const info = document.getElementById('depassementsInfo');
+    if (info) {
+        const resume = seuils.slice(0, 4).map(s => {
+            const debut = s.debut ? ` depuis le ${formatFrDate(s.debut)}` : '';
+            return `${escHtml(s.type)} ${formatNombre(s.valeur, 4)} ${escHtml(s.unite)}${debut}`;
+        }).join(' · ');
+        info.innerHTML = `${total} dépassement(s) sur la période`
+            + (resume ? ` · seuils en vigueur : ${resume}` : ' · aucun seuil en vigueur')
+            + (rows.length < total ? ` · ${rows.length} ligne(s) affichée(s)` : '');
+    }
+
+    const tbody = document.querySelector('#depassementsTable tbody');
+    if (!tbody) return;
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">'
+            + 'Aucun dépassement de seuil sur la période.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => `<tr>
+        <td class="small text-nowrap">${escHtml(String(r.date_saisie || '').replace('T', ' '))}</td>
+        <td class="small">${escHtml(r.type || '—')}</td>
+        <td class="small">${escHtml(r.projet || '—')}</td>
+        <td class="text-end fw-semibold">${formatNombre(r.valeur, 4)} ${escHtml(r.unite || '')}</td>
+        <td class="text-end">${formatNombre(r.seuil, 4)} ${escHtml(r.unite || '')}</td>
+        <td class="text-end text-danger">+${formatNombre(r.ecart, 2)} ${escHtml(r.unite || '')}</td>
+        <td class="small d-none d-lg-table-cell">${escHtml(r.referent || '—')}</td>
+        <td class="small d-none d-lg-table-cell">${escHtml(r.classe || '—')}</td>
+    </tr>`).join('');
+}
+
+function exportDepassementsCSV() {
     const params = new URLSearchParams({
         date_debut: document.getElementById('statDateDebut').value,
         date_fin: document.getElementById('statDateFin').value,
-        group_by: document.getElementById('statGroupBy').value,
+    });
+    const referentId = document.getElementById('exportFilterReferent').value;
+    const classeId   = document.getElementById('exportFilterClasse').value;
+    const keyword    = document.getElementById('exportFilterKeyword').value.trim();
+    if (referentId) params.set('referent_id', referentId);
+    if (classeId)   params.set('classe_id', classeId);
+    if (keyword)    params.set('q', keyword);
+    window.location.href = `/api/export/depassements.csv?${params}`;
+}
+
+async function loadStats() {
+    currentGroupBy = document.getElementById('statGroupBy').value;
+    const params = new URLSearchParams({
+        date_debut: document.getElementById('statDateDebut').value,
+        date_fin: document.getElementById('statDateFin').value,
+        group_by: currentGroupBy,
     });
     const referentId = document.getElementById('exportFilterReferent').value;
     const classeId   = document.getElementById('exportFilterClasse').value;
@@ -998,12 +1097,30 @@ async function loadStats() {
 
         updateCards(summary);
         renderCharts(summary, timeline);
+        afficherPeriodeVide(summary);
         loadActivity();
         loadLargestEntries();
+        renderDepassements(timeline);
     } catch (err) {
         console.error('Stats error:', err);
         showToast('Erreur chargement statistiques', 'error');
     }
+}
+
+function afficherPeriodeVide(summary) {
+    const bloc = document.getElementById('statsEmptyState');
+    if (!bloc) return;
+    const vide = Number(summary.total_interventions || 0) === 0;
+    bloc.classList.toggle('d-none', !vide);
+    if (!vide) return;
+    const debut = document.getElementById('statDateDebut').value;
+    const fin = document.getElementById('statDateFin').value;
+    const texte = document.getElementById('statsEmptyText');
+    if (!texte) return;
+    texte.textContent = (debut || fin)
+        ? `Aucune saisie entre le ${debut ? formatFrDate(debut) : 'début de l\'historique'}`
+          + ` et le ${fin ? formatFrDate(fin) : "aujourd'hui"} : cette période ne contient aucune donnée.`
+        : 'Aucune saisie enregistrée pour le moment.';
 }
 
 function updateCards(s) {
@@ -1022,10 +1139,20 @@ function destroyChart(name) {
     if (charts[name]) { charts[name].destroy(); charts[name] = null; }
 }
 
+function formatPeriodLabel(period) {
+    if (currentGroupBy === 'week' && /^\d{4}-\d{2}-\d{2}$/.test(period)) {
+        return `Semaine du ${formatFrDate(period)}`;
+    }
+    if (currentGroupBy === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(period)) {
+        return formatFrDate(period);
+    }
+    return period;
+}
+
 function renderCharts(summary, timeline) {
     renderByType(summary.by_type);
     renderByPrep(summary.by_preparateur);
-    renderTimeline(timeline.timeline);
+    renderTimeline(timeline.timeline, timeline.depassements);
     render3D(timeline.timeline_3d);
     renderLaser(timeline.timeline_decoupe);
     renderPapier(timeline.timeline_papier);
@@ -1099,11 +1226,13 @@ function renderByPrep(data) {
     });
 }
 
-function renderTimeline(data) {
+function renderTimeline(data, depassements) {
     destroyChart('timeline');
     const ctx = document.getElementById('chartTimeline').getContext('2d');
     const periods = [...new Set(data.map(d => d.period))].sort();
+    const labels = periods.map(formatPeriodLabel);
     const types = [...new Set(data.map(d => d.type_nom))];
+    const alertes = new Map((depassements || []).map(d => [d.period, d.count]));
 
     const datasets = types.map(t => {
         const rows = data.filter(d => d.type_nom === t);
@@ -1114,20 +1243,42 @@ function renderTimeline(data) {
                 const r = rows.find(d => d.period === p);
                 return r ? r.count : 0;
             }),
-            backgroundColor: color, borderColor: color, borderWidth: 1
+            backgroundColor: color,
+            borderColor: periods.map(p => alertes.has(p) ? '#dc3545' : color),
+            borderWidth: periods.map(p => alertes.has(p) ? 3 : 1)
         };
     });
 
+    const info = document.getElementById('timelineAlertInfo');
+    if (info) {
+        const nbPeriodes = [...alertes.keys()].length;
+        info.textContent = nbPeriodes
+            ? `${nbPeriodes} période(s) encadrée(s) en rouge : au moins un dépassement de seuil (détail ci-dessous).`
+            : 'Aucun dépassement de seuil sur la période affichée.';
+        info.classList.toggle('text-danger', nbPeriodes > 0);
+    }
+
     charts.timeline = new Chart(ctx, {
         type: 'bar',
-        data: { labels: periods, datasets },
+        data: { labels, datasets },
         options: {
             responsive: true,
             scales: {
                 x: { stacked: true },
                 y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Interventions' } }
             },
-            plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } }
+            plugins: {
+                legend: { position: 'top', labels: { font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        afterBody: function(items) {
+                            const p = periods[items[0]?.dataIndex];
+                            const n = alertes.get(p);
+                            return n ? [`Dépassements : ${n}`] : [];
+                        }
+                    }
+                }
+            }
         }
     });
 }
@@ -1154,6 +1305,7 @@ function render3D(data) {
     const filtered = curVal ? data.filter(d => (d.materiau || 'Inconnu') === curVal) : data;
     const materials = [...new Set(filtered.map(d => d.materiau || 'Inconnu'))];
     const periods = [...new Set(filtered.map(d => d.period))].sort();
+    const labels = periods.map(formatPeriodLabel);
     const colors = ['#f59e0b', '#ef4444', '#3b82f6', '#22c55e', '#a855f7'];
 
     const datasets = materials.map((m, i) => ({
@@ -1166,7 +1318,7 @@ function render3D(data) {
     }));
 
     charts.chart3D = new Chart(ctx, {
-        type: 'bar', data: { labels: periods, datasets },
+        type: 'bar', data: { labels, datasets },
         options: {
             responsive: true,
             scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Grammes' } } },
@@ -1201,6 +1353,7 @@ function renderLaser(data) {
     const filtered = curVal ? data.filter(d => (d.materiau || 'Inconnu') === curVal) : data;
     const materials = [...new Set(filtered.map(d => d.materiau || 'Inconnu'))];
     const periods = [...new Set(filtered.map(d => d.period))].sort();
+    const labels = periods.map(formatPeriodLabel);
     const colors = ['#ef4444', '#f97316', '#84cc16', '#06b6d4', '#8b5cf6'];
 
     const datasets = materials.map((m, i) => ({
@@ -1213,7 +1366,7 @@ function renderLaser(data) {
     }));
 
     charts.chartLaser = new Chart(ctx, {
-        type: 'bar', data: { labels: periods, datasets },
+        type: 'bar', data: { labels, datasets },
         options: {
             responsive: true,
             scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'm²' } } },
@@ -1237,6 +1390,7 @@ function renderPapier(data) {
         return;
     }
     const periods = [...new Set(data.map(d => d.period))].sort();
+    const labels = periods.map(formatPeriodLabel);
     const types = [...new Set(data.map(d => d.type_impression))];
     const colorMap = { 'Couleur': '#3b82f6', 'N&B': '#94a3b8', 'Autre': '#e5e7eb' };
 
@@ -1250,7 +1404,7 @@ function renderPapier(data) {
     }));
 
     charts.chartPapier = new Chart(ctx, {
-        type: 'bar', data: { labels: periods, datasets },
+        type: 'bar', data: { labels, datasets },
         options: {
             responsive: true,
             scales: {

@@ -583,6 +583,16 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.13.0 — 2026-11-17
+
+#### Depassements de seuil sur la timeline et export
+
+- Semaines ISO : la timeline regroupe par lundi et affiche « Semaine du JJ/MM », y compris autour du 1er janvier
+- Les periodes contenant une saisie au-dessus du seuil sont encadrees en rouge ; les seuils en vigueur et la liste des depassements (valeur, seuil, ecart, referent, classe) sont affiches et exportables en CSV
+- Une periode sans donnee affiche un message explicite au lieu de cartes a zero ; un test DOM verifie le clic sur une periode
+
+---
+
 ### v2.12.0 — 2026-11-17
 
 #### Pas de regroupement adapte a la periode

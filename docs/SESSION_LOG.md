@@ -6,6 +6,46 @@ action imperative.
 
 ---
 
+## 2026-11-17 — Fabtrack 2.13.0 : depassements sur la timeline, export et dettes
+
+**Objectif** : rendre l'historique des seuils vraiment diagnosticable dans
+les statistiques, et solder trois petites dettes de l'ecran.
+
+**Completed**
+- Semaines ISO : le regroupement `week` est identifie par le lundi de la
+  semaine (`strftime('%Y-%m-%d', ..., 'weekday 0', '-6 days')`) et le front
+  affiche « Semaine du JJ/MM » ; plus de numero `%W` faux au 1er janvier.
+- Timeline : les periodes contenant un depassement sont encadrees en rouge,
+  avec une infobulle et un texte sous le graphique ; le pas de regroupement
+  reste adaptatif.
+- Carte « Depassements de seuil » : seuils en vigueur sur la periode, liste
+  des saisies au-dessus du seuil de leur epoque (date, type, projet,
+  valeur, seuil, ecart, referent, classe) et bouton d'export CSV.
+- API : `_depassements_periode` partage par `/api/stats/timeline` (champs
+  `depassements`, `depassements_rows`, `seuils_periode`),
+  `/api/stats/depassements` (filtres `date_debut`/`date_fin` en plus du mode
+  `jours`) et `/api/export/depassements.csv`.
+- Message explicite « Aucune saisie entre le ... et le ... » quand la
+  periode ne contient aucune donnee, au lieu de cartes a zero.
+- Test DOM leger (`tests/test_statistiques_ui.py`, Node sans dependance) :
+  execute le vrai gestionnaire `appliquerPeriodeSeuil` sur un DOM minimal
+  et verifie dates, bascule « Periode personnalisee » et pas de
+  regroupement, y compris les bornes ouvertes.
+- Tests : semaines ISO autour du 1er janvier, agregation et detail des
+  depassements, seuils en vigueur, periode vide, API et CSV.
+
+**Verifications**
+- 88 tests Fabtrack OK (dont 5 nouveaux). Page `/statistiques` et endpoints
+  verifies en direct (200, timeline enrichie, CSV avec en-tete). Gates OK.
+
+**Risques / non couverts**
+- Le rendu visuel de la timeline (encadrements rouges) n'a pas ete inspecte
+  dans un navigateur : les donnees et le cablage sont testes.
+- Le CSV d'export reprend les filtres de la page (dates, referent, classe,
+  mot-cle), mais pas de filtre par categorie.
+
+---
+
 ## 2026-11-17 — Fabtrack 2.12.0 : pas de regroupement adapte a la periode
 
 **Objectif** : une periode courte appliquee depuis l'historique des seuils

@@ -1,9 +1,9 @@
 """Routes API consommations — CRUD, batch, statistiques, export/import CSV."""
 
 from flask import Blueprint, request, jsonify, Response
-from models import (get_db, get_seuils_alerte, get_seuils_alerte_historique,
-                    list_school_years, seuil_depuis_historique,
-                    set_seuils_alerte)
+from models import (get_db, get_historique_seuils_affiche, get_seuils_alerte,
+                    get_seuils_alerte_historique, list_school_years,
+                    seuil_depuis_historique, set_seuils_alerte)
 from routes.api_reference import rows_to_list, _resolve_nom
 from datetime import datetime, timedelta
 import csv, io
@@ -1201,6 +1201,84 @@ def api_stats_seuils():
         db.close()
 
 
+def _depassements_periode(db, date_debut='', date_fin='', referent_id='',
+                          classe_id='', q=''):
+    """Saisies au-dessus du seuil de leur epoque, filtrees par periode.
+
+    Utilise l'historique des seuils (et non le seuil courant) : une saisie
+    faite pendant une periode desactivee n'est donc jamais signalee.
+    """
+    from surface_checks import (COLONNES_QUANTITE, SEUIL_SURFACE_UNITAIRE_M2,
+                                depasse_seuil, normaliser_unite,
+                                valeur_saisie)
+
+    where = '1=1'
+    params = []
+    if date_debut:
+        where += ' AND c.date_saisie >= ?'
+        params.append(date_debut)
+    if date_fin:
+        where += ' AND c.date_saisie <= ?'
+        params.append(date_fin + ' 23:59:59' if len(date_fin) == 10 else date_fin)
+    if referent_id:
+        ref_val = int(referent_id)
+        where += (' AND (c.referent_id = ? OR EXISTS (SELECT 1 FROM consommation_referents crf '
+                  'WHERE crf.consommation_id = c.id AND crf.referent_id = ?))')
+        params.extend([ref_val, ref_val])
+    if classe_id:
+        where += ' AND c.classe_id = ?'
+        params.append(int(classe_id))
+    if q:
+        where += ' AND c.projet_nom LIKE ?'
+        params.append(f'%{q}%')
+
+    historique = get_seuils_alerte_historique(db)
+    rows = db.execute(f'''
+        SELECT c.id, c.date_saisie, c.type_activite_id,
+               c.poids_grammes, c.surface_m2, c.nb_feuilles,
+               COALESCE(t.nom, c.nom_type_activite, '') AS type_nom,
+               COALESCE(t.unite_defaut, '') AS unite_defaut,
+               COALESCE(c.projet_nom, '') AS projet_nom,
+               COALESCE(c.nom_preparateur, '') AS nom_preparateur,
+               COALESCE(r.nom, c.nom_referent, '') AS referent,
+               COALESCE(cl.nom, c.nom_classe, '') AS classe
+        FROM consommations c
+        LEFT JOIN types_activite t ON t.id = c.type_activite_id
+        LEFT JOIN referents r ON r.id = c.referent_id
+        LEFT JOIN classes cl ON cl.id = c.classe_id
+        WHERE {where}
+        ORDER BY c.date_saisie DESC''', params).fetchall()
+
+    depassements = []
+    for row in rows:
+        unite = normaliser_unite(row['unite_defaut'])
+        if unite not in COLONNES_QUANTITE:
+            continue
+        seuil = seuil_depuis_historique(
+            historique.get(row['type_activite_id']), row['date_saisie'])
+        if seuil is None and unite == 'm²':
+            seuil = SEUIL_SURFACE_UNITAIRE_M2
+        valeur = valeur_saisie(
+            unite, row['poids_grammes'], row['surface_m2'], row['nb_feuilles'])
+        if not depasse_seuil(valeur, seuil):
+            continue
+        depassements.append({
+            'id': row['id'],
+            'date_saisie': row['date_saisie'],
+            'type': row['type_nom'],
+            'projet': row['projet_nom'],
+            'preparateur': row['nom_preparateur'],
+            'referent': row['referent'],
+            'classe': row['classe'],
+            'valeur': round(valeur, 2),
+            'unite': unite,
+            'seuil': round(float(seuil), 4),
+            'ecart': round(valeur - float(seuil), 2),
+            'ratio': round(valeur / float(seuil), 2) if seuil else None,
+        })
+    return depassements
+
+
 @bp.route('/api/stats/depassements')
 def api_stats_depassements():
     """Saisies recentes qui depassent le seuil de leur categorie.
@@ -1227,6 +1305,21 @@ def api_stats_depassements():
     debut = (datetime.now().date() - timedelta(days=jours - 1)).isoformat()
     db = get_db()
     try:
+        date_debut = request.args.get('date_debut', '')
+        date_fin = request.args.get('date_fin', '')
+        if date_debut or date_fin:
+            lignes = _depassements_periode(
+                db, date_debut, date_fin,
+                request.args.get('referent_id', ''),
+                request.args.get('classe_id', ''),
+                request.args.get('q', '').strip(),
+            )
+            return jsonify({
+                'success': True,
+                'count': len(lignes),
+                'rows': lignes[:limite],
+                'periode': {'debut': date_debut, 'fin': date_fin},
+            })
         historique = get_seuils_alerte_historique(db)
         rows = db.execute(
             '''SELECT c.id, c.date_saisie, c.type_activite_id, c.poids_grammes,
@@ -1518,6 +1611,20 @@ def api_stats_activity():
         db.close()
 
 
+def _cle_periode(date_saisie, group_by):
+    """Cle de regroupement d'une date, identique au SQL de la timeline."""
+    jour = str(date_saisie or '')[:10]
+    if group_by == 'day':
+        return jour
+    if group_by == 'month':
+        return jour[:7]
+    try:
+        d = datetime.strptime(jour, '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return jour[:7]
+    return (d - timedelta(days=d.weekday())).strftime('%Y-%m-%d')
+
+
 @bp.route('/api/stats/timeline')
 def api_stats_timeline():
     db = get_db()
@@ -1538,7 +1645,14 @@ def api_stats_timeline():
         if classe_id: w += ' AND c.classe_id = ?'; p.append(int(classe_id))
         if q: w += ' AND c.projet_nom LIKE ?'; p.append(f'%{q}%')
 
-        dex = {"day":"strftime('%Y-%m-%d',c.date_saisie)","week":"strftime('%Y-W%W',c.date_saisie)","month":"strftime('%Y-%m',c.date_saisie)"}.get(gb,"strftime('%Y-%m',c.date_saisie)")
+        # Une semaine est identifiee par son lundi : le libelle reste juste
+        # autour du 1er janvier et le front peut afficher "semaine du JJ/MM".
+        dex = {
+            'day': "strftime('%Y-%m-%d',c.date_saisie)",
+            'week': ("strftime('%Y-%m-%d',c.date_saisie,"
+                     "'weekday 0','-6 days')"),
+            'month': "strftime('%Y-%m',c.date_saisie)",
+        }.get(gb, "strftime('%Y-%m',c.date_saisie)")
 
         timeline = rows_to_list(db.execute(f'''
             SELECT {dex} as period,t.nom as type_nom,t.couleur,COUNT(*) as count
@@ -1586,11 +1700,46 @@ def api_stats_timeline():
             JOIN classes cl ON c.classe_id=cl.id
             WHERE {w} GROUP BY cl.id ORDER BY count DESC LIMIT 10''', p).fetchall())
 
+        depassements = _depassements_periode(
+            db, dd, df, referent_id, classe_id, q)
+        comptes = {}
+        for ligne in depassements:
+            cle = _cle_periode(ligne['date_saisie'], gb)
+            if cle not in comptes:
+                comptes[cle] = {'period': cle, 'count': 0, 'types': set()}
+            comptes[cle]['count'] += 1
+            comptes[cle]['types'].add(ligne['type'])
+        depassements_par_periode = [
+            {'period': v['period'], 'count': v['count'],
+             'types': sorted(v['types'])}
+            for v in sorted(comptes.values(), key=lambda v: v['period'])
+        ]
+
+        seuils_periode = []
+        for categorie in get_historique_seuils_affiche(db):
+            for entree in categorie['entrees']:
+                if entree['desactive']:
+                    continue
+                if dd and entree['date_fin'] and entree['date_fin'] < dd:
+                    continue
+                if df and entree['date_debut'] and entree['date_debut'] > df:
+                    continue
+                seuils_periode.append({
+                    'type': categorie['nom'],
+                    'unite': categorie['unite'],
+                    'valeur': entree['valeur'],
+                    'debut': entree['date_debut'],
+                    'fin': entree['date_fin'],
+                })
+
         return jsonify({
             'timeline': timeline, 'timeline_3d': timeline_3d,
             'timeline_decoupe': timeline_decoupe,
             'timeline_papier': timeline_papier,
             'top_machines': top_machines, 'top_classes': top_classes,
+            'depassements': depassements_par_periode,
+            'depassements_rows': depassements[:200],
+            'seuils_periode': seuils_periode,
         })
     finally:
         db.close()
@@ -1728,5 +1877,39 @@ def api_import_csv(entity):
     except Exception as e:
         db.rollback()
         return jsonify({'success':False,'error':str(e)}), 400
+    finally:
+        db.close()
+
+
+@bp.route('/api/export/depassements.csv')
+def api_export_depassements_csv():
+    """Export CSV des saisies au-dessus du seuil de leur epoque."""
+    db = get_db()
+    try:
+        lignes = _depassements_periode(
+            db,
+            request.args.get('date_debut', ''),
+            request.args.get('date_fin', ''),
+            request.args.get('referent_id', ''),
+            request.args.get('classe_id', ''),
+            request.args.get('q', '').strip(),
+        )
+        out = io.StringIO()
+        out.write('\ufeff')
+        wr = csv.writer(out, delimiter=';')
+        wr.writerow(['Date', 'Type', 'Projet', 'Référent', 'Classe',
+                     'Préparateur', 'Quantité', 'Unité', 'Seuil', 'Écart',
+                     'Ratio'])
+        for ligne in lignes:
+            wr.writerow([
+                ligne['date_saisie'], ligne['type'], ligne['projet'],
+                ligne['referent'], ligne['classe'], ligne['preparateur'],
+                ligne['valeur'], ligne['unite'], ligne['seuil'],
+                ligne['ecart'], ligne['ratio'] if ligne['ratio'] is not None else '',
+            ])
+        out.seek(0)
+        nom = f"fabtrack_depassements_{datetime.now().strftime('%Y%m%d')}.csv"
+        return Response(out.getvalue(), mimetype='text/csv',
+                        headers={'Content-Disposition': f'attachment; filename={nom}'})
     finally:
         db.close()
