@@ -583,6 +583,16 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.13.1 — 2026-11-17
+
+#### Lisibilite des depassements de seuil
+
+- Infobulle de la timeline : periode en clair (nov. 2026, semaine du 16/11/2026) et nombre de depassements
+- La legende garde la couleur de la categorie : le rouge ne signale que les periodes en alerte
+- Carte des depassements : dates au format francais et accords au pluriel corrects
+
+---
+
 ### v2.13.0 — 2026-11-17
 
 #### Depassements de seuil sur la timeline et export

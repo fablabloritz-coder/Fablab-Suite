@@ -6,6 +6,43 @@ action imperative.
 
 ---
 
+## 2026-11-17 — Fabtrack 2.13.1 : lisibilite des depassements
+
+**Objectif** : verifier dans le navigateur la timeline et la carte des
+depassements sur une periode avec alerte, puis corriger ce qui gene la
+lecture.
+
+**Verifications navigateur** (jeu de 3 saisies, seuil 500 g, mois puis
+semaines)
+- Timeline : encadrement rouge present sur les periodes en alerte,
+  infobulle « Depassements : 2 », texte sous le graphique.
+- Carte : seuils en vigueur (« Impression 3D 500 g ») et les deux lignes
+  au-dessus du seuil (1200 g et 900 g, ecarts +700 et +400).
+- CSV : bouton et route verifies.
+
+**Ajustements**
+- Infobulle : titre de periode en clair (« nov. 2026 », « Semaine du
+  16/11/2026 ») au lieu de la cle brute `2026-11`.
+- Legende : `generateLabels` garde la couleur de la categorie ; le contour
+  rouge ne laisse plus croire que toute la serie est en alerte.
+- Carte : dates au format francais (`17/11/2026 10:15`) et accords au
+  pluriel corrects (1 periode / 2 periodes, 1 depassement / 2 depassements).
+- Test : le HTML doit contenir le titre d'infobulle, `generateLabels` et
+  `formatDateHeure`.
+
+**Verifications**
+- 88 tests Fabtrack OK, campagne offline 9/9 (1 SKIP), `node --check` sur le
+  script de la page OK. Gates OK.
+
+**Risques / non couverts**
+- La carte « Repartition par preparateur » reste vide quand les saisies
+  n'ont pas de `preparateur_id` (constat visuel, hors perimetre de cette
+  session) : a traiter comme suite.
+- Le tableau masque referent/classe sous 992 px (comportement responsive
+  voulu).
+
+---
+
 ## 2026-11-17 — Fabtrack 2.13.0 : depassements sur la timeline, export et dettes
 
 **Objectif** : rendre l'historique des seuils vraiment diagnosticable dans

@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "2.13.1",
+      "date": "2026-11-17",
+      "title": "Lisibilite des depassements de seuil",
+      "notes": [
+        "Infobulle de la timeline : periode en clair (nov. 2026, semaine du 16/11/2026) et nombre de depassements",
+        "La legende garde la couleur de la categorie : le rouge ne signale que les periodes en alerte",
+        "Carte des depassements : dates au format francais et accords au pluriel corrects"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.13.1"
+    },
+    {
       "version": "2.13.0",
       "date": "2026-11-17",
       "title": "Depassements de seuil sur la timeline et export",

@@ -210,6 +210,12 @@ class StatistiquesUiTests(unittest.TestCase):
         self.assertIn('Dépassements de seuil', page)
         self.assertIn('renderTimeline(timeline.timeline, timeline.depassements)', page)
         self.assertIn('window.location.href = `/api/export/depassements.csv?', page)
+        # Lisibilite : periode en clair dans l'infobulle, legende a la couleur
+        # de la categorie, dates au format francais dans le tableau.
+        self.assertIn('title: function(items)', page)
+        self.assertIn('generateLabels: function(chart)', page)
+        self.assertIn('function formatDateHeure', page)
+        self.assertIn('escHtml(formatDateHeure(r.date_saisie))', page)
 
     def test_l_api_et_l_export_acceptent_une_periode(self):
         reponse = self.client.get(

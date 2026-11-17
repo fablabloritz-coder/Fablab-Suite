@@ -1035,9 +1035,10 @@ function renderDepassements(data) {
             const debut = s.debut ? ` depuis le ${formatFrDate(s.debut)}` : '';
             return `${escHtml(s.type)} ${formatNombre(s.valeur, 4)} ${escHtml(s.unite)}${debut}`;
         }).join(' · ');
-        info.innerHTML = `${total} dépassement(s) sur la période`
+        const pluriel = total > 1 ? 's' : '';
+        info.innerHTML = `${total} dépassement${pluriel} sur la période`
             + (resume ? ` · seuils en vigueur : ${resume}` : ' · aucun seuil en vigueur')
-            + (rows.length < total ? ` · ${rows.length} ligne(s) affichée(s)` : '');
+            + (rows.length < total ? ` · ${rows.length} ligne${rows.length > 1 ? 's' : ''} affichée${rows.length > 1 ? 's' : ''}` : '');
     }
 
     const tbody = document.querySelector('#depassementsTable tbody');
@@ -1048,7 +1049,7 @@ function renderDepassements(data) {
         return;
     }
     tbody.innerHTML = rows.map(r => `<tr>
-        <td class="small text-nowrap">${escHtml(String(r.date_saisie || '').replace('T', ' '))}</td>
+        <td class="small text-nowrap">${escHtml(formatDateHeure(r.date_saisie))}</td>
         <td class="small">${escHtml(r.type || '—')}</td>
         <td class="small">${escHtml(r.projet || '—')}</td>
         <td class="text-end fw-semibold">${formatNombre(r.valeur, 4)} ${escHtml(r.unite || '')}</td>
@@ -1140,6 +1141,12 @@ function destroyChart(name) {
 }
 
 function formatPeriodLabel(period) {
+    if (/^\d{4}-\d{2}$/.test(period)) {
+        const date = new Date(`${period}-01T00:00:00`);
+        if (!Number.isNaN(date.getTime())) {
+            return date.toLocaleDateString('fr-FR', {month: 'short', year: 'numeric'});
+        }
+    }
     if (currentGroupBy === 'week' && /^\d{4}-\d{2}-\d{2}$/.test(period)) {
         return `Semaine du ${formatFrDate(period)}`;
     }
@@ -1147,6 +1154,12 @@ function formatPeriodLabel(period) {
         return formatFrDate(period);
     }
     return period;
+}
+
+function formatDateHeure(value) {
+    const texte = String(value || '').replace('T', ' ');
+    const [jour, heure] = texte.split(' ');
+    return `${formatFrDate(jour)}${heure ? ' ' + heure.slice(0, 5) : ''}`;
 }
 
 function renderCharts(summary, timeline) {
@@ -1252,10 +1265,12 @@ function renderTimeline(data, depassements) {
     const info = document.getElementById('timelineAlertInfo');
     if (info) {
         const nbPeriodes = [...alertes.keys()].length;
+        const pluriel = nbPeriodes > 1 ? 's' : '';
         info.textContent = nbPeriodes
-            ? `${nbPeriodes} période(s) encadrée(s) en rouge : au moins un dépassement de seuil (détail ci-dessous).`
+            ? `${nbPeriodes} période${pluriel} encadrée${pluriel} en rouge : au moins un dépassement de seuil (détail ci-dessous).`
             : 'Aucun dépassement de seuil sur la période affichée.';
         info.classList.toggle('text-danger', nbPeriodes > 0);
+        info.classList.toggle('fw-semibold', nbPeriodes > 0);
     }
 
     charts.timeline = new Chart(ctx, {
@@ -1268,9 +1283,31 @@ function renderTimeline(data, depassements) {
                 y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Interventions' } }
             },
             plugins: {
-                legend: { position: 'top', labels: { font: { size: 11 } } },
+                legend: {
+                    position: 'top',
+                    labels: {
+                        font: { size: 11 },
+                        // La legende garde la couleur de la categorie : le
+                        // rouge des alertes ne doit pas laisser croire que
+                        // toute la serie est en depassement.
+                        generateLabels: function(chart) {
+                            return chart.data.datasets.map((ds, index) => ({
+                                text: ds.label,
+                                fillStyle: ds.backgroundColor,
+                                strokeStyle: '#6b7280',
+                                lineWidth: 1,
+                                hidden: !chart.isDatasetVisible(index),
+                                datasetIndex: index,
+                            }));
+                        },
+                    },
+                },
                 tooltip: {
                     callbacks: {
+                        title: function(items) {
+                            const p = periods[items[0]?.dataIndex];
+                            return p ? formatPeriodLabel(p) : '';
+                        },
                         afterBody: function(items) {
                             const p = periods[items[0]?.dataIndex];
                             const n = alertes.get(p);
