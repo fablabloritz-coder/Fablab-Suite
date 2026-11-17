@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "2.11.1",
+      "date": "2026-11-17",
+      "title": "Filtre d'annee scolaire synchronise",
+      "notes": [
+        "Apres un clic sur une periode de l'historique des seuils, le selecteur d'annee scolaire passe sur « Periode personnalisee » et le texte d'aide decrit les dates appliquees",
+        "Le raccourci de periode actif est retire pour ne plus afficher une annee scolaire qui ne correspond pas aux dates"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.11.1"
+    },
+    {
       "version": "2.11.0",
       "date": "2026-11-16",
       "title": "Periodes de seuil cliquables",

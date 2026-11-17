@@ -172,9 +172,11 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.11.0 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.11.1 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- Fabtrack 2.11.1 : le selecteur d'annee scolaire passe sur « Periode
+  personnalisee » quand on applique les dates d'une periode de seuil
 - Fabtrack 2.11.0 : periodes de l'historique des seuils cliquables, qui
   appliquent leurs dates aux statistiques et au tableau des saisies
 - Fabtrack 2.10.0 : carte « Historique des seuils » dans Statistiques

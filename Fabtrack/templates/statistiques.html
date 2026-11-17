@@ -767,6 +767,13 @@ function appliquerPeriodeSeuil(ligne) {
     champDebut.value = ligne.dataset.dateDebut || '';
     champFin.value = ligne.dataset.dateFin || aujourdHui;
 
+    // Les dates ne viennent pas forcement d'une annee scolaire : on aligne
+    // le selecteur et le texte d'aide sur une periode personnalisee, et on
+    // retire le raccourci actif qui ne correspond plus aux dates affichees.
+    document.querySelectorAll('.filter-tabs .filter-tab')
+        .forEach(t => t.classList.remove('active'));
+    syncSchoolYearSelection('custom');
+
     loadStats();
     document.getElementById('largestEntriesTable')
         ?.scrollIntoView({behavior: 'smooth', block: 'center'});

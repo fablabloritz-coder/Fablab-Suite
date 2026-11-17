@@ -316,6 +316,19 @@ class SeuilsAlerteTests(unittest.TestCase):
         self.assertIn('onclick="appliquerPeriodeSeuil(this)"', page)
         self.assertIn('function appliquerPeriodeSeuil', page)
 
+        # Le filtre d'annee scolaire ne doit pas rester sur l'ancienne valeur :
+        # le gestionnaire bascule sur « Periode personnalisee » apres avoir
+        # rempli les dates, et retire le raccourci actif devenu faux.
+        debut_handler = page.index('function appliquerPeriodeSeuil')
+        fin_handler = page.index('async function rafraichirHistoriqueSeuils', debut_handler)
+        handler = page[debut_handler:fin_handler]
+        self.assertIn("syncSchoolYearSelection('custom')", handler)
+        self.assertIn("classList.remove('active')", handler)
+        self.assertLess(
+            handler.index('champFin.value'),
+            handler.index("syncSchoolYearSelection('custom')"),
+        )
+
         # Chaque periode porte ses bornes ISO, pretes a remplir les filtres.
         self.assertIn('data-date-debut=""', page)
         self.assertIn('data-date-fin="2026-09-30"', page)

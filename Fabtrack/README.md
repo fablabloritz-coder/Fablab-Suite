@@ -583,6 +583,15 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.11.1 — 2026-11-17
+
+#### Filtre d'annee scolaire synchronise
+
+- Apres un clic sur une periode de l'historique des seuils, le selecteur d'annee scolaire passe sur « Periode personnalisee » et le texte d'aide decrit les dates appliquees
+- Le raccourci de periode actif est retire pour ne plus afficher une annee scolaire qui ne correspond pas aux dates
+
+---
+
 ### v2.11.0 — 2026-11-16
 
 #### Periodes de seuil cliquables

@@ -6,6 +6,32 @@ action imperative.
 
 ---
 
+## 2026-11-17 — Fabtrack 2.11.1 : filtre d'annee scolaire synchronise
+
+**Objectif** : apres un clic sur une periode de l'historique, le selecteur
+d'annee scolaire restait sur l'ancienne valeur alors que les dates avaient
+change.
+
+**Completed**
+- `appliquerPeriodeSeuil` appelle `syncSchoolYearSelection('custom')` apres
+  avoir rempli les dates : le selecteur affiche « Periode personnalisee » et
+  le texte d'aide decrit la nouvelle periode.
+- Les raccourcis de periode (7j, 30j, semestre, annee, annee scolaire, tout)
+  perdent leur etat actif, puisqu'aucun ne correspond plus aux dates.
+- Test complete : le gestionnaire est extrait du HTML rendu et doit contenir
+  la bascule `custom` et le retrait de la classe active, apres l'affectation
+  des dates.
+
+**Verifications**
+- 20 tests du module seuils OK, 82 tests Fabtrack OK, campagne offline 9/9
+  (1 SKIP). Gates OK.
+
+**Risques / non couverts**
+- Le DOM n'est pas execute : la synchronisation est verifiee par le code du
+  gestionnaire, pas par un clic reel dans un navigateur.
+
+---
+
 ## 2026-11-16 — Fabtrack 2.11.0 : periodes de seuil cliquables
 
 **Objectif** : depuis l'historique des seuils, voir directement les saisies
