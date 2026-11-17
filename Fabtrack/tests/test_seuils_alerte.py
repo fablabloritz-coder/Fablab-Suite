@@ -324,6 +324,7 @@ class SeuilsAlerteTests(unittest.TestCase):
         handler = page[debut_handler:fin_handler]
         self.assertIn("syncSchoolYearSelection('custom')", handler)
         self.assertIn("classList.remove('active')", handler)
+        self.assertIn("ligne.dataset.groupBy", handler)
         self.assertLess(
             handler.index('champFin.value'),
             handler.index("syncSchoolYearSelection('custom')"),
@@ -370,6 +371,31 @@ class SeuilsAlerteTests(unittest.TestCase):
             [(r['valeur'], r['depasse']) for r in reactivation['rows']],
             [(200.0, True)],
         )
+
+    def test_le_pas_de_regroupement_suit_la_duree_de_la_periode(self):
+        trois_d = str(self.type_ids['3d'])
+        self._enregistrer({trois_d: 100})
+        self._enregistrer({trois_d: 200}, depuis='2026-02-01')
+        self._enregistrer({trois_d: 300}, depuis='2026-02-21')
+        self._enregistrer({trois_d: 400}, depuis='2026-06-15')
+
+        categories = models.get_historique_seuils_affiche()
+        categorie = next(c for c in categories if c['type_id'] == self.type_ids['3d'])
+        self.assertEqual(
+            [(e['date_debut'], e['date_fin'], e['group_by'])
+             for e in categorie['entrees']],
+            [
+                ('', '2026-01-31', 'month'),
+                ('2026-02-01', '2026-02-20', 'day'),
+                ('2026-02-21', '2026-06-14', 'week'),
+                ('2026-06-15', '', 'month'),
+            ],
+        )
+
+        page = self.client.get('/statistiques').get_data(as_text=True)
+        self.assertIn('data-group-by="day"', page)
+        self.assertIn('data-group-by="week"', page)
+        self.assertIn('data-group-by="month"', page)
 
     def test_la_date_du_seuil_est_exposee(self):
         self._enregistrer({str(self.type_ids['3d']): 999}, depuis=None)

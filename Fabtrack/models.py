@@ -356,6 +356,27 @@ def _iso_veille(valeur):
         return ''
 
 
+def _pas_regroupement(date_debut, date_fin):
+    """Pas de la timeline adapte a la duree d'une periode.
+
+    Une periode courte se lit au jour, une periode moyenne a la semaine,
+    une periode longue (ou ouverte) au mois.
+    """
+    if not date_debut or not date_fin:
+        return 'month'
+    try:
+        debut = datetime.strptime(str(date_debut)[:10], '%Y-%m-%d')
+        fin = datetime.strptime(str(date_fin)[:10], '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return 'month'
+    jours = (fin - debut).days + 1
+    if jours <= 31:
+        return 'day'
+    if jours <= 120:
+        return 'week'
+    return 'month'
+
+
 def get_historique_seuils_affiche(db=None):
     """Historique des seuils pret a afficher, par categorie.
 
@@ -397,10 +418,13 @@ def get_historique_seuils_affiche(db=None):
                     periode = f"Jusqu'au {fin}"
                 else:
                     periode = 'Depuis toujours'
+                date_debut = entree['depuis'] or ''
+                date_fin = _iso_veille(suivante) if suivante else ''
                 affichees.append({
                     'periode': periode,
-                    'date_debut': entree['depuis'] or '',
-                    'date_fin': _iso_veille(suivante) if suivante else '',
+                    'date_debut': date_debut,
+                    'date_fin': date_fin,
+                    'group_by': _pas_regroupement(date_debut, date_fin),
                     'valeur': entree['valeur'],
                     'valeur_label': f"{entree['valeur']:g}",
                     'desactive': entree['valeur'] <= 0,

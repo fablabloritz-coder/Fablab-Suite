@@ -583,6 +583,15 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.12.0 — 2026-11-17
+
+#### Pas de regroupement adapte a la periode
+
+- Depuis l'historique des seuils, le pas de la timeline suit la duree de la periode : jour jusqu'a 31 jours, semaine jusqu'a 120 jours, mois au-dela
+- Les periodes ouvertes (premier seuil ou periode en cours) restent au mois ; le choix manuel du pas reste possible ensuite
+
+---
+
 ### v2.11.1 — 2026-11-17
 
 #### Filtre d'annee scolaire synchronise

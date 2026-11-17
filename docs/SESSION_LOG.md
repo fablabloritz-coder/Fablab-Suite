@@ -6,6 +6,32 @@ action imperative.
 
 ---
 
+## 2026-11-17 — Fabtrack 2.12.0 : pas de regroupement adapte a la periode
+
+**Objectif** : une periode courte appliquee depuis l'historique des seuils
+restait lissee au mois dans la timeline.
+
+**Completed**
+- `_pas_regroupement` calcule le pas avec la duree : jour jusqu'a 31 jours,
+  semaine jusqu'a 120 jours, mois au-dela. Une periode ouverte (premier
+  seuil sans date ou periode en cours) reste au mois.
+- Chaque periode expose `group_by`, rendu en `data-group-by` ; le clic
+  l'applique au selecteur « Regrouper par » avant de recharger.
+- Test `test_le_pas_de_regroupement_suit_la_duree_de_la_periode` : quatre
+  periodes (ouverte, 20 jours, 114 jours, ouverte) doivent donner
+  month/day/week/month, et les trois pas doivent apparaitre dans le HTML.
+
+**Verifications**
+- 21 tests du module seuils OK, 83 tests Fabtrack OK, campagne offline 9/9
+  (1 SKIP). Page `/statistiques` verifiee en direct (200, `data-group-by`
+  rendu). Gates OK.
+
+**Risques / non couverts**
+- Le clic n'est pas execute dans un navigateur ; le test verifie la regle
+  cote serveur et le cablage HTML.
+
+---
+
 ## 2026-11-17 — Fabtrack 2.11.1 : filtre d'annee scolaire synchronise
 
 **Objectif** : apres un clic sur une periode de l'historique, le selecteur

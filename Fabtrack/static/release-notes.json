@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "2.12.0",
+      "date": "2026-11-17",
+      "title": "Pas de regroupement adapte a la periode",
+      "notes": [
+        "Depuis l'historique des seuils, le pas de la timeline suit la duree de la periode : jour jusqu'a 31 jours, semaine jusqu'a 120 jours, mois au-dela",
+        "Les periodes ouvertes (premier seuil ou periode en cours) restent au mois ; le choix manuel du pas reste possible ensuite"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.12.0"
+    },
+    {
       "version": "2.11.1",
       "date": "2026-11-17",
       "title": "Filtre d'annee scolaire synchronise",
