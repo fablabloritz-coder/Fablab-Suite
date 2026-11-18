@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "1.11.1",
+      "date": "2026-11-18",
+      "title": "Historique des rappels plus lisible",
+      "notes": [
+        "Chaque tentative reelle affiche son rang sur la limite configuree (ex. 8/12) ; les lignes de blocage affichent « — » avec une infobulle",
+        "Dates et en-tetes tiennent sur une ligne, colonne Tentative centree"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.11.1"
+    },
+    {
       "version": "1.11.0",
       "date": "2026-11-18",
       "title": "Compteur de rappels fiable",

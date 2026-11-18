@@ -477,6 +477,15 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.11.1 — 2026-11-18
+
+#### Historique des rappels plus lisible
+
+- Chaque tentative reelle affiche son rang sur la limite configuree (ex. 8/12) ; les lignes de blocage affichent « — » avec une infobulle
+- Dates et en-tetes tiennent sur une ligne, colonne Tentative centree
+
+---
+
 ### v1.11.0 — 2026-11-18
 
 #### Compteur de rappels fiable

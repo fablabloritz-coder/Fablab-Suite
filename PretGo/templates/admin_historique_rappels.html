@@ -102,12 +102,12 @@
                     <table class="table table-hover mb-0">
                         <thead class="table-light fw-bold">
                             <tr>
-                                <th>Date</th>
+                                <th class="text-nowrap">Date</th>
                                 <th>Personne</th>
                                 <th>Email</th>
-                                <th>Prêt ID</th>
+                                <th class="text-nowrap">Prêt ID</th>
                                 <th>Dépassement</th>
-                                <th>Tentative</th>
+                                <th class="text-center text-nowrap">Tentative</th>
                                 <th>Statut</th>
                                 <th>Détails</th>
                             </tr>
@@ -115,7 +115,7 @@
                         <tbody>
                             {% for log in logs %}
                                 <tr class="{{ 'table-danger' if log.status == 'failed' else '' }}">
-                                    <td class="small">{{ log.sent_at | format_date }}</td>
+                                    <td class="small text-nowrap">{{ log.sent_at | format_date }}</td>
                                     <td>
                                         <strong>{{ log.nom_personne }}</strong>
                                     </td>
@@ -128,13 +128,14 @@
                                             </span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center text-nowrap">
                                         {% if log.tentative_numero %}
                                         <span class="badge bg-secondary">
                                             {{ log.tentative_numero }}/{{ log.tentative_total }}
                                         </span>
                                         {% else %}
-                                        <span class="text-muted">—</span>
+                                        <span class="text-muted"
+                                              title="Ligne de blocage : aucune tentative d'envoi">—</span>
                                         {% endif %}
                                     </td>
                                     <td>

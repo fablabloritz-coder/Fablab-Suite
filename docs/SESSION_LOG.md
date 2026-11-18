@@ -6,6 +6,31 @@ action imperative.
 
 ---
 
+## 2026-11-18 — PretGo 1.11.1 : historique des rappels plus lisible
+
+**Objectif** : verifier dans le navigateur l'historique des rappels avec un
+melange de lignes envoyees, echouees et bloquees, puis corriger la lecture.
+
+**Verification navigateur** (base de demonstration isolee, plafond 12)
+- 8 tentatives reelles (6 envoyees, 2 en echec) affichent 1/12 a 8/12.
+- Les 2 lignes bloquees affichent `—`.
+- Cartes coherentes : 6 envoyes, 2 erreurs, 8 tentatives.
+
+**Ajustements**
+- Date et en-tete « Pret ID » sur une seule ligne (`text-nowrap`).
+- Colonne « Tentative » centree et sans retour a la ligne.
+- `—` des lignes bloquees accompagne d'une infobulle expliquant qu'il ne
+  s'agit pas d'une tentative d'envoi.
+
+**Verifications**
+- 60 tests PretGo OK, anciens scripts rappels OK. Gates OK.
+
+**Risques / non couverts**
+- Verification faite sur une copie de demonstration (donnees controlees),
+  pas sur la base de production.
+
+---
+
 ## 2026-11-17 — PretGo 1.11.0 : compteur de rappels fiable
 
 **Objectif** : corriger le « 13/12 » des rappels email, qui melangeait la
