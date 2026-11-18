@@ -18,6 +18,7 @@ if _APP_DIR not in sys.path:
 os.environ['TESTING'] = '1'
 
 import utils  # noqa: E402
+from database import purger_lignes_blocked_inutiles  # noqa: E402
 
 
 class MockSMTP:
@@ -209,6 +210,47 @@ class CompteurRappelsTests(unittest.TestCase):
                 corps = partie.get_content()
                 break
         self.assertIn('Tentative: 3/12', corps)
+
+    def test_la_reprise_supprime_les_blocked_redondants(self):
+        self._log('sent', 1)
+        # Trois lignes de blocage du meme episode (ancienne base).
+        self._log('blocked', 2)
+        self._log('blocked', 3)
+        self._log('blocked', 4)
+        self._log('failed', 5)
+        # Un second episode apres une vraie tentative.
+        self._log('blocked', 6)
+        self._log('blocked', 7)
+
+        supprimees = purger_lignes_blocked_inutiles(self.conn)
+        self.conn.commit()
+        self.assertEqual(supprimees, 3)
+
+        restantes = [
+            (row['sent_at'], row['status']) for row in self.conn.execute(
+                '''SELECT sent_at, status FROM rappels_email_log
+                   ORDER BY id'''
+            ).fetchall()
+        ]
+        self.assertEqual(restantes, [
+            ('2026-11-01 09:00:00', 'sent'),
+            ('2026-11-02 09:00:00', 'blocked'),
+            ('2026-11-05 09:00:00', 'failed'),
+            ('2026-11-06 09:00:00', 'blocked'),
+        ])
+        # Le compteur et les numeros de tentative restent intacts.
+        self.assertEqual(utils.compter_tentatives_pret(self.conn, 1), 2)
+        self.assertEqual(
+            utils.numero_tentative_pret(
+                self.conn, 1,
+                self.conn.execute(
+                    "SELECT id FROM rappels_email_log WHERE status='failed'"
+                ).fetchone()['id'],
+            ),
+            2,
+        )
+        # Reprise idempotente.
+        self.assertEqual(purger_lignes_blocked_inutiles(self.conn), 0)
 
     def test_l_historique_numerote_chaque_tentative(self):
         premier = self._log('sent', 1)

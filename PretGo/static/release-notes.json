@@ -1,6 +1,16 @@
 {
   "history": [
     {
+      "version": "1.11.2",
+      "date": "2026-11-18",
+      "title": "Historique des rappels alleger",
+      "notes": [
+        "Reprise douce au demarrage : les lignes de blocage redondantes des anciennes bases sont supprimees, une seule est conservee par episode",
+        "Les lignes envoyees et en echec ne sont jamais touchees : le rang de chaque tentative reste inchange"
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.11.2"
+    },
+    {
       "version": "1.11.1",
       "date": "2026-11-18",
       "title": "Historique des rappels plus lisible",

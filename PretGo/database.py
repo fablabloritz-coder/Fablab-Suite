@@ -62,6 +62,45 @@ def generate_recovery_code():
     return code
 
 
+def purger_lignes_blocked_inutiles(conn):
+    """Supprimer les lignes `blocked` redondantes d'un même épisode.
+
+    Depuis la 1.11.0, le scheduler n'écrit qu'une seule ligne `blocked` par
+    épisode (tant qu'aucune nouvelle tentative réelle n'a eu lieu). Les bases
+    créées avant cette règle peuvent contenir plusieurs lignes de blocage
+    pour un même épisode : elles alourdissent l'historique sans rien
+    apprendre de plus.
+
+    On conserve la première ligne `blocked` de chaque épisode (celle qui
+    date du moment où le plafond a été atteint) et on supprime les suivantes.
+    Les lignes `sent` et `failed`, qui portent le numéro des tentatives, ne
+    sont jamais touchées.
+
+    Retourne le nombre de lignes supprimées. Idempotent.
+    """
+    rows = conn.execute(
+        'SELECT id, pret_id, status FROM rappels_email_log ORDER BY pret_id, id'
+    ).fetchall()
+    derniere_reelle = {}
+    episodes_vus = set()
+    a_supprimer = []
+    for row in rows:
+        pret_id = row['pret_id']
+        if row['status'] in ('sent', 'failed'):
+            derniere_reelle[pret_id] = row['id']
+            continue
+        if row['status'] != 'blocked':
+            continue
+        episode = (pret_id, derniere_reelle.get(pret_id, 0))
+        if episode in episodes_vus:
+            a_supprimer.append(row['id'])
+        else:
+            episodes_vus.add(episode)
+    for log_id in a_supprimer:
+        conn.execute('DELETE FROM rappels_email_log WHERE id = ?', (log_id,))
+    return len(a_supprimer)
+
+
 def init_db():
     """Initialiser la base de données avec les tables nécessaires."""
     conn = get_db()
@@ -486,6 +525,16 @@ def init_db():
             )
             if os.path.exists(RECOVERY_CODE_PATH):
                 os.remove(RECOVERY_CODE_PATH)
+
+    # ── Reprise douce : alléger l'historique des rappels ──
+    # Les anciennes bases peuvent contenir plusieurs lignes `blocked` pour un
+    # même épisode de plafond atteint ; on ne garde que la première.
+    lignes_purgees = purger_lignes_blocked_inutiles(conn)
+    if lignes_purgees:
+        print(
+            f"[PretGo] Historique des rappels : {lignes_purgees} ligne(s) "
+            "de blocage redondante(s) supprimee(s)"
+        )
 
     stamp_schema_version(
         conn,

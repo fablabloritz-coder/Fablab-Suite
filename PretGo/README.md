@@ -477,6 +477,15 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.11.2 — 2026-11-18
+
+#### Historique des rappels alleger
+
+- Reprise douce au demarrage : les lignes de blocage redondantes des anciennes bases sont supprimees, une seule est conservee par episode
+- Les lignes envoyees et en echec ne sont jamais touchees : le rang de chaque tentative reste inchange
+
+---
+
 ### v1.11.1 — 2026-11-18
 
 #### Historique des rappels plus lisible

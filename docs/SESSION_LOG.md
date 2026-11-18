@@ -6,6 +6,35 @@ action imperative.
 
 ---
 
+## 2026-11-18 — PretGo 1.11.2 : reprise douce de l'historique des rappels
+
+**Objectif** : alleger l'historique en supprimant les lignes `blocked`
+historiques devenues inutiles, sans toucher aux tentatives reelles.
+
+**Implementation**
+- `database.purger_lignes_blocked_inutiles(conn)` : conserve la premiere
+  ligne `blocked` de chaque episode (entre deux tentatives reelles) et
+  supprime les suivantes. Les lignes `sent` et `failed` ne sont jamais
+  touchees, la numerotation des tentatives reste donc identique.
+- Appelee dans `init_db()` (reprise au demarrage), idempotente, avec un
+  message si des lignes sont supprimees.
+
+**Verifications**
+- Nouveau test `test_la_reprise_supprime_les_blocked_redondants`
+  (episodes multiples, compteur et numeros intacts, idempotence).
+- Suite PretGo : 61 tests OK.
+- Smoke test sur une base temporaire : 3 lignes redondantes supprimees,
+  les lignes `sent` conservees.
+
+**Risques / non couverts**
+- La purge ne conserve qu'une ligne par episode : les horodatages des
+  relances bloquees successives d'un meme episode sont perdus (choix
+  assume, ils n'apportaient aucune information utile).
+- Aucune restauration automatique : la suppression n'est pas journalisee
+  au-dela du compteur affiche au demarrage.
+
+---
+
 ## 2026-11-18 — PretGo 1.11.1 : historique des rappels plus lisible
 
 **Objectif** : verifier dans le navigateur l'historique des rappels avec un
