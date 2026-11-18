@@ -1,7 +1,7 @@
 """PretGo — Blueprint : admin"""
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_file, session, url_for, current_app
 from database import init_db, reset_db, get_setting, set_setting, hash_password, verify_password, generate_recovery_code, DATA_DIR, DOCUMENTS_DIR, BACKUP_DIR
-from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, compter_tentatives_pret, csv_response, lister_prets_pour_rappel_mail, envoyer_email_reference_manuel, TYPE_LONGUE_DUREE
+from utils import get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret, calcul_depassement_heures, rate_limiter, UPLOAD_FOLDER, effectuer_backup, envoyer_rappels_alertes_email, generer_preview_email, tester_connexion_smtp, valider_email, obtenir_statistiques_rappels_email, numero_tentative_pret, csv_response, lister_prets_pour_rappel_mail, envoyer_email_reference_manuel, TYPE_LONGUE_DUREE
 from datetime import datetime, timedelta
 import csv
 import io
@@ -1845,6 +1845,7 @@ def historique_rappels():
     logs = conn.execute(query, params + [par_page, offset]).fetchall()
     
     # Enrichir avec noms des personnes et compteur tentatives
+    max_tentatives = max(1, int(get_setting('rappel_email_max_tentatives', '3') or '3'))
     logs_enrichis = []
     for log in logs:
         if log['personne_id']:
@@ -1854,8 +1855,15 @@ def historique_rappels():
         else:
             nom = '(inconnue)'
         
-        # Compter total tentatives pour ce prêt
-        tentative_numero, tentative_total = compter_tentatives_pret(conn, log['pret_id'])
+        # Numero de la tentative au moment de l'envoi (les lignes bloquees
+        # n'en portent pas : elles ne sont pas des tentatives reelles).
+        tentative_numero = None
+        if log['status'] in ('sent', 'failed'):
+            tentative_numero = min(
+                numero_tentative_pret(conn, log['pret_id'], log['id']),
+                max_tentatives,
+            )
+        tentative_total = max_tentatives
         
         logs_enrichis.append({
             'id': log['id'],

@@ -477,6 +477,16 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.11.0 — 2026-11-18
+
+#### Compteur de rappels fiable
+
+- Le compteur de rappels ne compte plus les lignes de blocage : seules les tentatives reelles (envoyees ou en echec) comptent
+- L'affichage et les mails indiquent « tentative / limite configuree » (ex. 3/12) au lieu de « tentative suivante / tentatives passees »
+- Un seul enregistrement de blocage par episode : relever la limite debloque a nouveau le pret, et l'historique conserve le numero de chaque tentative
+
+---
+
 ### v1.10.10 — 2026-11-15
 
 #### Badge d'alertes borne et chevauchements indexes

@@ -60,8 +60,8 @@ def test_max_attempts():
     print("\n3. Testing Max Attempts Logic...")
     conn = get_db()
     
-    attempt_num, attempt_total = compter_tentatives_pret(conn, 9999)
-    print(f"   ✓ Attempt counter: {attempt_num}/{attempt_total}")
+    attempt_num = compter_tentatives_pret(conn, 9999)
+    print(f"   ✓ Attempt counter: {attempt_num} tentative(s) reelle(s)")
     
     is_blocked = verifier_max_tentatives_atteint(conn, 9999, max_tentatives=3)
     print(f"   ✓ Max attempts blocked: {is_blocked}")

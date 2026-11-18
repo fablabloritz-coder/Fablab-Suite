@@ -6,6 +6,38 @@ action imperative.
 
 ---
 
+## 2026-11-17 — PretGo 1.11.0 : compteur de rappels fiable
+
+**Objectif** : corriger le « 13/12 » des rappels email, qui melangeait la
+prochaine tentative et les tentatives deja faites, et dont les lignes de
+blocage faussaient le quota.
+
+**Completed**
+- `compter_tentatives_pret` ne compte que les tentatives reelles
+  (`sent` + `failed`), jamais les lignes `blocked` ; les statistiques
+  « Tentatives » suivent la meme regle.
+- L'affichage et le mail utilisent « tentative / limite configuree » :
+  premier envoi `1/12`, douzieme `12/12`, plus de `13/12` ni de `1/0`.
+- Une seule ligne `blocked` par episode de blocage (pas une par passage du
+  scheduler) : relever le plafond debloque vraiment le pret.
+- Historique : `numero_tentative_pret` donne le rang de chaque tentative au
+  moment de l'envoi ; les lignes bloquees affichent `—`.
+- L'apercu d'email utilise le plafond configure au lieu de `3` en dur.
+- Tests `tests/test_compteur_rappels.py` (5) : compteur hors blocked,
+  plafond affiche, une seule ligne blocked + deblocage apres relevement,
+  contenu du mail `3/12`, numerotation de l'historique.
+
+**Verifications**
+- 60 tests PretGo OK, anciens scripts `test_email_rappels.py` (18/18) et
+  `test_email_historique.py` OK. Gates OK.
+
+**Risques / non couverts**
+- Les lignes `blocked` deja presentes en production ne sont pas migrees :
+  elles ne comptent plus dans le quota (donc sans effet), mais restent
+  visibles dans l'historique avec `—`.
+
+---
+
 ## 2026-11-17 — Fabtrack 2.13.1 : lisibilite des depassements
 
 **Objectif** : verifier dans le navigateur la timeline et la carte des

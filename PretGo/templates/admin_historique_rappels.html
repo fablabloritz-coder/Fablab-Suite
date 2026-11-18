@@ -129,9 +129,13 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-center">
+                                        {% if log.tentative_numero %}
                                         <span class="badge bg-secondary">
                                             {{ log.tentative_numero }}/{{ log.tentative_total }}
                                         </span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         {% if log.status == 'sent' %}

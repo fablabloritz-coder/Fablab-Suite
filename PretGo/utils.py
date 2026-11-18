@@ -351,7 +351,7 @@ def obtenir_statistiques_rappels_email(conn):
     ''').fetchone()
     
     if row:
-        stats['total'] = row['total'] or 0
+        stats['total'] = (row['sent'] or 0) + (row['failed'] or 0)
         stats['sent'] = row['sent'] or 0
         stats['failed'] = row['failed'] or 0
         stats['ignored'] = 0  # Pas tracké dans la table pour l'instant
@@ -369,19 +369,31 @@ def obtenir_statistiques_rappels_email(conn):
 
 
 def compter_tentatives_pret(conn, pret_id):
-    """Compte les tentatives d'envoi pour un prêt donné.
-    
-    Retourne (tentative_numero, total_tentatives)
-    - tentative_numero : 1-indexed (1, 2, 3...)
-    - total_tentatives : total des envois (sent + failed)
+    """Nombre de tentatives reelles d'envoi pour un pret donne.
+
+    Seules les lignes `sent` et `failed` comptent : les lignes `blocked`
+    (blocage au plafond) ne sont pas des tentatives d'envoi et ne doivent
+    donc ni consommer le quota, ni gonfler le compteur affiche.
     """
     row = conn.execute('''
         SELECT COUNT(*) as total FROM rappels_email_log
-        WHERE pret_id = ?
+        WHERE pret_id = ? AND status IN ('sent', 'failed')
     ''', (pret_id,)).fetchone()
-    total = row['total'] or 0
-    tentative_numero = total + 1
-    return tentative_numero, total
+    return int(row['total'] or 0)
+
+
+def numero_tentative_pret(conn, pret_id, log_id):
+    """Rang 1-indexed d'une tentative reelle parmi celles du pret.
+
+    Le rang suit l'ordre de creation des lignes (`id`), en ignorant les
+    lignes `blocked` : chaque ligne d'historique garde ainsi le numero de
+    la tentative au moment de l'envoi, meme si le plafond change ensuite.
+    """
+    row = conn.execute('''
+        SELECT COUNT(*) as total FROM rappels_email_log
+        WHERE pret_id = ? AND status IN ('sent', 'failed') AND id <= ?
+    ''', (pret_id, log_id)).fetchone()
+    return int(row['total'] or 0)
 
 
 def verifier_max_tentatives_atteint(conn, pret_id, max_tentatives=3):
@@ -715,7 +727,9 @@ def generer_preview_email(conn, reminder_kind='overdue'):
         depassement_preview = '2j3h'
         type_rappel_preview = 'Prêt en retard'
     
-    # Valeurs de test
+    # Valeurs de test : le plafond affiche est celui configure.
+    max_tentatives = max(1, int(
+        get_setting('rappel_email_max_tentatives', '3', conn=conn) or '3'))
     body = _render_email_template(
         template_body,
         nom='Dupont',
@@ -725,7 +739,7 @@ def generer_preview_email(conn, reminder_kind='overdue'):
         depassement=depassement_preview,
         type_rappel=type_rappel_preview,
         tentative_numero='2',
-        tentative_total='3'
+        tentative_total=str(max_tentatives)
     )
 
     html_active = get_setting('rappel_email_html_active', '1', conn=conn) == '1'
@@ -880,8 +894,11 @@ def lister_prets_pour_rappel_mail(conn, now=None, pret_ids=None, inclure_retour_
             continue
 
         email_dest = (pret['email'] or '').strip()
-        tentative_numero, tentative_total = compter_tentatives_pret(conn, pret['id'])
-        max_atteint = tentative_total >= max_tentatives
+        tentatives_faites = compter_tentatives_pret(conn, pret['id'])
+        max_tentatives = max(1, int(max_tentatives))
+        tentative_numero = min(tentatives_faites + 1, max_tentatives)
+        tentative_total = max_tentatives
+        max_atteint = tentatives_faites >= max_tentatives
 
         last_sent = conn.execute(
             """
@@ -1031,15 +1048,28 @@ def envoyer_rappels_alertes_email(conn, smtp_factory=None, now=None, pret_ids=No
             stats['ignores_sans_email'] += 1
             continue
         if c['max_atteint']:
-            _insert_log(
-                c['pret_id'],
-                c['personne_id'],
-                c['email'],
-                'blocked',
-                c['reminder_kind'],
-                f'Maximum de tentatives atteint ({max_tentatives})',
-                float(max(0.0, c['delta_heures']))
-            )
+            # Une seule ligne de blocage par episode : inutile d'en ajouter
+            # une a chaque passage du scheduler tant qu'aucune nouvelle
+            # tentative reelle n'a eu lieu.
+            deja_bloque = conn.execute(
+                '''SELECT 1 FROM rappels_email_log
+                   WHERE pret_id = ? AND status = 'blocked'
+                     AND id > COALESCE((SELECT MAX(id) FROM rappels_email_log
+                                        WHERE pret_id = ?
+                                          AND status IN ('sent', 'failed')), 0)
+                   LIMIT 1''',
+                (c['pret_id'], c['pret_id'])
+            ).fetchone()
+            if not deja_bloque:
+                _insert_log(
+                    c['pret_id'],
+                    c['personne_id'],
+                    c['email'],
+                    'blocked',
+                    c['reminder_kind'],
+                    f'Maximum de tentatives atteint ({max_tentatives})',
+                    float(max(0.0, c['delta_heures']))
+                )
             stats['bloques'] += 1
             continue
         if not c['cooldown_ok']:

@@ -172,9 +172,11 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.13.1 | FabBoard 3.6.0 | PretGo 1.10.10 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.13.1 | FabBoard 3.6.0 | PretGo 1.11.0 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- PretGo 1.11.0 : compteur de rappels hors lignes bloquees, affichage et
+  mail « tentative / limite », un seul log blocked par episode
 - Fabtrack 2.13.1 : lisibilite des depassements (infobulle de periode en
   clair, legende a la couleur de la categorie, dates francaises, pluriels)
 - Fabtrack 2.13.0 : semaines ISO, depassements encadres sur la timeline,
