@@ -6,6 +6,35 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : module ancien et listing des volumes
+
+**Objectif** : face à un `suite_backup.py` installé avant `volumes`, remplacer
+l'erreur argparse du helper par une invite claire à lancer `update`.
+
+**Implementation**
+- Helper : `volumes` vérifie la présence de `def lister_volumes` dans le module
+  installé et émet `[volumes] MISE A JOUR REQUISE: … ./fabsuite-ubuntu.sh update`
+  (code 2) au lieu de laisser argparse échouer.
+- GUI : `list_volumes` reconnaît ce marqueur et renvoie un message dédié
+  (« ancien suite_backup.py … lance update … puis rouvre le modal »), sans
+  revalider le manifeste côté interface.
+- Doc : README (comportement du modal sur serveur non à jour).
+
+**Verifications**
+- Test backend GUI : marqueur → message actionnable, sans texte technique.
+- Test helper : module factice sans `volumes` → code 2 et invitation `update`.
+- Suite `tests/` et `bash -n`.
+
+**Risques / non couverts**
+- La détection porte sur la définition `lister_volumes` : un module modifié à la
+  main sans cette fonction mais avec la commande serait signalé à tort (cas
+  hors workflow standard).
+
+**Prochaine action** : si utile, appliquer la même invite aux autres actions
+récentes (`snapshots`) pour un serveur très ancien.
+
+---
+
 ## 2026-11-19 — Suite : volumes du snapshot dans le modal de restauration
 
 **Objectif** : choisir dans le GUI SSH les volumes à restaurer, sans que

@@ -1342,6 +1342,15 @@ run_suite_list_volumes() {
     return 2
   fi
 
+  # Un module installe avant la restauration ciblee n'a pas la commande
+  # `volumes` : le signaler explicitement plutot que de laisser argparse
+  # echouer avec un message technique. Le GUI reconnait ce marqueur.
+  if ! grep -q '^def lister_volumes' "$backup_module"; then
+    echo "[volumes] MISE A JOUR REQUISE: ${backup_module} ne connait pas la commande volumes (version ancienne)." >&2
+    echo "[volumes] Lance './fabsuite-ubuntu.sh update' puis rouvre le modal de restauration." >&2
+    return 2
+  fi
+
   python3 "$backup_module" volumes --snapshot "$RESTORE_SNAPSHOT"
 }
 

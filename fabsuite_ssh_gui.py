@@ -1584,6 +1584,15 @@ exit 0
                 self._helper_command("volumes", extra_args=["--snapshot", snapshot])
             )
         except Exception as exc:
+            if "MISE A JOUR REQUISE" in str(exc):
+                return {
+                    "error": (
+                        "Le serveur utilise un ancien suite_backup.py : la commande "
+                        "volumes est absente.\n"
+                        "Lance './fabsuite-ubuntu.sh update' (ou le bouton Mettre a jour), "
+                        "puis rouvre ce modal pour choisir les volumes."
+                    )
+                }
             return {"error": f"Impossible de lister les volumes: {exc}"}
 
         volumes = []

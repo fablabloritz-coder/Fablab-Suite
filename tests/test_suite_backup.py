@@ -1031,5 +1031,70 @@ class HelperWiringTest(unittest.TestCase):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)
 
 
+class HelperVolumesCompatTest(unittest.TestCase):
+    """Un module installe avant `volumes` doit inviter a lancer update."""
+
+    def test_un_module_ancien_invite_a_mettre_a_jour(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            install = racine / "suite"
+            install.mkdir()
+            # Ancien module : la commande `volumes` n'existe pas.
+            (install / "suite_backup.py").write_text(
+                "import argparse\n"
+                "parseur = argparse.ArgumentParser()\n"
+                "parseur.add_argument('command', choices=['snapshot', 'restore', 'list'])\n"
+                "parseur.parse_args()\n",
+                encoding="utf-8",
+            )
+            snapshot = racine / "snapshot"
+            snapshot.mkdir()
+
+            installer = racine / "installer"
+            installer.mkdir()
+            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+            env_file = installer / "fabsuite-ubuntu.env"
+            env_file.write_text(
+                "\n".join(
+                    (
+                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                        "GIT_BRANCH=main",
+                        f"INSTALL_DIR={install}",
+                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                        "FLASK_SECRET_KEY=test-secret",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(racine / "home")
+            processus = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "volumes",
+                    "--snapshot",
+                    str(snapshot),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 2, sortie)
+            self.assertIn("MISE A JOUR REQUISE", sortie)
+            self.assertIn("fabsuite-ubuntu.sh update", sortie)
+
+
 if __name__ == "__main__":
     unittest.main()

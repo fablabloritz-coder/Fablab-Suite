@@ -176,6 +176,28 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertIn("error", resultat)
         self.assertIn("connexion perdue", resultat["error"])
 
+    def test_list_volumes_invite_a_mettre_a_jour_un_module_ancien(self):
+        self.backend._is_local_mode = lambda: False
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def echouer(commande):
+            raise RuntimeError(
+                "[volumes] MISE A JOUR REQUISE: /opt/fabsuite/suite_backup.py "
+                "ne connait pas la commande volumes (version ancienne)."
+            )
+
+        self.backend._exec_remote_simple = echouer
+
+        resultat = self.backend.list_volumes(
+            "/home/fablab/backup-fabsuite/suite-2026-11-19-120000"
+        )
+
+        self.assertIn("error", resultat)
+        self.assertIn("ancien suite_backup.py", resultat["error"])
+        self.assertIn("update", resultat["error"])
+        self.assertNotIn("MISE A JOUR REQUISE", resultat["error"])
+
     def test_restore_worker_transmet_les_volumes_selectionnes(self):
         appels = []
         self.backend._run_helper_action = (
