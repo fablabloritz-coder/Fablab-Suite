@@ -12,7 +12,7 @@ ENV_FILE="${SCRIPT_DIR}/fabsuite-ubuntu.env"
 ACTION=""
 LOG_APP=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v2"
+HELPER_VERSION="2026-11-19-suite-backup-v3"
 
 usage() {
   cat <<'EOF'

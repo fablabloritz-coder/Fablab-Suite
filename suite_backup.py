@@ -13,7 +13,12 @@ capturee est saine. Le helper `fabsuite-ubuntu.sh backup` resout les chemins
 
 Usage direct :
     python3 suite_backup.py snapshot --dest ~/backup-fabsuite \
-        --source "Fabtrack|data|/srv/fablab-suite/Fabtrack/docker-data/data"
+        --source "Fabtrack|data|/srv/fablab-suite/Fabtrack/docker-data/data" \
+        --retention-count 7
+
+Apres un snapshot valide, la retention supprime les snapshots hors quota
+(nombre via `FABSUITE_BACKUP_RETENTION_COUNT`, ou age via
+`FABSUITE_BACKUP_RETENTION_DAYS`) sans jamais toucher au dernier valide.
 
 Sortie : 0 si le snapshot est valide, 2 sinon (le manifeste explique pourquoi).
 """
@@ -22,6 +27,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import socket
@@ -30,12 +36,15 @@ import sys
 import tarfile
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 FORMAT_VERSION = 1
 SQLITE_MAGIC = b"SQLite format 3\x00"
 NOM_VALIDE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+NOM_SNAPSHOT = re.compile(r"^suite-(\d{4}-\d{2}-\d{2}-\d{6})(?:-[A-Za-z0-9._-]+)?$")
+RETENTION_COUNT_DEFAUT = 7
+RETENTION_DAYS_DEFAUT = 0
 
 
 class SnapshotError(Exception):
@@ -69,6 +78,17 @@ class SnapshotResult:
     @property
     def warnings(self) -> list[str]:
         return list(self.manifest.get("warnings", []))
+
+
+@dataclass
+class RotationResult:
+    """Resultat de la rotation : snapshots supprimes et bilan de retention."""
+
+    mode: str
+    valeur: int
+    supprimes: list[Path] = field(default_factory=list)
+    conserves: int = 0
+    erreurs: list[str] = field(default_factory=list)
 
 
 def _slug(texte: str) -> str:
@@ -275,6 +295,129 @@ def creer_snapshot(
     return SnapshotResult(directory=dossier, status=statut, manifest=manifeste)
 
 
+def _lire_manifeste(dossier: Path) -> dict | None:
+    try:
+        donnees = json.loads((dossier / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return donnees if isinstance(donnees, dict) else None
+
+
+def _date_snapshot(dossier: Path) -> datetime:
+    manifeste = _lire_manifeste(dossier)
+    if manifeste is not None:
+        try:
+            valeur = datetime.fromisoformat(str(manifeste["created_at"]))
+            return valeur if valeur.tzinfo else valeur.astimezone()
+        except (KeyError, TypeError, ValueError):
+            pass
+    correspondance = NOM_SNAPSHOT.match(dossier.name)
+    if correspondance:
+        try:
+            valeur = datetime.strptime(correspondance.group(1), "%Y-%m-%d-%H%M%S")
+            return valeur.astimezone()
+        except ValueError:
+            pass
+    return datetime.fromtimestamp(dossier.stat().st_mtime).astimezone()
+
+
+def _snapshot_valide(dossier: Path) -> bool:
+    manifeste = _lire_manifeste(dossier)
+    return (
+        manifeste is not None
+        and manifeste.get("status") == "ok"
+        and (dossier / "snapshot.ok").is_file()
+    )
+
+
+def _snapshots(destination: Path) -> list[Path]:
+    """Dossiers de snapshot directs, sans suivre les liens symboliques."""
+    if not destination.is_dir():
+        return []
+    return [
+        entree
+        for entree in destination.iterdir()
+        if not entree.is_symlink()
+        and entree.is_dir()
+        and NOM_SNAPSHOT.match(entree.name)
+        and (entree / "manifest.json").is_file()
+    ]
+
+
+def rotation_snapshots(
+    destination: Path | str,
+    *,
+    retention_count: int = RETENTION_COUNT_DEFAUT,
+    retention_days: int = RETENTION_DAYS_DEFAUT,
+    conserver: Path | str | None = None,
+) -> RotationResult:
+    """Supprime les snapshots hors retention.
+
+    Mode jours des que `retention_days > 0`, sinon mode nombre de snapshots.
+    Le snapshot `conserver` (celui qui vient d'etre cree) et le dernier
+    snapshot valide ne sont jamais supprimes. Une retention <= 0 desactive
+    la rotation. Les erreurs de suppression sont rapportees, pas levees.
+    """
+    destination = Path(destination).expanduser()
+    snapshots = _snapshots(destination)
+
+    if retention_days > 0:
+        mode, valeur = "jours", int(retention_days)
+    elif retention_count > 0:
+        mode, valeur = "snapshots", int(retention_count)
+    else:
+        return RotationResult(mode="desactive", valeur=0, conserves=len(snapshots))
+
+    dates = {dossier: _date_snapshot(dossier) for dossier in snapshots}
+    ordonnes = sorted(
+        snapshots, key=lambda dossier: (dates[dossier], dossier.name), reverse=True
+    )
+
+    proteges: set[str] = set()
+    if conserver is not None:
+        proteges.add(Path(conserver).name)
+    valides = [dossier for dossier in ordonnes if _snapshot_valide(dossier)]
+    if valides:
+        proteges.add(valides[0].name)
+
+    if mode == "snapshots":
+        a_supprimer = ordonnes[valeur:]
+    else:
+        limite = datetime.now().astimezone() - timedelta(days=valeur)
+        a_supprimer = [dossier for dossier in ordonnes if dates[dossier] < limite]
+
+    resultat = RotationResult(mode=mode, valeur=valeur, conserves=len(ordonnes))
+    for dossier in a_supprimer:
+        if dossier.name in proteges:
+            continue
+        try:
+            shutil.rmtree(dossier)
+        except OSError as exc:
+            resultat.erreurs.append(
+                f"{dossier.name}: suppression impossible ({exc})"
+            )
+            continue
+        resultat.supprimes.append(dossier)
+        resultat.conserves -= 1
+    return resultat
+
+
+def _retention_depuis_env() -> tuple[int, int]:
+    def lire(nom: str, defaut: int) -> int:
+        brut = os.environ.get(nom, "").strip()
+        if not brut:
+            return defaut
+        try:
+            return int(brut)
+        except ValueError:
+            raise SnapshotError(f"{nom} invalide (entier attendu): {brut!r}") from None
+
+    return (
+        lire("FABSUITE_BACKUP_RETENTION_COUNT", RETENTION_COUNT_DEFAUT),
+        lire("FABSUITE_BACKUP_RETENTION_DAYS", RETENTION_DAYS_DEFAUT),
+    )
+
+
 def _parser_source(brut: str) -> Source:
     morceaux = brut.split("|", 2)
     if len(morceaux) != 3 or not all(morceau.strip() for morceau in morceaux):
@@ -299,6 +442,18 @@ def main(argv: list[str] | None = None) -> int:
         help="volume a sauvegarder (repetable)",
     )
     parseur.add_argument("--label", default="", help="suffixe lisible du snapshot")
+    parseur.add_argument(
+        "--retention-count",
+        type=int,
+        default=None,
+        help=f"snapshots a conserver (defaut: env FABSUITE_BACKUP_RETENTION_COUNT ou {RETENTION_COUNT_DEFAUT})",
+    )
+    parseur.add_argument(
+        "--retention-days",
+        type=int,
+        default=None,
+        help="age maximal en jours (prioritaire sur le nombre; 0 = mode nombre)",
+    )
     args = parseur.parse_args(argv)
 
     try:
@@ -326,6 +481,34 @@ def main(argv: list[str] | None = None) -> int:
     total = sum(len(entree.get("databases", [])) for entree in resultat.manifest["sources"])
     print(f"[backup] statut: ok ({total} base(s) SQLite verifiee(s))")
     print(f"[backup] valide: {resultat.directory / 'snapshot.ok'}")
+
+    # La rotation ne s'applique qu'apres un snapshot valide : une serie
+    # d'echecs ne doit pas evincer l'historique sain.
+    try:
+        count, days = _retention_depuis_env()
+        if args.retention_count is not None:
+            count = args.retention_count
+        if args.retention_days is not None:
+            days = args.retention_days
+        rotation = rotation_snapshots(
+            args.dest,
+            retention_count=count,
+            retention_days=days,
+            conserver=resultat.directory,
+        )
+    except SnapshotError as exc:
+        print(f"[backup] ATTENTION: rotation ignoree ({exc})")
+        return 0
+
+    for erreur in rotation.erreurs:
+        print(f"[backup] ATTENTION: rotation: {erreur}")
+    if rotation.mode == "desactive":
+        print("[backup] rotation: desactivee (retention <= 0)")
+    else:
+        print(
+            f"[backup] rotation ({rotation.mode} {rotation.valeur}): "
+            f"{len(rotation.supprimes)} supprime(s), {rotation.conserves} conserve(s)"
+        )
     return 0
 
 

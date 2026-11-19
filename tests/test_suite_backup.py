@@ -10,6 +10,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -431,6 +432,105 @@ class UpdateSnapshotTest(unittest.TestCase):
             self.assertFalse((racine / "backups").exists())
 
 
+class RotationTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _snapshot(self, quand, *, valide=True, suffixe=""):
+        dossier = self.dest / (quand.strftime("suite-%Y-%m-%d-%H%M%S") + suffixe)
+        dossier.mkdir(parents=True)
+        manifeste = {
+            "status": "ok" if valide else "failed",
+            "created_at": quand.isoformat(),
+        }
+        (dossier / "manifest.json").write_text(json.dumps(manifeste), encoding="utf-8")
+        if valide:
+            (dossier / "snapshot.ok").write_text("snapshot=ok\n", encoding="utf-8")
+        return dossier
+
+    def test_retention_par_nombre_ne_supprime_jamais_le_dernier_valide(self):
+        maintenant = datetime.now().astimezone()
+        ancien = self._snapshot(maintenant - timedelta(days=4))
+        invalide = self._snapshot(maintenant - timedelta(days=3), valide=False)
+        invalide2 = self._snapshot(maintenant - timedelta(days=2), valide=False)
+        dernier_valide = self._snapshot(maintenant - timedelta(days=1))
+        courant = self._snapshot(maintenant, valide=False)
+
+        resultat = suite_backup.rotation_snapshots(
+            self.dest,
+            retention_count=1,
+            retention_days=0,
+            conserver=courant,
+        )
+
+        self.assertEqual(resultat.mode, "snapshots")
+        self.assertEqual(resultat.valeur, 1)
+        self.assertEqual(
+            {dossier.name for dossier in resultat.supprimes},
+            {ancien.name, invalide.name, invalide2.name},
+        )
+        self.assertTrue(dernier_valide.is_dir())
+        self.assertTrue(courant.is_dir())
+        self.assertEqual(resultat.conserves, 2)
+
+    def test_retention_par_jours_epargne_le_dernier_valide(self):
+        maintenant = datetime.now().astimezone()
+        tres_vieux = self._snapshot(maintenant - timedelta(days=50), valide=False)
+        vieux_valide = self._snapshot(maintenant - timedelta(days=40))
+        recent = self._snapshot(maintenant - timedelta(days=2), valide=False)
+
+        resultat = suite_backup.rotation_snapshots(
+            self.dest,
+            retention_count=7,
+            retention_days=30,
+            conserver=recent,
+        )
+
+        self.assertEqual(resultat.mode, "jours")
+        self.assertEqual([dossier.name for dossier in resultat.supprimes], [tres_vieux.name])
+        self.assertTrue(vieux_valide.is_dir())
+        self.assertTrue(recent.is_dir())
+        self.assertEqual(resultat.conserves, 2)
+
+    def test_cli_applique_la_retention_par_nombre(self):
+        data = self.root / "data"
+        creer_base(data / "fabhome.db")
+        env = os.environ.copy()
+        env["FABSUITE_BACKUP_RETENTION_COUNT"] = "1"
+        env.pop("FABSUITE_BACKUP_RETENTION_DAYS", None)
+        commande = [
+            sys.executable,
+            str(ROOT / "suite_backup.py"),
+            "snapshot",
+            "--dest",
+            str(self.dest),
+            "--source",
+            f"FabHome|data|{data}",
+            "--label",
+        ]
+
+        premier = subprocess.run(
+            commande + ["01"], capture_output=True, text=True, env=env, timeout=60
+        )
+        self.assertEqual(premier.returncode, 0, premier.stdout + premier.stderr)
+
+        second = subprocess.run(
+            commande + ["02"], capture_output=True, text=True, env=env, timeout=60
+        )
+        sortie = second.stdout + second.stderr
+        self.assertEqual(second.returncode, 0, sortie)
+        self.assertIn("rotation (snapshots 1): 1 supprime(s), 1 conserve(s)", sortie)
+
+        restants = list(self.dest.glob("suite-*"))
+        self.assertEqual(len(restants), 1)
+        self.assertTrue((restants[0] / "snapshot.ok").is_file())
+
+
 class HelperWiringTest(unittest.TestCase):
     def test_le_helper_expose_l_action_backup(self):
         script = (ROOT / "fabsuite-ubuntu.sh").read_text(encoding="utf-8")
@@ -443,6 +543,13 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP", script)
         self.assertIn('"$backup_module" snapshot', script)
         self.assertIn("run_suite_backup\n", script)
+
+        module = (ROOT / "suite_backup.py").read_text(encoding="utf-8")
+        for nom in (
+            "FABSUITE_BACKUP_RETENTION_COUNT",
+            "FABSUITE_BACKUP_RETENTION_DAYS",
+        ):
+            self.assertIn(nom, module)
 
         if shutil.which("bash"):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)

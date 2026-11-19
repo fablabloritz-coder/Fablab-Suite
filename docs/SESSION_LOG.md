@@ -6,6 +6,43 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : rotation des snapshots
+
+**Objectif** : eviter l'accumulation des snapshots sans risque de perdre la
+derniere sauvegarde saine.
+
+**Implementation**
+- `rotation_snapshots()` dans `suite_backup.py`, appelee par le CLI apres un
+  snapshot **valide** uniquement (une serie d'echecs n'efface pas l'historique).
+- Retention configurable : `FABSUITE_BACKUP_RETENTION_COUNT` (defaut 7) ou
+  `FABSUITE_BACKUP_RETENTION_DAYS` (> 0, prioritaire) ; `0` desactive.
+  Options CLI equivalents : `--retention-count`, `--retention-days`.
+- Sont toujours conserves : le snapshot qui vient d'etre cree et le dernier
+  snapshot valide (manifeste `status=ok` + `snapshot.ok`), meme hors quota.
+- Seuls les dossiers directs nommes `suite-<horodatage>[-label]` avec manifeste
+  sont candidats ; les liens symboliques sont ignores.
+- Sortie : `[backup] rotation (snapshots 7): N supprime(s), M conserve(s)` ;
+  une erreur de suppression est un avertissement, jamais un echec du snapshot.
+- `HELPER_VERSION` passe a `2026-11-19-suite-backup-v3`.
+
+**Verifications**
+- 3 nouveaux tests : retention par nombre (quota 1, dernier valide epargne),
+  retention par jours (dernier valide de 40 jours epargne), application via le
+  CLI avec `FABSUITE_BACKUP_RETENTION_COUNT=1`.
+- Suite racine : 37 tests OK.
+- Campagne `suite_tests.py --offline` : 9/9 PASS (1 SKIP attendu : contrat
+  FabInventory absent), exit 0.
+
+**Risques / non couverts**
+- Une suppression partielle (permission, disque) laisse le dossier en place et
+  produit un avertissement ; pas de reprise automatique.
+- La restauration reste manuelle.
+
+**Prochaine action** : ajouter `restore` (extraction verifiee, garde-fou de
+chemin) puis exposer backup/restore dans le GUI.
+
+---
+
 ## 2026-11-19 — Suite : snapshot automatique avant update
 
 **Objectif** : garantir qu'une mise a jour du helper ne demarre pas sans

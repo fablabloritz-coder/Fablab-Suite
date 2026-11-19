@@ -412,6 +412,14 @@ snapshot sans aucune donnée est refusé.
 Le snapshot est pris à chaud, applicatifs démarrés : pour un arrêt parfaitement
 cohérent de toutes les écritures, arrêter la suite avant de le lancer.
 
+Après un snapshot valide, la rotation s'applique : `FABSUITE_BACKUP_RETENTION_COUNT`
+(défaut 7) garde les N snapshots les plus récents, ou
+`FABSUITE_BACKUP_RETENTION_DAYS` (> 0) supprime ceux plus vieux que N jours —
+le mode jours est prioritaire quand il est activé. Le snapshot qui vient d'être
+créé et le dernier snapshot valide ne sont jamais supprimés, même hors quota.
+Une valeur `0` désactive la rotation. Un snapshot invalide ne déclenche jamais
+de rotation, pour qu'une série d'échecs n'efface pas l'historique sain.
+
 `./fabsuite-ubuntu.sh update` prend automatiquement ce snapshot vérifié avant
 tout `git fetch/reset` et tout rebuild. Si le snapshot est invalide :
 
