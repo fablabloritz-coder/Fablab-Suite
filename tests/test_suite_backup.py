@@ -1467,64 +1467,127 @@ class HelperVerifyTimerTest(unittest.TestCase):
 
 
 class HelperClearMarkersTest(unittest.TestCase):
-    """L'acquittement supprime les marqueurs ordinaires et refuse les liens."""
+    """L'acquittement exige un verify sain ou un backup recent."""
 
-    def test_acquitte_les_marqueurs_et_refuse_les_liens(self):
+    def _preparer(self, racine):
+        install = racine / "suite"
+        install.mkdir()
+        shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
+        backups = racine / "backups"
+        backups.mkdir()
+
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+        env_file = installer / "fabsuite-ubuntu.env"
+        env_file.write_text(
+            "\n".join(
+                (
+                    "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                    "GIT_BRANCH=main",
+                    f"INSTALL_DIR={install}",
+                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    f"FABSUITE_BACKUP_DIR={backups}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        env = os.environ.copy()
+        env["HOME"] = str(racine / "home")
+        return install, backups, installer, env_file, env
+
+    def _clear(self, installer, env_file, env):
+        return subprocess.run(
+            [
+                "bash",
+                str(installer / "fabsuite-ubuntu.sh"),
+                "clear-markers",
+                "--env-file",
+                str(env_file),
+            ],
+            cwd=installer,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_acquitte_apres_verify_sain_et_backup_recent(self):
         if not shutil.which("bash"):
             self.skipTest("bash indisponible")
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            install = racine / "suite"
-            install.mkdir()
-            backups = racine / "backups"
-            backups.mkdir()
-            (backups / "backup-failed").write_text(
-                "ECHEC test\n", encoding="utf-8"
-            )
-            (backups / "verify-degrade").symlink_to("/etc/passwd")
+            install, backups, installer, env_file, env = self._preparer(racine)
+            (backups / "backup-failed").write_text("ECHEC\n", encoding="utf-8")
+            (backups / "verify-degrade").write_text("DEGRADE\n", encoding="utf-8")
 
-            installer = racine / "installer"
-            installer.mkdir()
-            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
-            env_file = installer / "fabsuite-ubuntu.env"
-            env_file.write_text(
-                "\n".join(
-                    (
-                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
-                        "GIT_BRANCH=main",
-                        f"INSTALL_DIR={install}",
-                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
-                        "FLASK_SECRET_KEY=test-secret",
-                        f"FABSUITE_BACKUP_DIR={backups}",
-                        "",
-                    )
-                ),
-                encoding="utf-8",
-            )
-
-            env = os.environ.copy()
-            env["HOME"] = str(racine / "home")
-            processus = subprocess.run(
+            source = racine / "source/data"
+            source.mkdir(parents=True)
+            (source / "notes.txt").write_text("ok\n", encoding="utf-8")
+            snapshot = subprocess.run(
                 [
-                    "bash",
-                    str(installer / "fabsuite-ubuntu.sh"),
-                    "clear-markers",
-                    "--env-file",
-                    str(env_file),
+                    sys.executable,
+                    str(install / "suite_backup.py"),
+                    "snapshot",
+                    "--dest",
+                    str(backups),
+                    "--source",
+                    f"FabHome|data|{source}",
                 ],
-                cwd=installer,
-                env=env,
                 capture_output=True,
                 text=True,
                 timeout=60,
             )
+            self.assertEqual(
+                snapshot.returncode, 0, snapshot.stdout + snapshot.stderr
+            )
+
+            processus = self._clear(installer, env_file, env)
             sortie = processus.stdout + processus.stderr
 
             self.assertEqual(processus.returncode, 0, sortie)
             self.assertIn(f"supprime={backups / 'backup-failed'}", sortie)
-            self.assertIn(f"refuse={backups / 'verify-degrade'}", sortie)
+            self.assertIn(f"supprime={backups / 'verify-degrade'}", sortie)
             self.assertFalse((backups / "backup-failed").exists())
+            self.assertFalse((backups / "verify-degrade").exists())
+
+    def test_conserve_sans_verify_sain_ni_backup_recent(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            _install, backups, installer, env_file, env = self._preparer(racine)
+            (backups / "backup-failed").write_text("ECHEC\n", encoding="utf-8")
+            (backups / "verify-degrade").write_text("DEGRADE\n", encoding="utf-8")
+
+            processus = self._clear(installer, env_file, env)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 2, sortie)
+            self.assertIn("aucun backup reussi depuis l'echec", sortie)
+            self.assertIn("verify --all non sain", sortie)
+            self.assertTrue((backups / "backup-failed").is_file())
+            self.assertTrue((backups / "verify-degrade").is_file())
+
+    def test_refuse_les_liens_symboliques(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            _install, backups, installer, env_file, env = self._preparer(racine)
+            (backups / "verify-degrade").symlink_to("/etc/passwd")
+
+            processus = self._clear(installer, env_file, env)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 2, sortie)
+            self.assertIn(f"refuse={backups / 'verify-degrade'}", sortie)
             self.assertTrue((backups / "verify-degrade").is_symlink())
 
 

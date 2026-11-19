@@ -106,10 +106,11 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 - **État vérification** : lit le timer planifié (prochaine exécution, dernier
   résultat) et signale le marqueur `verify-degrade` ; si le timer n'est pas
   installé, indique la commande `install-verify-timer` à lancer.
-- **Acquitter les alertes** : après confirmation, supprime les marqueurs
-  `backup-failed` et `verify-degrade` via le helper (fichiers ordinaires
-  uniquement, les liens symboliques sont refusés), puis rafraîchit les deux
-  lignes d'état.
+- **Acquitter les alertes** : après confirmation, supprime les marqueurs via
+  le helper, mais seulement si les conditions sont réunies : `verify-degrade`
+  exige un `verify --all` sain, `backup-failed` exige un snapshot valide plus
+  récent que l'échec. Fichiers ordinaires uniquement (liens symboliques
+  refusés), puis rafraîchissement des deux lignes d'état.
 - **Restaurer un snapshot** : liste les snapshots valides du serveur, puis lance
   `restore` sur celui choisi. Le modal liste aussi les volumes du snapshot
   (`Fabtrack/data`, `FabHome/icons`…) : sans sélection, tout est restauré ;
@@ -502,8 +503,10 @@ plein, etc.) :
   le marqueur en rouge (bouton **État sauvegarde**, rafraîchi à la connexion et
   après un backup lancé depuis l'interface).
 
-Après avoir corrigé la cause et relancé un backup, le bouton **Acquitter les
-alertes** (ou `./fabsuite-ubuntu.sh clear-markers`) supprime le marqueur.
+Après avoir corrigé la cause, le bouton **Acquitter les alertes** (ou
+`./fabsuite-ubuntu.sh clear-markers`) supprime le marqueur uniquement si un
+snapshot valide a été créé après l'échec ; sinon il est conservé et la raison
+est affichée.
 
 ### Vérification planifiée (timer systemd)
 
@@ -534,8 +537,10 @@ vérification impossible (code 2 : aucun snapshot, module ancien, argument
 invalide) ne pose pas le marqueur et laisse une ligne explicite dans le
 journal ; un marqueur existant n'est pas effacé par une erreur passagère.
 Après contrôle, **Acquitter les alertes** (GUI) ou
-`./fabsuite-ubuntu.sh clear-markers` supprime `verify-degrade` et
-`backup-failed`.
+`./fabsuite-ubuntu.sh clear-markers` supprime `verify-degrade` seulement si un
+`verify --all` sain vient de réussir (et `backup-failed` seulement si un
+snapshot valide est postérieur à l'échec). Sinon les marqueurs sont conservés
+avec la raison.
 
 Commandes utiles :
 

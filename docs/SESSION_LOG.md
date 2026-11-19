@@ -6,6 +6,44 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : acquittement conditionné des marqueurs
+
+**Objectif** : ne plus pouvoir effacer un marqueur sans preuve que la situation
+est revenue à la normale.
+
+**Implementation**
+- Helper `clear-markers` : avant suppression, exécute `verify --all` sur le
+  dossier de snapshots pour `verify-degrade` (seul un code 0 autorise
+  l'effacement) et vérifie qu'un snapshot valide est plus récent que
+  `backup-failed` (comparaison du manifeste avec la date du marqueur). Sinon
+  le marqueur est conservé avec `[markers] conserve=… (raison)` et le code 2.
+- Les liens symboliques restent refusés (code 2) ; les marqueurs absents sont
+  simplement listés. `HELPER_VERSION` → v13.
+- GUI : l'acquittement affiche « Acquittement refuse » avec les marqueurs
+  conservés/refusés et la raison ; le texte invite à relancer `verify --all`
+  et/ou un backup.
+- Docs : README (carte SSH, timers snapshots/verify), INSTALL_UBUNTU.
+
+**Verifications**
+- Tests d'intégration helper : succès après verify sain + snapshot récent
+  (deux marqueurs supprimés), conservation sans verify sain ni backup récent
+  (code 2), refus d'un lien symbolique (code 2).
+- Tests backend : succès, refus conditionnel (messages et raisons), lien
+  symbolique, erreur SSH, rafraîchissement des états.
+- `bash -n`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- La vérification de fraîcheur s'appuie sur la date du manifeste du dernier
+  snapshot valide ; un snapshot restauré/copié avec une date ancienne ne
+  compte pas comme « récent ».
+- L'acquittement peut être long (verify --all) : le GUI attend jusqu'à 300 s
+  puis affiche une erreur explicite.
+
+**Prochaine action** : exposer la raison de conservation dans la ligne d'état
+(avant même de cliquer) et permettre de relancer un backup depuis l'alerte.
+
+---
+
 ## 2026-11-19 — Suite : acquittement des marqueurs d'échec
 
 **Objectif** : pouvoir retirer `backup-failed` et `verify-degrade` depuis le

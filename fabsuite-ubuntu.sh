@@ -16,7 +16,7 @@ RESTORE_DEST=""
 RESTORE_SOURCES=()
 VERIFY_ALL=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v12"
+HELPER_VERSION="2026-11-19-suite-backup-v13"
 
 usage() {
   cat <<'EOF'
@@ -1602,35 +1602,75 @@ run_backup_timer_status() {
 run_clear_markers() {
   echo "===== Suite clear markers ====="
 
-  # Acquittement explicite des deux signaux persistants. Un lien symbolique
-  # n'est jamais suivi : seuls les fichiers ordinaires du dossier de
-  # sauvegarde sont supprimes.
+  # Acquittement explicite, sous condition : verify-degrade n'est retire
+  # qu'apres un `verify --all` sain, backup-failed qu'apres un snapshot valide
+  # plus recent que l'echec. Un lien symbolique n'est jamais suivi.
   local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
-  local marker
-  local supprimes=0 absents=0 refuses=0 erreurs=0
+  local backup_module=""
+  backup_module="$(resolve_suite_backup_module || true)"
 
-  for marker in "${backup_root}/backup-failed" "${backup_root}/verify-degrade"; do
+  local recent_snapshot=""
+  if [[ -f "${backup_root}/backup-failed" && ! -L "${backup_root}/backup-failed" ]]; then
+    if [[ -n "$backup_module" ]] && grep -q '^def lister_snapshots' "$backup_module"; then
+      local derniere
+      derniere="$(python3 "$backup_module" list --dest "$backup_root" 2>/dev/null | awk -F'|' '$2=="ok" {print $1; exit}')"
+      if [[ -n "$derniere" && -f "${derniere%/}/manifest.json" && "${derniere%/}/manifest.json" -nt "${backup_root}/backup-failed" ]]; then
+        recent_snapshot="$derniere"
+      fi
+    fi
+  fi
+
+  local verify_ok=0 verify_state="inconnu"
+  if [[ -f "${backup_root}/verify-degrade" && ! -L "${backup_root}/verify-degrade" ]]; then
+    if [[ -n "$backup_module" ]] && grep -q '^def verifier_snapshot' "$backup_module"; then
+      if python3 "$backup_module" verify --dest "$backup_root" --all; then
+        verify_ok=1
+      else
+        verify_state="code $?"
+      fi
+    else
+      verify_state="module sans verify"
+    fi
+  fi
+
+  local nom marker
+  local supprimes=0 absents=0 refuses=0 conserves=0 erreurs=0
+
+  for nom in backup-failed verify-degrade; do
+    marker="${backup_root}/${nom}"
+
     if [[ -L "$marker" ]]; then
       echo "[markers] refuse=${marker} (lien symbolique)"
       refuses=$((refuses + 1))
       continue
     fi
-    if [[ -f "$marker" ]]; then
-      if rm -f -- "$marker"; then
-        echo "[markers] supprime=${marker}"
-        supprimes=$((supprimes + 1))
-      else
-        echo "[markers] ERROR=${marker} (suppression impossible)" >&2
-        erreurs=$((erreurs + 1))
-      fi
-    else
+    if [[ ! -f "$marker" ]]; then
       echo "[markers] absent=${marker}"
       absents=$((absents + 1))
+      continue
+    fi
+    if [[ "$nom" == "backup-failed" && -z "$recent_snapshot" ]]; then
+      echo "[markers] conserve=${marker} (aucun backup reussi depuis l'echec)"
+      conserves=$((conserves + 1))
+      continue
+    fi
+    if [[ "$nom" == "verify-degrade" && "$verify_ok" -ne 1 ]]; then
+      echo "[markers] conserve=${marker} (verify --all non sain: ${verify_state})"
+      conserves=$((conserves + 1))
+      continue
+    fi
+
+    if rm -f -- "$marker"; then
+      echo "[markers] supprime=${marker}"
+      supprimes=$((supprimes + 1))
+    else
+      echo "[markers] ERROR=${marker} (suppression impossible)" >&2
+      erreurs=$((erreurs + 1))
     fi
   done
 
-  echo "[markers] bilan=${supprimes} supprime(s), ${absents} absent(s), ${refuses} refuse(s)"
-  [[ "$erreurs" -eq 0 ]] || return 2
+  echo "[markers] bilan=${supprimes} supprime(s), ${absents} absent(s), ${refuses} refuse(s), ${conserves} conserve(s)"
+  [[ $((refuses + conserves + erreurs)) -eq 0 ]] || return 2
 }
 
 repo_exists() {

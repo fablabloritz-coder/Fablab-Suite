@@ -1664,7 +1664,7 @@ exit 0
             self._require_connection()
             self._ensure_remote_helper_ready()
             code, sortie = self._exec_remote_capture(
-                self._helper_command("clear-markers"), timeout_sec=120
+                self._helper_command("clear-markers"), timeout_sec=300
             )
         except Exception as exc:
             self._show_alert(
@@ -1675,25 +1675,43 @@ exit 0
 
         supprimes = []
         refuses = []
+        conserves = []
         for ligne in sortie.splitlines():
             ligne = ligne.strip()
             if ligne.startswith("[markers] supprime="):
                 supprimes.append(ligne.split("=", 1)[1])
             elif ligne.startswith("[markers] refuse="):
                 refuses.append(ligne.split("=", 1)[1])
+            elif ligne.startswith("[markers] conserve="):
+                conserves.append(ligne.split("=", 1)[1])
 
         # Les deux lignes d'etat doivent refleter la disparition des marqueurs.
         self._request_verify_state_refresh()
         self._request_backup_state_refresh()
 
         if code != 0:
+            details = []
+            if supprimes:
+                details.append("Supprimes : " + ", ".join(supprimes))
+            if conserves:
+                details.append(
+                    "Conserves (condition non remplie) :\n"
+                    + "\n".join(f"- {item}" for item in conserves)
+                )
+            if refuses:
+                details.append(
+                    "Refuses (securite) :\n"
+                    + "\n".join(f"- {item}" for item in refuses)
+                )
+            if not details:
+                details.append("Consulte le journal [markers].")
             self._show_alert(
-                "Acquittement incomplet",
-                f"L'acquittement a echoue en partie (code {code}).\n"
-                "Consulte le journal [markers] et verifie les droits sur le "
-                "dossier de sauvegarde.",
+                "Acquittement refuse",
+                "Tous les marqueurs ne peuvent pas etre acquittes :\n\n"
+                + "\n\n".join(details)
+                + "\n\nLance un 'verify --all' sain et/ou un backup, puis reessaie.",
             )
-            raise RuntimeError(f"acquittement incomplet (code {code})")
+            raise RuntimeError(f"acquittement refuse (code {code})")
 
         if supprimes:
             detail = "\n".join(f"- {chemin}" for chemin in supprimes)

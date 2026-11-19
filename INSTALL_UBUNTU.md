@@ -80,7 +80,8 @@ Ce que fait la commande:
 ./fabsuite-ubuntu.sh verify --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
 ./fabsuite-ubuntu.sh verify --all
 
-# Acquitter les marqueurs backup-failed / verify-degrade après contrôle
+# Acquitter les marqueurs (verify-degrade : après un verify --all sain ;
+# backup-failed : après un snapshot valide postérieur à l'échec)
 ./fabsuite-ubuntu.sh clear-markers
 
 # Planifier les snapshots (timer systemd, rotation incluse)

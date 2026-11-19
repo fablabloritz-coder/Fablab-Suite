@@ -333,7 +333,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         sortie = (
             "[markers] supprime=/home/fablab/backup-fabsuite/backup-failed\n"
             "[markers] supprime=/home/fablab/backup-fabsuite/verify-degrade\n"
-            "[markers] bilan=2 supprime(s), 0 absent(s), 0 refuse(s)\n"
+            "[markers] bilan=2 supprime(s), 0 absent(s), 0 refuse(s), 0 conserve(s)\n"
         )
         self.backend._require_connection = lambda: None
         self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
@@ -364,7 +364,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         sortie = (
             "[markers] absent=/home/fablab/backup-fabsuite/backup-failed\n"
             "[markers] absent=/home/fablab/backup-fabsuite/verify-degrade\n"
-            "[markers] bilan=0 supprime(s), 2 absent(s), 0 refuse(s)\n"
+            "[markers] bilan=0 supprime(s), 2 absent(s), 0 refuse(s), 0 conserve(s)\n"
         )
         self.backend._require_connection = lambda: None
         self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
@@ -379,17 +379,41 @@ class GuiBackupRestoreTest(unittest.TestCase):
     def test_clear_markers_refuse_les_liens_symboliques(self):
         sortie = (
             "[markers] refuse=/home/fablab/backup-fabsuite/verify-degrade (lien symbolique)\n"
-            "[markers] bilan=0 supprime(s), 0 absent(s), 1 refuse(s)\n"
+            "[markers] bilan=0 supprime(s), 0 absent(s), 1 refuse(s), 0 conserve(s)\n"
         )
         self.backend._require_connection = lambda: None
         self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
-        self.backend._exec_remote_capture = lambda commande, timeout_sec=120: (0, sortie)
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=120: (2, sortie)
 
-        self.backend._clear_markers_worker()
+        with self.assertRaises(RuntimeError):
+            self.backend._clear_markers_worker()
 
         titre, message = self.alertes[0]
         self.assertEqual(titre, "Acquittement refuse")
         self.assertIn("verify-degrade", message)
+        self.assertIn("Refuses (securite)", message)
+
+    def test_clear_markers_refuse_sans_verify_sain_ni_backup_recent(self):
+        sortie = (
+            "[markers] conserve=/home/fablab/backup-fabsuite/backup-failed "
+            "(aucun backup reussi depuis l'echec)\n"
+            "[markers] conserve=/home/fablab/backup-fabsuite/verify-degrade "
+            "(verify --all non sain: code 3)\n"
+            "[markers] bilan=0 supprime(s), 0 absent(s), 0 refuse(s), 2 conserve(s)\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=120: (2, sortie)
+
+        with self.assertRaises(RuntimeError):
+            self.backend._clear_markers_worker()
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Acquittement refuse")
+        self.assertIn("Conserves (condition non remplie)", message)
+        self.assertIn("verify --all non sain", message)
+        self.assertIn("aucun backup reussi", message)
+        self.assertIn("verify --all", message)
 
     def test_clear_markers_signale_l_erreur_ssh(self):
         self.backend._require_connection = lambda: None
