@@ -1228,6 +1228,8 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("run_backup_timer_status()", script)
         self.assertIn("fabsuite-backup.timer", script)
         self.assertIn("FABSUITE_BACKUP_ON_CALENDAR", script)
+        self.assertIn("clear-markers)", script)
+        self.assertIn("run_clear_markers()", script)
         self.assertIn("fabsuite-verify.timer", script)
         self.assertIn("OnCalendar", script)
         self.assertIn("verify-degrade", script)
@@ -1462,6 +1464,68 @@ class HelperVerifyTimerTest(unittest.TestCase):
             appels = journal.read_text(encoding="utf-8")
             self.assertIn("enable --now fabsuite-backup.timer", appels)
             self.assertIn("fabsuite-backup.timer", sortie)
+
+
+class HelperClearMarkersTest(unittest.TestCase):
+    """L'acquittement supprime les marqueurs ordinaires et refuse les liens."""
+
+    def test_acquitte_les_marqueurs_et_refuse_les_liens(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            install = racine / "suite"
+            install.mkdir()
+            backups = racine / "backups"
+            backups.mkdir()
+            (backups / "backup-failed").write_text(
+                "ECHEC test\n", encoding="utf-8"
+            )
+            (backups / "verify-degrade").symlink_to("/etc/passwd")
+
+            installer = racine / "installer"
+            installer.mkdir()
+            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+            env_file = installer / "fabsuite-ubuntu.env"
+            env_file.write_text(
+                "\n".join(
+                    (
+                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                        "GIT_BRANCH=main",
+                        f"INSTALL_DIR={install}",
+                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                        "FLASK_SECRET_KEY=test-secret",
+                        f"FABSUITE_BACKUP_DIR={backups}",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(racine / "home")
+            processus = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "clear-markers",
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn(f"supprime={backups / 'backup-failed'}", sortie)
+            self.assertIn(f"refuse={backups / 'verify-degrade'}", sortie)
+            self.assertFalse((backups / "backup-failed").exists())
+            self.assertTrue((backups / "verify-degrade").is_symlink())
 
 
 if __name__ == "__main__":

@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : acquittement des marqueurs d'échec
+
+**Objectif** : pouvoir retirer `backup-failed` et `verify-degrade` depuis le
+GUI après contrôle, sans script manuel.
+
+**Implementation**
+- Helper : action `clear-markers` qui supprime les deux marqueurs du dossier
+  `FABSUITE_BACKUP_DIR` en refusant les liens symboliques et en détaillant
+  `supprime=` / `absent=` / `refuse=` ; `HELPER_VERSION` → v12.
+- GUI : bouton **Acquitter les alertes** avec `data-confirm`, action
+  `action_clear_markers` → `_clear_markers_worker` (helper via capture, alertes
+  « Alertes acquittees », « Aucun marqueur », « Acquittement refuse », erreur
+  SSH) et rafraîchissement des deux lignes d'état.
+- Aucune logique de suppression dans le GUI : chemins et sécurité restent dans
+  le helper.
+- Docs : README (carte SSH, sections timers), INSTALL_UBUNTU.
+
+**Verifications**
+- Test d'intégration helper : marqueur ordinaire supprimé, lien symbolique
+  refusé et conservé.
+- Tests backend : acquittement + rafraîchissement des deux états, aucun
+  marqueur, refus de lien, erreur SSH.
+- `bash -n`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- L'acquittement ne relance pas de vérification/backup : le texte le rappelle
+  mais rien ne l'impose ; rendu de la confirmation non vu dans un navigateur.
+
+**Prochaine action** : exiger un `verify --all` sain (ou un backup récent)
+comme précondition à l'acquittement.
+
+---
+
 ## 2026-11-19 — Suite : signal persistant d'un backup planifié en échec
 
 **Objectif** : un backup planifié échoué ne doit pas se limiter à une unité

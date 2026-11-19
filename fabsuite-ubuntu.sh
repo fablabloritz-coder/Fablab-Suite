@@ -16,7 +16,7 @@ RESTORE_DEST=""
 RESTORE_SOURCES=()
 VERIFY_ALL=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v11"
+HELPER_VERSION="2026-11-19-suite-backup-v12"
 
 usage() {
   cat <<'EOF'
@@ -38,6 +38,7 @@ Usage:
   ./fabsuite-ubuntu.sh verify-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install-backup-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh backup-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh clear-markers [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -64,7 +65,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1598,6 +1599,40 @@ run_backup_timer_status() {
   fi
 }
 
+run_clear_markers() {
+  echo "===== Suite clear markers ====="
+
+  # Acquittement explicite des deux signaux persistants. Un lien symbolique
+  # n'est jamais suivi : seuls les fichiers ordinaires du dossier de
+  # sauvegarde sont supprimes.
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local marker
+  local supprimes=0 absents=0 refuses=0 erreurs=0
+
+  for marker in "${backup_root}/backup-failed" "${backup_root}/verify-degrade"; do
+    if [[ -L "$marker" ]]; then
+      echo "[markers] refuse=${marker} (lien symbolique)"
+      refuses=$((refuses + 1))
+      continue
+    fi
+    if [[ -f "$marker" ]]; then
+      if rm -f -- "$marker"; then
+        echo "[markers] supprime=${marker}"
+        supprimes=$((supprimes + 1))
+      else
+        echo "[markers] ERROR=${marker} (suppression impossible)" >&2
+        erreurs=$((erreurs + 1))
+      fi
+    else
+      echo "[markers] absent=${marker}"
+      absents=$((absents + 1))
+    fi
+  done
+
+  echo "[markers] bilan=${supprimes} supprime(s), ${absents} absent(s), ${refuses} refuse(s)"
+  [[ "$erreurs" -eq 0 ]] || return 2
+}
+
 repo_exists() {
   local app="$1"
   [[ -d "${INSTALL_DIR}/${app}" && -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]
@@ -2178,6 +2213,9 @@ case "$ACTION" in
     ;;
   backup-timer-status)
     run_backup_timer_status
+    ;;
+  clear-markers)
+    run_clear_markers
     ;;
   install)
     run_install

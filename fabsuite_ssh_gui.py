@@ -239,6 +239,10 @@ class FabSuiteBackend:
             return self.backup_timer_status()
 
         @eel.expose
+        def action_clear_markers():
+            self.action_clear_markers()
+
+        @eel.expose
         def action_scan_dirs():
             self.action_scan_dirs()
 
@@ -1653,6 +1657,76 @@ exit 0
             self._show_ssh_only_info("Verification des snapshots")
             return
         self._run_async("Verification snapshots", self._verify_worker)
+
+    def _clear_markers_worker(self):
+        self._log("Acquittement des marqueurs backup-failed / verify-degrade...")
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            code, sortie = self._exec_remote_capture(
+                self._helper_command("clear-markers"), timeout_sec=120
+            )
+        except Exception as exc:
+            self._show_alert(
+                "Acquittement impossible",
+                f"Impossible d'acquitter les alertes: {exc}",
+            )
+            raise RuntimeError("acquittement impossible") from exc
+
+        supprimes = []
+        refuses = []
+        for ligne in sortie.splitlines():
+            ligne = ligne.strip()
+            if ligne.startswith("[markers] supprime="):
+                supprimes.append(ligne.split("=", 1)[1])
+            elif ligne.startswith("[markers] refuse="):
+                refuses.append(ligne.split("=", 1)[1])
+
+        # Les deux lignes d'etat doivent refleter la disparition des marqueurs.
+        self._request_verify_state_refresh()
+        self._request_backup_state_refresh()
+
+        if code != 0:
+            self._show_alert(
+                "Acquittement incomplet",
+                f"L'acquittement a echoue en partie (code {code}).\n"
+                "Consulte le journal [markers] et verifie les droits sur le "
+                "dossier de sauvegarde.",
+            )
+            raise RuntimeError(f"acquittement incomplet (code {code})")
+
+        if supprimes:
+            detail = "\n".join(f"- {chemin}" for chemin in supprimes)
+            suffixe = (
+                "\n\nNon supprimes (securite) : " + ", ".join(refuses)
+                if refuses
+                else ""
+            )
+            self._show_alert(
+                "Alertes acquittees",
+                f"Marqueurs supprimes :\n{detail}{suffixe}\n\n"
+                "Relance une verification ou un backup avant de te fier a nouveau a l'etat.",
+            )
+            return
+
+        if refuses:
+            self._show_alert(
+                "Acquittement refuse",
+                "Les marqueurs suivants sont des liens symboliques et n'ont pas "
+                "ete supprimes :\n" + "\n".join(f"- {chemin}" for chemin in refuses),
+            )
+            return
+
+        self._show_alert(
+            "Aucun marqueur",
+            "Aucun marqueur backup-failed ou verify-degrade a acquitter.",
+        )
+
+    def action_clear_markers(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Acquittement des alertes")
+            return
+        self._run_async("Acquittement des alertes", self._clear_markers_worker)
 
     @staticmethod
     def _parse_timer_status(sortie, prefixe="[verify-timer] "):

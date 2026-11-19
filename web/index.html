@@ -177,6 +177,7 @@
             </div>
             <div class="row g-2 align-items-center mt-1">
               <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" data-action="action_backup_timer_status" data-help="Affiche la prochaine execution du timer de snapshots et le resultat du dernier backup (rotation incluse).">&#x23F0; État sauvegarde</button></div>
+              <div class="col-auto"><button class="btn btn-outline-danger btn-sm action-btn ssh-btn" data-action="action_clear_markers" data-confirm="Acquitter les marqueurs backup-failed et verify-degrade ? Lance d'abord une verification ou un backup pour confirmer que la situation est reglee." data-help="Supprime les marqueurs d'echec persistants apres verification.">&#x2716; Acquitter les alertes</button></div>
               <div class="col"><small class="text-muted" id="backupTimerState">Sauvegarde planifiée : état inconnu (clique sur État sauvegarde).</small></div>
             </div>
           </div>
