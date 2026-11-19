@@ -6,6 +6,50 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : snapshot automatique avant update
+
+**Objectif** : garantir qu'une mise a jour du helper ne demarre pas sans
+sauvegarde verifiee, tout en laissant une porte de sortie explicite si le
+snapshot est invalide.
+
+**Implementation**
+- `run_update()` appelle `run_update_prebackup()` avant `bootstrap_repo` :
+  le snapshot est pris avant tout `git fetch/reset` et tout rebuild.
+- Snapshot valide : message clair puis poursuite.
+- Snapshot invalide : bloc d'avertissement rappelant que les donnees ne sont
+  pas sauvegardees, puis
+  - terminal interactif : confirmation `y/N` (defaut : annulation) ;
+  - mode non interactif (GUI/automatisation) : poursuite automatique avec
+    avertissement (une mise a jour urgente ne reste pas bloquee) ;
+  - `FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP=1` : update annule (exit 2) ;
+  - `FABSUITE_UPDATE_SKIP_BACKUP=1` : snapshot non pris du tout.
+- Sans checkout git dans `INSTALL_DIR`, le snapshot est ignore avec un message
+  (premier deploiement, rien a proteger).
+- `HELPER_VERSION` passe a `2026-11-19-suite-backup-v2`.
+
+**Verifications**
+- 13 tests `tests/test_suite_backup.py`, dont 5 sur l'update : snapshot cree
+  avant preflight, poursuite non interactive sur snapshot invalide, annulation
+  en mode strict, desactivation explicite, absence de checkout git.
+- `bash -n fabsuite-ubuntu.sh` OK.
+- Suite racine : 34 tests OK.
+- Campagne `suite_tests.py --offline` : 9/9 PASS (1 SKIP attendu : contrat
+  FabInventory absent), exit 0.
+
+**Risques / non couverts**
+- Le chemin interactif `y/N` n'est pas automatise (necessite un terminal) ; il
+  est couvert par le code, pas par un test.
+- La premiere mise a jour apres deploiement de ce helper utilise encore
+  l'ancien monorepo installe, qui ne contient pas `suite_backup.py` : le
+  snapshot echoue alors avec un message clair, et l'update continue en mode
+  non interactif (prochaine mise a jour protegee).
+- Les snapshots ne sont toujours pas rotates et la restauration reste manuelle.
+
+**Prochaine action** : ajouter `restore` et la rotation des snapshots, puis
+les exposer dans le GUI.
+
+---
+
 ## 2026-11-19 — Suite : snapshot de sauvegarde verifie
 
 **Objectif** : disposer d'une sauvegarde unifiee et fiable des cinq

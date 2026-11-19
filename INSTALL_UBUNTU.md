@@ -66,6 +66,7 @@ Ce que fait la commande:
 
 ```bash
 # Mettre à jour le code puis rebuild/redémarrer toutes les apps
+# (prend d'abord un snapshot vérifié dans ~/backup-fabsuite)
 ./fabsuite-ubuntu.sh update
 
 # Démarrer / arrêter / redémarrer

@@ -262,6 +262,175 @@ class HelperIntegrationTest(unittest.TestCase):
             self.assertTrue((snapshots[0] / "Fabtrack-uploads.tgz").is_file())
 
 
+class UpdateSnapshotTest(unittest.TestCase):
+    """Le helper prend un snapshot verifie avant update, avec issue explicite."""
+
+    def _preparer(self, racine, *, corrompue=False, checkout=True):
+        install = racine / "suite"
+        install.mkdir()
+        shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
+        creer_base(install / "FabHome/data/fabhome.db")
+        if corrompue:
+            (install / "FabHome/data/casse.db").write_bytes(
+                b"SQLite format 3\x00" + b"\x00" * 2048
+            )
+        if checkout:
+            (install / ".git").mkdir()
+
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+        env_file = installer / "fabsuite-ubuntu.env"
+        env_file.write_text(
+            "\n".join(
+                (
+                    "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                    "GIT_BRANCH=main",
+                    f"INSTALL_DIR={install}",
+                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    "FABHOME_DATA_PATH=./data",
+                    "FABHOME_ICONS_PATH=./icons",
+                    f"FABSUITE_BACKUP_DIR={racine / 'backups'}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        (faux_bin / "docker").write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi\n'
+            "exit 1\n",
+            encoding="utf-8",
+        )
+        (faux_bin / "git").write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "$1" == "-C" && "$3" == "remote" ]]; then\n'
+            '  echo "https://github.com/fablabloritz-coder/Fablab-Suite.git"\n'
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        (faux_bin / "docker").chmod(0o755)
+        (faux_bin / "git").chmod(0o755)
+        return installer, env_file, faux_bin
+
+    def _update(self, racine, installer, env_file, faux_bin, *, extras=None):
+        env = os.environ.copy()
+        env["PATH"] = f"{faux_bin}:{env['PATH']}"
+        env["HOME"] = str(racine / "home")
+        env["NON_INTERACTIVE"] = "1"
+        env.update(extras or {})
+        return subprocess.run(
+            [
+                "bash",
+                str(installer / "fabsuite-ubuntu.sh"),
+                "update",
+                "--env-file",
+                str(env_file),
+            ],
+            cwd=installer,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_update_snapshot_verifie_avant_git_et_preflight(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, faux_bin = self._preparer(racine)
+
+            processus = self._update(racine, installer, env_file, faux_bin)
+            sortie = processus.stdout + processus.stderr
+
+            # Le preflight echoue (compose absents) : l'update s'arrete la, mais
+            # le snapshot a bien ete pris avant toute modification.
+            self.assertEqual(processus.returncode, 1, sortie)
+            self.assertIn("[update] Snapshot de sauvegarde verifie avant mise a jour", sortie)
+            self.assertIn("[backup] statut: ok", sortie)
+            self.assertIn("[update] Snapshot valide", sortie)
+            self.assertIn("[preflight] ERROR", sortie)
+            self.assertLess(
+                sortie.index("[update] Snapshot de sauvegarde"),
+                sortie.index("[preflight] ERROR"),
+            )
+            snapshots = list((racine / "backups").glob("suite-*"))
+            self.assertEqual(len(snapshots), 1)
+            self.assertTrue((snapshots[0] / "snapshot.ok").is_file())
+
+    def test_update_continue_si_snapshot_invalide_en_non_interactif(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, faux_bin = self._preparer(racine, corrompue=True)
+
+            processus = self._update(racine, installer, env_file, faux_bin)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 1, sortie)
+            self.assertIn("[backup] snapshot INVALIDE", sortie)
+            self.assertIn("[update] ATTENTION", sortie)
+            self.assertIn("[update] Mode non interactif: poursuite automatique", sortie)
+            self.assertIn("[preflight] ERROR", sortie)
+            snapshots = list((racine / "backups").glob("suite-*"))
+            self.assertEqual(len(snapshots), 1)
+            self.assertFalse((snapshots[0] / "snapshot.ok").exists())
+
+    def test_update_annule_si_snapshot_invalide_et_mode_strict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, faux_bin = self._preparer(racine, corrompue=True)
+
+            processus = self._update(
+                racine,
+                installer,
+                env_file,
+                faux_bin,
+                extras={"FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP": "1"},
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 2, sortie)
+            self.assertIn("Mise a jour annulee (FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP=1)", sortie)
+            self.assertNotIn("[preflight]", sortie)
+            snapshots = list((racine / "backups").glob("suite-*"))
+            self.assertEqual(len(snapshots), 1)
+            self.assertFalse((snapshots[0] / "snapshot.ok").exists())
+
+    def test_update_peut_ignorer_le_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, faux_bin = self._preparer(racine)
+
+            processus = self._update(
+                racine,
+                installer,
+                env_file,
+                faux_bin,
+                extras={"FABSUITE_UPDATE_SKIP_BACKUP": "1"},
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 1, sortie)
+            self.assertIn("Snapshot de sauvegarde ignore (FABSUITE_UPDATE_SKIP_BACKUP=1)", sortie)
+            self.assertFalse((racine / "backups").exists())
+
+    def test_update_sans_checkout_git_ignore_le_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, faux_bin = self._preparer(racine, checkout=False)
+
+            processus = self._update(racine, installer, env_file, faux_bin)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 1, sortie)
+            self.assertIn("Snapshot non applicable", sortie)
+            self.assertFalse((racine / "backups").exists())
+
+
 class HelperWiringTest(unittest.TestCase):
     def test_le_helper_expose_l_action_backup(self):
         script = (ROOT / "fabsuite-ubuntu.sh").read_text(encoding="utf-8")
@@ -269,6 +438,9 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("./fabsuite-ubuntu.sh backup", script)
         self.assertIn("run_suite_backup()", script)
         self.assertIn("run_check_data_safety", script)
+        self.assertIn("run_update_prebackup()", script)
+        self.assertIn("FABSUITE_UPDATE_SKIP_BACKUP", script)
+        self.assertIn("FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP", script)
         self.assertIn('"$backup_module" snapshot', script)
         self.assertIn("run_suite_backup\n", script)
 

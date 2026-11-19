@@ -12,7 +12,7 @@ ENV_FILE="${SCRIPT_DIR}/fabsuite-ubuntu.env"
 ACTION=""
 LOG_APP=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v1"
+HELPER_VERSION="2026-11-19-suite-backup-v2"
 
 usage() {
   cat <<'EOF'
@@ -1665,10 +1665,59 @@ run_restart() {
   fi
 }
 
+run_update_prebackup() {
+  if [[ "${FABSUITE_UPDATE_SKIP_BACKUP:-0}" == "1" ]]; then
+    echo "[update] Snapshot de sauvegarde ignore (FABSUITE_UPDATE_SKIP_BACKUP=1)."
+    return 0
+  fi
+
+  if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
+    echo "[update] Snapshot non applicable: pas de checkout git existant (premier deploiement)."
+    return 0
+  fi
+
+  echo "[update] Snapshot de sauvegarde verifie avant mise a jour..."
+  if run_suite_backup; then
+    echo "[update] Snapshot valide: la mise a jour peut continuer."
+    return 0
+  fi
+
+  echo ""
+  echo "[update] ATTENTION: aucun snapshot valide n'a pu etre produit (voir les erreurs [backup] ci-dessus)."
+  echo "[update] Les donnees ne sont PAS sauvegardees par cette mise a jour."
+
+  if [[ "${FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP:-0}" == "1" ]]; then
+    echo "[update] Mise a jour annulee (FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP=1)."
+    return 1
+  fi
+
+  # Terminal interactif: l'operateur decide. GUI/automatisation
+  # (NON_INTERACTIVE=1): poursuite automatique avec avertissement explicite.
+  if [[ "${NON_INTERACTIVE:-0}" != "1" && -t 0 ]]; then
+    local reponse=""
+    read -r -p "[update] Continuer la mise a jour sans snapshot valide ? [y/N] " reponse || true
+    if [[ ! "$reponse" =~ ^[yY]$ ]]; then
+      echo "[update] Mise a jour annulee."
+      return 1
+    fi
+    echo "[update] Poursuite confirmee par l'operateur (sans snapshot valide)."
+    return 0
+  fi
+
+  echo "[update] Mode non interactif: poursuite automatique, sans snapshot valide."
+  echo "[update] Pour bloquer ce cas: FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP=1."
+  return 0
+}
+
 run_update() {
   require_cmd git
   require_docker_compose
   mkdir -p "$INSTALL_DIR"
+
+  if ! run_update_prebackup; then
+    echo "ERROR: update annule (snapshot de sauvegarde non valide)."
+    exit 2
+  fi
 
   bootstrap_repo || { echo "ERROR: suite update (git fetch/reset) failed"; exit 1; }
   if [[ ! -d "${INSTALL_DIR}/.git" ]]; then

@@ -412,6 +412,16 @@ snapshot sans aucune donnée est refusé.
 Le snapshot est pris à chaud, applicatifs démarrés : pour un arrêt parfaitement
 cohérent de toutes les écritures, arrêter la suite avant de le lancer.
 
+`./fabsuite-ubuntu.sh update` prend automatiquement ce snapshot vérifié avant
+tout `git fetch/reset` et tout rebuild. Si le snapshot est invalide :
+
+- en terminal interactif, l'opérateur doit confirmer la poursuite (`y`) ;
+- en mode non interactif (GUI/automatisation), l'update continue avec un
+avertissement explicite — comportement voulu pour ne pas bloquer une mise à
+jour urgente ;
+- `FABSUITE_UPDATE_REQUIRE_VERIFIED_BACKUP=1` annule l'update dans ce cas ;
+- `FABSUITE_UPDATE_SKIP_BACKUP=1` désactive le snapshot automatique.
+
 ## Confidentialité et publication
 
 Le repo est préparé pour une publication propre :
