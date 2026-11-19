@@ -12,7 +12,7 @@ ENV_FILE="${SCRIPT_DIR}/fabsuite-ubuntu.env"
 ACTION=""
 LOG_APP=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-03-21-preflight-v1"
+HELPER_VERSION="2026-11-19-suite-backup-v1"
 
 usage() {
   cat <<'EOF'
@@ -24,6 +24,7 @@ Usage:
   ./fabsuite-ubuntu.sh cleanup-safe
   ./fabsuite-ubuntu.sh repair-env [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh check-data-safety [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh backup [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -39,6 +40,7 @@ Examples:
   ./fabsuite-ubuntu.sh cleanup-safe
   ./fabsuite-ubuntu.sh repair-env
   ./fabsuite-ubuntu.sh check-data-safety
+  ./fabsuite-ubuntu.sh backup
   ./fabsuite-ubuntu.sh install
   ./fabsuite-ubuntu.sh status
   ./fabsuite-ubuntu.sh logs Fabtrack
@@ -47,7 +49,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1184,6 +1186,57 @@ run_check_data_safety() {
   return 0
 }
 
+run_suite_backup() {
+  require_cmd python3
+
+  echo "===== Suite backup snapshot ====="
+
+  # Meme garde-fou que install/update : on ne fige pas des chemins qui vont
+  # changer au prochain deploiement.
+  if ! run_check_data_safety; then
+    echo "[backup] ERROR: precheck data safety a detecte un risque; snapshot annule."
+    return 2
+  fi
+
+  local backup_module=""
+  if [[ -f "${INSTALL_DIR}/suite_backup.py" ]]; then
+    backup_module="${INSTALL_DIR}/suite_backup.py"
+  elif [[ -f "${SCRIPT_DIR}/suite_backup.py" ]]; then
+    backup_module="${SCRIPT_DIR}/suite_backup.py"
+  else
+    echo "[backup] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})."
+    echo "[backup] Lance './fabsuite-ubuntu.sh update' pour recuperer le monorepo courant."
+    return 2
+  fi
+
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local -a specs
+  specs=(
+    "FabHome|data|${FABHOME_DATA_PATH:-./data}"
+    "FabHome|icons|${FABHOME_ICONS_PATH:-./icons}"
+    "Fabtrack|data|${FABTRACK_DATA_PATH:-./docker-data/data}"
+    "Fabtrack|uploads|${FABTRACK_UPLOADS_PATH:-./docker-data/uploads}"
+    "PretGo|data|${PRETGO_DATA_PATH:-./docker-data/data}"
+    "PretGo|uploads|${PRETGO_UPLOADS_PATH:-./docker-data/uploads/materiel}"
+    "FabBoard|data|${FABBOARD_DATA_PATH:-./docker-data/data}"
+    "FabBoard|uploads|${FABBOARD_UPLOADS_PATH:-./docker-data/uploads}"
+    "FabInventory|data|${FABINVENTORY_DATA_PATH:-./docker-data/data}"
+  )
+
+  # Meme resolution que check-data-safety : un chemin relatif part de
+  # INSTALL_DIR/<App>, un chemin absolu est conserve.
+  local -a args=()
+  local spec app role raw path
+  for spec in "${specs[@]}"; do
+    IFS='|' read -r app role raw <<< "$spec"
+    path="$(resolve_bind_source_path "$app" "$raw")"
+    args+=(--source "${app}|${role}|${path}")
+  done
+
+  echo "[backup] destination: ${backup_root}"
+  python3 "$backup_module" snapshot --dest "$backup_root" "${args[@]}"
+}
+
 repo_exists() {
   local app="$1"
   [[ -d "${INSTALL_DIR}/${app}" && -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]
@@ -1688,6 +1741,9 @@ case "$ACTION" in
     ;;
   check-data-safety)
     run_check_data_safety
+    ;;
+  backup)
+    run_suite_backup
     ;;
   install)
     run_install

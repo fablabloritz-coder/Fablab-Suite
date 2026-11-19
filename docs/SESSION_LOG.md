@@ -6,6 +6,55 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : snapshot de sauvegarde verifie
+
+**Objectif** : disposer d'une sauvegarde unifiee et fiable des cinq
+applications avant toute mise a jour, sans dependre des exports propres a
+PretGo et Fabtrack.
+
+**Implementation**
+- `./fabsuite-ubuntu.sh backup` : execute d'abord `check-data-safety` (un
+  risque de chemin annule le snapshot), resout les volumes avec la meme
+  fonction que ce pre-check, puis appelle `suite_backup.py` du monorepo.
+- `suite_backup.py` cree un dossier horodate
+  (`$HOME/backup-fabsuite/suite-AAAA-MM-JJ-HHMMSS`, surchargeable par
+  `FABSUITE_BACKUP_DIR`) avec une archive `tar.gz` par application et par
+  volume : FabHome (data, icons), Fabtrack (data, uploads), PretGo (data,
+  uploads), FabBoard (data, uploads), FabInventory (data, uploads inclus).
+- Verification avant validation : chaque archive est relue entierement, et
+  chaque base SQLite qu'elle contient est extraite puis passee a
+  `PRAGMA integrity_check`. `manifest.json` (sources, tailles, SHA-256,
+  integrite, avertissements) est ecrit dans tous les cas ; `snapshot.ok`
+  n'apparait que si tout est sain. Une source absente est un avertissement,
+  un snapshot sans aucune donnee est refuse.
+- `HELPER_VERSION` passe a `2026-11-19-suite-backup-v1`.
+
+**Verifications**
+- 8 tests `tests/test_suite_backup.py` : archive/restauration d'une base et
+  d'un upload, base corrompue qui invalide le snapshot (pas de marqueur),
+  source absente, snapshot sans donnee, refus d'ecrasement, CLI, et
+  execution reelle du helper avec un faux Docker (pre-check, chemins,
+  archives, marqueur).
+- `bash -n fabsuite-ubuntu.sh` OK.
+- Suite racine : 29 tests OK.
+- Campagne `suite_tests.py --offline` : 9/9 PASS (1 SKIP attendu : contrat
+  FabInventory absent), exit 0.
+
+**Risques / non couverts**
+- Snapshot pris a chaud, applicatifs demarres : une ecriture pendant
+  l'archivage peut produire une base incoherente ; l'integrite le detecte et
+  invalide le snapshot, mais il faut alors arreter la suite et relancer.
+- Pas encore d'action de restauration ni d'entree dans le GUI : le snapshot
+  se restaure en extrayant les archives.
+- Aucune rotation automatique des snapshots (ils s'accumulent dans
+  `~/backup-fabsuite`).
+
+**Prochaine action** : ajouter `restore` (extraction verifiee + garde-fou de
+chemin) et la rotation des snapshots, puis exposer les deux actions dans le
+GUI.
+
+---
+
 ## 2026-11-19 — PretGo : purge des lignes `blocked` reversible
 
 **Objectif** : rendre annulable la purge des lignes `blocked` redondantes de

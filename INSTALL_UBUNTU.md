@@ -79,6 +79,9 @@ Ce que fait la commande:
 # Diagnostiquer rapidement Docker + connectivité inter-apps
 ./fabsuite-ubuntu.sh audit
 
+# Snapshot horodate et verifie des bases SQLite, uploads et configuration
+./fabsuite-ubuntu.sh backup
+
 # Logs
 ./fabsuite-ubuntu.sh logs
 ./fabsuite-ubuntu.sh logs Fabtrack

@@ -391,6 +391,27 @@ kill <pid>          # puis kill -9 <pid> si nécessaire
 ./fabsuite-ubuntu.sh logs Fabtrack
 ```
 
+### Sauvegarde de la suite
+
+`./fabsuite-ubuntu.sh backup` crée un snapshot horodaté des bases SQLite, des
+uploads et de la configuration des cinq applications, dans
+`$HOME/backup-fabsuite/suite-AAAA-MM-JJ-HHMMSS` (surchargeable avec
+`FABSUITE_BACKUP_DIR`).
+
+- Le pré-check `check-data-safety` est exécuté d'abord : un risque de chemin de
+données annule le snapshot.
+- Chaque volume devient une archive `tar.gz` par application (`Fabtrack-data.tgz`,
+`Fabtrack-uploads.tgz`, etc.).
+- Chaque base SQLite réellement présente dans les archives est relue et passe
+`PRAGMA integrity_check` ; le marqueur `snapshot.ok` n'est écrit qu'après ces
+vérifications, et `manifest.json` détaille sources, tailles, empreintes SHA-256
+et résultat d'intégrité.
+- Un volume absent est un simple avertissement (application non installée) ; un
+snapshot sans aucune donnée est refusé.
+
+Le snapshot est pris à chaud, applicatifs démarrés : pour un arrêt parfaitement
+cohérent de toutes les écritures, arrêter la suite avant de le lancer.
+
 ## Confidentialité et publication
 
 Le repo est préparé pour une publication propre :
