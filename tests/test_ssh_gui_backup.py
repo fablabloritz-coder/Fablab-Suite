@@ -350,11 +350,14 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.backend._request_backup_state_refresh = (
             lambda: rafraichissements.append("backup")
         )
+        self.backend._request_notify_state_refresh = (
+            lambda: rafraichissements.append("notify")
+        )
 
         self.backend._clear_markers_worker()
 
         self.assertIn("clear-markers", commandes[0])
-        self.assertEqual(rafraichissements, ["verify", "backup"])
+        self.assertEqual(rafraichissements, ["verify", "backup", "notify"])
         titre, message = self.alertes[0]
         self.assertEqual(titre, "Alertes acquittees")
         self.assertIn("backup-failed", message)
@@ -430,6 +433,67 @@ class GuiBackupRestoreTest(unittest.TestCase):
         titre, message = self.alertes[0]
         self.assertEqual(titre, "Acquittement impossible")
         self.assertIn("connexion perdue", message)
+
+    def test_backup_worker_rafraichit_l_etat_des_notifications(self):
+        self.backend._run_helper_action = lambda action, **kwargs: 0
+        rafraichissements = []
+        self.backend._request_backup_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = (
+            lambda: rafraichissements.append(True)
+        )
+
+        self.backend._backup_worker()
+
+        self.assertEqual(rafraichissements, [True])
+
+    def test_backup_worker_rafraichit_les_notifications_apres_echec(self):
+        self.backend._run_helper_action = lambda action, **kwargs: 2
+        rafraichissements = []
+        self.backend._request_backup_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = (
+            lambda: rafraichissements.append(True)
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._backup_worker()
+
+        self.assertEqual(rafraichissements, [True])
+
+    def test_verify_worker_rafraichit_l_etat_des_notifications(self):
+        sortie = (
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: ok (2 archive(s))\n"
+            "[verify] bilan: 1 ok, 0 invalide(s)\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (0, sortie)
+        rafraichissements = []
+        self.backend._request_verify_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = (
+            lambda: rafraichissements.append(True)
+        )
+
+        self.backend._verify_worker()
+
+        self.assertEqual(rafraichissements, [True])
+
+    def test_request_notify_state_refresh_ignore_les_erreurs(self):
+        # Line indicative : une erreur du front ne doit jamais faire echouer
+        # l'action en cours (backup, verify, acquittement).
+        attribut = "refreshNotificationState"
+        ancien = getattr(fabsuite_ssh_gui.eel, attribut, None)
+
+        def echouer():
+            raise RuntimeError("front absent")
+
+        setattr(fabsuite_ssh_gui.eel, attribut, lambda: echouer)
+        try:
+            self.backend._request_notify_state_refresh()
+        finally:
+            if ancien is None:
+                delattr(fabsuite_ssh_gui.eel, attribut)
+            else:
+                setattr(fabsuite_ssh_gui.eel, attribut, ancien)
 
     def test_verify_worker_rafraichit_l_etat_du_timer(self):
         sortie = (

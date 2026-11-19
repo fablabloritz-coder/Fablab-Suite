@@ -6,6 +6,34 @@ action imperative.
 
 ---
 
+## 2026-11-19 — GUI SSH : rafraîchir l'état des notifications
+
+**Objectif** : ne pas laisser la ligne « État notifications » périmée après une
+action lancée depuis le GUI.
+
+**Implementation**
+- GUI backend : `_request_notify_state_refresh()` (même motif que les
+  rafraîchissements de timers, erreurs ignorées) appelle
+  `eel.refreshNotificationState` s'il est exposé.
+- Appelé dans le `finally` de `_backup_worker` et `_verify_worker` (succès comme
+  échec) et après l'acquittement, à côté des rafraîchissements verify/backup.
+- Docs : README (bullet État notifications).
+
+**Verifications**
+- Tests GUI : rafraîchissement des notifications après backup (succès et
+  échec), après verify, et ordre `verify, backup, notify` après acquittement ;
+  une erreur du front n'échoue pas l'action.
+- `py_compile`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- Rendu HTML/JS toujours non vérifié dans un navigateur ; les tests couvrent le
+  backend uniquement.
+
+**Prochaine action** : vérifier visuellement la carte Sauvegarde & restauration
+(États vérification/sauvegarde/notifications) dans le navigateur.
+
+---
+
 ## 2026-11-19 — GUI SSH : état des notifications d'échec
 
 **Objectif** : voir dans le GUI les destinations de notification et l'anti-rebond

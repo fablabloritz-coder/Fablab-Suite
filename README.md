@@ -110,7 +110,9 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   destinations configurées (`webhook configuré/absent`, `mail configuré/absent`),
   puis, pour `backup` et `verify`, si le fichier `notify-<service>.state` existe
   avec la date de la dernière alerte envoyée (anti-rebond). Aucune cible
-  configurée est signalé en orange ; l'état est relu à la connexion.
+  configurée est signalé en orange ; l'état est relu à la connexion et après
+  un backup, un verify ou un acquittement lancés depuis le GUI, pour ne pas
+  afficher un anti-rebond périmé.
 - **Acquitter les alertes** : après confirmation, supprime les marqueurs via
   le helper, mais seulement si les conditions sont réunies : `verify-degrade`
   exige un `verify --all` sain, `backup-failed` exige un snapshot valide plus

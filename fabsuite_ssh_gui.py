@@ -1509,11 +1509,25 @@ exit 0
         except Exception:
             pass
 
+    def _request_notify_state_refresh(self):
+        """Demande au front de relire l'etat des notifications (destinations et
+        anti-rebond), qui peut changer apres un backup, un verify ou un
+        acquittement."""
+        rafraichir = getattr(eel, "refreshNotificationState", None)
+        if rafraichir is None:
+            return
+        try:
+            rafraichir()()
+        except Exception:
+            # Ligne indicative : ne jamais masquer le resultat de l'action.
+            pass
+
     def _backup_worker(self):
         try:
             self._backup_worker_run()
         finally:
             self._request_backup_state_refresh()
+            self._request_notify_state_refresh()
 
     def _backup_worker_run(self):
         self._log("Sauvegarde suite: snapshot verifie en cours...")
@@ -1584,6 +1598,7 @@ exit 0
             self._verify_worker_run()
         finally:
             self._request_verify_state_refresh()
+            self._request_notify_state_refresh()
 
     def _verify_worker_run(self):
         self._log("Verification des snapshots: verify --all en cours...")
@@ -1689,9 +1704,11 @@ exit 0
             elif ligne.startswith("[markers] conserve="):
                 conserves.append(ligne.split("=", 1)[1])
 
-        # Les deux lignes d'etat doivent refleter la disparition des marqueurs.
+        # Les lignes d'etat doivent refleter la disparition des marqueurs et
+        # l'anti-rebond des notifications.
         self._request_verify_state_refresh()
         self._request_backup_state_refresh()
+        self._request_notify_state_refresh()
 
         if code != 0:
             details = []
