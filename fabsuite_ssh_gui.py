@@ -1587,10 +1587,9 @@ exit 0
             if "MISE A JOUR REQUISE" in str(exc):
                 return {
                     "error": (
-                        "Le serveur utilise un ancien suite_backup.py : la commande "
-                        "volumes est absente.\n"
-                        "Lance './fabsuite-ubuntu.sh update' (ou le bouton Mettre a jour), "
-                        "puis rouvre ce modal pour choisir les volumes."
+                        "Le serveur utilise un ancien suite_backup.py sans la commande "
+                        "volumes : lance './fabsuite-ubuntu.sh update' (ou le bouton "
+                        "Mettre a jour), puis rouvre ce modal pour choisir les volumes."
                     )
                 }
             return {"error": f"Impossible de lister les volumes: {exc}"}

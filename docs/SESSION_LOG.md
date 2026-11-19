@@ -18,6 +18,9 @@ l'erreur argparse du helper par une invite claire à lancer `update`.
 - GUI : `list_volumes` reconnaît ce marqueur et renvoie un message dédié
   (« ancien suite_backup.py … lance update … puis rouvre le modal »), sans
   revalider le manifeste côté interface.
+- Le message tient en une phrase (le hint est un `<p>` sans `pre-line`) et le
+  hint accepte désormais les retours à la ligne (`white-space: pre-line`) pour
+  les erreurs multi-lignes du helper ; test : pas de `\n` dans le message.
 - Doc : README (comportement du modal sur serveur non à jour).
 
 **Verifications**

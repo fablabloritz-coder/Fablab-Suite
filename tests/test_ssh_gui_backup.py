@@ -197,6 +197,8 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertIn("ancien suite_backup.py", resultat["error"])
         self.assertIn("update", resultat["error"])
         self.assertNotIn("MISE A JOUR REQUISE", resultat["error"])
+        # Le hint du modal est un <p> sans pre-line : pas de saut de ligne.
+        self.assertNotIn("\n", resultat["error"])
 
     def test_restore_worker_transmet_les_volumes_selectionnes(self):
         appels = []

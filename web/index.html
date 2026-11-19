@@ -255,7 +255,7 @@
         <select class="form-select form-select-sm mb-2" id="restoreSnapshot"></select>
         <label class="form-label small mb-1" for="restoreVolumes">Volumes à restaurer :</label>
         <select class="form-select form-select-sm mb-2" id="restoreVolumes" multiple size="5"></select>
-        <p class="text-muted small mb-2" id="restoreVolumesHint">Aucune sélection = tous les volumes du snapshot.</p>
+        <p class="text-muted small mb-2" id="restoreVolumesHint" style="white-space: pre-line;">Aucune sélection = tous les volumes du snapshot.</p>
         <label class="form-label small mb-1" for="restoreDest">Destination (staging, doit etre vide) :</label>
         <input type="text" class="form-control form-control-sm" id="restoreDest" placeholder="Vide = staging par defaut du helper">
         <p class="text-muted small mt-2 mb-0">La restauration verifie le manifeste, le marqueur et les sha256 avant toute ecriture. Aucune donnee en place n'est ecrasee.</p>
