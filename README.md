@@ -451,6 +451,11 @@ repasse `PRAGMA integrity_check` sur chaque base. Utile en tâche planifiée pou
 détecter un snapshot dégradé avant d'en avoir besoin ; un nom de dossier copié
 ou renommé se vérifie via `--snapshot` explicite.
 
+Codes de sortie : `0` snapshots sains, `3` au moins un snapshot dégradé,
+`2` vérification impossible (arguments, dossier sans snapshot, module ancien).
+Cette distinction permet aux automatisations de ne signaler que les vraies
+dégradations.
+
 ### Vérification planifiée (timer systemd)
 
 ```bash
@@ -469,11 +474,16 @@ FABSUITE_VERIFY_ON_CALENDAR="*-*-* 04:30:00"   # syntaxe systemd OnCalendar
 
 Signal clair en cas de snapshot dégradé :
 
-- l'unité `fabsuite-verify.service` échoue (code 2) → `systemctl --failed` ;
+- l'unité `fabsuite-verify.service` échoue (code 3) → `systemctl --failed` ;
 - le fichier `~/backup-fabsuite/verify-degrade` est créé (supprimé à la
   prochaine vérification saine) avec l'horodatage et la commande à consulter ;
 - le détail (snapshot et erreurs) est dans
   `journalctl -u fabsuite-verify.service -n 100`.
+
+Le marqueur est réservé aux snapshots réellement dégradés (code 3). Une
+vérification impossible (code 2 : aucun snapshot, module ancien, argument
+invalide) ne pose pas le marqueur et laisse une ligne explicite dans le
+journal ; un marqueur existant n'est pas effacé par une erreur passagère.
 
 Commandes utiles :
 
@@ -487,7 +497,7 @@ cat ~/backup-fabsuite/verify-degrade          # si présent : snapshot dégradé
 Sans systemd, l'équivalent cron (à adapter au chemin d'installation) :
 
 ```cron
-17 4 * * * cd /srv/fablab-suite && NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all >> "$HOME/backup-fabsuite/verify.log" 2>&1 || echo "DEGRADE $(date -Is)" > "$HOME/backup-fabsuite/verify-degrade"
+17 4 * * * cd /srv/fablab-suite && NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all >> "$HOME/backup-fabsuite/verify.log" 2>&1; code=$?; if [ "$code" -eq 3 ]; then echo "DEGRADE $(date -Is)" > "$HOME/backup-fabsuite/verify-degrade"; elif [ "$code" -eq 0 ]; then rm -f "$HOME/backup-fabsuite/verify-degrade"; fi
 ```
 
 ### Restaurer un snapshot

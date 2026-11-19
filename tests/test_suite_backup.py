@@ -1058,9 +1058,30 @@ class VerifyTest(unittest.TestCase):
         )
         sortie = processus.stdout + processus.stderr
 
-        self.assertEqual(processus.returncode, 2, sortie)
+        self.assertEqual(processus.returncode, 3, sortie)
         self.assertIn("INVALIDE", sortie)
         self.assertIn("bilan: 1 ok, 1 invalide", sortie)
+
+    def test_cli_verify_all_sans_snapshot_n_est_pas_une_degradation(self):
+        self.dest.mkdir(parents=True)
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "verify",
+                "--dest",
+                str(self.dest),
+                "--all",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        sortie = processus.stdout + processus.stderr
+
+        self.assertEqual(processus.returncode, 2, sortie)
+        self.assertIn("aucun snapshot", sortie)
 
 
 class RotationTest(unittest.TestCase):
@@ -1379,7 +1400,10 @@ class HelperVerifyTimerTest(unittest.TestCase):
             self.assertIn("User=", service)
             self.assertIn("SyslogIdentifier=fabsuite-verify", service)
             self.assertIn("EXIT_STATUS", service)
+            self.assertIn('"$EXIT_STATUS" = "3"', service)
+            self.assertNotIn('"$EXIT_STATUS" = "2"', service)
             self.assertIn("verify-degrade", service)
+            self.assertIn("Verification impossible (code $EXIT_STATUS)", service)
             self.assertIn("OnCalendar=*-*-* 04:30:00", timer)
             self.assertIn("Persistent=true", timer)
             self.assertIn("Unit=fabsuite-verify.service", timer)

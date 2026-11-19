@@ -173,7 +173,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
 
         def capturer(commande, timeout_sec=180):
             commandes.append(commande)
-            return 2, sortie
+            return 3, sortie
 
         self.backend._exec_remote_capture = capturer
 
@@ -202,6 +202,23 @@ class GuiBackupRestoreTest(unittest.TestCase):
         titre, message = self.alertes[0]
         self.assertEqual(titre, "Snapshots valides")
         self.assertIn("2 ok, 0 invalide", message)
+
+    def test_verify_worker_distingue_une_verification_impossible(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (
+            2,
+            "[verify] ECHEC: aucun snapshot dans /home/fablab/backup-fabsuite\n",
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._verify_worker()
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Verification impossible")
+        self.assertIn("aucun snapshot", message)
+        self.assertIn("code 2", message)
+        self.assertIn("Aucun marqueur de degradation", message)
 
     def test_verify_worker_invite_a_mettre_a_jour_un_module_ancien(self):
         self.backend._require_connection = lambda: None

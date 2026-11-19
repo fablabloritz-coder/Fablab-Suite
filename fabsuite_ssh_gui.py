@@ -1571,6 +1571,27 @@ exit 0
             )
             return
 
+        # Le module reserve le code 3 aux snapshots reellement degrades ; 2
+        # signifie « verification impossible » (aucun snapshot, arguments,
+        # module ancien) et ne doit pas etre presente comme une degradation.
+        if code != 3:
+            echecs = []
+            for ligne in sortie.splitlines():
+                ligne = ligne.strip()
+                if not ligne.startswith("[verify] "):
+                    continue
+                if "ECHEC" in ligne or "ERROR" in ligne:
+                    echecs.append(ligne[len("[verify] "):])
+            detail = "\n".join(echecs) or f"code {code}"
+            self._show_alert(
+                "Verification impossible",
+                f"La verification n'a pas pu s'executer (code {code}) :\n"
+                f"{detail}\n\n"
+                "Aucun marqueur de degradation n'est pose. Corrige la cause "
+                "(dossier de sauvegarde, arguments ou module a jour), puis relance.",
+            )
+            raise RuntimeError(f"verification impossible (code {code})")
+
         lignes = []
         for nom, details in resultat["invalides"].items():
             lignes.append(f"- {nom}")

@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : distinguer dégradation et vérification impossible
+
+**Objectif** : le timer ne doit pas poser `verify-degrade` quand aucun snapshot
+n'existe ou que le module installé est ancien (code 2), seulement lorsqu'un
+snapshot réel est dégradé.
+
+**Implementation**
+- Module : nouveau code de sortie `EXIT_SNAPSHOT_DEGRADE = 3` pour `verify`
+  (snapshot existant invalide, seul ou via `--all`) ; `2` reste réservé à
+  « vérification impossible » (arguments, dossier sans snapshot). Docstring et
+  README mis à jour.
+- Helper : `ExecStopPost` du timer ne pose `verify-degrade` que sur code `3` ;
+  code `0` efface un marqueur existant ; tout autre code écrit une ligne
+  « Verification impossible » dans le journal sans toucher au marqueur.
+- GUI : `_verify_worker` traite `3` comme dégradation ; un autre code non nul
+  affiche « Verification impossible » avec les lignes `ECHEC`/`ERROR` et
+  précise qu'aucun marqueur n'est posé.
+- Cron documenté : marqueur uniquement si `code == 3`, effacement si `code == 0`.
+
+**Verifications**
+- Tests module : `--all` dégradé attend `3`, dossier sans snapshot attend `2`.
+- Tests GUI : dégradé avec code `3`, vérification impossible code `2` (aucun
+  marqueur annoncé), module ancien inchangé.
+- Test d'intégration timer : la condition `"$EXIT_STATUS" = "3"` est présente,
+  la branche `= "2"` ne l'est plus, message « Verification impossible (code
+  $EXIT_STATUS) » présent.
+- `bash -n`, suite `tests/`.
+
+**Risques / non couverts**
+- L'exécution réelle sous systemd n'est pas testée dans cette VM.
+
+---
+
 ## 2026-11-19 — Suite : vérification planifiée des snapshots (timer systemd)
 
 **Objectif** : détecter automatiquement un snapshot dégradé, sans attendre un

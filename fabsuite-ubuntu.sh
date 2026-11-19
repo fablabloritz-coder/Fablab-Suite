@@ -1436,7 +1436,7 @@ User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-verify
 ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all'
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "2" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; else rm -f "${marker}"; fi'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "3" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; elif [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else echo "Verification impossible (code \$EXIT_STATUS), aucun snapshot degrade signale - voir journalctl -u fabsuite-verify"; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-verify.timer" <<EOF

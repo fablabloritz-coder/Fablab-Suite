@@ -43,8 +43,10 @@ les controles du snapshot restent identiques, chaque archive retenue est
 verifiee comme en restauration complete, et une selection absente du manifeste
 refuse toute la restauration.
 
-Sortie : 0 si le snapshot est valide (ou la restauration reussie),
-2 sinon (le manifeste explique pourquoi).
+Sortie : 0 si les snapshots verifies sont valides (ou la restauration
+reussie), 3 si un snapshot existant est degrade (manifeste, marqueur, sha256,
+archive ou base SQLite), 2 si la verification ne peut pas s'executer
+(arguments, dossier sans snapshot, module ancien).
 """
 from __future__ import annotations
 
@@ -64,6 +66,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 FORMAT_VERSION = 1
+# Code de sortie reserve aux snapshots reellement degrades (3), pour distinguer
+# une verification impossible (2 : arguments, dossier vide, module ancien).
+EXIT_SNAPSHOT_DEGRADE = 3
 SQLITE_MAGIC = b"SQLite format 3\x00"
 NOM_VALIDE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 NOM_SNAPSHOT = re.compile(r"^suite-(\d{4}-\d{2}-\d{2}-\d{6})(?:-[A-Za-z0-9._-]+)?$")
@@ -947,7 +952,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             invalides = len(snapshots) - valides
             print(f"[verify] bilan: {valides} ok, {invalides} invalide(s)")
-            return 0 if invalides == 0 else 2
+            return 0 if invalides == 0 else EXIT_SNAPSHOT_DEGRADE
 
         if not args.snapshot.strip():
             print(
@@ -971,7 +976,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"({len(resultat.errors)} erreur(s))",
                 file=sys.stderr,
             )
-            return 2
+            return EXIT_SNAPSHOT_DEGRADE
         print("[verify] statut: ok")
         return 0
 
