@@ -6,6 +6,38 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : restauration ciblée par application ou volume
+
+**Objectif** : restaurer un seul volume (`Fabtrack/data`, `FabHome/icons`…) sans
+extraire tout le snapshot, pour remettre une base sans écraser les uploads.
+
+**Implementation**
+- `suite_backup.restaurer_snapshot(..., selection=[...])` : `--source APP|ROLE`
+  répétable (`APP/ROLE` accepté), vérifié contre le manifeste ; une sélection
+  absente du snapshot refuse la restauration.
+- Contrôles inchangés : manifeste + `snapshot.ok` (sha256), destination vide non
+  symlink, `sha256` et membres de chaque archive retenue ; les volumes non
+  demandés sont listés (`skipped`) et ignorés.
+- CLI `restore --source ...` ; helper `restore ... --source ...` transmet
+  l'option (le `--source APP|ROLE|CHEMIN` du snapshot garde son sens).
+- `HELPER_VERSION` passe à `2026-11-19-suite-backup-v6`.
+
+**Verifications**
+- 3 tests module : sélection d'un volume (seul volume extrait, l'autre en
+  `skipped`), sélection absente refusée sans écriture, CLI ciblée.
+- Test d'intégration helper complété : `--source FabHome|data` n'extrait que la
+  base, `FabHome/icons` reste hors du staging.
+- `python3 -m unittest discover -s tests -p 'test_suite_backup.py'` et suite
+  racine ; `bash -n fabsuite-ubuntu.sh`.
+
+**Risques / non couverts**
+- L'intégrité SQLite n'est pas rejouée à la restauration (déjà vérifiée au
+  snapshot) ; la copie vers les chemins de données reste manuelle.
+
+**Prochaine action** : exposer la sélection de volumes dans le GUI SSH.
+
+---
+
 ## 2026-11-19 — Suite : backup et restore dans le GUI SSH
 
 **Objectif** : lancer un snapshot et restaurer un snapshot choisi depuis le GUI,

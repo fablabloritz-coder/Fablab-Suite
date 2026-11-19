@@ -433,6 +433,9 @@ de rotation, pour qu'une série d'échecs n'efface pas l'historique sain.
 ./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
 # ou vers un dossier de staging explicite (doit être vide) :
 ./fabsuite-ubuntu.sh restore --snapshot <dossier> --dest /srv/restauration
+# ne restaurer que certains volumes (option répétable) :
+./fabsuite-ubuntu.sh restore --snapshot <dossier> --dest /srv/restauration \
+  --source Fabtrack/data --source Fabtrack/uploads
 ```
 
 Avant la moindre écriture, la commande vérifie le manifeste, son empreinte
@@ -440,6 +443,14 @@ Avant la moindre écriture, la commande vérifie le manifeste, son empreinte
 la lisibilité de leur contenu. Elle refuse un snapshot invalide, une archive
 altérée et tout membre absolu, contenant `..`, hors `App/role` ou de type lien.
 La destination doit être vide et n'être ni un fichier ni un lien symbolique.
+
+Par défaut, tous les volumes du snapshot sont restaurés. `--source APP|ROLE`
+(répétable ; `APP/ROLE` accepté aussi) restreint l'extraction aux volumes
+demandés : les contrôles du snapshot (manifeste, `snapshot.ok`, destination)
+restent identiques et chaque archive retenue est vérifiée comme en restauration
+complète. Les volumes non demandés sont listés puis ignorés ; une sélection
+absente du manifeste refuse la restauration au lieu de produire un dossier
+incomplet sans le dire.
 
 Par défaut, l'extraction se fait dans un staging
 `$HOME/restore-fabsuite/<snapshot>` (ou `FABSUITE_RESTORE_DIR`) avec

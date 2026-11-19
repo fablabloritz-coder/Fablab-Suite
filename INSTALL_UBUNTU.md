@@ -72,6 +72,10 @@ Ce que fait la commande:
 # Restaurer un snapshot dans un dossier de staging vérifié
 ./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
 
+# Restaurer seulement certains volumes (--source APP|ROLE répétable)
+./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000 \
+  --source Fabtrack/data
+
 # Démarrer / arrêter / redémarrer
 ./fabsuite-ubuntu.sh start
 ./fabsuite-ubuntu.sh stop

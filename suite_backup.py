@@ -17,6 +17,8 @@ Usage direct :
         --retention-count 7
     python3 suite_backup.py list --dest ~/backup-fabsuite    # path|status|date
     python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide>
+    python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide> \
+        --source Fabtrack/data --source Fabtrack/uploads
 
 Apres un snapshot valide, la retention supprime les snapshots hors quota
 (nombre via `FABSUITE_BACKUP_RETENTION_COUNT`, ou age via
@@ -26,6 +28,12 @@ Apres un snapshot valide, la retention supprime les snapshots hors quota
 archive (sha256, lisibilite, chemins) avant d'extraire dans une destination
 vide. Un snapshot invalide, une archive alteree ou un membre hors destination
 sont refuses sans rien ecrire.
+
+Par defaut tous les volumes du snapshot sont restaures. `--source APP|ROLE`
+(repetable) restreint la restauration aux volumes demandes (ou `APP/ROLE`) :
+les controles du snapshot restent identiques, chaque archive retenue est
+verifiee comme en restauration complete, et une selection absente du manifeste
+refuse toute la restauration.
 
 Sortie : 0 si le snapshot est valide (ou la restauration reussie),
 2 sinon (le manifeste explique pourquoi).
@@ -96,6 +104,7 @@ class RestoreResult:
     destination: Path
     restored: list[str] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     verified_archives: int = 0
 
@@ -567,8 +576,30 @@ def _extraire_archive(
         erreurs.append(f"{archive.name}: extraction impossible ({exc})")
 
 
+def _selection(brut: str) -> tuple[str, str]:
+    """`APP|ROLE` ou `APP/ROLE` -> couple valide (restauration ciblee)."""
+    texte = brut.strip()
+    for separateur in ("|", "/"):
+        if separateur in texte:
+            app, _, role = texte.partition(separateur)
+            app, role = app.strip(), role.strip()
+            break
+    else:
+        raise SnapshotError(
+            f"selection invalide (attendu APP|ROLE pour restore): {brut!r}"
+        )
+    if not NOM_VALIDE.match(app) or not NOM_VALIDE.match(role):
+        raise SnapshotError(
+            f"selection invalide (attendu APP|ROLE pour restore): {brut!r}"
+        )
+    return app, role
+
+
 def restaurer_snapshot(
-    snapshot: Path | str, destination: Path | str
+    snapshot: Path | str,
+    destination: Path | str,
+    *,
+    selection: list[str] | None = None,
 ) -> RestoreResult:
     """Restaure un snapshot valide dans une destination vide.
 
@@ -576,10 +607,24 @@ def restaurer_snapshot(
     sont verifies avant la moindre ecriture. Le nom du dossier n'est pas
     authentifie : un snapshot intact peut etre renomme ou copie. Les chemins
     absolus, `..`, les liens et les membres hors `App/role` sont refuses.
+
+    `selection` (`APP|ROLE`, repetable) restreint l'extraction et la
+    verification des archives aux volumes demandes ; les volumes non demandes
+    sont listes dans `skipped`. Une selection qui ne correspond a aucune source
+    du manifeste refuse la restauration.
     """
     snapshot = Path(snapshot).expanduser()
     destination = Path(destination).expanduser()
     resultat = RestoreResult(snapshot=snapshot, destination=destination)
+
+    demandees: set[tuple[str, str]] | None = None
+    if selection:
+        demandees = set()
+        for brut in selection:
+            try:
+                demandees.add(_selection(brut))
+            except SnapshotError as exc:
+                resultat.errors.append(str(exc))
 
     manifeste = _lire_manifeste(snapshot)
     if manifeste is None:
@@ -614,6 +659,7 @@ def restaurer_snapshot(
         resultat.errors.append("manifeste sans sources")
 
     archives: list[tuple[Path, str, str]] = []
+    vus: set[tuple[str, str]] = set()
     for entree in sources if isinstance(sources, list) else []:
         if not isinstance(entree, dict):
             resultat.errors.append("entree de source invalide dans le manifeste")
@@ -622,6 +668,10 @@ def restaurer_snapshot(
         role = str(entree.get("role") or "")
         if not NOM_VALIDE.match(app) or not NOM_VALIDE.match(role):
             resultat.errors.append(f"source invalide dans le manifeste: {app!r}/{role!r}")
+            continue
+        vus.add((app, role))
+        if demandees is not None and (app, role) not in demandees:
+            resultat.skipped.append(f"{app}/{role}")
             continue
         if not entree.get("exists"):
             resultat.ignored.append(f"{app}/{role}")
@@ -642,6 +692,12 @@ def restaurer_snapshot(
             continue
         resultat.errors.extend(_verifier_membres(archive, app, role))
         archives.append((archive, app, role))
+
+    if demandees is not None:
+        for app, role in sorted(demandees - vus):
+            resultat.errors.append(
+                f"source demandee absente du snapshot: {app}/{role}"
+            )
 
     if not resultat.errors and not archives:
         resultat.errors.append("aucune archive a restaurer")
@@ -689,7 +745,10 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="APP|ROLE|CHEMIN",
-        help="volume a sauvegarder (repetable)",
+        help=(
+            "volume a sauvegarder APP|ROLE|CHEMIN (snapshot) ou volume a "
+            "restaurer APP|ROLE (restore), repetable"
+        ),
     )
     parseur.add_argument("--label", default="", help="suffixe lisible du snapshot")
     parseur.add_argument(
@@ -715,9 +774,13 @@ def main(argv: list[str] | None = None) -> int:
         if not args.snapshot.strip():
             print("[restore] ECHEC: --snapshot requis", file=sys.stderr)
             return 2
-        resultat = restaurer_snapshot(args.snapshot, args.dest)
+        resultat = restaurer_snapshot(
+            args.snapshot, args.dest, selection=args.source or None
+        )
         for ignore in resultat.ignored:
             print(f"[restore] ignore (source absente au snapshot): {ignore}")
+        for non_demande in resultat.skipped:
+            print(f"[restore] ignore (volume non demande): {non_demande}")
         for erreur in resultat.errors:
             print(f"[restore] ERROR: {erreur}", file=sys.stderr)
         if resultat.errors:

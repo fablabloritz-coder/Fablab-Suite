@@ -568,6 +568,76 @@ class RestoreTest(unittest.TestCase):
         self.assertIn("[restore] statut: ok", sortie)
         self.assertTrue((destination / "Fabtrack/data/fabtrack.db").is_file())
 
+    def test_restaure_une_selection_de_volumes(self):
+        snapshot = self._creer_snapshot()
+        destination = self.root / "restauration-ciblee"
+
+        resultat = suite_backup.restaurer_snapshot(
+            snapshot.directory, destination, selection=["Fabtrack|uploads"]
+        )
+
+        self.assertEqual(resultat.errors, [])
+        self.assertEqual(resultat.restored, ["Fabtrack/uploads"])
+        self.assertEqual(resultat.skipped, ["Fabtrack/data"])
+        self.assertEqual(resultat.verified_archives, 1)
+        self.assertTrue((destination / "Fabtrack/uploads/photo.bin").is_file())
+        self.assertFalse((destination / "Fabtrack/data").exists())
+
+    def test_une_selection_absente_du_snapshot_refuse_la_restauration(self):
+        snapshot = self._creer_snapshot()
+        destination = self.root / "selection-inconnue"
+
+        resultat = suite_backup.restaurer_snapshot(
+            snapshot.directory, destination, selection=["FabHome/data"]
+        )
+
+        self.assertTrue(
+            any(
+                "source demandee absente du snapshot: FabHome/data" in erreur
+                for erreur in resultat.errors
+            ),
+            resultat.errors,
+        )
+        self.assertFalse(destination.exists())
+
+        invalide = self.root / "selection-invalide"
+        resultat = suite_backup.restaurer_snapshot(
+            snapshot.directory, invalide, selection=["Fabtrack"]
+        )
+        self.assertTrue(
+            any("selection invalide" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+        self.assertFalse(invalide.exists())
+
+    def test_cli_restore_cible_un_volume(self):
+        snapshot = self._creer_snapshot()
+        destination = self.root / "cli-ciblee"
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "restore",
+                "--snapshot",
+                str(snapshot.directory),
+                "--dest",
+                str(destination),
+                "--source",
+                "Fabtrack/data",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        sortie = processus.stdout + processus.stderr
+
+        self.assertEqual(processus.returncode, 0, sortie)
+        self.assertIn("[restore] restaure: Fabtrack/data", sortie)
+        self.assertIn("[restore] ignore (volume non demande): Fabtrack/uploads", sortie)
+        self.assertTrue((destination / "Fabtrack/data/fabtrack.db").is_file())
+        self.assertFalse((destination / "Fabtrack/uploads").exists())
+
     def test_refuse_un_snapshot_invalide(self):
         data = suite_backup.Source("Fabtrack", "data", self.root / "source/data")
         creer_base(data.path / "fabtrack.db")
@@ -684,7 +754,12 @@ class HelperRestoreIntegrationTest(unittest.TestCase):
             shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
             data = suite_backup.Source("FabHome", "data", install / "source/data")
             creer_base(data.path / "fabhome.db")
-            snapshot = suite_backup.creer_snapshot([data], racine / "backups")
+            icons = suite_backup.Source("FabHome", "icons", install / "source/icons")
+            icons.path.mkdir(parents=True)
+            (icons.path / "logo.svg").write_text("<svg/>\n", encoding="utf-8")
+            snapshot = suite_backup.creer_snapshot(
+                [data, icons], racine / "backups"
+            )
             self.assertEqual(snapshot.status, "ok")
 
             installer = racine / "installer"
@@ -731,6 +806,38 @@ class HelperRestoreIntegrationTest(unittest.TestCase):
             self.assertEqual(processus.returncode, 0, sortie)
             self.assertIn("[restore] statut: ok", sortie)
             self.assertTrue((destination / "FabHome/data/fabhome.db").is_file())
+            self.assertTrue((destination / "FabHome/icons/logo.svg").is_file())
+
+            # La selection est transmise au module : seul le volume demande
+            # est extrait, l'autre reste hors du staging.
+            cible = racine / "restauration-ciblee"
+            processus = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "restore",
+                    "--snapshot",
+                    str(snapshot.directory),
+                    "--dest",
+                    str(cible),
+                    "--source",
+                    "FabHome|data",
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("[restore] volumes demandes: FabHome|data", sortie)
+            self.assertIn("[restore] ignore (volume non demande): FabHome/icons", sortie)
+            self.assertTrue((cible / "FabHome/data/fabhome.db").is_file())
+            self.assertFalse((cible / "FabHome/icons").exists())
 
 
 class RotationTest(unittest.TestCase):

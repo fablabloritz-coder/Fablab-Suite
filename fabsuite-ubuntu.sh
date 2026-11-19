@@ -13,8 +13,9 @@ ACTION=""
 LOG_APP=""
 RESTORE_SNAPSHOT=""
 RESTORE_DEST=""
+RESTORE_SOURCES=()
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v5"
+HELPER_VERSION="2026-11-19-suite-backup-v6"
 
 usage() {
   cat <<'EOF'
@@ -27,7 +28,7 @@ Usage:
   ./fabsuite-ubuntu.sh repair-env [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh check-data-safety [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh backup [--env-file /path/to/fabsuite-ubuntu.env]
-  ./fabsuite-ubuntu.sh restore --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS [--dest /chemin/vide]
+  ./fabsuite-ubuntu.sh restore --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS [--dest /chemin/vide] [--source APP|ROLE]...
   ./fabsuite-ubuntu.sh snapshots
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
@@ -46,6 +47,7 @@ Examples:
   ./fabsuite-ubuntu.sh check-data-safety
   ./fabsuite-ubuntu.sh backup
   ./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
+  ./fabsuite-ubuntu.sh restore --snapshot <dossier> --source Fabtrack/data
   ./fabsuite-ubuntu.sh install
   ./fabsuite-ubuntu.sh status
   ./fabsuite-ubuntu.sh logs Fabtrack
@@ -80,6 +82,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       RESTORE_DEST="$2"
+      shift 2
+      ;;
+    --source)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --source requires a value"
+        exit 1
+      fi
+      RESTORE_SOURCES+=("$2")
       shift 2
       ;;
     -h|--help)
@@ -1290,7 +1300,16 @@ run_suite_restore() {
 
   echo "[restore] snapshot: ${RESTORE_SNAPSHOT}"
   echo "[restore] destination: ${destination}"
-  python3 "$backup_module" restore --snapshot "$RESTORE_SNAPSHOT" --dest "$destination"
+
+  local -a args=(--snapshot "$RESTORE_SNAPSHOT" --dest "$destination")
+  if [[ ${#RESTORE_SOURCES[@]} -gt 0 ]]; then
+    local source
+    for source in "${RESTORE_SOURCES[@]}"; do
+      args+=(--source "$source")
+    done
+    echo "[restore] volumes demandes: ${RESTORE_SOURCES[*]}"
+  fi
+  python3 "$backup_module" restore "${args[@]}"
 }
 
 run_suite_list_snapshots() {
