@@ -235,6 +235,10 @@ class FabSuiteBackend:
             return self.verify_timer_status()
 
         @eel.expose
+        def backup_timer_status():
+            return self.backup_timer_status()
+
+        @eel.expose
         def action_scan_dirs():
             self.action_scan_dirs()
 
@@ -1487,7 +1491,23 @@ exit 0
 
     # ─── Sauvegarde / restauration (via le helper) ───
 
+    def _request_backup_state_refresh(self):
+        """Demande au front de relire l'etat du timer de sauvegarde."""
+        rafraichir = getattr(eel, "refreshBackupTimerState", None)
+        if rafraichir is None:
+            return
+        try:
+            rafraichir()()
+        except Exception:
+            pass
+
     def _backup_worker(self):
+        try:
+            self._backup_worker_run()
+        finally:
+            self._request_backup_state_refresh()
+
+    def _backup_worker_run(self):
         self._log("Sauvegarde suite: snapshot verifie en cours...")
         code = self._run_helper_action("backup", allow_failure=True)
         if code == 0:
@@ -1635,10 +1655,9 @@ exit 0
         self._run_async("Verification snapshots", self._verify_worker)
 
     @staticmethod
-    def _parse_verify_timer_status(sortie):
-        """Parse les lignes `[verify-timer] cle=valeur` du helper."""
+    def _parse_timer_status(sortie, prefixe="[verify-timer] "):
+        """Parse les lignes `[prefixe] cle=valeur` du helper."""
         valeurs = {}
-        prefixe = "[verify-timer] "
         for ligne in sortie.splitlines():
             ligne = ligne.strip()
             if not ligne.startswith(prefixe) or "=" not in ligne:
@@ -1676,7 +1695,27 @@ exit 0
         except Exception as exc:
             return {"error": f"Impossible de lire l'etat du timer: {exc}"}
 
-        etat = self._parse_verify_timer_status(sortie)
+        etat = self._parse_timer_status(sortie, "[verify-timer] ")
+        if code != 0 and not etat["installed"]:
+            return {"error": f"Impossible de lire l'etat du timer (code {code})."}
+        return etat
+
+    def backup_timer_status(self):
+        """Etat du timer de snapshots : prochaine execution et dernier resultat."""
+        if self._is_local_mode():
+            return {
+                "error": "L'etat du timer est disponible uniquement en mode Serveur SSH."
+            }
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            code, sortie = self._exec_remote_capture(
+                self._helper_command("backup-timer-status"), timeout_sec=60
+            )
+        except Exception as exc:
+            return {"error": f"Impossible de lire l'etat du timer: {exc}"}
+
+        etat = self._parse_timer_status(sortie, "[backup-timer] ")
         if code != 0 and not etat["installed"]:
             return {"error": f"Impossible de lire l'etat du timer (code {code})."}
         return etat

@@ -160,6 +160,80 @@ class GuiBackupRestoreTest(unittest.TestCase):
         )
         self.assertEqual(self.alertes[0][0], "Restauration refusee")
 
+    def test_backup_timer_status_parse_l_etat(self):
+        sortie = (
+            "[backup-timer] backup_dir=/home/fablab/backup-fabsuite\n"
+            "[backup-timer] installed=1\n"
+            "[backup-timer] active=active\n"
+            "[backup-timer] enabled=enabled\n"
+            "[backup-timer] next=Fri 2026-11-20 03:30:00 CET\n"
+            "[backup-timer] last_trigger=Fri 2026-11-20 03:30:00 CET\n"
+            "[backup-timer] result=success\n"
+            "[backup-timer] result_code=0\n"
+            "[backup-timer] result_at=Fri 2026-11-20 03:30:12 CET\n"
+        )
+        commandes = []
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def capturer(commande, timeout_sec=60):
+            commandes.append(commande)
+            return 0, sortie
+
+        self.backend._exec_remote_capture = capturer
+
+        etat = self.backend.backup_timer_status()
+
+        self.assertNotIn("error", etat)
+        self.assertIn("backup-timer-status", commandes[0])
+        self.assertTrue(etat["installed"])
+        self.assertEqual(etat["active"], "active")
+        self.assertIn("2026-11-20 03:30", etat["next"])
+        self.assertEqual(etat["last_result"], "success")
+        self.assertEqual(etat["last_code"], "0")
+        self.assertIn("2026-11-20", etat["last_run"])
+
+    def test_backup_timer_status_sans_timer_installe(self):
+        sortie = (
+            "[backup-timer] backup_dir=/home/fablab/backup-fabsuite\n"
+            "[backup-timer] installed=0\n"
+            "[backup-timer] hint=Timer non installe : lance "
+            "'./fabsuite-ubuntu.sh install-backup-timer'.\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (0, sortie)
+
+        etat = self.backend.backup_timer_status()
+
+        self.assertFalse(etat["installed"])
+        self.assertIn("install-backup-timer", etat["hint"])
+
+    def test_backup_timer_status_signale_l_erreur_ssh(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def echouer(commande, timeout_sec=60):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._exec_remote_capture = echouer
+
+        etat = self.backend.backup_timer_status()
+
+        self.assertIn("error", etat)
+        self.assertIn("connexion perdue", etat["error"])
+
+    def test_backup_worker_rafraichit_l_etat_du_timer(self):
+        self.backend._run_helper_action = lambda action, **kwargs: 0
+        rafraichissements = []
+        self.backend._request_backup_state_refresh = (
+            lambda: rafraichissements.append(True)
+        )
+
+        self.backend._backup_worker()
+
+        self.assertEqual(rafraichissements, [True])
+
     def test_verify_timer_status_parse_l_etat_et_le_marqueur(self):
         sortie = (
             "[verify-timer] backup_dir=/home/fablab/backup-fabsuite\n"

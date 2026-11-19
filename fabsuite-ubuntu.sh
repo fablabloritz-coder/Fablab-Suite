@@ -16,7 +16,7 @@ RESTORE_DEST=""
 RESTORE_SOURCES=()
 VERIFY_ALL=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v10"
+HELPER_VERSION="2026-11-19-suite-backup-v11"
 
 usage() {
   cat <<'EOF'
@@ -36,6 +36,8 @@ Usage:
   ./fabsuite-ubuntu.sh verify --all [--dest /path/to/backups]
   ./fabsuite-ubuntu.sh install-verify-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh verify-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh install-backup-timer [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh backup-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -62,7 +64,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1407,6 +1409,32 @@ run_suite_verify() {
   python3 "$backup_module" verify "${args[@]}"
 }
 
+print_systemd_timer_status() {
+  local nom="$1"
+  local prefix="$2"
+  local timer_unit="/etc/systemd/system/${nom}.timer"
+
+  if [[ ! -f "$timer_unit" ]]; then
+    echo "${prefix} installed=0"
+    echo "${prefix} hint=Timer non installe : lance './fabsuite-ubuntu.sh install-${nom#fabsuite-}-timer'."
+    return 1
+  fi
+  echo "${prefix} installed=1"
+
+  if command -v systemctl >/dev/null 2>&1; then
+    echo "${prefix} active=$(systemctl is-active "${nom}.timer" 2>/dev/null || true)"
+    echo "${prefix} enabled=$(systemctl is-enabled "${nom}.timer" 2>/dev/null || true)"
+    echo "${prefix} next=$(systemctl show "${nom}.timer" -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+    echo "${prefix} last_trigger=$(systemctl show "${nom}.timer" -p LastTriggerUSec --value 2>/dev/null || true)"
+    echo "${prefix} result=$(systemctl show "${nom}.service" -p Result --value 2>/dev/null || true)"
+    echo "${prefix} result_code=$(systemctl show "${nom}.service" -p ExecMainStatus --value 2>/dev/null || true)"
+    echo "${prefix} result_at=$(systemctl show "${nom}.service" -p ExecMainExitTimestamp --value 2>/dev/null || true)"
+  else
+    echo "${prefix} systemctl=absent"
+  fi
+  return 0
+}
+
 run_install_verify_timer() {
   require_cmd systemctl
 
@@ -1473,28 +1501,12 @@ run_verify_timer_status() {
 
   local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
   local marker="${backup_root}/verify-degrade"
-  local timer_unit="/etc/systemd/system/fabsuite-verify.timer"
 
   echo "[verify-timer] backup_dir=${backup_root}"
 
   # Pas de timer installe : signaler clairement l'action a faire, sans erreur.
-  if [[ ! -f "$timer_unit" ]]; then
-    echo "[verify-timer] installed=0"
-    echo "[verify-timer] hint=Timer non installe : lance './fabsuite-ubuntu.sh install-verify-timer'."
+  if ! print_systemd_timer_status "fabsuite-verify" "[verify-timer]"; then
     return 0
-  fi
-  echo "[verify-timer] installed=1"
-
-  if command -v systemctl >/dev/null 2>&1; then
-    echo "[verify-timer] active=$(systemctl is-active fabsuite-verify.timer 2>/dev/null || true)"
-    echo "[verify-timer] enabled=$(systemctl is-enabled fabsuite-verify.timer 2>/dev/null || true)"
-    echo "[verify-timer] next=$(systemctl show fabsuite-verify.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
-    echo "[verify-timer] last_trigger=$(systemctl show fabsuite-verify.timer -p LastTriggerUSec --value 2>/dev/null || true)"
-    echo "[verify-timer] result=$(systemctl show fabsuite-verify.service -p Result --value 2>/dev/null || true)"
-    echo "[verify-timer] result_code=$(systemctl show fabsuite-verify.service -p ExecMainStatus --value 2>/dev/null || true)"
-    echo "[verify-timer] result_at=$(systemctl show fabsuite-verify.service -p ExecMainExitTimestamp --value 2>/dev/null || true)"
-  else
-    echo "[verify-timer] systemctl=absent"
   fi
 
   if [[ -f "$marker" ]]; then
@@ -1504,6 +1516,72 @@ run_verify_timer_status() {
   else
     echo "[verify-timer] marker="
   fi
+}
+
+run_install_backup_timer() {
+  require_cmd systemctl
+
+  echo "===== Suite backup timer ====="
+
+  local run_user="${SUDO_USER:-$(id -un)}"
+  local calendar="${FABSUITE_BACKUP_ON_CALENDAR:-*-*-* 03:30:00}"
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' RETURN
+
+  # Reutilise l'action `backup` : pre-check data-safety, snapshot verifie et
+  # rotation deja appliquee par le module. Service sous l'utilisateur
+  # operateur pour retrouver le bon HOME et le bon dossier de snapshots.
+  cat >"${tmpdir}/fabsuite-backup.service" <<EOF
+[Unit]
+Description=FabLab Suite - snapshot de sauvegarde
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=${run_user}
+WorkingDirectory=${INSTALL_DIR}
+SyslogIdentifier=fabsuite-backup
+ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh backup'
+EOF
+
+  cat >"${tmpdir}/fabsuite-backup.timer" <<EOF
+[Unit]
+Description=Snapshot periodique de la FabLab Suite
+
+[Timer]
+OnCalendar=${calendar}
+Persistent=true
+RandomizedDelaySec=30min
+Unit=fabsuite-backup.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  echo "[backup-timer] utilisateur: ${run_user}"
+  echo "[backup-timer] calendrier: ${calendar}"
+  echo "[backup-timer] destination: ${backup_root}"
+
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.service" /etc/systemd/system/fabsuite-backup.service
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.timer" /etc/systemd/system/fabsuite-backup.timer
+  run_privileged systemctl daemon-reload
+  run_privileged systemctl enable --now fabsuite-backup.timer
+
+  echo "[backup-timer] installe et active (rotation appliquee apres chaque snapshot valide)."
+  echo "[backup-timer] etat: systemctl list-timers fabsuite-backup.timer"
+  echo "[backup-timer] journal: journalctl -u fabsuite-backup.service"
+}
+
+run_backup_timer_status() {
+  echo "===== Suite backup timer status ====="
+
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  echo "[backup-timer] backup_dir=${backup_root}"
+
+  print_systemd_timer_status "fabsuite-backup" "[backup-timer]" || return 0
 }
 
 repo_exists() {
@@ -2080,6 +2158,12 @@ case "$ACTION" in
     ;;
   verify-timer-status)
     run_verify_timer_status
+    ;;
+  install-backup-timer)
+    run_install_backup_timer
+    ;;
+  backup-timer-status)
+    run_backup_timer_status
     ;;
   install)
     run_install

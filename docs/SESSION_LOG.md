@@ -6,6 +6,44 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : snapshots périodiques (timer systemd)
+
+**Objectif** : produire des snapshots réguliers sans action manuelle, en
+réutilisant la vérification et la rotation existantes, et voir l'état dans le
+GUI SSH.
+
+**Implementation**
+- Helper : `install-backup-timer` installe `fabsuite-backup.service`/
+  `.timer` sous l'utilisateur opérateur, `daemon-reload`, `enable --now`.
+  L'unité exécute `NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh backup` (pré-check
+  data-safety, snapshot vérifié, rotation) ; défaut `OnCalendar=*-*-* 03:30:00`,
+  `Persistent=true`, personnalisable via `FABSUITE_BACKUP_ON_CALENDAR`.
+- Helper : `backup-timer-status` réutilise `print_systemd_timer_status`
+  (extrait de `verify-timer-status`) pour exposer installation, prochaine
+  exécution, dernier résultat et code.
+- `HELPER_VERSION` passe à `2026-11-19-suite-backup-v11`.
+- GUI : bouton **État sauvegarde** et ligne d'état ; `backup_timer_status()`
+  parse `[backup-timer]`, rafraîchi à la connexion SSH et à la fin d'un backup
+  lancé depuis le GUI (`_backup_worker` enveloppé, comme pour verify).
+- `_parse_verify_timer_status` devient `_parse_timer_status(sortie, préfixe)`.
+- Docs : README (section dédiée), INSTALL_UBUNTU, env example.
+
+**Verifications**
+- Test d'intégration helper : unités backup générées (`backup`, `User`,
+  `WorkingDirectory`, `OnCalendar` 03:30, `Persistent`) et `enable --now`.
+- Tests backend : parsing de l'état, timer non installé (hint), erreur SSH,
+  rafraîchissement après backup ; assertions de câblage.
+- `bash -n`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- Exécution réelle systemd non testée dans cette VM ; pas de marqueur dédié aux
+  backups échoués (seul l'état de l'unité et le journal le signalent).
+
+**Prochaine action** : alerter sur un backup échoué (marqueur/notification) et
+proposer un bouton d'installation des timers dans le GUI.
+
+---
+
 ## 2026-11-19 — Suite : rafraîchissement automatique de l'état du timer
 
 **Objectif** : ne plus dépendre du bouton « État vérification » pour voir

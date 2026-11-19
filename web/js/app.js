@@ -30,9 +30,12 @@ function set_connection_status(text, connected) {
   document.getElementById("connectionDot").className =
     "status-dot " + (connected ? "text-success" : "text-danger");
   refreshModeUI();
-  // Etat du timer de verification : lecture des la connexion, sans attendre
-  // que l'operateur clique sur « Etat verification ».
-  if (connected) refreshVerifyTimerState();
+  // Etats des timers planifies : lecture des la connexion, sans attendre les
+  // boutons dedies.
+  if (connected) {
+    refreshVerifyTimerState();
+    refreshBackupTimerState();
+  }
 }
 
 eel.expose(set_dir_rows);
@@ -168,6 +171,52 @@ async function refreshVerifyTimerState() {
   el.textContent = "Vérification planifiée — " + parties.join(" — ");
 }
 
+function timerStateSummary(etat) {
+  const code = etat.last_code ? ` (code ${etat.last_code})` : "";
+  const dernier = etat.last_run
+    ? `${etat.last_result || "resultat inconnu"}${code} le ${etat.last_run}`
+    : "aucune exécution enregistrée";
+  return `timer ${etat.active || "inconnu"} — prochaine exécution : ${
+    etat.next || "inconnue"
+  } — dernière : ${dernier}`;
+}
+
+eel.expose(refreshBackupTimerState);
+async function refreshBackupTimerState() {
+  const el = document.getElementById("backupTimerState");
+  if (!el) return;
+  if (typeof currentMode !== "undefined" && currentMode === "local") {
+    el.className = "text-muted";
+    el.textContent = "Sauvegarde planifiée : disponible en mode Serveur SSH.";
+    return;
+  }
+  el.className = "text-muted";
+  el.textContent = "Sauvegarde planifiée : chargement...";
+
+  let etat;
+  try {
+    etat = await eel.backup_timer_status()();
+  } catch (e) {
+    el.className = "text-danger";
+    el.textContent = "Sauvegarde planifiée : erreur (" + e + ")";
+    return;
+  }
+  if (etat.error) {
+    el.className = "text-danger";
+    el.textContent = etat.error;
+    return;
+  }
+  if (!etat.installed) {
+    el.className = "text-warning";
+    el.textContent =
+      etat.hint ||
+      "Timer non installé : lance ./fabsuite-ubuntu.sh install-backup-timer.";
+    return;
+  }
+  el.className = "text-muted";
+  el.textContent = "Sauvegarde planifiée — " + timerStateSummary(etat);
+}
+
 async function openRestoreDialog() {
   let resultat;
   try {
@@ -265,9 +314,13 @@ async function dispatchAction(action, btn) {
     return;
   }
 
-  // Etat du timer de verification (lecture seule via le helper).
+  // Etat des timers planifies (lecture seule via le helper).
   if (action === "action_verify_timer_status") {
     await refreshVerifyTimerState();
+    return;
+  }
+  if (action === "action_backup_timer_status") {
+    await refreshBackupTimerState();
     return;
   }
 

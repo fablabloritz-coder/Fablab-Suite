@@ -459,6 +459,38 @@ Codes de sortie : `0` snapshots sains, `3` au moins un snapshot dégradé,
 Cette distinction permet aux automatisations de ne signaler que les vraies
 dégradations.
 
+### Snapshots planifiés (timer systemd)
+
+```bash
+./fabsuite-ubuntu.sh install-backup-timer
+```
+
+Le helper installe `fabsuite-backup.service` et `fabsuite-backup.timer`, puis
+active le timer. Le service exécute `NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh
+backup` sous l'utilisateur opérateur : le pré-check `check-data-safety`, la
+vérification du snapshot et la rotation (`FABSUITE_BACKUP_RETENTION_*`) sont
+réutilisés tels quels. Par défaut tous les jours à 03:30
+(`OnCalendar=*-*-* 03:30:00`, `Persistent=true` pour rattraper un démarrage
+manqué), personnalisable dans `fabsuite-ubuntu.env` :
+
+```bash
+FABSUITE_BACKUP_ON_CALENDAR="*-*-* 03:30:00"   # syntaxe systemd OnCalendar
+```
+
+Suivi et arrêt :
+
+```bash
+systemctl list-timers fabsuite-backup.timer
+journalctl -u fabsuite-backup.service -n 100
+cat ~/backup-fabsuite/verify-degrade   # vérification planifiée, si présente
+sudo systemctl disable --now fabsuite-backup.timer
+```
+
+Un échec (pré-check non sûr, snapshot invalide, disque plein) laisse l'unité en
+échec, visible via `systemctl --failed`. Le GUI SSH affiche la prochaine
+exécution et le dernier résultat (bouton **État sauvegarde**, rafraîchi à la
+connexion et après un backup lancé depuis l'interface).
+
 ### Vérification planifiée (timer systemd)
 
 ```bash

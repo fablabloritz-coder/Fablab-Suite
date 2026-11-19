@@ -1222,6 +1222,12 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("run_install_verify_timer()", script)
         self.assertIn("verify-timer-status)", script)
         self.assertIn("run_verify_timer_status()", script)
+        self.assertIn("install-backup-timer)", script)
+        self.assertIn("run_install_backup_timer()", script)
+        self.assertIn("backup-timer-status)", script)
+        self.assertIn("run_backup_timer_status()", script)
+        self.assertIn("fabsuite-backup.timer", script)
+        self.assertIn("FABSUITE_BACKUP_ON_CALENDAR", script)
         self.assertIn("fabsuite-verify.timer", script)
         self.assertIn("OnCalendar", script)
         self.assertIn("verify-degrade", script)
@@ -1329,6 +1335,7 @@ class HelperVerifyTimerTest(unittest.TestCase):
                         "FLASK_SECRET_KEY=test-secret",
                         f"FABSUITE_BACKUP_DIR={racine / 'backups'}",
                         'FABSUITE_VERIFY_ON_CALENDAR="*-*-* 04:30:00"',
+                        'FABSUITE_BACKUP_ON_CALENDAR="*-*-* 03:30:00"',
                         "",
                     )
                 ),
@@ -1414,6 +1421,43 @@ class HelperVerifyTimerTest(unittest.TestCase):
             self.assertIn("daemon-reload", appels)
             self.assertIn("enable --now fabsuite-verify.timer", appels)
             self.assertIn("fabsuite-verify.timer", sortie)
+
+            # Timer de snapshots periodiques : meme mecanique, action `backup`
+            # (donc rotation deja appliquee par le module).
+            processus = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "install-backup-timer",
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            service = (systemd_dir / "fabsuite-backup.service").read_text(
+                encoding="utf-8"
+            )
+            timer = (systemd_dir / "fabsuite-backup.timer").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("fabsuite-ubuntu.sh backup", service)
+            self.assertIn(f"WorkingDirectory={install}", service)
+            self.assertIn("User=", service)
+            self.assertIn("SyslogIdentifier=fabsuite-backup", service)
+            self.assertIn("OnCalendar=*-*-* 03:30:00", timer)
+            self.assertIn("Persistent=true", timer)
+            self.assertIn("Unit=fabsuite-backup.service", timer)
+
+            appels = journal.read_text(encoding="utf-8")
+            self.assertIn("enable --now fabsuite-backup.timer", appels)
+            self.assertIn("fabsuite-backup.timer", sortie)
 
 
 if __name__ == "__main__":
