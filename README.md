@@ -107,8 +107,9 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   Sans destination saisie, le helper utilise son staging par défaut
   (`FABSUITE_RESTORE_DIR` ou `~/restore-fabsuite/<snapshot>`). Une destination
   explicite doit être un dossier vide ; rien n'est écrasé en place.
-  Si le serveur a un ancien `suite_backup.py` sans commande `volumes`, le modal
-  l'indique clairement et invite à lancer `update` avant de réessayer.
+  Si le serveur a un ancien `suite_backup.py` sans les commandes `list` ou
+  `volumes`, le modal l'indique clairement et invite à lancer `update` avant de
+  réessayer.
 
 **Maintenance dossiers** : scan, inspection, correction permissions, archivage, suppression
 

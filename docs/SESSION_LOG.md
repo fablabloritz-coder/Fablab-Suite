@@ -14,10 +14,11 @@ l'erreur argparse du helper par une invite claire à lancer `update`.
 **Implementation**
 - Helper : `volumes` vérifie la présence de `def lister_volumes` dans le module
   installé et émet `[volumes] MISE A JOUR REQUISE: … ./fabsuite-ubuntu.sh update`
-  (code 2) au lieu de laisser argparse échouer.
-- GUI : `list_volumes` reconnaît ce marqueur et renvoie un message dédié
-  (« ancien suite_backup.py … lance update … puis rouvre le modal »), sans
-  revalider le manifeste côté interface.
+  (code 2) au lieu de laisser argparse échouer. Même garde-fou pour `snapshots`
+  (`def lister_snapshots`, commande `list`).
+- GUI : `list_volumes` et `list_snapshots` reconnaissent ce marqueur et
+  renvoient un message dédié (« ancien suite_backup.py … lance update … puis
+  rouvre le modal »), sans revalider le manifeste côté interface.
 - Le message tient en une phrase (le hint est un `<p>` sans `pre-line`) et le
   hint accepte désormais les retours à la ligne (`white-space: pre-line`) pour
   les erreurs multi-lignes du helper ; test : pas de `\n` dans le message.
@@ -25,7 +26,8 @@ l'erreur argparse du helper par une invite claire à lancer `update`.
 
 **Verifications**
 - Test backend GUI : marqueur → message actionnable, sans texte technique.
-- Test helper : module factice sans `volumes` → code 2 et invitation `update`.
+- Test helper paramétré : module factice sans `list`/`volumes` → code 2 et
+  invitation `update` pour `volumes` et `snapshots`.
 - Suite `tests/` et `bash -n`.
 
 **Risques / non couverts**

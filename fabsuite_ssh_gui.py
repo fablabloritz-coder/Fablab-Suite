@@ -1545,6 +1545,14 @@ exit 0
             self._ensure_remote_helper_ready()
             sortie = self._exec_remote_simple(self._helper_command("snapshots"))
         except Exception as exc:
+            if "MISE A JOUR REQUISE" in str(exc):
+                return {
+                    "error": (
+                        "Le serveur utilise un ancien suite_backup.py sans la commande "
+                        "list : lance './fabsuite-ubuntu.sh update' (ou le bouton "
+                        "Mettre a jour), puis rouvre ce modal."
+                    )
+                }
             return {"error": f"Impossible de lister les snapshots: {exc}"}
 
         snapshots = []

@@ -82,6 +82,28 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertIn("error", resultat)
         self.assertIn("connexion perdue", resultat["error"])
 
+    def test_list_snapshots_invite_a_mettre_a_jour_un_module_ancien(self):
+        self.backend._is_local_mode = lambda: False
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def echouer(commande):
+            raise RuntimeError(
+                "[snapshots] MISE A JOUR REQUISE: /opt/fabsuite/suite_backup.py "
+                "ne connait pas la commande list (version ancienne)."
+            )
+
+        self.backend._exec_remote_simple = echouer
+
+        resultat = self.backend.list_snapshots()
+
+        self.assertIn("error", resultat)
+        self.assertIn("ancien suite_backup.py", resultat["error"])
+        self.assertIn("update", resultat["error"])
+        self.assertNotIn("MISE A JOUR REQUISE", resultat["error"])
+        # Le hint du modal est un <p> : le message doit rester sur une ligne.
+        self.assertNotIn("\n", resultat["error"])
+
     def test_backup_worker_message_de_succes(self):
         self.backend._run_helper_action = lambda action, **kwargs: 0
 

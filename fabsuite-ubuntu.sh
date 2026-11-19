@@ -1323,6 +1323,15 @@ run_suite_list_snapshots() {
     return 2
   fi
 
+  # Meme garde-fou que `volumes` : un module sans commande `list` doit
+  # produire une invite a mettre a jour, pas une erreur argparse. Le GUI
+  # reconnait ce marqueur.
+  if ! grep -q '^def lister_snapshots' "$backup_module"; then
+    echo "[snapshots] MISE A JOUR REQUISE: ${backup_module} ne connait pas la commande list (version ancienne)." >&2
+    echo "[snapshots] Lance './fabsuite-ubuntu.sh update' puis rouvre le modal de restauration." >&2
+    return 2
+  fi
+
   local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
   python3 "$backup_module" list --dest "$backup_root"
 }

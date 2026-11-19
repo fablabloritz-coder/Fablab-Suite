@@ -1031,8 +1031,8 @@ class HelperWiringTest(unittest.TestCase):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)
 
 
-class HelperVolumesCompatTest(unittest.TestCase):
-    """Un module installe avant `volumes` doit inviter a lancer update."""
+class HelperLegacyModuleCompatTest(unittest.TestCase):
+    """Un module installe avant `list`/`volumes` doit inviter a lancer update."""
 
     def test_un_module_ancien_invite_a_mettre_a_jour(self):
         if not shutil.which("bash"):
@@ -1042,11 +1042,11 @@ class HelperVolumesCompatTest(unittest.TestCase):
             racine = Path(tmp)
             install = racine / "suite"
             install.mkdir()
-            # Ancien module : la commande `volumes` n'existe pas.
+            # Ancien module : ni `list`, ni `volumes`.
             (install / "suite_backup.py").write_text(
                 "import argparse\n"
                 "parseur = argparse.ArgumentParser()\n"
-                "parseur.add_argument('command', choices=['snapshot', 'restore', 'list'])\n"
+                "parseur.add_argument('command', choices=['snapshot', 'restore'])\n"
                 "parseur.parse_args()\n",
                 encoding="utf-8",
             )
@@ -1073,27 +1073,32 @@ class HelperVolumesCompatTest(unittest.TestCase):
 
             env = os.environ.copy()
             env["HOME"] = str(racine / "home")
-            processus = subprocess.run(
-                [
-                    "bash",
-                    str(installer / "fabsuite-ubuntu.sh"),
-                    "volumes",
-                    "--snapshot",
-                    str(snapshot),
-                    "--env-file",
-                    str(env_file),
-                ],
-                cwd=installer,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            sortie = processus.stdout + processus.stderr
 
-            self.assertEqual(processus.returncode, 2, sortie)
-            self.assertIn("MISE A JOUR REQUISE", sortie)
-            self.assertIn("fabsuite-ubuntu.sh update", sortie)
+            for action, extra_args in (
+                ("volumes", ["--snapshot", str(snapshot)]),
+                ("snapshots", []),
+            ):
+                with self.subTest(action=action):
+                    processus = subprocess.run(
+                        [
+                            "bash",
+                            str(installer / "fabsuite-ubuntu.sh"),
+                            action,
+                            *extra_args,
+                            "--env-file",
+                            str(env_file),
+                        ],
+                        cwd=installer,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    sortie = processus.stdout + processus.stderr
+
+                    self.assertEqual(processus.returncode, 2, sortie)
+                    self.assertIn(f"[{action}] MISE A JOUR REQUISE", sortie)
+                    self.assertIn("fabsuite-ubuntu.sh update", sortie)
 
 
 if __name__ == "__main__":
