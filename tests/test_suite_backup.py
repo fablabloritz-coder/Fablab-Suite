@@ -2116,6 +2116,108 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("[notify-status] verify_state_present=0", final.stdout)
             self.assertIn("[notify-status] verify_alert_at=", final.stdout)
 
+    @staticmethod
+    def _extraire_fonction(nom):
+        """Source exacte d'une fonction du helper, pour la tester isolement."""
+        lignes = (ROOT / "fabsuite-ubuntu.sh").read_text(encoding="utf-8").splitlines()
+        try:
+            debut = lignes.index(f"{nom}() {{")
+        except ValueError:
+            return None
+        for fin in range(debut + 1, len(lignes)):
+            if lignes[fin] == "}":
+                return "\n".join(lignes[debut : fin + 1])
+        return None
+
+    def _notify_send_email_isole(self, racine, transports):
+        """Execute `notify_send_email` avec un PATH ne contenant que les faux
+        transports demandes : ni mail, ni sendmail systeme ne peuvent etre vus."""
+        bash = shutil.which("bash")
+        if not bash:
+            self.skipTest("bash indisponible")
+
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        journal = racine / "envois.log"
+        for transport in transports:
+            script = faux_bin / transport
+            script.write_text(
+                f"#!{bash}\n"
+                "entree=''\n"
+                "while IFS= read -r ligne; do\n"
+                "  entree=\"${entree}${ligne}\"$'\\n'\n"
+                "done\n"
+                f"printf '%s|%s|%s\\n' '{transport}' \"$*\" \"$entree\" >> \"${{FAKE_SEND_LOG}}\"\n",
+                encoding="utf-8",
+            )
+            script.chmod(0o755)
+
+        fonction = self._extraire_fonction("notify_send_email")
+        self.assertIsNotNone(
+            fonction, "notify_send_email introuvable dans le helper"
+        )
+
+        env = os.environ.copy()
+        env["PATH"] = str(faux_bin)
+        env["FAKE_SEND_LOG"] = str(journal)
+        processus = subprocess.run(
+            [
+                bash,
+                "-c",
+                f'{fonction}\nnotify_send_email "$1" "$2" "$3"\necho "rc=$?"',
+                "notify_send_email",
+                "Sujet test",
+                "Corps du message",
+                "ops@example.invalid",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return processus, journal
+
+    def test_repli_sendmail_quand_mail_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            processus, journal = self._notify_send_email_isole(Path(tmp), ("sendmail",))
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("rc=0", processus.stdout)
+            self.assertIn("email envoye", sortie)
+
+            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            self.assertEqual(nom, "sendmail")
+            self.assertEqual(arguments, "ops@example.invalid")
+            self.assertIn("Subject: Sujet test", corps)
+            self.assertIn("To: ops@example.invalid", corps)
+            self.assertIn("Corps du message", corps)
+
+    def test_aucun_transport_mail_ni_sendmail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            processus, journal = self._notify_send_email_isole(Path(tmp), ())
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("rc=1", processus.stdout)
+            self.assertIn("ERROR email: ni mail ni sendmail disponible", processus.stderr)
+            self.assertNotIn("email envoye", sortie)
+            self.assertFalse(journal.exists())
+
+    def test_mail_prioritaire_quand_les_deux_transports_existent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            processus, journal = self._notify_send_email_isole(
+                Path(tmp), ("mail", "sendmail")
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("rc=0", processus.stdout)
+            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            self.assertEqual(nom, "mail")
+            self.assertEqual(arguments, "-s Sujet test ops@example.invalid")
+            self.assertEqual(corps.strip(), "Corps du message")
+
 
 if __name__ == "__main__":
     unittest.main()

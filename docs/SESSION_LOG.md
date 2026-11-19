@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Tests des transports mail/sendmail en PATH isolé
+
+**Objectif** : couvrir les deux branches de `notify_send_email` qui restaient
+non testées (repli `sendmail`, aucun transport) sans dépendre des binaires du
+serveur.
+
+**Implementation**
+- Les tests extraient la source exacte de `notify_send_email` du helper et
+  l'exécutent dans un `bash -c` dont le `PATH` ne contient **que** les faux
+  transports à créer : ni `mail` ni `sendmail` système ne peuvent être vus, quel
+  que soit l'hôte. Les faux transports sont en bash pur (shebang absolu,
+  `read`/`printf` builtins) pour ne rien résoudre via `PATH`.
+- L'extraction échoue explicitement si la fonction disparaît ou change de forme
+  (pas de test silencieusement vide).
+
+**Verifications**
+- Nouveaux tests : repli `sendmail` (destinataire, `Subject:`/`To:`, corps,
+  `email envoye`, code 0) ; aucun transport (`ni mail ni sendmail disponible`,
+  code 1, aucun envoi) ; `mail` prioritaire quand les deux existent (arguments
+  `-s`, corps brut).
+- Suite complète 131 tests OK, `bash -n`, `py_compile`, `node --check`.
+
+**Risques / non couverts**
+- Le test exécute la fonction hors du dispatch complet : l'intégration
+  `notify-failure` reste couverte par les tests CLI existants (mail en succès et
+  en échec).
+- Rendu navigateur non vérifié ; unités systemd non exécutées.
+
+**Prochaine action** : vérifier visuellement la carte Sauvegarde &
+restauration dans le navigateur.
+
+---
+
 ## 2026-11-19 — Revue finale de la chaîne de notifications
 
 **Objectif** : dernier passage sur l'anti-rebond et ses consommateurs, retirer
