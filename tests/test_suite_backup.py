@@ -1230,6 +1230,10 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("FABSUITE_BACKUP_ON_CALENDAR", script)
         self.assertIn("clear-markers)", script)
         self.assertIn("run_clear_markers()", script)
+        self.assertIn("notify-failure)", script)
+        self.assertIn("run_notify_failure()", script)
+        self.assertIn("FABSUITE_NOTIFY_WEBHOOK_URL", script)
+        self.assertIn("FABSUITE_NOTIFY_EMAIL", script)
         self.assertIn("fabsuite-verify.timer", script)
         self.assertIn("OnCalendar", script)
         self.assertIn("verify-degrade", script)
@@ -1407,6 +1411,7 @@ class HelperVerifyTimerTest(unittest.TestCase):
                 encoding="utf-8"
             )
             self.assertIn("verify --all", service)
+            self.assertIn("notify-failure --notify-service verify", service)
             self.assertIn(f"WorkingDirectory={install}", service)
             self.assertIn("User=", service)
             self.assertIn("SyslogIdentifier=fabsuite-verify", service)
@@ -1450,6 +1455,7 @@ class HelperVerifyTimerTest(unittest.TestCase):
                 encoding="utf-8"
             )
             self.assertIn("fabsuite-ubuntu.sh backup", service)
+            self.assertIn("notify-failure --notify-service backup", service)
             self.assertIn(f"WorkingDirectory={install}", service)
             self.assertIn("User=", service)
             self.assertIn("SyslogIdentifier=fabsuite-backup", service)
@@ -1589,6 +1595,179 @@ class HelperClearMarkersTest(unittest.TestCase):
             self.assertEqual(processus.returncode, 2, sortie)
             self.assertIn(f"refuse={backups / 'verify-degrade'}", sortie)
             self.assertTrue((backups / "verify-degrade").is_symlink())
+
+
+class HelperNotifyFailureTest(unittest.TestCase):
+    """Notification externe configurable, sans faire echouer l'unite."""
+
+    def _preparer(self, racine, lignes_env=(), curl_exit=0):
+        install = racine / "suite"
+        install.mkdir()
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        journal = racine / "notify.log"
+        (faux_bin / "curl").write_text(
+            "#!/usr/bin/env bash\n"
+            'printf \'%s\\n\' "$*" >> "${FAKE_NOTIFY_LOG}"\n'
+            f"exit {curl_exit}\n",
+            encoding="utf-8",
+        )
+        corps = racine / "mail.body"
+        args = racine / "mail.args"
+        (faux_bin / "mail").write_text(
+            "#!/usr/bin/env bash\n"
+            'printf \'%s\\n\' "$*" > "${FAKE_MAIL_ARGS}"\n'
+            'cat > "${FAKE_MAIL_BODY}"\n'
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        (faux_bin / "curl").chmod(0o755)
+        (faux_bin / "mail").chmod(0o755)
+
+        env_file = installer / "fabsuite-ubuntu.env"
+        env_file.write_text(
+            "\n".join(
+                (
+                    f"INSTALL_DIR={install}",
+                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    f"FABSUITE_BACKUP_DIR={racine / 'backups'}",
+                    *lignes_env,
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        env = os.environ.copy()
+        env["PATH"] = f"{faux_bin}:{env['PATH']}"
+        env["HOME"] = str(racine / "home")
+        env["NON_INTERACTIVE"] = "1"
+        env["FAKE_NOTIFY_LOG"] = str(journal)
+        env["FAKE_MAIL_ARGS"] = str(args)
+        env["FAKE_MAIL_BODY"] = str(corps)
+        return installer, env_file, env, journal, args, corps
+
+    def _notifier(self, installer, env_file, env, service="backup", code="1"):
+        return subprocess.run(
+            [
+                "bash",
+                str(installer / "fabsuite-ubuntu.sh"),
+                "notify-failure",
+                "--notify-service",
+                service,
+                "--notify-code",
+                code,
+                "--env-file",
+                str(env_file),
+            ],
+            cwd=installer,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_webhook_post_json(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+            )
+
+            processus = self._notifier(
+                installer=installer, env_file=env_file, env=env
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("webhook envoye", sortie)
+            contenu = journal.read_text(encoding="utf-8")
+            self.assertIn("https://hooks.invalid/fabsuite", contenu)
+            self.assertIn('"service":"backup"', contenu)
+            self.assertIn('"code":1', contenu)
+            self.assertIn("application/json", contenu)
+
+    def test_email_via_mail(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, args, corps = self._preparer(
+                racine,
+                lignes_env=("FABSUITE_NOTIFY_EMAIL=ops@example.invalid",),
+            )
+
+            processus = self._notifier(
+                installer=installer,
+                env_file=env_file,
+                env=env,
+                service="verify",
+                code="3",
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("email envoye", sortie)
+            self.assertIn("ops@example.invalid", args.read_text(encoding="utf-8"))
+            self.assertIn("verify en echec", args.read_text(encoding="utf-8"))
+            self.assertIn(
+                "verify planifie en echec (code 3)",
+                corps.read_text(encoding="utf-8"),
+            )
+
+    def test_sans_configuration_aucun_envoi(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, args, corps = self._preparer(racine)
+
+            processus = self._notifier(
+                installer=installer, env_file=env_file, env=env
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("aucune cible configuree", sortie)
+            self.assertFalse(journal.exists())
+            self.assertFalse(args.exists())
+            self.assertFalse(corps.exists())
+
+    def test_erreur_d_envoi_ne_fait_pas_echouer(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+                curl_exit=22,
+            )
+
+            processus = self._notifier(
+                installer=installer, env_file=env_file, env=env
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("ERROR webhook", sortie)
+            self.assertTrue(journal.exists())
 
 
 if __name__ == "__main__":

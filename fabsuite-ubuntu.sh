@@ -15,8 +15,10 @@ RESTORE_SNAPSHOT=""
 RESTORE_DEST=""
 RESTORE_SOURCES=()
 VERIFY_ALL=""
+NOTIFY_SERVICE=""
+NOTIFY_CODE=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v13"
+HELPER_VERSION="2026-11-19-suite-backup-v14"
 
 usage() {
   cat <<'EOF'
@@ -39,6 +41,7 @@ Usage:
   ./fabsuite-ubuntu.sh install-backup-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh backup-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh clear-markers [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh notify-failure --notify-service backup|verify --notify-code N [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -65,7 +68,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|notify-failure|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -104,6 +107,22 @@ while [[ $# -gt 0 ]]; do
     --all)
       VERIFY_ALL="1"
       shift
+      ;;
+    --notify-service)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --notify-service requires a value"
+        exit 1
+      fi
+      NOTIFY_SERVICE="$2"
+      shift 2
+      ;;
+    --notify-code)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --notify-code requires a value"
+        exit 1
+      fi
+      NOTIFY_CODE="$2"
+      shift 2
       ;;
     -h|--help)
       ACTION="help"
@@ -1466,7 +1485,7 @@ User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-verify
 ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all'
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "3" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; elif [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else echo "Verification impossible (code \$EXIT_STATUS), aucun snapshot degrade signale - voir journalctl -u fabsuite-verify"; fi'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "3" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; elif [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else echo "Verification impossible (code \$EXIT_STATUS), aucun snapshot degrade signale - voir journalctl -u fabsuite-verify"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service verify --notify-code "\$EXIT_STATUS" || true; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-verify.timer" <<EOF
@@ -1549,7 +1568,7 @@ User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-backup
 ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh backup'
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else mkdir -p "${marker_dir}"; echo "ECHEC \$(date -Is) code \$EXIT_STATUS - voir journalctl -u fabsuite-backup" > "${marker}"; echo "ATTENTION: snapshot periodique en echec (code \$EXIT_STATUS) - ${marker}"; fi'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else mkdir -p "${marker_dir}"; echo "ECHEC \$(date -Is) code \$EXIT_STATUS - voir journalctl -u fabsuite-backup" > "${marker}"; echo "ATTENTION: snapshot periodique en echec (code \$EXIT_STATUS) - ${marker}"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code "\$EXIT_STATUS" || true; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-backup.timer" <<EOF
@@ -1597,6 +1616,74 @@ run_backup_timer_status() {
   else
     echo "[backup-timer] marker="
   fi
+}
+
+run_notify_failure() {
+  local service="${NOTIFY_SERVICE:-}"
+  local code="${NOTIFY_CODE:-}"
+  local webhook="${FABSUITE_NOTIFY_WEBHOOK_URL:-}"
+  local email="${FABSUITE_NOTIFY_EMAIL:-}"
+  local host
+  host="$(hostname 2>/dev/null || echo serveur)"
+
+  if [[ -z "$service" || -z "$code" ]]; then
+    echo "[notify] ERROR: --notify-service et --notify-code requis." >&2
+    return 2
+  fi
+  if [[ "$service" != "backup" && "$service" != "verify" ]]; then
+    echo "[notify] ERROR: --notify-service doit valoir backup ou verify." >&2
+    return 2
+  fi
+  if [[ ! "$code" =~ ^[0-9]+$ ]]; then
+    echo "[notify] ERROR: --notify-code doit etre numerique." >&2
+    return 2
+  fi
+
+  echo "===== Suite notify failure ====="
+  echo "[notify] service=${service} code=${code}"
+
+  if [[ -z "$webhook" && -z "$email" ]]; then
+    echo "[notify] aucune cible configuree (FABSUITE_NOTIFY_WEBHOOK_URL / FABSUITE_NOTIFY_EMAIL)"
+    return 0
+  fi
+
+  local message="FabLab Suite: ${service} planifie en echec (code ${code}) sur ${host}. Voir journalctl -u fabsuite-${service}.service"
+
+  # Une notification qui echoue ne doit jamais changer le resultat de l'unite.
+  if [[ -n "$webhook" ]]; then
+    if command -v curl >/dev/null 2>&1; then
+      local payload
+      payload="{\"service\":\"${service}\",\"status\":\"failed\",\"code\":${code},\"host\":\"${host}\",\"message\":\"${message}\"}"
+      if curl -fsS --max-time 10 -X POST -H 'Content-Type: application/json' --data "$payload" "$webhook" >/dev/null 2>&1; then
+        echo "[notify] webhook envoye"
+      else
+        echo "[notify] ERROR webhook: envoi impossible (verifier FABSUITE_NOTIFY_WEBHOOK_URL)" >&2
+      fi
+    else
+      echo "[notify] ERROR webhook: curl absent" >&2
+    fi
+  fi
+
+  if [[ -n "$email" ]]; then
+    local sujet="[FabLab Suite] ${service} en echec (code ${code}) - ${host}"
+    if command -v mail >/dev/null 2>&1; then
+      if printf '%s\n' "$message" | mail -s "$sujet" "$email"; then
+        echo "[notify] email envoye"
+      else
+        echo "[notify] ERROR email: envoi impossible" >&2
+      fi
+    elif command -v sendmail >/dev/null 2>&1; then
+      if printf 'Subject: %s\nTo: %s\n\n%s\n' "$sujet" "$email" "$message" | sendmail "$email"; then
+        echo "[notify] email envoye"
+      else
+        echo "[notify] ERROR email: envoi impossible" >&2
+      fi
+    else
+      echo "[notify] ERROR email: ni mail ni sendmail disponible" >&2
+    fi
+  fi
+
+  return 0
 }
 
 run_clear_markers() {
@@ -2256,6 +2343,9 @@ case "$ACTION" in
     ;;
   clear-markers)
     run_clear_markers
+    ;;
+  notify-failure)
+    run_notify_failure
     ;;
   install)
     run_install

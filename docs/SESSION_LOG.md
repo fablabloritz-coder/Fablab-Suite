@@ -6,6 +6,42 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : notification externe des échecs planifiés
+
+**Objectif** : prévenir l'opérateur par mail ou webhook quand un backup ou une
+vérification planifiés échouent, sans dépendre du GUI.
+
+**Implementation**
+- Helper : action `notify-failure --notify-service backup|verify --notify-code N`
+  qui lit `FABSUITE_NOTIFY_WEBHOOK_URL` (POST JSON via curl) et/ou
+  `FABSUITE_NOTIFY_EMAIL` (mail, sinon sendmail). Sans cible, une ligne
+  `[notify]` seulement ; un échec d'envoi est journalisé mais ne change jamais
+  le code de sortie. `HELPER_VERSION` → v14.
+- `ExecStopPost` des services `fabsuite-backup` et `fabsuite-verify` appelle
+  `notify-failure` sur tout code non nul (verify : 2 et 3), après avoir posé ou
+  laissé le marqueur.
+- Config : variables commentées dans `fabsuite-ubuntu.env.example`.
+- Docs : README (nouvelle section « Notifications d'échec »), INSTALL_UBUNTU.
+
+**Verifications**
+- Tests helper : POST JSON (URL, service, code, content-type), email via `mail`
+  (sujet, destinataire, corps), absence de configuration (aucun envoi), échec
+  curl (code 0 conservé, erreur journalisée).
+- Tests d'installation des timers : les deux unités contiennent l'appel
+  `notify-failure` correspondant.
+- `bash -n`, suite `tests/`.
+
+**Risques / non couverts**
+- Aucun anti-rebond : chaque exécution en échec envoie une notification
+  (quotidienne par défaut).
+- Le JSON est construit par concaténation (service/code validés numériquement,
+  message interne) ; pas de test contre un vrai webhook ni de vrai envoi mail.
+
+**Prochaine action** : ajouter un anti-rebond (une notification par échec
+consécutif) et un état de configuration dans le GUI.
+
+---
+
 ## 2026-11-19 — Suite : acquittement conditionné des marqueurs
 
 **Objectif** : ne plus pouvoir effacer un marqueur sans preuve que la situation

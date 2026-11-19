@@ -487,7 +487,7 @@ Suivi et arrêt :
 ```bash
 systemctl list-timers fabsuite-backup.timer
 journalctl -u fabsuite-backup.service -n 100
-cat ~/backup-fabsuite/verify-degrade   # vérification planifiée, si présente
+cat ~/backup-fabsuite/backup-failed    # dernier échec planifié, si présent
 sudo systemctl disable --now fabsuite-backup.timer
 ```
 
@@ -549,6 +549,39 @@ systemctl list-timers fabsuite-verify.timer   # prochaine exécution
 sudo systemctl start fabsuite-verify.service  # vérifier maintenant
 sudo systemctl disable --now fabsuite-verify.timer
 cat ~/backup-fabsuite/verify-degrade          # si présent : snapshot dégradé
+```
+
+### Notifications d'échec (mail ou webhook)
+
+En plus des marqueurs, chaque exécution planifiée en échec (code non nul) peut
+envoyer une notification externe. Configurer dans `fabsuite-ubuntu.env` :
+
+```bash
+# Webhook : POST JSON, curl requis (timeout 10 s)
+FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.exemple.invalid/fabsuite
+# Email : necessite la commande mail ou sendmail sur l'hote
+FABSUITE_NOTIFY_EMAIL=admin@exemple.invalid
+```
+
+Les deux cibles sont indépendantes et facultatives ; sans configuration,
+aucune tentative n'est faite (simple ligne `[notify]` dans le journal).
+
+- Webhook : `Content-Type: application/json`, corps
+  `{"service":"backup|verify","status":"failed","code":N,"host":"...","message":"..."}`.
+- Email : sujet `[FabLab Suite] <service> en echec (code N) - <hote>`, corps
+  avec le renvoi vers `journalctl -u fabsuite-<service>.service`.
+- `verify` notifie aussi le code 2 (vérification impossible), pas seulement le
+  code 3 (snapshot dégradé).
+- Un échec d'envoi (webhook injoignable, `mail` absent) n'échoue jamais
+  l'unité : l'erreur est seulement journalisée (`[notify] ERROR`).
+
+La configuration est lue à chaque exécution. Si les unités ont été installées
+avant cette version, relancer `install-backup-timer` et `install-verify-timer`
+pour ajouter l'appel. Test manuel :
+
+```bash
+./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code 1
+journalctl -u fabsuite-backup.service -n 50 | grep notify
 ```
 
 Sans systemd, l'équivalent cron (à adapter au chemin d'installation) :
