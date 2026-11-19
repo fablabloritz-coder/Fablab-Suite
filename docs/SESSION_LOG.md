@@ -6,6 +6,45 @@ action imperative.
 
 ---
 
+## 2026-11-19 — GUI SSH : état des notifications d'échec
+
+**Objectif** : voir dans le GUI les destinations de notification et l'anti-rebond
+sans se connecter en SSH ni dupliquer la logique du helper.
+
+**Implementation**
+- Helper : nouvelle action en lecture seule `notify-status` qui imprime
+  `[notify-status] webhook=configured|absent`, `email=...`, puis pour `backup`
+  et `verify` `_state=` (chemin resolu par `notify_state_file`), `_state_present=`
+  (`0`, `1` ou `lien symbolique`) et `_alert_at=` (mtime via `stat -c %y`).
+  `HELPER_VERSION` → v16.
+- GUI backend : `notify_status()` execute `notify-status` via
+  `_helper_command`/`_exec_remote_capture` et `_parse_notify_status()` lit le
+  bloc ; un helper trop ancien (aucune ligne `backup_dir`) renvoie une erreur
+  invitant a relancer Upload fichiers puis update, et non un etat vide.
+- GUI front : bouton **État notifications** (carte Sauvegarde & restauration) +
+  ligne `notifyState`, relue a la connexion ; orange si aucune cible configuree,
+  date de la derniere alerte par service, mention d'un eventuel lien symbolique.
+- Docs : README (utilisation du GUI, section notifications), INSTALL_UBUNTU.
+
+**Verifications**
+- Tests helper : `notify-status` sans etat (deux cibles configurees, presence 0),
+  puis apres `notify-failure` sur `verify` (presence 1 + date non vide pour
+  `verify` seulement), puis apres `notify-reset` (presence 0).
+- Tests GUI : parsing destinations + etats + date, helper trop ancien -> erreur,
+  erreur SSH remontee, etat en lien symbolique signale.
+- `bash -n`, `py_compile`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- Rendu HTML/JS non verifie dans un navigateur (aucun test DOM) ; la ligne
+  d'etat depend du helper v16 (sinon message d'update).
+- `notify-status` affiche la configuration lue dans l'env du serveur ; il
+  n'envoie rien et ne teste pas la joignabilite du webhook.
+
+**Prochaine action** : rafraichir `notifyState` apres un acquittement, un backup
+ou une verification lances depuis le GUI.
+
+---
+
 ## 2026-11-19 — Suite : anti-rebond des notifications d'échec
 
 **Objectif** : ne plus recevoir une alerte à chaque exécution planifiée en

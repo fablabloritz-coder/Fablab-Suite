@@ -97,6 +97,8 @@ Ce que fait la commande:
 # Une seule alerte par serie d'echecs consecutifs (anti-rebond) ;
 # un succes reinitialise l'etat, une nouvelle panne est donc renvoyee :
 ./fabsuite-ubuntu.sh notify-reset --notify-service backup
+# Etat des notifications (destinations + anti-rebond), aussi lu par le GUI :
+./fabsuite-ubuntu.sh notify-status
 # Test manuel :
 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code 1
 

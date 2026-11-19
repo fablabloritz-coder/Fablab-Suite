@@ -1234,6 +1234,8 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("run_notify_failure()", script)
         self.assertIn("notify-reset)", script)
         self.assertIn("run_notify_reset()", script)
+        self.assertIn("notify-status)", script)
+        self.assertIn("run_notify_status()", script)
         self.assertIn("notify-${service}.state", script)
         self.assertIn("FABSUITE_NOTIFY_WEBHOOK_URL", script)
         self.assertIn("FABSUITE_NOTIFY_EMAIL", script)
@@ -1695,6 +1697,22 @@ class HelperNotifyFailureTest(unittest.TestCase):
             timeout=60,
         )
 
+    def _status(self, installer, env_file, env):
+        return subprocess.run(
+            [
+                "bash",
+                str(installer / "fabsuite-ubuntu.sh"),
+                "notify-status",
+                "--env-file",
+                str(env_file),
+            ],
+            cwd=installer,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
     def test_webhook_post_json(self):
         if not shutil.which("bash"):
             self.skipTest("bash indisponible")
@@ -1955,6 +1973,77 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("lien symbolique", sortie)
             self.assertFalse(journal.exists())
             self.assertEqual(cible.read_text(encoding="utf-8"), "ne pas toucher\n")
+
+    def test_notify_status_destinations_configurees(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                    "FABSUITE_NOTIFY_EMAIL=ops@example.invalid",
+                ),
+            )
+
+            processus = self._status(installer, env_file, env)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("[notify-status] webhook=configured", sortie)
+            self.assertIn("[notify-status] email=configured", sortie)
+            self.assertIn(
+                f"[notify-status] backup_dir={racine / 'backups'}", sortie
+            )
+            self.assertIn(
+                f"[notify-status] backup_state={racine / 'backups' / 'notify-backup.state'}",
+                sortie,
+            )
+            self.assertIn("[notify-status] backup_state_present=0", sortie)
+            self.assertIn("[notify-status] backup_alert_at=", sortie)
+            self.assertIn("[notify-status] verify_state_present=0", sortie)
+
+    def test_notify_status_reflete_l_anti_rebond_par_service(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+            )
+
+            self._notifier(
+                installer=installer, env_file=env_file, env=env, service="verify", code="3"
+            )
+            apres = self._status(installer, env_file, env)
+            sortie = apres.stdout + apres.stderr
+
+            self.assertEqual(apres.returncode, 0, sortie)
+            self.assertIn("[notify-status] email=absent", sortie)
+            self.assertIn("[notify-status] backup_state_present=0", sortie)
+            self.assertIn("[notify-status] verify_state_present=1", sortie)
+            dates = [
+                ligne.split("=", 1)[1].strip()
+                for ligne in sortie.splitlines()
+                if ligne.startswith("[notify-status] verify_alert_at=")
+            ]
+            self.assertEqual(len(dates), 1)
+            self.assertTrue(dates[0], "la date de la derniere alerte doit etre renseignee")
+
+            reset = self._reset(
+                installer=installer, env_file=env_file, env=env, service="verify"
+            )
+            self.assertEqual(reset.returncode, 0, reset.stdout + reset.stderr)
+
+            final = self._status(installer, env_file, env)
+            self.assertIn("[notify-status] verify_state_present=0", final.stdout)
+            self.assertIn("[notify-status] verify_alert_at=", final.stdout)
 
 
 if __name__ == "__main__":

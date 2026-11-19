@@ -18,7 +18,7 @@ VERIFY_ALL=""
 NOTIFY_SERVICE=""
 NOTIFY_CODE=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v15"
+HELPER_VERSION="2026-11-19-suite-backup-v16"
 
 usage() {
   cat <<'EOF'
@@ -43,6 +43,7 @@ Usage:
   ./fabsuite-ubuntu.sh clear-markers [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh notify-failure --notify-service backup|verify --notify-code N [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh notify-reset --notify-service backup|verify [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh notify-status [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -69,7 +70,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|notify-failure|notify-reset|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|notify-failure|notify-reset|notify-status|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1638,6 +1639,37 @@ print_notify_rebond_state() {
   fi
 }
 
+run_notify_status() {
+  echo "===== Suite notify status ====="
+
+  # Lecture seule : le GUI SSH consomme ces lignes telles quelles, sans
+  # reimplementer la resolution du dossier ou des fichiers d'etat.
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local webhook="absent" email="absent"
+  [[ -n "${FABSUITE_NOTIFY_WEBHOOK_URL:-}" ]] && webhook="configured"
+  [[ -n "${FABSUITE_NOTIFY_EMAIL:-}" ]] && email="configured"
+
+  echo "[notify-status] backup_dir=${backup_root}"
+  echo "[notify-status] webhook=${webhook}"
+  echo "[notify-status] email=${email}"
+
+  local service state present at
+  for service in backup verify; do
+    state="$(notify_state_file "$service")"
+    present=0
+    at=""
+    if [[ -L "$state" ]]; then
+      present="lien symbolique"
+    elif [[ -f "$state" ]]; then
+      present=1
+      at="$(stat -c '%y' "$state" 2>/dev/null || true)"
+    fi
+    echo "[notify-status] ${service}_state=${state}"
+    echo "[notify-status] ${service}_state_present=${present}"
+    echo "[notify-status] ${service}_alert_at=${at}"
+  done
+}
+
 run_notify_reset() {
   local service="${NOTIFY_SERVICE:-}"
   local state
@@ -2439,6 +2471,9 @@ case "$ACTION" in
     ;;
   notify-reset)
     run_notify_reset
+    ;;
+  notify-status)
+    run_notify_status
     ;;
   install)
     run_install

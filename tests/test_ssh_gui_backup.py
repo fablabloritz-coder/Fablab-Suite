@@ -559,6 +559,108 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(titre, "Verification impossible")
         self.assertIn("connexion perdue", message)
 
+    def test_notify_status_parse_les_destinations_et_les_etats(self):
+        sortie = (
+            "[notify-status] backup_dir=/home/fablab/backup-fabsuite\n"
+            "[notify-status] webhook=configured\n"
+            "[notify-status] email=absent\n"
+            "[notify-status] backup_state="
+            "/home/fablab/backup-fabsuite/notify-backup.state\n"
+            "[notify-status] backup_state_present=0\n"
+            "[notify-status] backup_alert_at=\n"
+            "[notify-status] verify_state="
+            "/home/fablab/backup-fabsuite/notify-verify.state\n"
+            "[notify-status] verify_state_present=1\n"
+            "[notify-status] verify_alert_at=2026-11-19 04:30:02.123456789 +0100\n"
+        )
+        commandes = []
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def capturer(commande, timeout_sec=60):
+            commandes.append(commande)
+            return 0, sortie
+
+        self.backend._exec_remote_capture = capturer
+
+        etat = self.backend.notify_status()
+
+        self.assertNotIn("error", etat)
+        self.assertIn("notify-status", commandes[0])
+        self.assertEqual(etat["backup_dir"], "/home/fablab/backup-fabsuite")
+        self.assertTrue(etat["webhook"])
+        self.assertFalse(etat["email"])
+        self.assertFalse(etat["backup"]["present"])
+        self.assertEqual(etat["backup"]["alert_at"], "")
+        self.assertTrue(etat["verify"]["present"])
+        self.assertEqual(etat["verify"]["state"], "/home/fablab/backup-fabsuite/notify-verify.state")
+        self.assertIn("2026-11-19", etat["verify"]["alert_at"])
+
+    def test_notify_status_signale_un_etat_en_lien_symbolique(self):
+        sortie = (
+            "[notify-status] backup_dir=/home/fablab/backup-fabsuite\n"
+            "[notify-status] webhook=absent\n"
+            "[notify-status] email=absent\n"
+            "[notify-status] backup_state=/home/fablab/backup-fabsuite/notify-backup.state\n"
+            "[notify-status] backup_state_present=lien symbolique\n"
+            "[notify-status] backup_alert_at=\n"
+            "[notify-status] verify_state=/home/fablab/backup-fabsuite/notify-verify.state\n"
+            "[notify-status] verify_state_present=0\n"
+            "[notify-status] verify_alert_at=\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (0, sortie)
+
+        etat = self.backend.notify_status()
+
+        self.assertNotIn("error", etat)
+        self.assertFalse(etat["backup"]["present"])
+        self.assertTrue(etat["backup"]["symlink"])
+        self.assertFalse(etat["verify"]["symlink"])
+
+    def test_notify_status_invite_a_mettre_a_jour_un_helper_ancien(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (
+            0,
+            "FabLab Suite - Ubuntu helper\nUsage:\n  ./fabsuite-ubuntu.sh backup\n",
+        )
+
+        etat = self.backend.notify_status()
+
+        self.assertIn("error", etat)
+        self.assertIn("Helper trop ancien", etat["error"])
+
+    def test_notify_status_signale_l_erreur_ssh(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def echouer(commande, timeout_sec=60):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._exec_remote_capture = echouer
+
+        etat = self.backend.notify_status()
+
+        self.assertIn("error", etat)
+        self.assertIn("connexion perdue", etat["error"])
+
+    def test_notify_status_code_non_nul(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (
+            2,
+            "[notify-status] backup_dir=/home/fablab/backup-fabsuite\n"
+            "[notify-status] webhook=absent\n"
+            "[notify-status] email=absent\n",
+        )
+
+        etat = self.backend.notify_status()
+
+        self.assertIn("error", etat)
+        self.assertIn("code 2", etat["error"])
+
     def test_verify_timer_status_relit_le_marqueur_absent(self):
         sortie = (
             "[verify-timer] installed=1\n"

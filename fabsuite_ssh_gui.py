@@ -239,6 +239,10 @@ class FabSuiteBackend:
             return self.backup_timer_status()
 
         @eel.expose
+        def notify_status():
+            return self.notify_status()
+
+        @eel.expose
         def action_clear_markers():
             self.action_clear_markers()
 
@@ -1810,6 +1814,69 @@ exit 0
         etat = self._parse_timer_status(sortie, "[backup-timer] ")
         if code != 0 and not etat["installed"]:
             return {"error": f"Impossible de lire l'etat du timer (code {code})."}
+        return etat
+
+    @staticmethod
+    def _parse_notify_status(sortie):
+        """Parse les lignes `[notify-status] cle=valeur` du helper.
+
+        Retourne None si le helper ne connait pas encore l'action, pour que
+        l'appelant invite a le mettre a jour plutot que d'afficher un etat vide.
+        """
+        prefixe = "[notify-status] "
+        valeurs = {}
+        for ligne in sortie.splitlines():
+            ligne = ligne.strip()
+            if not ligne.startswith(prefixe) or "=" not in ligne:
+                continue
+            cle, valeur = ligne[len(prefixe):].split("=", 1)
+            valeurs[cle.strip()] = valeur.strip()
+
+        if "backup_dir" not in valeurs:
+            return None
+
+        etat = {
+            "backup_dir": valeurs.get("backup_dir", ""),
+            "webhook": valeurs.get("webhook", "absent") == "configured",
+            "email": valeurs.get("email", "absent") == "configured",
+        }
+        for service in ("backup", "verify"):
+            presence = valeurs.get(f"{service}_state_present", "0")
+            etat[service] = {
+                "state": valeurs.get(f"{service}_state", ""),
+                "present": presence == "1",
+                "symlink": presence == "lien symbolique",
+                "alert_at": valeurs.get(f"{service}_alert_at", ""),
+            }
+        return etat
+
+    def notify_status(self):
+        """Destinations de notification et anti-rebond des alertes, lus par le
+        helper (`notify-status`) : aucune logique dupliquee cote GUI."""
+        if self._is_local_mode():
+            return {
+                "error": "L'etat des notifications est disponible uniquement "
+                "en mode Serveur SSH."
+            }
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            code, sortie = self._exec_remote_capture(
+                self._helper_command("notify-status"), timeout_sec=60
+            )
+        except Exception as exc:
+            return {"error": f"Impossible de lire l'etat des notifications: {exc}"}
+
+        etat = self._parse_notify_status(sortie)
+        if etat is None:
+            return {
+                "error": "Helper trop ancien pour lire l'etat des notifications "
+                "(relance Upload fichiers puis update)."
+            }
+        if code != 0:
+            return {
+                "error": f"Impossible de lire l'etat des notifications (code {code})."
+            }
         return etat
 
     def _restore_worker(self, snapshot, destination, sources=None):

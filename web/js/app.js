@@ -35,6 +35,7 @@ function set_connection_status(text, connected) {
   if (connected) {
     refreshVerifyTimerState();
     refreshBackupTimerState();
+    refreshNotificationState();
   }
 }
 
@@ -222,6 +223,66 @@ async function refreshBackupTimerState() {
   el.textContent = "Sauvegarde planifiée — " + timerStateSummary(etat) + marker;
 }
 
+function notificationDestinationSummary(etat) {
+  const cibles = [
+    etat.webhook ? "webhook configuré" : "webhook absent",
+    etat.email ? "mail configuré" : "mail absent",
+  ];
+  return cibles.join(", ");
+}
+
+function notificationServiceSummary(nom, details) {
+  if (details.symlink) {
+    return `${nom} : état ignoré (lien symbolique)`;
+  }
+  if (!details.present) {
+    return `${nom} : aucune alerte envoyée en cours`;
+  }
+  const date = details.alert_at || "date inconnue";
+  return `${nom} : alerte déjà envoyée (${date}), pas de rappel avant un succès`;
+}
+
+eel.expose(refreshNotificationState);
+async function refreshNotificationState() {
+  const el = document.getElementById("notifyState");
+  if (!el) return;
+  if (typeof currentMode !== "undefined" && currentMode === "local") {
+    el.className = "text-muted";
+    el.textContent = "Notifications d'échec : disponible en mode Serveur SSH.";
+    return;
+  }
+  el.className = "text-muted";
+  el.textContent = "Notifications d'échec : chargement...";
+
+  let etat;
+  try {
+    etat = await eel.notify_status()();
+  } catch (e) {
+    el.className = "text-danger";
+    el.textContent = "Notifications d'échec : erreur (" + e + ")";
+    return;
+  }
+  if (etat.error) {
+    el.className = "text-danger";
+    el.textContent = etat.error;
+    return;
+  }
+
+  const parties = [
+    notificationDestinationSummary(etat),
+    notificationServiceSummary("backup", etat.backup || {}),
+    notificationServiceSummary("verify", etat.verify || {}),
+  ];
+  const aucuneCible = !etat.webhook && !etat.email;
+  el.className = aucuneCible ? "text-warning" : "text-muted";
+  el.textContent =
+    "Notifications d'échec — " +
+    parties.join(" — ") +
+    (aucuneCible
+      ? " — aucune alerte ne sera envoyée : configure FABSUITE_NOTIFY_WEBHOOK_URL ou FABSUITE_NOTIFY_EMAIL."
+      : "");
+}
+
 async function openRestoreDialog() {
   let resultat;
   try {
@@ -326,6 +387,10 @@ async function dispatchAction(action, btn) {
   }
   if (action === "action_backup_timer_status") {
     await refreshBackupTimerState();
+    return;
+  }
+  if (action === "action_notify_status") {
+    await refreshNotificationState();
     return;
   }
 

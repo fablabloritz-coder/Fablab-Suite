@@ -106,6 +106,11 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 - **État vérification** : lit le timer planifié (prochaine exécution, dernier
   résultat) et signale le marqueur `verify-degrade` ; si le timer n'est pas
   installé, indique la commande `install-verify-timer` à lancer.
+- **État notifications** : lit `notify-status` du helper et affiche les
+  destinations configurées (`webhook configuré/absent`, `mail configuré/absent`),
+  puis, pour `backup` et `verify`, si le fichier `notify-<service>.state` existe
+  avec la date de la dernière alerte envoyée (anti-rebond). Aucune cible
+  configurée est signalé en orange ; l'état est relu à la connexion.
 - **Acquitter les alertes** : après confirmation, supprime les marqueurs via
   le helper, mais seulement si les conditions sont réunies : `verify-degrade`
   exige un `verify --all` sain, `backup-failed` exige un snapshot valide plus
@@ -587,7 +592,9 @@ exécutions suivantes en échec ne renvoient rien et journalisent seulement
 - un envoi totalement échoué (webhook injoignable, `mail` absent) n'arme pas
   l'anti-rebond : la tentative est refaite à l'exécution suivante ;
 - `verify-timer-status` et `backup-timer-status` affichent `notify_state=` avec
-  l'horodatage de la dernière alerte envoyée.
+  l'horodatage de la dernière alerte envoyée ; `notify-status` donne en plus les
+  destinations configurées et l'état détaillé des deux services, tel quel
+  consommé par le bouton **État notifications** du GUI SSH.
 
 ```bash
 ./fabsuite-ubuntu.sh notify-reset --notify-service backup   # reautoriser une alerte
