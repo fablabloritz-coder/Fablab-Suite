@@ -6,6 +6,26 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : restauration d'un snapshot renomme
+
+**Objectif** : ne plus refuser un snapshot intact dont le dossier a ete
+renomme ou copie.
+
+**Implementation**
+- Suppression du controle comparant `manifest["snapshot"]` au nom du dossier :
+  ce nom n'est pas authentifie. Restent verifies le manifeste, le marqueur
+  `snapshot.ok`, son `manifest_sha256` et le `sha256` de chaque archive, ainsi
+  que les chemins/classes de membres.
+- Test : snapshot valide copie dans `sauvegarde-renommee/`, restauration
+  complete acceptee (SQLite + uploads).
+
+**Verifications**
+- 26 tests du module (nouveau test de copie/renommage) : OK.
+- Suite racine : 47 tests OK.
+- Campagne `suite_tests.py --offline` : 9/9 PASS (1 SKIP attendu), exit 0.
+
+---
+
 ## 2026-11-19 — Suite : restauration verifiee d'un snapshot
 
 **Objectif** : restaurer un snapshot sans jamais ecrire de donnees non

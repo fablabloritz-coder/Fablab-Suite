@@ -554,8 +554,9 @@ def restaurer_snapshot(
     """Restaure un snapshot valide dans une destination vide.
 
     Le manifeste, l'empreinte stockee dans `snapshot.ok` et chaque archive
-    sont verifies avant la moindre ecriture. Les chemins absolus, `..`, les
-    liens et les membres hors `App/role` sont refuses.
+    sont verifies avant la moindre ecriture. Le nom du dossier n'est pas
+    authentifie : un snapshot intact peut etre renomme ou copie. Les chemins
+    absolus, `..`, les liens et les membres hors `App/role` sont refuses.
     """
     snapshot = Path(snapshot).expanduser()
     destination = Path(destination).expanduser()
@@ -573,9 +574,6 @@ def restaurer_snapshot(
         resultat.errors.append(
             f"snapshot non valide (status={manifeste.get('status')!r})"
         )
-    if manifeste.get("snapshot") != snapshot.name:
-        resultat.errors.append("nom du snapshot incoherent avec le manifeste")
-
     marqueur = snapshot / "snapshot.ok"
     if not marqueur.is_file():
         resultat.errors.append("marqueur snapshot.ok absent")

@@ -491,6 +491,20 @@ class RestoreTest(unittest.TestCase):
             b"photo-restore",
         )
 
+    def test_restaure_un_snapshot_copie_sous_un_autre_nom(self):
+        snapshot = self._creer_snapshot()
+        copie = self.root / "sauvegarde-renommee"
+        shutil.copytree(snapshot.directory, copie)
+        destination = self.root / "restauration-copie"
+
+        resultat = suite_backup.restaurer_snapshot(copie, destination)
+
+        self.assertEqual(resultat.errors, [])
+        self.assertEqual(
+            resultat.restored, ["Fabtrack/data", "Fabtrack/uploads"]
+        )
+        self.assertTrue((destination / "Fabtrack/data/fabtrack.db").is_file())
+
     def test_cli_restore_restaure_un_snapshot_valide(self):
         snapshot = self._creer_snapshot()
         destination = self.root / "cli-restauration"
