@@ -14,8 +14,9 @@ LOG_APP=""
 RESTORE_SNAPSHOT=""
 RESTORE_DEST=""
 RESTORE_SOURCES=()
+VERIFY_ALL=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v7"
+HELPER_VERSION="2026-11-19-suite-backup-v8"
 
 usage() {
   cat <<'EOF'
@@ -31,6 +32,8 @@ Usage:
   ./fabsuite-ubuntu.sh restore --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS [--dest /chemin/vide] [--source APP|ROLE]...
   ./fabsuite-ubuntu.sh snapshots
   ./fabsuite-ubuntu.sh volumes --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
+  ./fabsuite-ubuntu.sh verify --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
+  ./fabsuite-ubuntu.sh verify --all [--dest /path/to/backups]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -57,7 +60,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -92,6 +95,10 @@ while [[ $# -gt 0 ]]; do
       fi
       RESTORE_SOURCES+=("$2")
       shift 2
+      ;;
+    --all)
+      VERIFY_ALL="1"
+      shift
       ;;
     -h|--help)
       ACTION="help"
@@ -1363,6 +1370,41 @@ run_suite_list_volumes() {
   python3 "$backup_module" volumes --snapshot "$RESTORE_SNAPSHOT"
 }
 
+run_suite_verify() {
+  require_cmd python3
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[verify] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})." >&2
+    return 2
+  fi
+
+  # Meme garde-fou que `volumes`/`snapshots` : un module ancien doit inviter a
+  # mettre a jour plutot que laisser argparse echouer.
+  if ! grep -q '^def verifier_snapshot' "$backup_module"; then
+    echo "[verify] MISE A JOUR REQUISE: ${backup_module} ne connait pas la commande verify (version ancienne)." >&2
+    echo "[verify] Lance './fabsuite-ubuntu.sh update' puis relance la verification." >&2
+    return 2
+  fi
+
+  local -a args=()
+  if [[ -n "$RESTORE_SNAPSHOT" ]]; then
+    args+=(--snapshot "$RESTORE_SNAPSHOT")
+  fi
+  if [[ "$VERIFY_ALL" == "1" ]]; then
+    local racine="${RESTORE_DEST:-${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}}"
+    args+=(--dest "$racine" --all)
+  fi
+  if [[ ${#args[@]} -eq 0 ]]; then
+    echo "[verify] ERROR: --snapshot <dossier> ou --all requis." >&2
+    echo "[verify] Exemple: ./fabsuite-ubuntu.sh verify --snapshot ~/backup-fabsuite/suite-2026-11-19-120000" >&2
+    return 2
+  fi
+
+  python3 "$backup_module" verify "${args[@]}"
+}
+
 repo_exists() {
   local app="$1"
   [[ -d "${INSTALL_DIR}/${app}" && -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]
@@ -1928,6 +1970,9 @@ case "$ACTION" in
     ;;
   volumes)
     run_suite_list_volumes
+    ;;
+  verify)
+    run_suite_verify
     ;;
   install)
     run_install

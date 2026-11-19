@@ -433,6 +433,21 @@ créé et le dernier snapshot valide ne sont jamais supprimés, même hors quota
 Une valeur `0` désactive la rotation. Un snapshot invalide ne déclenche jamais
 de rotation, pour qu'une série d'échecs n'efface pas l'historique sain.
 
+### Vérifier un snapshot
+
+```bash
+# relire un snapshot (manifeste, marqueur, sha256, archives, intégrité SQLite)
+./fabsuite-ubuntu.sh verify --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
+# contrôler tous les snapshots du dossier (exit 2 si l'un est invalide)
+./fabsuite-ubuntu.sh verify --all
+./fabsuite-ubuntu.sh verify --all --dest /srv/sauvegardes
+```
+
+`verify` ne modifie rien : il recalcule les empreintes, relit chaque archive et
+repasse `PRAGMA integrity_check` sur chaque base. Utile en tâche planifiée pour
+détecter un snapshot dégradé avant d'en avoir besoin ; un nom de dossier copié
+ou renommé se vérifie via `--snapshot` explicite.
+
 ### Restaurer un snapshot
 
 ```bash

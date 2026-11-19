@@ -6,6 +6,41 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : vérification des snapshots (`verify`)
+
+**Objectif** : détecter un snapshot dégradé (archive altérée, base corrompue,
+manifeste modifié) sans attendre un restore.
+
+**Implementation**
+- `suite_backup.py verify --snapshot <dossier>` : relit manifeste et marqueur via
+  `_erreurs_snapshot`, recalcule le sha256, contrôle les membres avec
+  `_verifier_membres` puis relit chaque archive (`_verifier_archive`, intégrité
+  SQLite incluse). Aucune écriture, aucun code de vérification dupliqué.
+- `verify --dest <racine> --all` : contrôle tous les snapshots datés du dossier,
+  affiche `ok`/`INVALIDE` par snapshot, un bilan, et sort en 2 si l'un échoue.
+- `--all` ajouté au parseur ; `--dest` reste exigé pour `snapshot`/`list`/`restore`.
+- Helper : action `verify [--snapshot …] [--all] [--dest …]`, défaut
+  `FABSUITE_BACKUP_DIR`, garde-fou « MISE A JOUR REQUISE » si le module installé
+  n'a pas `verifier_snapshot` ; `HELPER_VERSION` passe à
+  `2026-11-19-suite-backup-v8`.
+- Docs : README, INSTALL_UBUNTU.
+
+**Verifications**
+- 5 tests module : snapshot sain, archive altérée, manifeste altéré, base
+  corrompue avec sha256 valide, `--all` avec un snapshot sur deux invalide.
+- Tests helper : `verify` valide de bout en bout et garde-fou module ancien.
+- `bash -n`, `py_compile`, suite `tests/`.
+
+**Risques / non couverts**
+- `verify --all` ne parcourt que les dossiers au nom `suite-…` ; un snapshot
+  renommé se vérifie avec `--snapshot` explicite.
+- Pas encore de planification automatique ni de bouton GUI pour lancer `verify`.
+
+**Prochaine action** : exposer « Vérifier » dans le GUI SSH et planifier un
+`verify --all` périodique.
+
+---
+
 ## 2026-11-19 — Suite : module ancien et listing des volumes
 
 **Objectif** : face à un `suite_backup.py` installé avant `volumes`, remplacer

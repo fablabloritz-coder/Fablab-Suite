@@ -76,6 +76,10 @@ Ce que fait la commande:
 ./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000 \
   --source Fabtrack/data
 
+# Vérifier un snapshot (ou tous ceux du dossier) sans rien modifier
+./fabsuite-ubuntu.sh verify --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
+./fabsuite-ubuntu.sh verify --all
+
 # Démarrer / arrêter / redémarrer
 ./fabsuite-ubuntu.sh start
 ./fabsuite-ubuntu.sh stop

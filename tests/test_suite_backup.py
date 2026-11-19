@@ -894,6 +894,174 @@ class HelperRestoreIntegrationTest(unittest.TestCase):
             self.assertIn("FabHome/data|", sortie)
             self.assertIn("FabHome/icons|", sortie)
 
+            verification = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "verify",
+                    "--snapshot",
+                    str(snapshot.directory),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = verification.stdout + verification.stderr
+
+            self.assertEqual(verification.returncode, 0, sortie)
+            self.assertIn("[verify] statut: ok", sortie)
+
+
+class VerifyTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _creer_snapshot(self, horodatage=None):
+        data = suite_backup.Source("Fabtrack", "data", self.root / "source/data")
+        if not (data.path / "fabtrack.db").exists():
+            creer_base(data.path / "fabtrack.db")
+        uploads = suite_backup.Source(
+            "Fabtrack", "uploads", self.root / "source/uploads"
+        )
+        uploads.path.mkdir(parents=True, exist_ok=True)
+        (uploads.path / "photo.bin").write_bytes(b"photo-verify")
+        resultat = suite_backup.creer_snapshot(
+            [data, uploads], self.dest, horodatage=horodatage
+        )
+        self.assertEqual(resultat.status, "ok", resultat.errors)
+        return resultat
+
+    def _resigner(self, dossier):
+        manifeste = dossier / "manifest.json"
+        donnees = json.loads(manifeste.read_text(encoding="utf-8"))
+        (dossier / "snapshot.ok").write_text(
+            "\n".join(
+                (
+                    f"snapshot={dossier.name}",
+                    f"created_at={donnees['created_at']}",
+                    f"manifest_sha256={suite_backup._sha256(manifeste)}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+    def test_verifie_un_snapshot_sain(self):
+        snapshot = self._creer_snapshot()
+
+        resultat = suite_backup.verifier_snapshot(snapshot.directory)
+
+        self.assertTrue(resultat.ok, resultat.errors)
+        self.assertEqual(resultat.verified_archives, 2)
+        self.assertEqual(resultat.verified_databases, 1)
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "verify",
+                "--snapshot",
+                str(snapshot.directory),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        sortie = processus.stdout + processus.stderr
+
+        self.assertEqual(processus.returncode, 0, sortie)
+        self.assertIn("[verify] statut: ok", sortie)
+        self.assertIn("2 archive(s)", sortie)
+
+    def test_detecte_une_archive_alteree(self):
+        snapshot = self._creer_snapshot()
+        with (snapshot.directory / "Fabtrack-data.tgz").open("ab") as archive:
+            archive.write(b"corruption")
+
+        resultat = suite_backup.verifier_snapshot(snapshot.directory)
+
+        self.assertFalse(resultat.ok)
+        self.assertTrue(
+            any("archive alteree" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+
+    def test_detecte_un_manifeste_altere(self):
+        snapshot = self._creer_snapshot()
+        manifeste = snapshot.directory / "manifest.json"
+        donnees = json.loads(manifeste.read_text(encoding="utf-8"))
+        donnees["label"] = "altere"
+        manifeste.write_text(json.dumps(donnees), encoding="utf-8")
+
+        resultat = suite_backup.verifier_snapshot(snapshot.directory)
+
+        self.assertFalse(resultat.ok)
+        self.assertTrue(
+            any("manifeste altere" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+
+    def test_detecte_une_base_corrompue_malgre_un_sha_valide(self):
+        snapshot = self._creer_snapshot()
+        archive = snapshot.directory / "Fabtrack-data.tgz"
+        with tarfile.open(archive, "w:gz") as tar:
+            contenu = b"SQLite format 3\x00" + b"\x00" * 2048
+            info = tarfile.TarInfo("Fabtrack/data/casse.db")
+            info.size = len(contenu)
+            tar.addfile(info, io.BytesIO(contenu))
+
+        # Le sha256 du manifeste est mis a jour : seule l'integrite SQLite
+        # permet encore de detecter la corruption.
+        manifeste = snapshot.directory / "manifest.json"
+        donnees = json.loads(manifeste.read_text(encoding="utf-8"))
+        for entree in donnees["sources"]:
+            if entree.get("archive") == archive.name:
+                entree["sha256"] = suite_backup._sha256(archive)
+        manifeste.write_text(json.dumps(donnees), encoding="utf-8")
+        self._resigner(snapshot.directory)
+
+        resultat = suite_backup.verifier_snapshot(snapshot.directory)
+
+        self.assertFalse(resultat.ok)
+        self.assertTrue(
+            any("integrite SQLite" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+
+    def test_cli_verify_all_signale_les_snapshots_invalides(self):
+        self._creer_snapshot(horodatage="2026-01-01-000000")
+        invalide = self._creer_snapshot(horodatage="2026-01-02-000000")
+        with (invalide.directory / "Fabtrack-uploads.tgz").open("ab") as archive:
+            archive.write(b"corruption")
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "verify",
+                "--dest",
+                str(self.dest),
+                "--all",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        sortie = processus.stdout + processus.stderr
+
+        self.assertEqual(processus.returncode, 2, sortie)
+        self.assertIn("INVALIDE", sortie)
+        self.assertIn("bilan: 1 ok, 1 invalide", sortie)
+
 
 class RotationTest(unittest.TestCase):
     def setUp(self):
@@ -1026,6 +1194,9 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("volumes)", script)
         self.assertIn("run_suite_list_volumes()", script)
         self.assertIn("def lister_volumes", module)
+        self.assertIn("verify)", script)
+        self.assertIn("run_suite_verify()", script)
+        self.assertIn("def verifier_snapshot", module)
 
         if shutil.which("bash"):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)
@@ -1077,6 +1248,7 @@ class HelperLegacyModuleCompatTest(unittest.TestCase):
             for action, extra_args in (
                 ("volumes", ["--snapshot", str(snapshot)]),
                 ("snapshots", []),
+                ("verify", ["--snapshot", str(snapshot)]),
             ):
                 with self.subTest(action=action):
                     processus = subprocess.run(

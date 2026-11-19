@@ -17,6 +17,8 @@ Usage direct :
         --retention-count 7
     python3 suite_backup.py list --dest ~/backup-fabsuite    # path|status|date
     python3 suite_backup.py volumes --snapshot <dossier>      # App/role|taille
+    python3 suite_backup.py verify --snapshot <dossier>
+    python3 suite_backup.py verify --dest ~/backup-fabsuite --all
     python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide>
     python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide> \
         --source Fabtrack/data --source Fabtrack/uploads
@@ -29,6 +31,11 @@ Apres un snapshot valide, la retention supprime les snapshots hors quota
 archive (sha256, lisibilite, chemins) avant d'extraire dans une destination
 vide. Un snapshot invalide, une archive alteree ou un membre hors destination
 sont refuses sans rien ecrire.
+
+`verify` relit un snapshot sans rien ecrire : manifeste, marqueur, sha256 et
+contenu de chaque archive (chemins, lisibilite, integrite SQLite). `--all`
+controle tous les snapshots dates du dossier `--dest` et sort en 2 si l'un
+d'entre eux est invalide, pour detecter une degradation avant un restore.
 
 Par defaut tous les volumes du snapshot sont restaures. `--source APP|ROLE`
 (repetable) restreint la restauration aux volumes demandes (ou `APP/ROLE`) :
@@ -111,6 +118,21 @@ class RestoreResult:
 
 
 @dataclass
+class VerifyResult:
+    """Resultat d'une verification de snapshot (aucune ecriture)."""
+
+    snapshot: Path
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    verified_archives: int = 0
+    verified_databases: int = 0
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
+
+
+@dataclass
 class RotationResult:
     """Resultat de la rotation : snapshots supprimes et bilan de retention."""
 
@@ -175,13 +197,20 @@ def _verifier_membre_sqlite(
     }
 
 
-def _verifier_archive(archive: Path, app: str, role: str, erreurs: list[str]) -> dict:
+def _verifier_archive(
+    archive: Path,
+    app: str,
+    role: str,
+    erreurs: list[str],
+    *,
+    sha256: str | None = None,
+) -> dict:
     """Relit l'archive et controle chaque base SQLite qu'elle contient."""
     resultat = {
         "files": 0,
         "bytes": 0,
         "archive_bytes": archive.stat().st_size,
-        "sha256": _sha256(archive),
+        "sha256": sha256 or _sha256(archive),
         "databases": [],
     }
     fichiers = 0
@@ -487,6 +516,67 @@ def lister_volumes(snapshot: Path | str) -> list[dict]:
     return volumes
 
 
+def verifier_snapshot(snapshot: Path | str) -> VerifyResult:
+    """Relit un snapshot sans rien ecrire : manifeste, marqueur et archives.
+
+    Reutilise les controles de `restaurer_snapshot` (`_erreurs_snapshot`) et de
+    l'extraction (`_verifier_membres`) : chaque archive presente doit avoir le
+    sha256 du manifeste, des chemins confines et une integrite SQLite saine.
+    """
+    snapshot = Path(snapshot).expanduser()
+    resultat = VerifyResult(snapshot=snapshot)
+
+    manifeste = _lire_manifeste(snapshot)
+    if manifeste is None:
+        resultat.errors.append(
+            f"manifeste absent ou illisible: {snapshot / 'manifest.json'}"
+        )
+        return resultat
+    resultat.errors.extend(_erreurs_snapshot(snapshot, manifeste))
+
+    sources = manifeste.get("sources")
+    if not isinstance(sources, list) or not sources:
+        resultat.errors.append("manifeste sans sources")
+        sources = []
+
+    for entree in sources:
+        if not isinstance(entree, dict):
+            resultat.errors.append("entree de source invalide dans le manifeste")
+            continue
+        app = str(entree.get("app") or "")
+        role = str(entree.get("role") or "")
+        if not NOM_VALIDE.match(app) or not NOM_VALIDE.match(role):
+            resultat.errors.append(
+                f"source invalide dans le manifeste: {app!r}/{role!r}"
+            )
+            continue
+        if not entree.get("exists"):
+            resultat.warnings.append(f"{app} {role}: source absente au snapshot")
+            continue
+        nom_archive = str(entree.get("archive") or "")
+        if not nom_archive or Path(nom_archive).name != nom_archive:
+            resultat.errors.append(
+                f"{app} {role}: nom d'archive refuse ({nom_archive!r})"
+            )
+            continue
+        archive = snapshot / nom_archive
+        if not archive.is_file():
+            resultat.errors.append(f"{app} {role}: archive absente ({nom_archive})")
+            continue
+        sha = _sha256(archive)
+        attendu = str(entree.get("sha256") or "")
+        if not attendu or sha != attendu:
+            resultat.errors.append(f"{app} {role}: archive alteree ({nom_archive})")
+            continue
+        resultat.errors.extend(_verifier_membres(archive, app, role))
+        detail = _verifier_archive(archive, app, role, resultat.errors, sha256=sha)
+        resultat.verified_archives += 1
+        resultat.verified_databases += len(detail["databases"])
+        if detail["files"] == 0:
+            resultat.warnings.append(f"{app} {role}: archive vide ({nom_archive})")
+    return resultat
+
+
 def _retention_depuis_env() -> tuple[int, int]:
     def lire(nom: str, defaut: int) -> int:
         brut = os.environ.get(nom, "").strip()
@@ -776,7 +866,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Snapshot horodate et verifie des donnees de la FabLab Suite."
     )
     parseur.add_argument(
-        "command", choices=["snapshot", "restore", "list", "volumes"]
+        "command", choices=["snapshot", "restore", "list", "volumes", "verify"]
     )
     parseur.add_argument(
         "--dest",
@@ -787,7 +877,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parseur.add_argument(
-        "--snapshot", default="", help="dossier du snapshot a restaurer"
+        "--snapshot",
+        default="",
+        help="dossier du snapshot a restaurer, verifier ou inspecter",
+    )
+    parseur.add_argument(
+        "--all",
+        action="store_true",
+        help="verifier tous les snapshots du dossier --dest",
     )
     parseur.add_argument(
         "--source",
@@ -814,8 +911,69 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parseur.parse_args(argv)
 
-    if args.command != "volumes" and not args.dest.strip():
+    if args.command in ("snapshot", "list", "restore") and not args.dest.strip():
         parseur.error("--dest requis pour cette commande")
+
+    if args.command == "verify":
+        if args.all:
+            if not args.dest.strip():
+                parseur.error("--dest requis avec --all")
+            if args.snapshot.strip():
+                parseur.error("utilise --snapshot ou --dest --all, pas les deux")
+            snapshots = sorted(
+                _snapshots(Path(args.dest).expanduser()), key=_date_snapshot
+            )
+            if not snapshots:
+                print(
+                    f"[verify] ECHEC: aucun snapshot dans {args.dest}",
+                    file=sys.stderr,
+                )
+                return 2
+            valides = 0
+            for dossier in snapshots:
+                resultat = verifier_snapshot(dossier)
+                if resultat.ok:
+                    valides += 1
+                    print(
+                        f"[verify] {dossier}: ok "
+                        f"({resultat.verified_archives} archive(s))"
+                    )
+                    continue
+                for erreur in resultat.errors:
+                    print(f"[verify] {dossier.name}: {erreur}", file=sys.stderr)
+                print(
+                    f"[verify] {dossier}: INVALIDE "
+                    f"({len(resultat.errors)} erreur(s))"
+                )
+            invalides = len(snapshots) - valides
+            print(f"[verify] bilan: {valides} ok, {invalides} invalide(s)")
+            return 0 if invalides == 0 else 2
+
+        if not args.snapshot.strip():
+            print(
+                "[verify] ECHEC: --snapshot requis (ou --dest ... --all)",
+                file=sys.stderr,
+            )
+            return 2
+        resultat = verifier_snapshot(args.snapshot)
+        for avertissement in resultat.warnings:
+            print(f"[verify] ATTENTION: {avertissement}")
+        for erreur in resultat.errors:
+            print(f"[verify] ERROR: {erreur}", file=sys.stderr)
+        print(f"[verify] snapshot: {resultat.snapshot}")
+        print(
+            f"[verify] verifie: {resultat.verified_archives} archive(s), "
+            f"{resultat.verified_databases} base(s) SQLite"
+        )
+        if not resultat.ok:
+            print(
+                f"[verify] ECHEC: snapshot invalide "
+                f"({len(resultat.errors)} erreur(s))",
+                file=sys.stderr,
+            )
+            return 2
+        print("[verify] statut: ok")
+        return 0
 
     if args.command == "volumes":
         if not args.snapshot.strip():
