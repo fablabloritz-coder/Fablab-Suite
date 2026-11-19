@@ -575,19 +575,42 @@ aucune tentative n'est faite (simple ligne `[notify]` dans le journal).
 - Un échec d'envoi (webhook injoignable, `mail` absent) n'échoue jamais
   l'unité : l'erreur est seulement journalisée (`[notify] ERROR`).
 
+**Anti-rebond** : une alerte n'est envoyée qu'une fois par série d'échecs
+consécutifs. Après le premier envoi réussi, l'état est écrit dans
+`~/backup-fabsuite/notify-backup.state` (ou `notify-verify.state`) ; les
+exécutions suivantes en échec ne renvoient rien et journalisent seulement
+`[notify] anti-rebond: alerte deja envoyee`. Une exécution réussie supprime cet
+état, donc une nouvelle panne après un succès est de nouveau notifiée.
+
+- l'état est propre à chaque service : un échec de `verify` n'est pas masqué par
+  une alerte `backup` déjà envoyée ;
+- un envoi totalement échoué (webhook injoignable, `mail` absent) n'arme pas
+  l'anti-rebond : la tentative est refaite à l'exécution suivante ;
+- `verify-timer-status` et `backup-timer-status` affichent `notify_state=` avec
+  l'horodatage de la dernière alerte envoyée.
+
+```bash
+./fabsuite-ubuntu.sh notify-reset --notify-service backup   # reautoriser une alerte
+rm -f ~/backup-fabsuite/notify-backup.state                 # équivalent manuel
+```
+
 La configuration est lue à chaque exécution. Si les unités ont été installées
 avant cette version, relancer `install-backup-timer` et `install-verify-timer`
-pour ajouter l'appel. Test manuel :
+pour ajouter l'appel `notify-failure` **et** l'appel `notify-reset` après un
+succès. Test manuel (le second appel immédiat est filtré par l'anti-rebond) :
 
 ```bash
 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code 1
+./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code 1  # anti-rebond
+./fabsuite-ubuntu.sh notify-reset --notify-service backup
+./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code 1  # renvoye
 journalctl -u fabsuite-backup.service -n 50 | grep notify
 ```
 
 Sans systemd, l'équivalent cron (à adapter au chemin d'installation) :
 
 ```cron
-17 4 * * * cd /srv/fablab-suite && NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all >> "$HOME/backup-fabsuite/verify.log" 2>&1; code=$?; if [ "$code" -eq 3 ]; then echo "DEGRADE $(date -Is)" > "$HOME/backup-fabsuite/verify-degrade"; elif [ "$code" -eq 0 ]; then rm -f "$HOME/backup-fabsuite/verify-degrade"; fi
+17 4 * * * cd /srv/fablab-suite && NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all >> "$HOME/backup-fabsuite/verify.log" 2>&1; code=$?; if [ "$code" -eq 3 ]; then echo "DEGRADE $(date -Is)" > "$HOME/backup-fabsuite/verify-degrade"; NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service verify --notify-code "$code"; elif [ "$code" -eq 0 ]; then rm -f "$HOME/backup-fabsuite/verify-degrade"; NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-reset --notify-service verify; elif [ "$code" -ne 1 ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service verify --notify-code "$code"; fi
 ```
 
 ### Restaurer un snapshot

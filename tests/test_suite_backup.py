@@ -1232,6 +1232,9 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("run_clear_markers()", script)
         self.assertIn("notify-failure)", script)
         self.assertIn("run_notify_failure()", script)
+        self.assertIn("notify-reset)", script)
+        self.assertIn("run_notify_reset()", script)
+        self.assertIn("notify-${service}.state", script)
         self.assertIn("FABSUITE_NOTIFY_WEBHOOK_URL", script)
         self.assertIn("FABSUITE_NOTIFY_EMAIL", script)
         self.assertIn("fabsuite-verify.timer", script)
@@ -1412,6 +1415,7 @@ class HelperVerifyTimerTest(unittest.TestCase):
             )
             self.assertIn("verify --all", service)
             self.assertIn("notify-failure --notify-service verify", service)
+            self.assertIn("notify-reset --notify-service verify", service)
             self.assertIn(f"WorkingDirectory={install}", service)
             self.assertIn("User=", service)
             self.assertIn("SyslogIdentifier=fabsuite-verify", service)
@@ -1456,6 +1460,7 @@ class HelperVerifyTimerTest(unittest.TestCase):
             )
             self.assertIn("fabsuite-ubuntu.sh backup", service)
             self.assertIn("notify-failure --notify-service backup", service)
+            self.assertIn("notify-reset --notify-service backup", service)
             self.assertIn(f"WorkingDirectory={install}", service)
             self.assertIn("User=", service)
             self.assertIn("SyslogIdentifier=fabsuite-backup", service)
@@ -1672,6 +1677,24 @@ class HelperNotifyFailureTest(unittest.TestCase):
             timeout=60,
         )
 
+    def _reset(self, installer, env_file, env, service="backup"):
+        return subprocess.run(
+            [
+                "bash",
+                str(installer / "fabsuite-ubuntu.sh"),
+                "notify-reset",
+                "--notify-service",
+                service,
+                "--env-file",
+                str(env_file),
+            ],
+            cwd=installer,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
     def test_webhook_post_json(self):
         if not shutil.which("bash"):
             self.skipTest("bash indisponible")
@@ -1768,6 +1791,170 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertEqual(processus.returncode, 0, sortie)
             self.assertIn("ERROR webhook", sortie)
             self.assertTrue(journal.exists())
+
+    def test_anti_rebond_une_seule_alerte_par_serie(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+            )
+            etat = racine / "backups" / "notify-backup.state"
+
+            premier = self._notifier(installer=installer, env_file=env_file, env=env)
+            self.assertEqual(premier.returncode, 0, premier.stdout + premier.stderr)
+            self.assertIn("webhook envoye", premier.stdout)
+            self.assertIn("anti-rebond arme", premier.stdout)
+            self.assertTrue(etat.is_file())
+
+            second = self._notifier(installer=installer, env_file=env_file, env=env)
+            sortie = second.stdout + second.stderr
+
+            self.assertEqual(second.returncode, 0, sortie)
+            self.assertIn("anti-rebond: alerte deja envoyee", sortie)
+            self.assertNotIn("webhook envoye", second.stdout)
+            self.assertEqual(len(journal.read_text(encoding="utf-8").splitlines()), 1)
+
+    def test_anti_rebond_independant_par_service(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+            )
+
+            for service, code in (("backup", "1"), ("verify", "3"), ("backup", "1")):
+                processus = self._notifier(
+                    installer=installer,
+                    env_file=env_file,
+                    env=env,
+                    service=service,
+                    code=code,
+                )
+                self.assertEqual(
+                    processus.returncode, 0, processus.stdout + processus.stderr
+                )
+
+            lignes = journal.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lignes), 2)
+            self.assertIn('"service":"backup"', lignes[0])
+            self.assertIn('"service":"verify"', lignes[1])
+
+    def test_notify_reset_reenvoie_apres_un_succes(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+            )
+            etat = racine / "backups" / "notify-verify.state"
+
+            for _ in range(2):
+                self._notifier(
+                    installer=installer, env_file=env_file, env=env, service="verify", code="3"
+                )
+            self.assertEqual(len(journal.read_text(encoding="utf-8").splitlines()), 1)
+
+            # Succès : l'etat disparait, la panne suivante est de nouveau notifiee.
+            reset = self._reset(
+                installer=installer, env_file=env_file, env=env, service="verify"
+            )
+            sortie = reset.stdout + reset.stderr
+            self.assertEqual(reset.returncode, 0, sortie)
+            self.assertIn("anti-rebond reinitialise", sortie)
+            self.assertFalse(etat.exists())
+
+            encore = self._notifier(
+                installer=installer, env_file=env_file, env=env, service="verify", code="3"
+            )
+            self.assertEqual(encore.returncode, 0, encore.stdout + encore.stderr)
+            self.assertIn("webhook envoye", encore.stdout)
+            self.assertEqual(len(journal.read_text(encoding="utf-8").splitlines()), 2)
+            self.assertTrue(etat.is_file())
+
+    def test_notify_reset_sans_etat(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, _args, _corps = self._preparer(racine)
+
+            reset = self._reset(
+                installer=installer, env_file=env_file, env=env, service="backup"
+            )
+            sortie = reset.stdout + reset.stderr
+
+            self.assertEqual(reset.returncode, 0, sortie)
+            self.assertIn("anti-rebond deja inactif", sortie)
+
+    def test_echec_d_envoi_ne_arme_pas_l_anti_rebond(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+                curl_exit=22,
+            )
+
+            for _ in range(2):
+                processus = self._notifier(
+                    installer=installer, env_file=env_file, env=env
+                )
+                sortie = processus.stdout + processus.stderr
+                self.assertEqual(processus.returncode, 0, sortie)
+                self.assertIn("anti-rebond non arme", sortie)
+
+            # Chaque execution retente l'envoi : l'etat n'a jamais ete ecrit.
+            self.assertEqual(len(journal.read_text(encoding="utf-8").splitlines()), 2)
+            self.assertFalse((racine / "backups" / "notify-backup.state").exists())
+
+    def test_etat_lien_symbolique_refuse(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+            )
+            cible = racine / "ailleurs.txt"
+            cible.write_text("ne pas toucher\n", encoding="utf-8")
+            (racine / "backups").mkdir()
+            (racine / "backups" / "notify-backup.state").symlink_to(cible)
+
+            processus = self._notifier(
+                installer=installer, env_file=env_file, env=env
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 2, sortie)
+            self.assertIn("lien symbolique", sortie)
+            self.assertFalse(journal.exists())
+            self.assertEqual(cible.read_text(encoding="utf-8"), "ne pas toucher\n")
 
 
 if __name__ == "__main__":

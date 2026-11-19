@@ -18,7 +18,7 @@ VERIFY_ALL=""
 NOTIFY_SERVICE=""
 NOTIFY_CODE=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v14"
+HELPER_VERSION="2026-11-19-suite-backup-v15"
 
 usage() {
   cat <<'EOF'
@@ -42,6 +42,7 @@ Usage:
   ./fabsuite-ubuntu.sh backup-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh clear-markers [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh notify-failure --notify-service backup|verify --notify-code N [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh notify-reset --notify-service backup|verify [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -68,7 +69,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|notify-failure|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|notify-failure|notify-reset|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1485,7 +1486,7 @@ User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-verify
 ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all'
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "3" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; elif [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else echo "Verification impossible (code \$EXIT_STATUS), aucun snapshot degrade signale - voir journalctl -u fabsuite-verify"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service verify --notify-code "\$EXIT_STATUS" || true; fi'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "3" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; elif [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-reset --notify-service verify || true; else echo "Verification impossible (code \$EXIT_STATUS), aucun snapshot degrade signale - voir journalctl -u fabsuite-verify"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service verify --notify-code "\$EXIT_STATUS" || true; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-verify.timer" <<EOF
@@ -1536,6 +1537,7 @@ run_verify_timer_status() {
   else
     echo "[verify-timer] marker="
   fi
+  print_notify_rebond_state "${backup_root}/notify-verify.state" "[verify-timer]"
 }
 
 run_install_backup_timer() {
@@ -1568,7 +1570,7 @@ User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-backup
 ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh backup'
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else mkdir -p "${marker_dir}"; echo "ECHEC \$(date -Is) code \$EXIT_STATUS - voir journalctl -u fabsuite-backup" > "${marker}"; echo "ATTENTION: snapshot periodique en echec (code \$EXIT_STATUS) - ${marker}"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code "\$EXIT_STATUS" || true; fi'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-reset --notify-service backup || true; else mkdir -p "${marker_dir}"; echo "ECHEC \$(date -Is) code \$EXIT_STATUS - voir journalctl -u fabsuite-backup" > "${marker}"; echo "ATTENTION: snapshot periodique en echec (code \$EXIT_STATUS) - ${marker}"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code "\$EXIT_STATUS" || true; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-backup.timer" <<EOF
@@ -1616,6 +1618,55 @@ run_backup_timer_status() {
   else
     echo "[backup-timer] marker="
   fi
+  print_notify_rebond_state "${backup_root}/notify-backup.state" "[backup-timer]"
+}
+
+notify_state_file() {
+  local service="$1"
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  printf '%s\n' "${backup_root}/notify-${service}.state"
+}
+
+print_notify_rebond_state() {
+  local state="$1" prefix="$2"
+  if [[ -L "$state" ]]; then
+    echo "${prefix} notify_state=${state} (lien symbolique, ignore)"
+  elif [[ -f "$state" ]]; then
+    echo "${prefix} notify_state=${state} alerte_envoyee_le=$(stat -c '%y' "$state" 2>/dev/null || true)"
+  else
+    echo "${prefix} notify_state="
+  fi
+}
+
+run_notify_reset() {
+  local service="${NOTIFY_SERVICE:-}"
+  local state
+
+  if [[ -z "$service" ]]; then
+    echo "[notify] ERROR: --notify-service requis." >&2
+    return 2
+  fi
+  if [[ "$service" != "backup" && "$service" != "verify" ]]; then
+    echo "[notify] ERROR: --notify-service doit valoir backup ou verify." >&2
+    return 2
+  fi
+
+  state="$(notify_state_file "$service")"
+  echo "===== Suite notify reset ====="
+
+  # Retire l'etat d'anti-rebond apres une execution reussie : la prochaine
+  # panne consecutive sera de nouveau notifiee. rm -f ne suit pas un lien.
+  if [[ -e "$state" || -L "$state" ]]; then
+    if rm -f -- "$state"; then
+      echo "[notify] anti-rebond reinitialise (${state}) - la prochaine alerte sera envoyee"
+    else
+      echo "[notify] ERROR: anti-rebond non reinitialise (${state})" >&2
+      return 1
+    fi
+  else
+    echo "[notify] anti-rebond deja inactif (${state})"
+  fi
+  return 0
 }
 
 run_notify_failure() {
@@ -1647,7 +1698,23 @@ run_notify_failure() {
     return 0
   fi
 
+  # Anti-rebond : un seul envoi par serie d'echecs consecutifs. L'etat n'est
+  # retire qu'apres une execution reussie (`notify-reset`, appele par les
+  # ExecStopPost des unites), ce qui reautorise une alerte pour la panne
+  # suivante.
+  local state
+  state="$(notify_state_file "$service")"
+  if [[ -L "$state" ]]; then
+    echo "[notify] ERROR: ${state} est un lien symbolique, anti-rebond refuse" >&2
+    return 2
+  fi
+  if [[ -f "$state" ]]; then
+    echo "[notify] anti-rebond: alerte deja envoyee pour cet echec (${state}) - pas de nouvel envoi"
+    return 0
+  fi
+
   local message="FabLab Suite: ${service} planifie en echec (code ${code}) sur ${host}. Voir journalctl -u fabsuite-${service}.service"
+  local envoye=0 echec=0
 
   # Une notification qui echoue ne doit jamais changer le resultat de l'unite.
   if [[ -n "$webhook" ]]; then
@@ -1656,11 +1723,14 @@ run_notify_failure() {
       payload="{\"service\":\"${service}\",\"status\":\"failed\",\"code\":${code},\"host\":\"${host}\",\"message\":\"${message}\"}"
       if curl -fsS --max-time 10 -X POST -H 'Content-Type: application/json' --data "$payload" "$webhook" >/dev/null 2>&1; then
         echo "[notify] webhook envoye"
+        envoye=1
       else
         echo "[notify] ERROR webhook: envoi impossible (verifier FABSUITE_NOTIFY_WEBHOOK_URL)" >&2
+        echec=1
       fi
     else
       echo "[notify] ERROR webhook: curl absent" >&2
+      echec=1
     fi
   fi
 
@@ -1669,18 +1739,38 @@ run_notify_failure() {
     if command -v mail >/dev/null 2>&1; then
       if printf '%s\n' "$message" | mail -s "$sujet" "$email"; then
         echo "[notify] email envoye"
+        envoye=1
       else
         echo "[notify] ERROR email: envoi impossible" >&2
+        echec=1
       fi
     elif command -v sendmail >/dev/null 2>&1; then
       if printf 'Subject: %s\nTo: %s\n\n%s\n' "$sujet" "$email" "$message" | sendmail "$email"; then
         echo "[notify] email envoye"
+        envoye=1
       else
         echo "[notify] ERROR email: envoi impossible" >&2
+        echec=1
       fi
     else
       echo "[notify] ERROR email: ni mail ni sendmail disponible" >&2
+      echec=1
     fi
+  fi
+
+  # L'anti-rebond n'est arme que si au moins un envoi a reussi : un webhook
+  # injoignable ou un mail absent est donc retente a l'execution suivante.
+  if [[ "$envoye" -eq 1 ]]; then
+    rm -f -- "${state}.tmp" 2>/dev/null || true
+    if { mkdir -p "$(dirname "$state")" \
+        && printf 'ECHEC %s service=%s code=%s\n' "$(date -Is)" "$service" "$code" >"${state}.tmp" \
+        && mv -f -- "${state}.tmp" "$state"; } 2>/dev/null; then
+      echo "[notify] anti-rebond arme (${state})"
+    else
+      echo "[notify] ERROR: anti-rebond non enregistre (${state})" >&2
+    fi
+  elif [[ "$echec" -eq 1 ]]; then
+    echo "[notify] anti-rebond non arme: aucun envoi reussi, nouvelle tentative a la prochaine execution" >&2
   fi
 
   return 0
@@ -2346,6 +2436,9 @@ case "$ACTION" in
     ;;
   notify-failure)
     run_notify_failure
+    ;;
+  notify-reset)
+    run_notify_reset
     ;;
   install)
     run_install

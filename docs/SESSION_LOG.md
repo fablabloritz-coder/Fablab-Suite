@@ -6,6 +6,47 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : anti-rebond des notifications d'échec
+
+**Objectif** : ne plus recevoir une alerte à chaque exécution planifiée en
+échec, tout en étant de nouveau notifié après un succès suivi d'une panne.
+
+**Implementation**
+- Helper : avant envoi, `notify-failure` lit
+  `$FABSUITE_BACKUP_DIR/notify-<service>.state`. Présent : aucun envoi, ligne
+  `[notify] anti-rebond` ; absent : envoi puis écriture de l'état (écriture
+  atomique via `.tmp` + `mv`). Un état qui est un lien symbolique est refusé
+  (code 2) pour ne jamais écrire hors du dossier.
+- L'état n'est armé que si au moins un canal a réussi : un webhook injoignable
+  est retenté à l'exécution suivante (aucune alerte perdue).
+- Nouvelle action `notify-reset --notify-service backup|verify` qui supprime
+  l'état ; les `ExecStopPost` des deux unités l'appellent sur code 0, à côté de
+  la suppression du marqueur. `HELPER_VERSION` → v15.
+- `verify-timer-status` / `backup-timer-status` affichent `notify_state=` avec
+  l'horodatage de la dernière alerte.
+- Docs : README (anti-rebond, test manuel, cron), INSTALL_UBUNTU,
+  `fabsuite-ubuntu.env.example`.
+
+**Verifications**
+- Tests helper : deux échecs consécutifs → un seul envoi et état écrit ; états
+  indépendants par service ; `notify-reset` puis nouvel échec → renvoi ; reset
+  sans état → `deja inactif` ; échec d'envoi → pas d'état et nouvelle tentative ;
+  état en lien symbolique → code 2 sans envoi.
+- Tests d'unités : les deux services appellent `notify-reset` sur succès.
+- `bash -n`, suite `tests/`.
+
+**Risques / non couverts**
+- L'anti-rebond est par série d'échecs sans limite de durée : une panne qui
+  dure des semaines ne rappelle pas l'opérateur (relancer `notify-reset` ou
+  consulter `*-timer-status` pour un rappel manuel).
+- Pas de test contre un vrai webhook, ni de vrai envoi mail, ni exécution réelle
+  des unités systemd.
+
+**Prochaine action** : afficher un état de configuration des notifications
+(destinations actives, dernière alerte) dans le GUI SSH.
+
+---
+
 ## 2026-11-19 — Suite : notification externe des échecs planifiés
 
 **Objectif** : prévenir l'opérateur par mail ou webhook quand un backup ou une

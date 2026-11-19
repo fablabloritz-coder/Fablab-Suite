@@ -94,6 +94,9 @@ Ce que fait la commande:
 # Notifications externes des échecs planifiés (facultatif, dans fabsuite-ubuntu.env)
 # FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.exemple.invalid/fabsuite
 # FABSUITE_NOTIFY_EMAIL=admin@exemple.invalid
+# Une seule alerte par serie d'echecs consecutifs (anti-rebond) ;
+# un succes reinitialise l'etat, une nouvelle panne est donc renvoyee :
+./fabsuite-ubuntu.sh notify-reset --notify-service backup
 # Test manuel :
 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code 1
 
