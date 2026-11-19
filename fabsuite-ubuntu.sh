@@ -1628,15 +1628,68 @@ notify_state_file() {
   printf '%s\n' "${backup_root}/notify-${service}.state"
 }
 
-print_notify_rebond_state() {
-  local state="$1" prefix="$2"
+notify_state_info() {
+  # Lecture unique de l'etat d'anti-rebond : `present|date`, ou
+  # `lien symbolique|` pour un fichier d'etat qui n'est jamais suivi.
+  local state="$1"
   if [[ -L "$state" ]]; then
-    echo "${prefix} notify_state=${state} (lien symbolique, ignore)"
+    printf 'lien symbolique|\n'
   elif [[ -f "$state" ]]; then
-    echo "${prefix} notify_state=${state} alerte_envoyee_le=$(stat -c '%y' "$state" 2>/dev/null || true)"
+    printf '1|%s\n' "$(stat -c '%y' "$state" 2>/dev/null || true)"
   else
-    echo "${prefix} notify_state="
+    printf '0|\n'
   fi
+}
+
+notify_validate_service() {
+  local service="$1"
+  if [[ -z "$service" ]]; then
+    echo "[notify] ERROR: --notify-service requis." >&2
+    return 2
+  fi
+  case "$service" in
+    backup|verify) return 0 ;;
+    *)
+      echo "[notify] ERROR: --notify-service doit valoir backup ou verify." >&2
+      return 2
+      ;;
+  esac
+}
+
+notify_send_email() {
+  local sujet="$1" message="$2" destinataire="$3"
+  local envoye=0 manquant=0
+
+  if command -v mail >/dev/null 2>&1; then
+    printf '%s\n' "$message" | mail -s "$sujet" "$destinataire" && envoye=1
+  elif command -v sendmail >/dev/null 2>&1; then
+    printf 'Subject: %s\nTo: %s\n\n%s\n' "$sujet" "$destinataire" "$message" | sendmail "$destinataire" && envoye=1
+  else
+    manquant=1
+  fi
+
+  if [[ "$envoye" -eq 1 ]]; then
+    echo "[notify] email envoye"
+    return 0
+  fi
+  if [[ "$manquant" -eq 1 ]]; then
+    echo "[notify] ERROR email: ni mail ni sendmail disponible" >&2
+  else
+    echo "[notify] ERROR email: envoi impossible" >&2
+  fi
+  return 1
+}
+
+print_notify_rebond_state() {
+  local state="$1" prefix="$2" info present at
+  info="$(notify_state_info "$state")"
+  present="${info%%|*}"
+  at="${info#*|}"
+  case "$present" in
+    1) echo "${prefix} notify_state=${state} alerte_envoyee_le=${at}" ;;
+    "lien symbolique") echo "${prefix} notify_state=${state} (lien symbolique, ignore)" ;;
+    *) echo "${prefix} notify_state=" ;;
+  esac
 }
 
 run_notify_status() {
@@ -1653,17 +1706,12 @@ run_notify_status() {
   echo "[notify-status] webhook=${webhook}"
   echo "[notify-status] email=${email}"
 
-  local service state present at
+  local service state info present at
   for service in backup verify; do
     state="$(notify_state_file "$service")"
-    present=0
-    at=""
-    if [[ -L "$state" ]]; then
-      present="lien symbolique"
-    elif [[ -f "$state" ]]; then
-      present=1
-      at="$(stat -c '%y' "$state" 2>/dev/null || true)"
-    fi
+    info="$(notify_state_info "$state")"
+    present="${info%%|*}"
+    at="${info#*|}"
     echo "[notify-status] ${service}_state=${state}"
     echo "[notify-status] ${service}_state_present=${present}"
     echo "[notify-status] ${service}_alert_at=${at}"
@@ -1674,14 +1722,7 @@ run_notify_reset() {
   local service="${NOTIFY_SERVICE:-}"
   local state
 
-  if [[ -z "$service" ]]; then
-    echo "[notify] ERROR: --notify-service requis." >&2
-    return 2
-  fi
-  if [[ "$service" != "backup" && "$service" != "verify" ]]; then
-    echo "[notify] ERROR: --notify-service doit valoir backup ou verify." >&2
-    return 2
-  fi
+  notify_validate_service "$service" || return 2
 
   state="$(notify_state_file "$service")"
   echo "===== Suite notify reset ====="
@@ -1713,10 +1754,7 @@ run_notify_failure() {
     echo "[notify] ERROR: --notify-service et --notify-code requis." >&2
     return 2
   fi
-  if [[ "$service" != "backup" && "$service" != "verify" ]]; then
-    echo "[notify] ERROR: --notify-service doit valoir backup ou verify." >&2
-    return 2
-  fi
+  notify_validate_service "$service" || return 2
   if [[ ! "$code" =~ ^[0-9]+$ ]]; then
     echo "[notify] ERROR: --notify-code doit etre numerique." >&2
     return 2
@@ -1746,7 +1784,7 @@ run_notify_failure() {
   fi
 
   local message="FabLab Suite: ${service} planifie en echec (code ${code}) sur ${host}. Voir journalctl -u fabsuite-${service}.service"
-  local envoye=0 echec=0
+  local envoye=0
 
   # Une notification qui echoue ne doit jamais changer le resultat de l'unite.
   if [[ -n "$webhook" ]]; then
@@ -1758,35 +1796,16 @@ run_notify_failure() {
         envoye=1
       else
         echo "[notify] ERROR webhook: envoi impossible (verifier FABSUITE_NOTIFY_WEBHOOK_URL)" >&2
-        echec=1
       fi
     else
       echo "[notify] ERROR webhook: curl absent" >&2
-      echec=1
     fi
   fi
 
   if [[ -n "$email" ]]; then
     local sujet="[FabLab Suite] ${service} en echec (code ${code}) - ${host}"
-    if command -v mail >/dev/null 2>&1; then
-      if printf '%s\n' "$message" | mail -s "$sujet" "$email"; then
-        echo "[notify] email envoye"
-        envoye=1
-      else
-        echo "[notify] ERROR email: envoi impossible" >&2
-        echec=1
-      fi
-    elif command -v sendmail >/dev/null 2>&1; then
-      if printf 'Subject: %s\nTo: %s\n\n%s\n' "$sujet" "$email" "$message" | sendmail "$email"; then
-        echo "[notify] email envoye"
-        envoye=1
-      else
-        echo "[notify] ERROR email: envoi impossible" >&2
-        echec=1
-      fi
-    else
-      echo "[notify] ERROR email: ni mail ni sendmail disponible" >&2
-      echec=1
+    if notify_send_email "$sujet" "$message" "$email"; then
+      envoye=1
     fi
   fi
 
@@ -1801,7 +1820,7 @@ run_notify_failure() {
     else
       echo "[notify] ERROR: anti-rebond non enregistre (${state})" >&2
     fi
-  elif [[ "$echec" -eq 1 ]]; then
+  else
     echo "[notify] anti-rebond non arme: aucun envoi reussi, nouvelle tentative a la prochaine execution" >&2
   fi
 

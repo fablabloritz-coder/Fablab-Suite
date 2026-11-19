@@ -1607,7 +1607,7 @@ class HelperClearMarkersTest(unittest.TestCase):
 class HelperNotifyFailureTest(unittest.TestCase):
     """Notification externe configurable, sans faire echouer l'unite."""
 
-    def _preparer(self, racine, lignes_env=(), curl_exit=0):
+    def _preparer(self, racine, lignes_env=(), curl_exit=0, mail_exit=0):
         install = racine / "suite"
         install.mkdir()
         installer = racine / "installer"
@@ -1629,7 +1629,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
             "#!/usr/bin/env bash\n"
             'printf \'%s\\n\' "$*" > "${FAKE_MAIL_ARGS}"\n'
             'cat > "${FAKE_MAIL_BODY}"\n'
-            "exit 0\n",
+            f"exit {mail_exit}\n",
             encoding="utf-8",
         )
         (faux_bin / "curl").chmod(0o755)
@@ -1973,6 +1973,49 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("lien symbolique", sortie)
             self.assertFalse(journal.exists())
             self.assertEqual(cible.read_text(encoding="utf-8"), "ne pas toucher\n")
+
+            # L'etat en lien symbolique reste visible en lecture, signale comme tel.
+            statut = self._status(installer, env_file, env)
+            self.assertIn("[notify-status] backup_state_present=lien symbolique", statut.stdout)
+            self.assertIn("[notify-status] backup_alert_at=", statut.stdout)
+
+    def test_email_en_echec_journalise_sans_armer_l_anti_rebond(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=("FABSUITE_NOTIFY_EMAIL=ops@example.invalid",),
+                mail_exit=1,
+            )
+
+            processus = self._notifier(
+                installer=installer, env_file=env_file, env=env
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("ERROR email: envoi impossible", sortie)
+            self.assertIn("anti-rebond non arme", sortie)
+            self.assertFalse((racine / "backups" / "notify-backup.state").exists())
+
+    def test_notify_reset_refuse_un_service_inconnu(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, _args, _corps = self._preparer(racine)
+
+            reset = self._reset(
+                installer=installer, env_file=env_file, env=env, service="autre"
+            )
+            sortie = reset.stdout + reset.stderr
+
+            self.assertEqual(reset.returncode, 2, sortie)
+            self.assertIn("doit valoir backup ou verify", sortie)
 
     def test_notify_status_destinations_configurees(self):
         if not shutil.which("bash"):

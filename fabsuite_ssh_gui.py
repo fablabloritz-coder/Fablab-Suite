@@ -1499,9 +1499,12 @@ exit 0
 
     # ─── Sauvegarde / restauration (via le helper) ───
 
-    def _request_backup_state_refresh(self):
-        """Demande au front de relire l'etat du timer de sauvegarde."""
-        rafraichir = getattr(eel, "refreshBackupTimerState", None)
+    @staticmethod
+    def _request_front_refresh(fonction):
+        """Demande au front de relire une ligne d'etat, sans jamais propager
+        d'erreur : un rafraichissement rate ne doit pas masquer le resultat de
+        l'action qui vient de s'executer."""
+        rafraichir = getattr(eel, fonction, None)
         if rafraichir is None:
             return
         try:
@@ -1509,18 +1512,15 @@ exit 0
         except Exception:
             pass
 
+    def _request_backup_state_refresh(self):
+        """Demande au front de relire l'etat du timer de sauvegarde."""
+        self._request_front_refresh("refreshBackupTimerState")
+
     def _request_notify_state_refresh(self):
         """Demande au front de relire l'etat des notifications (destinations et
         anti-rebond), qui peut changer apres un backup, un verify ou un
         acquittement."""
-        rafraichir = getattr(eel, "refreshNotificationState", None)
-        if rafraichir is None:
-            return
-        try:
-            rafraichir()()
-        except Exception:
-            # Ligne indicative : ne jamais masquer le resultat de l'action.
-            pass
+        self._request_front_refresh("refreshNotificationState")
 
     def _reset_notify_rebond(self, service):
         """Reinitialise l'anti-rebond du service via l'action `notify-reset`.
@@ -1540,11 +1540,10 @@ exit 0
             return False
 
         if code != 0:
-            detail = ""
-            for ligne in sortie.splitlines():
-                if "ERROR" in ligne:
-                    detail = ligne.strip()
-                    break
+            detail = next(
+                (ligne.strip() for ligne in sortie.splitlines() if "ERROR" in ligne),
+                "",
+            )
             self._log(
                 f"[notify] reinitialisation refusee ({service}, code {code})"
                 + (f": {detail}" if detail else "")
@@ -1616,15 +1615,7 @@ exit 0
 
     def _request_verify_state_refresh(self):
         """Demande au front de relire l'etat du timer apres une verification."""
-        rafraichir = getattr(eel, "refreshVerifyTimerState", None)
-        if rafraichir is None:
-            return
-        try:
-            rafraichir()()
-        except Exception:
-            # L'etat du timer est indicatif : ne jamais masquer le resultat
-            # de la verification avec une erreur de rafraichissement.
-            pass
+        self._request_front_refresh("refreshVerifyTimerState")
 
     def _verify_worker(self):
         try:
@@ -1804,8 +1795,8 @@ exit 0
         self._run_async("Acquittement des alertes", self._clear_markers_worker)
 
     @staticmethod
-    def _parse_timer_status(sortie, prefixe="[verify-timer] "):
-        """Parse les lignes `[prefixe] cle=valeur` du helper."""
+    def _parse_key_values(sortie, prefixe):
+        """Dictionnaire des lignes `[prefixe] cle=valeur` du helper."""
         valeurs = {}
         for ligne in sortie.splitlines():
             ligne = ligne.strip()
@@ -1813,6 +1804,12 @@ exit 0
                 continue
             cle, valeur = ligne[len(prefixe):].split("=", 1)
             valeurs[cle.strip()] = valeur.strip()
+        return valeurs
+
+    @classmethod
+    def _parse_timer_status(cls, sortie, prefixe="[verify-timer] "):
+        """Parse les lignes `[prefixe] cle=valeur` du helper."""
+        valeurs = cls._parse_key_values(sortie, prefixe)
         return {
             "installed": valeurs.get("installed") == "1",
             "active": valeurs.get("active", ""),
@@ -1869,22 +1866,14 @@ exit 0
             return {"error": f"Impossible de lire l'etat du timer (code {code})."}
         return etat
 
-    @staticmethod
-    def _parse_notify_status(sortie):
+    @classmethod
+    def _parse_notify_status(cls, sortie):
         """Parse les lignes `[notify-status] cle=valeur` du helper.
 
         Retourne None si le helper ne connait pas encore l'action, pour que
         l'appelant invite a le mettre a jour plutot que d'afficher un etat vide.
         """
-        prefixe = "[notify-status] "
-        valeurs = {}
-        for ligne in sortie.splitlines():
-            ligne = ligne.strip()
-            if not ligne.startswith(prefixe) or "=" not in ligne:
-                continue
-            cle, valeur = ligne[len(prefixe):].split("=", 1)
-            valeurs[cle.strip()] = valeur.strip()
-
+        valeurs = cls._parse_key_values(sortie, "[notify-status] ")
         if "backup_dir" not in valeurs:
             return None
 

@@ -6,6 +6,48 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Revue de la chaîne de notifications d'échec
+
+**Objectif** : relire `notify-status`, l'anti-rebond, le reset après
+backup/verify et l'affichage GUI, sans changer de comportement, en factorisant
+les répétitions et en couvrant les chemins d'échec encore muets.
+
+**Implementation (sans changement fonctionnel)**
+- Helper :
+  - `notify_state_info` lit une seule fois l'état (`present|date` ou
+    `lien symbolique|`) ; utilisé par `notify-status` et par la ligne
+    `notify_state=` des `*-timer-status` (avant : logique dupliquée) ;
+  - `notify_validate_service` remplace les deux validations identiques de
+    `notify-failure` et `notify-reset` ;
+  - `notify_send_email` regroupe le choix `mail`/`sendmail` et les messages
+    d'erreur (auparavant deux blocs quasi identiques) ;
+  - compteur `echec` supprimé : sans envoi réussi tous les canaux ont échoué,
+    donc le `else` du bloc d'armement suffit.
+- GUI : `_parse_key_values` partagé par `_parse_timer_status` et
+  `_parse_notify_status` ; `_request_front_refresh` partagé par les trois
+  demandes de rafraîchissement (timers + notifications) ; détail d'erreur de
+  `_reset_notify_rebond` extrait avec `next(...)`.
+
+**Verifications**
+- Suite complète inchangée et verte après factorisation (aucun test modifié
+  pour faire passer le refactor).
+- Nouveaux tests de chemins d'échec : transport mail en échec (message
+  `ERROR email: envoi impossible`, anti-rebond non armé, aucune tentative
+  perdue), `notify-status` sur un état en lien symbolique (présence signalée,
+  aucune date), `notify-reset --notify-service autre` (code 2).
+- `bash -n`, `py_compile`, `node --check`.
+
+**Risques / non couverts**
+- Les branches `sendmail` (repli quand `mail` est absent) et « ni mail ni
+  sendmail » restent non testées : les rendre déterministes demanderait de
+  masquer des binaires système du PATH.
+- Rendu HTML/JS toujours non vérifié dans un navigateur.
+
+**Prochaine action** : vérifier visuellement la carte Sauvegarde & restauration
+(États vérification/sauvegarde/notifications) dans le navigateur.
+
+---
+
 ## 2026-11-19 — GUI SSH : réinitialiser l'anti-rebond après un succès
 
 **Objectif** : après un backup ou un `verify --all` réussi depuis le GUI, la
