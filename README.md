@@ -112,7 +112,10 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   avec la date de la dernière alerte envoyée (anti-rebond). Aucune cible
   configurée est signalé en orange ; l'état est relu à la connexion et après
   un backup, un verify ou un acquittement lancés depuis le GUI, pour ne pas
-  afficher un anti-rebond périmé.
+  afficher un anti-rebond périmé. Un backup réussi appelle `notify-reset
+  --notify-service backup`, un `verify --all` sain appelle `notify-reset
+  --notify-service verify` : la prochaine panne planifiée est donc de nouveau
+  notifiée, sans dupliquer la logique du helper.
 - **Acquitter les alertes** : après confirmation, supprime les marqueurs via
   le helper, mais seulement si les conditions sont réunies : `verify-degrade`
   exige un `verify --all` sain, `backup-failed` exige un snapshot valide plus
@@ -591,6 +594,8 @@ exécutions suivantes en échec ne renvoient rien et journalisent seulement
 
 - l'état est propre à chaque service : un échec de `verify` n'est pas masqué par
   une alerte `backup` déjà envoyée ;
+- un backup réussi (même lancé à la main depuis le GUI) ou un `verify --all`
+  sain réinitialise l'anti-rebond du service correspondant via `notify-reset`.
 - un envoi totalement échoué (webhook injoignable, `mail` absent) n'arme pas
   l'anti-rebond : la tentative est refaite à l'exécution suivante ;
 - `verify-timer-status` et `backup-timer-status` affichent `notify_state=` avec

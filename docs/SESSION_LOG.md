@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-19 — GUI SSH : réinitialiser l'anti-rebond après un succès
+
+**Objectif** : après un backup ou un `verify --all` réussi depuis le GUI, la
+prochaine panne doit de nouveau être notifiée (l'anti-rebond ne doit pas rester
+armé indéfiniment).
+
+**Implementation**
+- GUI backend : `_reset_notify_rebond(service)` appelle l'action existante
+  `notify-reset --notify-service backup|verify` via `_helper_command`, sans
+  réimplémenter la suppression du fichier d'état. Best-effort : une erreur SSH
+  ou un code non nul est journalisé (`[notify] reinitialisation ...`) et ne
+  remet jamais en cause le succès du backup/verify.
+- Appelé uniquement sur le chemin de succès : `_backup_worker_run` (code 0) et
+  `_verify_worker_run` (code 0). Un échec ou un code 3 ne réinitialise rien.
+- Docs : README (bullet GUI et section notifications).
+
+**Verifications**
+- Tests GUI : reset `backup` après un backup réussi, aucun reset en échec,
+  reset `verify` après un verify sain, aucun reset sur code 3, échec du reset
+  qui n'échoue pas le backup, refus (lien symbolique) journalisé.
+- `py_compile`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- Un budget de 60 s est ajouté à l'action (appel `notify-reset` après le
+  snapshot/verify) ; l'impact est négligeable mais l'action n'est plus
+  strictement en un seul aller-retour SSH.
+- Rendu HTML/JS toujours non vérifié dans un navigateur.
+
+**Prochaine action** : vérifier visuellement la carte Sauvegarde & restauration
+(États vérification/sauvegarde/notifications) dans le navigateur.
+
+---
+
 ## 2026-11-19 — GUI SSH : rafraîchir l'état des notifications
 
 **Objectif** : ne pas laisser la ligne « État notifications » périmée après une

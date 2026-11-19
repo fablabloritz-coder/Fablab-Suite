@@ -495,6 +495,126 @@ class GuiBackupRestoreTest(unittest.TestCase):
             else:
                 setattr(fabsuite_ssh_gui.eel, attribut, ancien)
 
+    def test_backup_reussi_reinitialise_l_anti_rebond(self):
+        self.backend._run_helper_action = lambda action, **kwargs: 0
+        self.backend._request_backup_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = lambda: None
+        commandes = []
+
+        def capturer(commande, timeout_sec=60):
+            commandes.append(commande)
+            return 0, "[notify] anti-rebond reinitialise\n"
+
+        self.backend._exec_remote_capture = capturer
+
+        self.backend._backup_worker()
+
+        self.assertEqual(len(commandes), 1)
+        self.assertIn("notify-reset --notify-service backup", commandes[0])
+        self.assertEqual(self.alertes[0][0], "Sauvegarde terminee")
+
+    def test_backup_en_echec_ne_reinitialise_pas_l_anti_rebond(self):
+        self.backend._run_helper_action = lambda action, **kwargs: 2
+        self.backend._request_backup_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = lambda: None
+        commandes = []
+
+        def capturer(commande, timeout_sec=60):
+            commandes.append(commande)
+            return 0, ""
+
+        self.backend._exec_remote_capture = capturer
+
+        with self.assertRaises(RuntimeError):
+            self.backend._backup_worker()
+
+        self.assertEqual(commandes, [])
+        self.assertEqual(self.alertes[0][0], "Sauvegarde invalide")
+
+    def test_verify_reussi_reinitialise_l_anti_rebond(self):
+        sortie = (
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: ok (2 archive(s))\n"
+            "[verify] bilan: 1 ok, 0 invalide(s)\n"
+        )
+        commandes = []
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._request_verify_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = lambda: None
+
+        def capturer(commande, timeout_sec=180):
+            commandes.append(commande)
+            if "notify-reset" in commande:
+                return 0, "[notify] anti-rebond reinitialise\n"
+            return 0, sortie
+
+        self.backend._exec_remote_capture = capturer
+
+        self.backend._verify_worker()
+
+        self.assertEqual(len(commandes), 2)
+        self.assertIn("verify --all", commandes[0])
+        self.assertIn("notify-reset --notify-service verify", commandes[1])
+        self.assertEqual(self.alertes[0][0], "Snapshots valides")
+
+    def test_verify_degrade_ne_reinitialise_pas_l_anti_rebond(self):
+        sortie = (
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: INVALIDE\n"
+            "[verify] bilan: 0 ok, 1 invalide(s)\n"
+        )
+        commandes = []
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._request_verify_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = lambda: None
+
+        def capturer(commande, timeout_sec=180):
+            commandes.append(commande)
+            return 3, sortie
+
+        self.backend._exec_remote_capture = capturer
+
+        with self.assertRaises(RuntimeError):
+            self.backend._verify_worker()
+
+        self.assertEqual(len(commandes), 1)
+        self.assertEqual(self.alertes[0][0], "Snapshots degrades")
+
+    def test_reinitialisation_en_echec_ne_fait_pas_echouer_le_backup(self):
+        self.backend._run_helper_action = lambda action, **kwargs: 0
+        self.backend._request_backup_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = lambda: None
+        logs = []
+        self.backend._log = logs.append
+
+        def capturer(commande, timeout_sec=60):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._exec_remote_capture = capturer
+
+        self.backend._backup_worker()
+
+        self.assertEqual(self.alertes[0][0], "Sauvegarde terminee")
+        self.assertTrue(
+            any("reinitialisation impossible (backup)" in ligne for ligne in logs),
+            logs,
+        )
+
+    def test_reset_notify_rebond_journalise_un_refus(self):
+        logs = []
+        self.backend._log = logs.append
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (
+            2,
+            "[notify] ERROR: /home/fablab/backup-fabsuite/notify-backup.state "
+            "est un lien symbolique, anti-rebond refuse\n",
+        )
+
+        self.assertFalse(self.backend._reset_notify_rebond("backup"))
+        self.assertTrue(
+            any("reinitialisation refusee" in ligne and "lien symbolique" in ligne for ligne in logs),
+            logs,
+        )
+
     def test_verify_worker_rafraichit_l_etat_du_timer(self):
         sortie = (
             "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: ok (2 archive(s))\n"

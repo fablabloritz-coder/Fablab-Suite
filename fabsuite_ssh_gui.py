@@ -1522,6 +1522,36 @@ exit 0
             # Ligne indicative : ne jamais masquer le resultat de l'action.
             pass
 
+    def _reset_notify_rebond(self, service):
+        """Reinitialise l'anti-rebond du service via l'action `notify-reset`.
+
+        Best-effort : un echec est journalise mais ne remet jamais en cause le
+        backup ou le verify qui vient d'etre valide.
+        """
+        try:
+            code, sortie = self._exec_remote_capture(
+                self._helper_command(
+                    "notify-reset", extra_args=["--notify-service", service]
+                ),
+                timeout_sec=60,
+            )
+        except Exception as exc:
+            self._log(f"[notify] reinitialisation impossible ({service}): {exc}")
+            return False
+
+        if code != 0:
+            detail = ""
+            for ligne in sortie.splitlines():
+                if "ERROR" in ligne:
+                    detail = ligne.strip()
+                    break
+            self._log(
+                f"[notify] reinitialisation refusee ({service}, code {code})"
+                + (f": {detail}" if detail else "")
+            )
+            return False
+        return True
+
     def _backup_worker(self):
         try:
             self._backup_worker_run()
@@ -1533,6 +1563,9 @@ exit 0
         self._log("Sauvegarde suite: snapshot verifie en cours...")
         code = self._run_helper_action("backup", allow_failure=True)
         if code == 0:
+            # Un snapshot valide remet la situation a zero : la prochaine panne
+            # planifiee doit de nouveau declencher une notification.
+            self._reset_notify_rebond("backup")
             self._log("Sauvegarde suite: snapshot valide (chemin et rotation dans [backup]).")
             self._show_alert(
                 "Sauvegarde terminee",
@@ -1628,6 +1661,9 @@ exit 0
         resultat = self._parse_verify_output(sortie)
         bilan = resultat["bilan"]
         if code == 0:
+            # Verification saine : l'anti-rebond `verify` est reinitialise pour
+            # qu'une nouvelle degradation soit notifiee.
+            self._reset_notify_rebond("verify")
             self._log(f"Verification terminee: {bilan or 'snapshots valides'}.")
             self._show_alert(
                 "Snapshots valides",
