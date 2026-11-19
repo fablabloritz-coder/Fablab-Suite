@@ -451,6 +451,45 @@ repasse `PRAGMA integrity_check` sur chaque base. Utile en tâche planifiée pou
 détecter un snapshot dégradé avant d'en avoir besoin ; un nom de dossier copié
 ou renommé se vérifie via `--snapshot` explicite.
 
+### Vérification planifiée (timer systemd)
+
+```bash
+./fabsuite-ubuntu.sh install-verify-timer
+```
+
+Le helper installe `/etc/systemd/system/fabsuite-verify.service` et
+`fabsuite-verify.timer`, puis active le timer. Le service lance
+`verify --all` sous l'utilisateur opérateur (pas root), par défaut tous les
+jours (`OnCalendar=daily`, `Persistent=true` pour rattraper un démarrage
+manqué). Pour un autre horaire, définir dans `fabsuite-ubuntu.env` :
+
+```bash
+FABSUITE_VERIFY_ON_CALENDAR="*-*-* 04:30:00"   # syntaxe systemd OnCalendar
+```
+
+Signal clair en cas de snapshot dégradé :
+
+- l'unité `fabsuite-verify.service` échoue (code 2) → `systemctl --failed` ;
+- le fichier `~/backup-fabsuite/verify-degrade` est créé (supprimé à la
+  prochaine vérification saine) avec l'horodatage et la commande à consulter ;
+- le détail (snapshot et erreurs) est dans
+  `journalctl -u fabsuite-verify.service -n 100`.
+
+Commandes utiles :
+
+```bash
+systemctl list-timers fabsuite-verify.timer   # prochaine exécution
+sudo systemctl start fabsuite-verify.service  # vérifier maintenant
+sudo systemctl disable --now fabsuite-verify.timer
+cat ~/backup-fabsuite/verify-degrade          # si présent : snapshot dégradé
+```
+
+Sans systemd, l'équivalent cron (à adapter au chemin d'installation) :
+
+```cron
+17 4 * * * cd /srv/fablab-suite && NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all >> "$HOME/backup-fabsuite/verify.log" 2>&1 || echo "DEGRADE $(date -Is)" > "$HOME/backup-fabsuite/verify-degrade"
+```
+
 ### Restaurer un snapshot
 
 ```bash

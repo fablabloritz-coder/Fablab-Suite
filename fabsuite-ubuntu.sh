@@ -16,7 +16,7 @@ RESTORE_DEST=""
 RESTORE_SOURCES=()
 VERIFY_ALL=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v8"
+HELPER_VERSION="2026-11-19-suite-backup-v9"
 
 usage() {
   cat <<'EOF'
@@ -34,6 +34,7 @@ Usage:
   ./fabsuite-ubuntu.sh volumes --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
   ./fabsuite-ubuntu.sh verify --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
   ./fabsuite-ubuntu.sh verify --all [--dest /path/to/backups]
+  ./fabsuite-ubuntu.sh install-verify-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -60,7 +61,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1405,6 +1406,67 @@ run_suite_verify() {
   python3 "$backup_module" verify "${args[@]}"
 }
 
+run_install_verify_timer() {
+  require_cmd systemctl
+
+  echo "===== Suite verify timer ====="
+
+  local run_user="${SUDO_USER:-$(id -un)}"
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local calendar="${FABSUITE_VERIFY_ON_CALENDAR:-daily}"
+  local marker="${backup_root}/verify-degrade"
+  local marker_dir
+  marker_dir="$(dirname "$marker")"
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' RETURN
+
+  # Service + timer systeme : la verification tourne sous l'utilisateur
+  # operateur (pas root) pour retrouver le bon HOME et les bons snapshots.
+  # Un code 2 (snapshot degrade) fait echouer l'unite et pose un marqueur.
+  cat >"${tmpdir}/fabsuite-verify.service" <<EOF
+[Unit]
+Description=FabLab Suite - verification des snapshots
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=${run_user}
+WorkingDirectory=${INSTALL_DIR}
+SyslogIdentifier=fabsuite-verify
+ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "2" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; else rm -f "${marker}"; fi'
+EOF
+
+  cat >"${tmpdir}/fabsuite-verify.timer" <<EOF
+[Unit]
+Description=Verification periodique des snapshots FabLab Suite
+
+[Timer]
+OnCalendar=${calendar}
+Persistent=true
+RandomizedDelaySec=30min
+Unit=fabsuite-verify.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  echo "[verify-timer] utilisateur: ${run_user}"
+  echo "[verify-timer] calendrier: ${calendar}"
+  echo "[verify-timer] signal degrade: ${marker}"
+
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-verify.service" /etc/systemd/system/fabsuite-verify.service
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-verify.timer" /etc/systemd/system/fabsuite-verify.timer
+  run_privileged systemctl daemon-reload
+  run_privileged systemctl enable --now fabsuite-verify.timer
+
+  echo "[verify-timer] installe et active."
+  echo "[verify-timer] etat: systemctl list-timers fabsuite-verify.timer"
+  echo "[verify-timer] journal: journalctl -u fabsuite-verify.service"
+}
+
 repo_exists() {
   local app="$1"
   [[ -d "${INSTALL_DIR}/${app}" && -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]
@@ -1973,6 +2035,9 @@ case "$ACTION" in
     ;;
   verify)
     run_suite_verify
+    ;;
+  install-verify-timer)
+    run_install_verify_timer
     ;;
   install)
     run_install

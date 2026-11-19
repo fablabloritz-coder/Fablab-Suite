@@ -6,6 +6,46 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : vérification planifiée des snapshots (timer systemd)
+
+**Objectif** : détecter automatiquement un snapshot dégradé, sans attendre un
+`verify` manuel.
+
+**Implementation**
+- Action helper `install-verify-timer` : installe
+  `/etc/systemd/system/fabsuite-verify.service` et `.timer` (via
+  `run_privileged`), `daemon-reload`, puis `enable --now`.
+- Le service tourne avec `User=${SUDO_USER:-id -un}` (HOME et snapshots de
+  l'opérateur, pas de root), `WorkingDirectory=$INSTALL_DIR`, et exécute
+  `NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all`.
+- Signal dégradé : code 2 → unité en échec (`systemctl --failed`) et
+  `ExecStopPost` crée `$FABSUITE_BACKUP_DIR/verify-degrade` avec horodatage et
+  renvoi vers `journalctl -u fabsuite-verify.service` ; le marqueur est supprimé
+  à la prochaine vérification saine.
+- Calendrier configurable : `FABSUITE_VERIFY_ON_CALENDAR` (défaut `daily`),
+  timer `Persistent=true`, nom de service/timer fixe.
+- `HELPER_VERSION` passe à `2026-11-19-suite-backup-v9` ; doc README (dont
+  équivalent cron), INSTALL_UBUNTU, env example.
+
+**Verifications**
+- Test d'intégration helper avec `sudo`/`systemctl` simulés et `OnCalendar`
+  personnalisé : unités générées, `User`, `verify --all`, marqueur, `EXIT_STATUS`,
+  `daemon-reload` et `enable --now`.
+- Assertions de câblage (`install-verify-timer`, `run_install_verify_timer`).
+- `bash -n`, suite `tests/`.
+
+**Risques / non couverts**
+- Le timer n'est pas exposé dans le GUI (installation via helper uniquement) et
+  l'exécution réelle sous systemd n'a pas été testée dans cette VM.
+- `FABSUITE_BACKUP_DIR` doit être défini dans `fabsuite-ubuntu.env` si le dossier
+  n'est pas `$HOME/backup-fabsuite`, pour que service et installateur visent le
+  même chemin.
+
+**Prochaine action** : afficher l'état du timer et du marqueur dans le GUI SSH,
+puis proposer une date de snapshot maximale (fraîcheur).
+
+---
+
 ## 2026-11-19 — Suite : bouton « Vérifier les snapshots » dans le GUI SSH
 
 **Objectif** : lancer `verify --all` depuis l'onglet SSH et voir immédiatement

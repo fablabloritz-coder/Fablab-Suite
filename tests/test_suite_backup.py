@@ -1197,6 +1197,11 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("verify)", script)
         self.assertIn("run_suite_verify()", script)
         self.assertIn("def verifier_snapshot", module)
+        self.assertIn("install-verify-timer)", script)
+        self.assertIn("run_install_verify_timer()", script)
+        self.assertIn("fabsuite-verify.timer", script)
+        self.assertIn("OnCalendar", script)
+        self.assertIn("verify-degrade", script)
 
         if shutil.which("bash"):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)
@@ -1271,6 +1276,118 @@ class HelperLegacyModuleCompatTest(unittest.TestCase):
                     self.assertEqual(processus.returncode, 2, sortie)
                     self.assertIn(f"[{action}] MISE A JOUR REQUISE", sortie)
                     self.assertIn("fabsuite-ubuntu.sh update", sortie)
+
+
+class HelperVerifyTimerTest(unittest.TestCase):
+    """Installe le timer systemd de verification avec sudo/systemctl simules."""
+
+    def test_installe_le_service_et_active_le_timer(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            install = racine / "suite"
+            install.mkdir()
+            systemd_dir = racine / "systemd"
+            systemd_dir.mkdir()
+
+            installer = racine / "installer"
+            installer.mkdir()
+            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+            env_file = installer / "fabsuite-ubuntu.env"
+            env_file.write_text(
+                "\n".join(
+                    (
+                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                        "GIT_BRANCH=main",
+                        f"INSTALL_DIR={install}",
+                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                        "FLASK_SECRET_KEY=test-secret",
+                        f"FABSUITE_BACKUP_DIR={racine / 'backups'}",
+                        'FABSUITE_VERIFY_ON_CALENDAR="*-*-* 04:30:00"',
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            faux_bin = racine / "bin"
+            faux_bin.mkdir()
+            journal = racine / "systemctl.log"
+            (faux_bin / "sudo").write_text(
+                "#!/usr/bin/env bash\n"
+                "declare -a args=()\n"
+                "while [[ $# -gt 0 ]]; do\n"
+                '  case "$1" in\n'
+                "    -S|-n|-E) shift ;;\n"
+                "    -p) shift 2 ;;\n"
+                '    *) args+=("$1"); shift ;;\n'
+                "  esac\n"
+                "done\n"
+                "final=()\n"
+                'for arg in "${args[@]}"; do\n'
+                '  if [[ "$arg" == /etc/systemd/system/* ]]; then\n'
+                '    arg="${FAKE_SYSTEMD_DIR}/$(basename "$arg")"\n'
+                "  fi\n"
+                '  final+=("$arg")\n'
+                "done\n"
+                'exec "${final[@]}"\n',
+                encoding="utf-8",
+            )
+            (faux_bin / "systemctl").write_text(
+                "#!/usr/bin/env bash\n"
+                'printf \'%s\\n\' "$*" >> "${FAKE_SYSTEMCTL_LOG}"\n'
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            (faux_bin / "sudo").chmod(0o755)
+            (faux_bin / "systemctl").chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{faux_bin}:{env['PATH']}"
+            env["HOME"] = str(racine / "home")
+            env["NON_INTERACTIVE"] = "1"
+            env.pop("SUDO_USER", None)
+            env["FAKE_SYSTEMD_DIR"] = str(systemd_dir)
+            env["FAKE_SYSTEMCTL_LOG"] = str(journal)
+            processus = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "install-verify-timer",
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            service = (systemd_dir / "fabsuite-verify.service").read_text(
+                encoding="utf-8"
+            )
+            timer = (systemd_dir / "fabsuite-verify.timer").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("verify --all", service)
+            self.assertIn(f"WorkingDirectory={install}", service)
+            self.assertIn("User=", service)
+            self.assertIn("SyslogIdentifier=fabsuite-verify", service)
+            self.assertIn("EXIT_STATUS", service)
+            self.assertIn("verify-degrade", service)
+            self.assertIn("OnCalendar=*-*-* 04:30:00", timer)
+            self.assertIn("Persistent=true", timer)
+            self.assertIn("Unit=fabsuite-verify.service", timer)
+
+            appels = journal.read_text(encoding="utf-8")
+            self.assertIn("daemon-reload", appels)
+            self.assertIn("enable --now fabsuite-verify.timer", appels)
+            self.assertIn("fabsuite-verify.timer", sortie)
 
 
 if __name__ == "__main__":

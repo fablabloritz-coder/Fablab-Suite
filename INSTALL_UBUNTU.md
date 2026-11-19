@@ -80,6 +80,9 @@ Ce que fait la commande:
 ./fabsuite-ubuntu.sh verify --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
 ./fabsuite-ubuntu.sh verify --all
 
+# Planifier verify --all (timer systemd, signal ~/backup-fabsuite/verify-degrade)
+./fabsuite-ubuntu.sh install-verify-timer
+
 # Démarrer / arrêter / redémarrer
 ./fabsuite-ubuntu.sh start
 ./fabsuite-ubuntu.sh stop
