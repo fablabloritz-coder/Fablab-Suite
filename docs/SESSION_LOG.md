@@ -6,6 +6,40 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Contrôle complet de la chaîne de notifications
+
+**Objectif** : vérifier de bout en bout `notify-status`, l'anti-rebond, le reset
+après backup/verify et l'affichage GUI, puis nettoyer ce qui reste inutile.
+
+**Implementation**
+- Suppression de la ligne `notify_state=` des `verify-timer-status` et
+  `backup-timer-status` et de la fonction `print_notify_rebond_state` :
+  information devenue redondante avec `notify-status`, et code jamais exercé
+  par les tests (les statuts sortent avant si `/etc/systemd/system/*.timer`
+  n'existe pas, ce qui est toujours le cas hors serveur). README aligné.
+- `notify-status` indique maintenant les destinations avec des `if` explicites
+  (plus de `[[ ]] && var=`, sans effet de bord possible sous `set -e`).
+- README : tournure corrigée sur l'absence de cible configurée.
+
+**Verifications**
+- Scénario manuel réel dans un répertoire temporaire (faux `curl` journalisé) :
+  `notify-status` sans état → `notify-failure` (envoi + état armé) → second
+  échec (anti-rebond, aucun envoi) → `notify-status` avec date → `notify-reset`
+  → nouvel échec renvoyé ; deux POST au total, état final horodaté, service
+  invalide refusé avec code 2.
+- Suite complète 127 tests OK, `bash -n`, `py_compile` de tous les scripts,
+  `node --check`, `smoke_test_apps.py --list`.
+
+**Risques / non couverts**
+- Les branches `sendmail` et « ni mail ni sendmail » restent non testées.
+- Le rendu navigateur n'est toujours pas vérifié (aucun test DOM) ; les unités
+  systemd ne sont pas exécutées réellement.
+
+**Prochaine action** : vérifier visuellement la carte Sauvegarde &
+restauration (États vérification/sauvegarde/notifications) dans le navigateur.
+
+---
+
 ## 2026-11-19 — Revue de la chaîne de notifications d'échec
 
 **Objectif** : relire `notify-status`, l'anti-rebond, le reset après

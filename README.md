@@ -109,8 +109,8 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 - **État notifications** : lit `notify-status` du helper et affiche les
   destinations configurées (`webhook configuré/absent`, `mail configuré/absent`),
   puis, pour `backup` et `verify`, si le fichier `notify-<service>.state` existe
-  avec la date de la dernière alerte envoyée (anti-rebond). Aucune cible
-  configurée est signalé en orange ; l'état est relu à la connexion et après
+  avec la date de la dernière alerte envoyée (anti-rebond). L'absence de cible
+  configurée est signalée en orange ; l'état est relu à la connexion et après
   un backup, un verify ou un acquittement lancés depuis le GUI, pour ne pas
   afficher un anti-rebond périmé. Un backup réussi appelle `notify-reset
   --notify-service backup`, un `verify --all` sain appelle `notify-reset
@@ -598,10 +598,10 @@ exécutions suivantes en échec ne renvoient rien et journalisent seulement
   sain réinitialise l'anti-rebond du service correspondant via `notify-reset`.
 - un envoi totalement échoué (webhook injoignable, `mail` absent) n'arme pas
   l'anti-rebond : la tentative est refaite à l'exécution suivante ;
-- `verify-timer-status` et `backup-timer-status` affichent `notify_state=` avec
-  l'horodatage de la dernière alerte envoyée ; `notify-status` donne en plus les
-  destinations configurées et l'état détaillé des deux services, tel quel
-  consommé par le bouton **État notifications** du GUI SSH.
+- `notify-status` donne les destinations configurées et l'état détaillé des
+  deux services (présence du fichier, horodatage de la dernière alerte, lien
+  symbolique), tel quel consommé par le bouton **État notifications** du GUI
+  SSH.
 
 ```bash
 ./fabsuite-ubuntu.sh notify-reset --notify-service backup   # reautoriser une alerte

@@ -1538,7 +1538,6 @@ run_verify_timer_status() {
   else
     echo "[verify-timer] marker="
   fi
-  print_notify_rebond_state "${backup_root}/notify-verify.state" "[verify-timer]"
 }
 
 run_install_backup_timer() {
@@ -1619,7 +1618,6 @@ run_backup_timer_status() {
   else
     echo "[backup-timer] marker="
   fi
-  print_notify_rebond_state "${backup_root}/notify-backup.state" "[backup-timer]"
 }
 
 notify_state_file() {
@@ -1680,18 +1678,6 @@ notify_send_email() {
   return 1
 }
 
-print_notify_rebond_state() {
-  local state="$1" prefix="$2" info present at
-  info="$(notify_state_info "$state")"
-  present="${info%%|*}"
-  at="${info#*|}"
-  case "$present" in
-    1) echo "${prefix} notify_state=${state} alerte_envoyee_le=${at}" ;;
-    "lien symbolique") echo "${prefix} notify_state=${state} (lien symbolique, ignore)" ;;
-    *) echo "${prefix} notify_state=" ;;
-  esac
-}
-
 run_notify_status() {
   echo "===== Suite notify status ====="
 
@@ -1699,8 +1685,12 @@ run_notify_status() {
   # reimplementer la resolution du dossier ou des fichiers d'etat.
   local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
   local webhook="absent" email="absent"
-  [[ -n "${FABSUITE_NOTIFY_WEBHOOK_URL:-}" ]] && webhook="configured"
-  [[ -n "${FABSUITE_NOTIFY_EMAIL:-}" ]] && email="configured"
+  if [[ -n "${FABSUITE_NOTIFY_WEBHOOK_URL:-}" ]]; then
+    webhook="configured"
+  fi
+  if [[ -n "${FABSUITE_NOTIFY_EMAIL:-}" ]]; then
+    email="configured"
+  fi
 
   echo "[notify-status] backup_dir=${backup_root}"
   echo "[notify-status] webhook=${webhook}"
