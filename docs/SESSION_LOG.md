@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-19 — PretGo : purge des lignes `blocked` reversible
+
+**Objectif** : rendre annulable la purge des lignes `blocked` redondantes de
+l'historique des rappels.
+
+**Implementation**
+- Nouvelle table `rappels_email_log_archive` : les colonnes de
+  `rappels_email_log` telles qu'elles existent dans la base ouverte, plus
+  `archived_at` et `archive_reason`. Creee par `init_db()` et, a la demande,
+  par la purge (bases anciennes ou schema different).
+- `database.purger_lignes_blocked_inutiles(conn)` copie chaque ligne dans
+  l'archive avant son `DELETE`. Restaurer une ligne = la reinserer dans
+  `rappels_email_log` depuis l'archive.
+- Le message de reprise au demarrage indique l'archivage et le nom de la
+  table.
+
+**Verifications**
+- Nouveau test `test_la_purge_archive_les_lignes_supprimees` : contenu
+  archive (identifiants, horodatages, raison), idempotence, restauration a
+  l'identique.
+- Suite PretGo : 62 tests OK.
+
+**Risques / non couverts**
+- L'archive n'est jamais purgee automatiquement : elle grandit avec les
+  purges successives (volumes attendus faibles).
+- Aucune commande de restauration en interface : la reprise se fait en SQL
+  depuis l'archive.
+
+**Prochaine action** : exposer une restauration depuis l'archive dans
+l'admin si le besoin se presente.
+
+---
+
 ## 2026-11-18 — PretGo 1.11.2 : reprise douce de l'historique des rappels
 
 **Objectif** : alleger l'historique en supprimant les lignes `blocked`

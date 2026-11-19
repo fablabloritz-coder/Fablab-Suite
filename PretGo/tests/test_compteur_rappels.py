@@ -252,6 +252,57 @@ class CompteurRappelsTests(unittest.TestCase):
         # Reprise idempotente.
         self.assertEqual(purger_lignes_blocked_inutiles(self.conn), 0)
 
+    def test_la_purge_archive_les_lignes_supprimees(self):
+        self._log('sent', 1)
+        self._log('blocked', 2)
+        self._log('blocked', 3)
+        self._log('blocked', 4)
+
+        self.assertEqual(purger_lignes_blocked_inutiles(self.conn), 2)
+        self.conn.commit()
+
+        archivees = self.conn.execute(
+            '''SELECT id, pret_id, personne_id, email, sent_at, status,
+                      archived_at, archive_reason
+               FROM rappels_email_log_archive ORDER BY id'''
+        ).fetchall()
+        self.assertEqual(
+            [row['sent_at'] for row in archivees],
+            ['2026-11-03 09:00:00', '2026-11-04 09:00:00'],
+        )
+        for row in archivees:
+            self.assertEqual(row['status'], 'blocked')
+            self.assertEqual(row['pret_id'], 1)
+            self.assertEqual(row['personne_id'], 1)
+            self.assertEqual(row['email'], 'alice@test.local')
+            self.assertIsNotNone(row['archived_at'])
+            self.assertIn('purge', row['archive_reason'])
+
+        # Une seconde purge n'archive rien de plus.
+        self.assertEqual(purger_lignes_blocked_inutiles(self.conn), 0)
+        self.assertEqual(
+            self.conn.execute(
+                'SELECT COUNT(*) FROM rappels_email_log_archive'
+            ).fetchone()[0],
+            2,
+        )
+
+        # L'archive suffit a restaurer les lignes supprimees a l'identique.
+        for row in archivees:
+            self.conn.execute(
+                '''INSERT INTO rappels_email_log
+                   (id, pret_id, personne_id, email, sent_at, status,
+                    reminder_kind)
+                   VALUES (?, ?, ?, ?, ?, ?, 'overdue')''',
+                (row['id'], row['pret_id'], row['personne_id'],
+                 row['email'], row['sent_at'], row['status']),
+            )
+        self.conn.commit()
+        restaurees = self.conn.execute(
+            "SELECT COUNT(*) FROM rappels_email_log WHERE status='blocked'"
+        ).fetchone()[0]
+        self.assertEqual(restaurees, 3)
+
     def test_l_historique_numerote_chaque_tentative(self):
         premier = self._log('sent', 1)
         self._log('blocked', 2)

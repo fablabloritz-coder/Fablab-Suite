@@ -62,6 +62,85 @@ def generate_recovery_code():
     return code
 
 
+TABLE_ARCHIVE_RAPPELS = 'rappels_email_log_archive'
+RAISON_ARCHIVE_BLOCKED = 'purge: ligne blocked redondante'
+
+
+def _assurer_table_archive_rappels(conn):
+    """Créer (ou compléter) la table d'archive des lignes de rappel.
+
+    La table reprend les colonnes de `rappels_email_log` telles qu'elles
+    existent dans la base ouverte (les anciennes installations n'ont pas
+    forcément toutes les colonnes récentes), plus `archived_at` et
+    `archive_reason`. Elle est créée à la demande pour que la purge reste
+    utilisable sur une base ouverte sans passer par `init_db()`.
+
+    Retourne la liste des colonnes source, vide si la table n'existe pas.
+    """
+    colonnes_source = conn.execute(
+        'PRAGMA table_info(rappels_email_log)'
+    ).fetchall()
+    if not colonnes_source:
+        return []
+    noms_source = [col['name'] for col in colonnes_source]
+    existe = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        (TABLE_ARCHIVE_RAPPELS,),
+    ).fetchone()
+    if not existe:
+        definitions = ['archive_id INTEGER PRIMARY KEY AUTOINCREMENT']
+        for col in colonnes_source:
+            definitions.append(f'"{col["name"]}" {col["type"] or "TEXT"}')
+        definitions.append('archived_at DATETIME DEFAULT CURRENT_TIMESTAMP')
+        definitions.append("archive_reason TEXT DEFAULT ''")
+        conn.execute(
+            f'CREATE TABLE IF NOT EXISTS {TABLE_ARCHIVE_RAPPELS} '
+            f'({", ".join(definitions)})'
+        )
+        return noms_source
+    colonnes_archive = [
+        row['name'] for row in conn.execute(
+            f'PRAGMA table_info({TABLE_ARCHIVE_RAPPELS})')
+    ]
+    for nom in noms_source:
+        if nom not in colonnes_archive:
+            conn.execute(
+                f'ALTER TABLE {TABLE_ARCHIVE_RAPPELS} ADD COLUMN "{nom}" TEXT'
+            )
+    return noms_source
+
+
+def _archiver_lignes_rappels(conn, ids):
+    """Copier les lignes `rappels_email_log` données dans la table d'archive.
+
+    À appeler avant leur suppression : la purge reste ainsi réversible
+    (restauration possible depuis `rappels_email_log_archive`).
+    """
+    if not ids:
+        return 0
+    colonnes = _assurer_table_archive_rappels(conn)
+    if not colonnes:
+        return 0
+    colonnes_sql = ', '.join(f'"{nom}"' for nom in colonnes)
+    marqueurs = ', '.join('?' for _ in colonnes)
+    archivees = 0
+    for log_id in ids:
+        ligne = conn.execute(
+            f'SELECT {colonnes_sql} FROM rappels_email_log WHERE id = ?',
+            (log_id,),
+        ).fetchone()
+        if ligne is None:
+            continue
+        conn.execute(
+            f'''INSERT INTO {TABLE_ARCHIVE_RAPPELS}
+                ({colonnes_sql}, archive_reason)
+                VALUES ({marqueurs}, ?)''',
+            tuple(ligne) + (RAISON_ARCHIVE_BLOCKED,),
+        )
+        archivees += 1
+    return archivees
+
+
 def purger_lignes_blocked_inutiles(conn):
     """Supprimer les lignes `blocked` redondantes d'un même épisode.
 
@@ -75,6 +154,9 @@ def purger_lignes_blocked_inutiles(conn):
     date du moment où le plafond a été atteint) et on supprime les suivantes.
     Les lignes `sent` et `failed`, qui portent le numéro des tentatives, ne
     sont jamais touchées.
+
+    La purge est réversible : chaque ligne supprimée est d'abord copiée dans
+    `rappels_email_log_archive` (avec `archived_at` et `archive_reason`).
 
     Retourne le nombre de lignes supprimées. Idempotent.
     """
@@ -96,6 +178,7 @@ def purger_lignes_blocked_inutiles(conn):
             a_supprimer.append(row['id'])
         else:
             episodes_vus.add(episode)
+    _archiver_lignes_rappels(conn, a_supprimer)
     for log_id in a_supprimer:
         conn.execute('DELETE FROM rappels_email_log WHERE id = ?', (log_id,))
     return len(a_supprimer)
@@ -240,6 +323,22 @@ def init_db():
             depassement_heures REAL DEFAULT 0,
             FOREIGN KEY (pret_id) REFERENCES prets(id) ON DELETE CASCADE,
             FOREIGN KEY (personne_id) REFERENCES personnes(id) ON DELETE CASCADE
+        );
+
+        -- Archive des lignes retirees de rappels_email_log (purge reversible).
+        CREATE TABLE IF NOT EXISTS rappels_email_log_archive (
+            archive_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER,
+            pret_id INTEGER,
+            personne_id INTEGER,
+            email TEXT,
+            sent_at DATETIME,
+            status TEXT,
+            reminder_kind TEXT,
+            error_message TEXT DEFAULT '',
+            depassement_heures REAL DEFAULT 0,
+            archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            archive_reason TEXT DEFAULT ''
         );
     ''')
 
@@ -528,12 +627,14 @@ def init_db():
 
     # ── Reprise douce : alléger l'historique des rappels ──
     # Les anciennes bases peuvent contenir plusieurs lignes `blocked` pour un
-    # même épisode de plafond atteint ; on ne garde que la première.
+    # même épisode de plafond atteint ; on ne garde que la première. Les
+    # lignes retirees sont archivees dans rappels_email_log_archive.
     lignes_purgees = purger_lignes_blocked_inutiles(conn)
     if lignes_purgees:
         print(
             f"[PretGo] Historique des rappels : {lignes_purgees} ligne(s) "
-            "de blocage redondante(s) supprimee(s)"
+            "de blocage redondante(s) archivee(s) puis supprimee(s) "
+            f"(table {TABLE_ARCHIVE_RAPPELS})"
         )
 
     stamp_schema_version(
