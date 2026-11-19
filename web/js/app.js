@@ -118,6 +118,47 @@ function syncField(id, key) {
 
 /* ─── Action dispatch ─── */
 
+async function refreshVerifyTimerState() {
+  const el = document.getElementById("verifyTimerState");
+  if (!el) return;
+  el.className = "text-muted";
+  el.textContent = "Vérification planifiée : chargement...";
+
+  let etat;
+  try {
+    etat = await eel.verify_timer_status()();
+  } catch (e) {
+    el.className = "text-danger";
+    el.textContent = "Vérification planifiée : erreur (" + e + ")";
+    return;
+  }
+  if (etat.error) {
+    el.className = "text-danger";
+    el.textContent = etat.error;
+    return;
+  }
+  if (!etat.installed) {
+    el.className = "text-warning";
+    el.textContent =
+      etat.hint ||
+      "Timer non installé : lance ./fabsuite-ubuntu.sh install-verify-timer.";
+    return;
+  }
+
+  const code = etat.last_code ? ` (code ${etat.last_code})` : "";
+  const dernier = etat.last_run
+    ? `${etat.last_result || "resultat inconnu"}${code} le ${etat.last_run}`
+    : "aucune exécution enregistrée";
+  const parties = [
+    `timer ${etat.active || "inconnu"}`,
+    `prochaine exécution : ${etat.next || "inconnue"}`,
+    `dernière vérification : ${dernier}`,
+    etat.marker ? `MARQUEUR DÉGRADÉ : ${etat.marker}` : "marqueur dégradé : absent",
+  ];
+  el.className = etat.marker ? "text-danger" : "text-muted";
+  el.textContent = "Vérification planifiée — " + parties.join(" — ");
+}
+
 async function openRestoreDialog() {
   let resultat;
   try {
@@ -212,6 +253,12 @@ async function dispatchAction(action, btn) {
   // Restauration: choisir un snapshot valide avant l'appel au helper.
   if (action === "action_restore") {
     await openRestoreDialog();
+    return;
+  }
+
+  // Etat du timer de verification (lecture seule via le helper).
+  if (action === "action_verify_timer_status") {
+    await refreshVerifyTimerState();
     return;
   }
 

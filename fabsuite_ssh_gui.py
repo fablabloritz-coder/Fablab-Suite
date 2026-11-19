@@ -231,6 +231,10 @@ class FabSuiteBackend:
             return self.list_volumes(snapshot)
 
         @eel.expose
+        def verify_timer_status():
+            return self.verify_timer_status()
+
+        @eel.expose
         def action_scan_dirs():
             self.action_scan_dirs()
 
@@ -1611,6 +1615,53 @@ exit 0
             self._show_ssh_only_info("Verification des snapshots")
             return
         self._run_async("Verification snapshots", self._verify_worker)
+
+    @staticmethod
+    def _parse_verify_timer_status(sortie):
+        """Parse les lignes `[verify-timer] cle=valeur` du helper."""
+        valeurs = {}
+        prefixe = "[verify-timer] "
+        for ligne in sortie.splitlines():
+            ligne = ligne.strip()
+            if not ligne.startswith(prefixe) or "=" not in ligne:
+                continue
+            cle, valeur = ligne[len(prefixe):].split("=", 1)
+            valeurs[cle.strip()] = valeur.strip()
+        return {
+            "installed": valeurs.get("installed") == "1",
+            "active": valeurs.get("active", ""),
+            "enabled": valeurs.get("enabled", ""),
+            "next": valeurs.get("next", ""),
+            "last_trigger": valeurs.get("last_trigger", ""),
+            "last_result": valeurs.get("result", ""),
+            "last_code": valeurs.get("result_code", ""),
+            "last_run": valeurs.get("result_at", ""),
+            "marker": valeurs.get("marker", ""),
+            "marker_at": valeurs.get("marker_at", ""),
+            "backup_dir": valeurs.get("backup_dir", ""),
+            "hint": valeurs.get("hint", ""),
+        }
+
+    def verify_timer_status(self):
+        """Etat du timer de verification : prochaine execution, dernier
+        resultat et marqueur `verify-degrade`, lus par le helper."""
+        if self._is_local_mode():
+            return {
+                "error": "L'etat du timer est disponible uniquement en mode Serveur SSH."
+            }
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            code, sortie = self._exec_remote_capture(
+                self._helper_command("verify-timer-status"), timeout_sec=60
+            )
+        except Exception as exc:
+            return {"error": f"Impossible de lire l'etat du timer: {exc}"}
+
+        etat = self._parse_verify_timer_status(sortie)
+        if code != 0 and not etat["installed"]:
+            return {"error": f"Impossible de lire l'etat du timer (code {code})."}
+        return etat
 
     def _restore_worker(self, snapshot, destination, sources=None):
         args = ["--snapshot", snapshot]

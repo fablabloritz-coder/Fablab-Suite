@@ -160,6 +160,76 @@ class GuiBackupRestoreTest(unittest.TestCase):
         )
         self.assertEqual(self.alertes[0][0], "Restauration refusee")
 
+    def test_verify_timer_status_parse_l_etat_et_le_marqueur(self):
+        sortie = (
+            "[verify-timer] backup_dir=/home/fablab/backup-fabsuite\n"
+            "[verify-timer] installed=1\n"
+            "[verify-timer] active=active\n"
+            "[verify-timer] enabled=enabled\n"
+            "[verify-timer] next=Thu 2026-11-20 04:30:00 CET\n"
+            "[verify-timer] last_trigger=Thu 2026-11-19 04:30:00 CET\n"
+            "[verify-timer] result=exit-code\n"
+            "[verify-timer] result_code=3\n"
+            "[verify-timer] result_at=Thu 2026-11-19 04:30:02 CET\n"
+            "[verify-timer] marker=/home/fablab/backup-fabsuite/verify-degrade\n"
+            "[verify-timer] marker_at=2026-11-19 04:30:02.123\n"
+        )
+        commandes = []
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def capturer(commande, timeout_sec=60):
+            commandes.append(commande)
+            return 0, sortie
+
+        self.backend._exec_remote_capture = capturer
+
+        etat = self.backend.verify_timer_status()
+
+        self.assertNotIn("error", etat)
+        self.assertIn("verify-timer-status", commandes[0])
+        self.assertTrue(etat["installed"])
+        self.assertEqual(etat["active"], "active")
+        self.assertIn("2026-11-20", etat["next"])
+        self.assertEqual(etat["last_result"], "exit-code")
+        self.assertEqual(etat["last_code"], "3")
+        self.assertIn("2026-11-19", etat["last_run"])
+        self.assertEqual(
+            etat["marker"], "/home/fablab/backup-fabsuite/verify-degrade"
+        )
+        self.assertIn("2026-11-19", etat["marker_at"])
+
+    def test_verify_timer_status_sans_timer_installe(self):
+        sortie = (
+            "[verify-timer] backup_dir=/home/fablab/backup-fabsuite\n"
+            "[verify-timer] installed=0\n"
+            "[verify-timer] hint=Timer non installe : lance "
+            "'./fabsuite-ubuntu.sh install-verify-timer'.\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (0, sortie)
+
+        etat = self.backend.verify_timer_status()
+
+        self.assertNotIn("error", etat)
+        self.assertFalse(etat["installed"])
+        self.assertIn("install-verify-timer", etat["hint"])
+
+    def test_verify_timer_status_signale_l_erreur_ssh(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def echouer(commande, timeout_sec=60):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._exec_remote_capture = echouer
+
+        etat = self.backend.verify_timer_status()
+
+        self.assertIn("error", etat)
+        self.assertIn("connexion perdue", etat["error"])
+
     def test_verify_worker_affiche_les_snapshots_degrades(self):
         commandes = []
         sortie = (
@@ -253,6 +323,25 @@ class GuiBackupRestoreTest(unittest.TestCase):
         titre, message = self.alertes[0]
         self.assertEqual(titre, "Verification impossible")
         self.assertIn("connexion perdue", message)
+
+    def test_verify_timer_status_relit_le_marqueur_absent(self):
+        sortie = (
+            "[verify-timer] installed=1\n"
+            "[verify-timer] next=Thu 2026-11-20 04:30:00 CET\n"
+            "[verify-timer] result=success\n"
+            "[verify-timer] result_code=0\n"
+            "[verify-timer] marker=\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (0, sortie)
+
+        etat = self.backend.verify_timer_status()
+
+        self.assertTrue(etat["installed"])
+        self.assertEqual(etat["marker"], "")
+        self.assertEqual(etat["last_code"], "0")
+        self.assertEqual(etat["last_result"], "success")
 
     def test_list_volumes_parse_la_sortie_du_helper(self):
         self.backend._is_local_mode = lambda: False

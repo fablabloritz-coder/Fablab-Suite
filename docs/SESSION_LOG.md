@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : état du timer dans le GUI SSH
+
+**Objectif** : voir depuis le GUI la prochaine vérification planifiée, le
+résultat de la dernière et la présence du marqueur `verify-degrade`.
+
+**Implementation**
+- Helper : action `verify-timer-status` (lecture seule) émettant
+  `[verify-timer] clé=valeur` : installation, `active`/`enabled`, prochaine
+  exécution, dernier déclenchement, `Result`/`ExecMainStatus`/horodatage du
+  service et marqueur avec date et contenu. Timer absent → `installed=0` et
+  `hint` invitant à lancer `install-verify-timer` (code 0).
+- `HELPER_VERSION` passe à `2026-11-19-suite-backup-v10`.
+- GUI : bouton **État vérification** et ligne d'état dans la carte Sauvegarde &
+  restauration ; `verify_timer_status()` parse les lignes du helper, le JS
+  affiche timer, prochaine exécution, dernier résultat et marqueur (rouge si
+  présent, orange si timer non installé). Erreur SSH → message explicite.
+- Doc : README (carte SSH).
+
+**Verifications**
+- Tests backend : état complet avec marqueur (prochaine exécution, code 3),
+  marqueur absent avec dernier succès, timer non installé (hint), erreur SSH.
+- Assertions de câblage des deux actions helper ; `bash -n`, `node --check`,
+  suite `tests/`.
+
+**Risques / non couverts**
+- L'état n'est pas rafraîchi automatiquement à la connexion (bouton dédié) ;
+  le rendu n'a pas été vu dans un navigateur.
+
+**Prochaine action** : rafraîchir l'état après connexion et après une
+vérification lancée depuis le GUI.
+
+---
+
 ## 2026-11-19 — Suite : distinguer dégradation et vérification impossible
 
 **Objectif** : le timer ne doit pas poser `verify-degrade` quand aucun snapshot

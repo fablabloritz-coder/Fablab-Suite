@@ -103,6 +103,9 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 - **Vérifier les snapshots** : lance `verify --all` sur le serveur, affiche le
   bilan et la liste des snapshots dégradés (archive altérée, base corrompue,
   manifeste modifié), avec le détail des erreurs dans le journal `[verify]`.
+- **État vérification** : lit le timer planifié (prochaine exécution, dernier
+  résultat) et signale le marqueur `verify-degrade` ; si le timer n'est pas
+  installé, indique la commande `install-verify-timer` à lancer.
 - **Restaurer un snapshot** : liste les snapshots valides du serveur, puis lance
   `restore` sur celui choisi. Le modal liste aussi les volumes du snapshot
   (`Fabtrack/data`, `FabHome/icons`…) : sans sélection, tout est restauré ;

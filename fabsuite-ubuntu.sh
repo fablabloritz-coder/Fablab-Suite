@@ -16,7 +16,7 @@ RESTORE_DEST=""
 RESTORE_SOURCES=()
 VERIFY_ALL=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v9"
+HELPER_VERSION="2026-11-19-suite-backup-v10"
 
 usage() {
   cat <<'EOF'
@@ -35,6 +35,7 @@ Usage:
   ./fabsuite-ubuntu.sh verify --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
   ./fabsuite-ubuntu.sh verify --all [--dest /path/to/backups]
   ./fabsuite-ubuntu.sh install-verify-timer [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh verify-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -61,7 +62,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1467,6 +1468,44 @@ EOF
   echo "[verify-timer] journal: journalctl -u fabsuite-verify.service"
 }
 
+run_verify_timer_status() {
+  echo "===== Suite verify timer status ====="
+
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local marker="${backup_root}/verify-degrade"
+  local timer_unit="/etc/systemd/system/fabsuite-verify.timer"
+
+  echo "[verify-timer] backup_dir=${backup_root}"
+
+  # Pas de timer installe : signaler clairement l'action a faire, sans erreur.
+  if [[ ! -f "$timer_unit" ]]; then
+    echo "[verify-timer] installed=0"
+    echo "[verify-timer] hint=Timer non installe : lance './fabsuite-ubuntu.sh install-verify-timer'."
+    return 0
+  fi
+  echo "[verify-timer] installed=1"
+
+  if command -v systemctl >/dev/null 2>&1; then
+    echo "[verify-timer] active=$(systemctl is-active fabsuite-verify.timer 2>/dev/null || true)"
+    echo "[verify-timer] enabled=$(systemctl is-enabled fabsuite-verify.timer 2>/dev/null || true)"
+    echo "[verify-timer] next=$(systemctl show fabsuite-verify.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+    echo "[verify-timer] last_trigger=$(systemctl show fabsuite-verify.timer -p LastTriggerUSec --value 2>/dev/null || true)"
+    echo "[verify-timer] result=$(systemctl show fabsuite-verify.service -p Result --value 2>/dev/null || true)"
+    echo "[verify-timer] result_code=$(systemctl show fabsuite-verify.service -p ExecMainStatus --value 2>/dev/null || true)"
+    echo "[verify-timer] result_at=$(systemctl show fabsuite-verify.service -p ExecMainExitTimestamp --value 2>/dev/null || true)"
+  else
+    echo "[verify-timer] systemctl=absent"
+  fi
+
+  if [[ -f "$marker" ]]; then
+    echo "[verify-timer] marker=${marker}"
+    echo "[verify-timer] marker_at=$(stat -c '%y' "$marker" 2>/dev/null || true)"
+    echo "[verify-timer] marker_content=$(tr '\n' ' ' < "$marker" 2>/dev/null | cut -c1-200)"
+  else
+    echo "[verify-timer] marker="
+  fi
+}
+
 repo_exists() {
   local app="$1"
   [[ -d "${INSTALL_DIR}/${app}" && -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]
@@ -2038,6 +2077,9 @@ case "$ACTION" in
     ;;
   install-verify-timer)
     run_install_verify_timer
+    ;;
+  verify-timer-status)
+    run_verify_timer_status
     ;;
   install)
     run_install

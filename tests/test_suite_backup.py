@@ -1220,6 +1220,8 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("def verifier_snapshot", module)
         self.assertIn("install-verify-timer)", script)
         self.assertIn("run_install_verify_timer()", script)
+        self.assertIn("verify-timer-status)", script)
+        self.assertIn("run_verify_timer_status()", script)
         self.assertIn("fabsuite-verify.timer", script)
         self.assertIn("OnCalendar", script)
         self.assertIn("verify-degrade", script)
