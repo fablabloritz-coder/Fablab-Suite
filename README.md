@@ -100,6 +100,9 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 
 **Sauvegarde & restauration**
 - **Sauvegarder** : lance `backup` via le helper (snapshot vérifié, rotation incluse)
+- **Vérifier les snapshots** : lance `verify --all` sur le serveur, affiche le
+  bilan et la liste des snapshots dégradés (archive altérée, base corrompue,
+  manifeste modifié), avec le détail des erreurs dans le journal `[verify]`.
 - **Restaurer un snapshot** : liste les snapshots valides du serveur, puis lance
   `restore` sur celui choisi. Le modal liste aussi les volumes du snapshot
   (`Fabtrack/data`, `FabHome/icons`…) : sans sélection, tout est restauré ;

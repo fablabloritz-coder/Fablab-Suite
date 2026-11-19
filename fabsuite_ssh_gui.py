@@ -215,6 +215,10 @@ class FabSuiteBackend:
             self.action_backup()
 
         @eel.expose
+        def action_verify_snapshots():
+            self.action_verify_snapshots()
+
+        @eel.expose
         def action_restore(snapshot, destination="", sources=None):
             self.action_restore(snapshot, destination, sources)
 
@@ -546,7 +550,13 @@ class FabSuiteBackend:
             raise RuntimeError(err.strip() or out.strip() or f"command failed with code {code}")
         return out
 
-    def _exec_remote_logged(self, command, allow_failure=False, timeout_sec=180):
+    def _exec_remote_capture(self, command, timeout_sec=180):
+        """Execute une commande en journalisant sa sortie et la retourne.
+
+        Contrairement a `_exec_remote_simple`, un code non nul n'est pas une
+        exception : l'appelant decide (par exemple une verification de
+        snapshots degradee). Retourne `(code, sortie_stdout_et_stderr)`.
+        """
         self._require_connection()
         wrapped = f"bash -lc {shlex.quote(command)}"
         transport = self.client.get_transport()
@@ -558,6 +568,7 @@ class FabSuiteBackend:
         channel.exec_command(wrapped)
 
         start = time.time()
+        morceaux = []
 
         while True:
             had_data = False
@@ -566,12 +577,14 @@ class FabSuiteBackend:
                 if channel.recv_ready():
                     chunk = channel.recv(8192).decode("utf-8", errors="replace")
                     if chunk:
+                        morceaux.append(chunk)
                         self._log(chunk.rstrip())
                         had_data = True
 
                 if channel.recv_stderr_ready():
                     chunk = channel.recv_stderr(8192).decode("utf-8", errors="replace")
                     if chunk:
+                        morceaux.append(chunk)
                         self._log(chunk.rstrip())
                         had_data = True
             except socket.timeout:
@@ -594,6 +607,10 @@ class FabSuiteBackend:
                 time.sleep(0.1)
 
         self._log(f"Exit code: {code}")
+        return code, "".join(morceaux)
+
+    def _exec_remote_logged(self, command, allow_failure=False, timeout_sec=180):
+        code, _ = self._exec_remote_capture(command, timeout_sec=timeout_sec)
         if code != 0 and not allow_failure:
             raise RuntimeError("Remote command failed")
         return code
@@ -1489,6 +1506,90 @@ exit 0
             self._show_ssh_only_info("Sauvegarde de la suite")
             return
         self._run_async("Sauvegarde suite", self._backup_worker)
+
+    @staticmethod
+    def _parse_verify_output(sortie):
+        """Extrait le bilan et les snapshots invalides de `verify --all`."""
+        bilan = ""
+        invalides = {}
+        for ligne in sortie.splitlines():
+            ligne = ligne.strip()
+            if not ligne.startswith("[verify] "):
+                continue
+            texte = ligne[len("[verify] "):]
+            if texte.startswith("bilan:"):
+                bilan = texte.split("bilan:", 1)[1].strip()
+                continue
+            if texte.endswith(": ok") or ": ok (" in texte:
+                continue
+            nom, separateur, detail = texte.partition(":")
+            if not separateur:
+                continue
+            nom = nom.strip()
+            detail = detail.strip()
+            if not nom:
+                continue
+            if detail.startswith("INVALIDE"):
+                invalides.setdefault(nom, [])
+                continue
+            invalides.setdefault(nom, []).append(detail)
+        return {"bilan": bilan, "invalides": invalides}
+
+    def _verify_worker(self):
+        self._log("Verification des snapshots: verify --all en cours...")
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            code, sortie = self._exec_remote_capture(
+                self._helper_command("verify", extra_args=["--all"]),
+                timeout_sec=900,
+            )
+        except Exception as exc:
+            self._show_alert(
+                "Verification impossible",
+                f"Impossible de lancer verify --all: {exc}",
+            )
+            raise RuntimeError("verification impossible") from exc
+
+        if "MISE A JOUR REQUISE" in sortie:
+            self._show_alert(
+                "Mise a jour requise",
+                "Le serveur utilise un ancien suite_backup.py sans la commande "
+                "verify : lance './fabsuite-ubuntu.sh update' (ou le bouton "
+                "Mettre a jour), puis relance la verification.",
+            )
+            raise RuntimeError("verification indisponible (module ancien)")
+
+        resultat = self._parse_verify_output(sortie)
+        bilan = resultat["bilan"]
+        if code == 0:
+            self._log(f"Verification terminee: {bilan or 'snapshots valides'}.")
+            self._show_alert(
+                "Snapshots valides",
+                f"Verification terminee : {bilan or 'tous les snapshots sont valides'}.\n\n"
+                "Toutes les archives et bases SQLite sont saines.",
+            )
+            return
+
+        lignes = []
+        for nom, details in resultat["invalides"].items():
+            lignes.append(f"- {nom}")
+            lignes.extend(f"  {detail}" for detail in details[:3])
+        detail_txt = "\n".join(lignes) or "Consulte le journal [verify] pour le detail."
+        self._show_alert(
+            "Snapshots degrades",
+            f"Verification terminee : {bilan or f'code {code}'}.\n\n"
+            f"{detail_txt}\n\n"
+            "Verifie le snapshot signale avant de t'en servir "
+            "(./fabsuite-ubuntu.sh verify --snapshot <dossier>).",
+        )
+        raise RuntimeError(f"snapshots degrades ({bilan or code})")
+
+    def action_verify_snapshots(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Verification des snapshots")
+            return
+        self._run_async("Verification snapshots", self._verify_worker)
 
     def _restore_worker(self, snapshot, destination, sources=None):
         args = ["--snapshot", snapshot]

@@ -6,6 +6,37 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : bouton « Vérifier les snapshots » dans le GUI SSH
+
+**Objectif** : lancer `verify --all` depuis l'onglet SSH et voir immédiatement
+les snapshots dégradés, sans passer par le terminal.
+
+**Implementation**
+- Carte « Sauvegarde & restauration » : bouton **Vérifier les snapshots**
+  (`action_verify_snapshots`), disponible en mode Serveur SSH uniquement.
+- Backend : `_verify_worker` exécute `./fabsuite-ubuntu.sh verify --all` via
+  `_exec_remote_capture` (nouveau : journalise la sortie et retourne code +
+  texte, sans lever sur code non nul). `_exec_remote_logged` délègue désormais à
+  ce helper, sans duplication.
+- `_parse_verify_output` extrait le bilan et les snapshots `INVALIDE` avec
+  leur(s) erreur(s) ; alerte « Snapshots valides », « Snapshots degrades » ou
+  « Mise a jour requise » si le marqueur du helper est présent.
+- Doc : README (carte SSH).
+
+**Verifications**
+- 4 tests backend : bilan valide, snapshots dégradés (nom + erreur + bilan),
+  module ancien (invite `update`, sans marqueur technique), erreur SSH.
+- Suite `tests/` et `py_compile`.
+
+**Risques / non couverts**
+- Le rendu du bouton et le défilement de l'alerte n'ont pas été vus dans un
+  navigateur.
+
+**Prochaine action** : planifier `verify --all` périodiquement (timer) et
+proposer un bouton « Vérifier ce snapshot » dans le modal de restauration.
+
+---
+
 ## 2026-11-19 — Suite : vérification des snapshots (`verify`)
 
 **Objectif** : détecter un snapshot dégradé (archive altérée, base corrompue,

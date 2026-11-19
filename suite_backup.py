@@ -940,7 +940,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     continue
                 for erreur in resultat.errors:
-                    print(f"[verify] {dossier.name}: {erreur}", file=sys.stderr)
+                    print(f"[verify] {dossier}: {erreur}", file=sys.stderr)
                 print(
                     f"[verify] {dossier}: INVALIDE "
                     f"({len(resultat.errors)} erreur(s))"

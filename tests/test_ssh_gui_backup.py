@@ -160,6 +160,83 @@ class GuiBackupRestoreTest(unittest.TestCase):
         )
         self.assertEqual(self.alertes[0][0], "Restauration refusee")
 
+    def test_verify_worker_affiche_les_snapshots_degrades(self):
+        commandes = []
+        sortie = (
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-18-120000: ok (2 archive(s))\n"
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: archive alteree (Fabtrack-data.tgz)\n"
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: INVALIDE (1 erreur(s))\n"
+            "[verify] bilan: 1 ok, 1 invalide\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def capturer(commande, timeout_sec=180):
+            commandes.append(commande)
+            return 2, sortie
+
+        self.backend._exec_remote_capture = capturer
+
+        with self.assertRaises(RuntimeError):
+            self.backend._verify_worker()
+
+        self.assertIn("verify --all", commandes[0])
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Snapshots degrades")
+        self.assertIn("suite-2026-11-19-120000", message)
+        self.assertIn("archive alteree", message)
+        self.assertIn("1 ok, 1 invalide", message)
+
+    def test_verify_worker_affiche_un_bilan_valide(self):
+        sortie = (
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-18-120000: ok (2 archive(s))\n"
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: ok (3 archive(s))\n"
+            "[verify] bilan: 2 ok, 0 invalide(s)\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (0, sortie)
+
+        self.backend._verify_worker()
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Snapshots valides")
+        self.assertIn("2 ok, 0 invalide", message)
+
+    def test_verify_worker_invite_a_mettre_a_jour_un_module_ancien(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (
+            2,
+            "[verify] MISE A JOUR REQUISE: /opt/fabsuite/suite_backup.py "
+            "ne connait pas la commande verify (version ancienne).\n",
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._verify_worker()
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Mise a jour requise")
+        self.assertIn("ancien suite_backup.py", message)
+        self.assertIn("update", message)
+        self.assertNotIn("MISE A JOUR REQUISE", message)
+
+    def test_verify_worker_signale_une_erreur_ssh(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+
+        def echouer(commande, timeout_sec=180):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._exec_remote_capture = echouer
+
+        with self.assertRaises(RuntimeError):
+            self.backend._verify_worker()
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Verification impossible")
+        self.assertIn("connexion perdue", message)
+
     def test_list_volumes_parse_la_sortie_du_helper(self):
         self.backend._is_local_mode = lambda: False
         self.backend._require_connection = lambda: None

@@ -168,6 +168,7 @@
             <div class="row g-2 align-items-center">
               <div class="col-auto"><button class="btn btn-outline-success btn-sm action-btn ssh-btn" data-action="action_backup" data-confirm="Creer un snapshot verifie de la suite maintenant ? L'operation peut prendre plusieurs minutes." data-help="Snapshot horodate des bases SQLite et uploads, verifie avant validation.">&#x1F4BE; Sauvegarder</button></div>
               <div class="col-auto"><button class="btn btn-outline-warning btn-sm action-btn ssh-btn" data-action="action_restore" data-help="Restaure un snapshot valide (tous les volumes ou une selection) dans un dossier de staging vide.">&#x21BA; Restaurer un snapshot</button></div>
+              <div class="col-auto"><button class="btn btn-outline-info btn-sm action-btn ssh-btn" data-action="action_verify_snapshots" data-help="Relit les snapshots du serveur (manifeste, sha256, archives, integrite SQLite) et signale ceux qui sont degrades.">&#x2714; Vérifier les snapshots</button></div>
               <div class="col"><span class="text-muted small">Staging par defaut du helper si aucune destination n'est saisie.</span></div>
             </div>
           </div>
@@ -229,7 +230,7 @@
   <div class="modal fade" id="alertModal" tabindex="-1">
     <div class="modal-dialog"><div class="modal-content bg-modal">
       <div class="modal-header py-2"><h6 class="modal-title" id="alertTitle">Alerte</h6><button type="button" class="btn-close btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body" id="alertBody"></div>
+      <div class="modal-body" id="alertBody" style="white-space: pre-line;"></div>
       <div class="modal-footer py-1"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">OK</button></div>
     </div></div>
   </div>
