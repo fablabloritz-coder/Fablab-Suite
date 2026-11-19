@@ -8,6 +8,7 @@ tentative au moment de l'envoi.
 import os
 import sqlite3
 import sys
+import tempfile
 import unittest
 from datetime import datetime
 
@@ -17,8 +18,8 @@ if _APP_DIR not in sys.path:
 
 os.environ['TESTING'] = '1'
 
+import database  # noqa: E402
 import utils  # noqa: E402
-from database import purger_lignes_blocked_inutiles  # noqa: E402
 
 
 class MockSMTP:
@@ -78,6 +79,8 @@ class CompteurRappelsTests(unittest.TestCase):
                 depassement_heures REAL DEFAULT 0
             );
         ''')
+        # Meme DDL que init_db() : la purge s'appuie sur cette table.
+        self.conn.execute(database.SQL_CREATION_TABLE_ARCHIVE_RAPPELS)
         reglages = {
             'rappel_email_active': '1',
             'rappel_email_smtp_host': 'smtp.test.local',
@@ -121,6 +124,16 @@ class CompteurRappelsTests(unittest.TestCase):
             (f'2026-11-{jour:02d} {heure}', status),
         )
         return self.conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+    def _instantane_journal(self):
+        """Historique complet par identifiant, pret a comparer."""
+        colonnes = ', '.join(database.COLONNES_JOURNAL_RAPPELS)
+        return {
+            row['id']: tuple(row)
+            for row in self.conn.execute(
+                f'SELECT {colonnes} FROM rappels_email_log ORDER BY id'
+            )
+        }
 
     def _candidat(self, now=datetime(2026, 11, 17, 12, 0)):
         candidats = utils.lister_prets_pour_rappel_mail(self.conn, now=now)
@@ -222,7 +235,7 @@ class CompteurRappelsTests(unittest.TestCase):
         self._log('blocked', 6)
         self._log('blocked', 7)
 
-        supprimees = purger_lignes_blocked_inutiles(self.conn)
+        supprimees = database.purger_lignes_blocked_inutiles(self.conn)
         self.conn.commit()
         self.assertEqual(supprimees, 3)
 
@@ -250,58 +263,82 @@ class CompteurRappelsTests(unittest.TestCase):
             2,
         )
         # Reprise idempotente.
-        self.assertEqual(purger_lignes_blocked_inutiles(self.conn), 0)
+        self.assertEqual(
+            database.purger_lignes_blocked_inutiles(self.conn), 0)
 
     def test_la_purge_archive_les_lignes_supprimees(self):
         self._log('sent', 1)
         self._log('blocked', 2)
-        self._log('blocked', 3)
+        identifiant_archive = self._log('blocked', 3)
         self._log('blocked', 4)
+        # Valeurs non par defaut : l'archive doit les conserver.
+        self.conn.execute(
+            """UPDATE rappels_email_log
+               SET error_message = 'quota atteint', depassement_heures = 7.5
+               WHERE id = ?""",
+            (identifiant_archive,),
+        )
+        self.conn.commit()
+        avant = self._instantane_journal()
 
-        self.assertEqual(purger_lignes_blocked_inutiles(self.conn), 2)
+        self.assertEqual(
+            database.purger_lignes_blocked_inutiles(self.conn), 2)
         self.conn.commit()
 
-        archivees = self.conn.execute(
-            '''SELECT id, pret_id, personne_id, email, sent_at, status,
-                      archived_at, archive_reason
-               FROM rappels_email_log_archive ORDER BY id'''
-        ).fetchall()
-        self.assertEqual(
-            [row['sent_at'] for row in archivees],
-            ['2026-11-03 09:00:00', '2026-11-04 09:00:00'],
-        )
-        for row in archivees:
-            self.assertEqual(row['status'], 'blocked')
-            self.assertEqual(row['pret_id'], 1)
-            self.assertEqual(row['personne_id'], 1)
-            self.assertEqual(row['email'], 'alice@test.local')
+        # Seules les lignes supprimees (3 et 4) sont archivees, a l'identique.
+        nb_colonnes = len(database.COLONNES_JOURNAL_RAPPELS)
+        colonnes = ', '.join(database.COLONNES_JOURNAL_RAPPELS)
+        archivees = {
+            row['id']: row for row in self.conn.execute(
+                f'''SELECT {colonnes}, archived_at, archive_reason
+                    FROM {database.TABLE_ARCHIVE_RAPPELS} ORDER BY id'''
+            ).fetchall()
+        }
+        self.assertEqual(sorted(archivees), [3, 4])
+        for identifiant, row in archivees.items():
+            self.assertEqual(tuple(row)[:nb_colonnes], avant[identifiant])
             self.assertIsNotNone(row['archived_at'])
             self.assertIn('purge', row['archive_reason'])
+        self.assertEqual(sorted(self._instantane_journal()), [1, 2])
 
-        # Une seconde purge n'archive rien de plus.
-        self.assertEqual(purger_lignes_blocked_inutiles(self.conn), 0)
-        self.assertEqual(
+        # L'archive suffit a restaurer l'historique a l'identique.
+        marqueurs = ', '.join('?' for _ in range(nb_colonnes))
+        for row in archivees.values():
             self.conn.execute(
-                'SELECT COUNT(*) FROM rappels_email_log_archive'
-            ).fetchone()[0],
-            2,
-        )
-
-        # L'archive suffit a restaurer les lignes supprimees a l'identique.
-        for row in archivees:
-            self.conn.execute(
-                '''INSERT INTO rappels_email_log
-                   (id, pret_id, personne_id, email, sent_at, status,
-                    reminder_kind)
-                   VALUES (?, ?, ?, ?, ?, ?, 'overdue')''',
-                (row['id'], row['pret_id'], row['personne_id'],
-                 row['email'], row['sent_at'], row['status']),
+                f'''INSERT INTO rappels_email_log ({colonnes})
+                    VALUES ({marqueurs})''',
+                tuple(row)[:nb_colonnes],
             )
         self.conn.commit()
-        restaurees = self.conn.execute(
-            "SELECT COUNT(*) FROM rappels_email_log WHERE status='blocked'"
-        ).fetchone()[0]
-        self.assertEqual(restaurees, 3)
+        self.assertEqual(self._instantane_journal(), avant)
+
+    def test_init_db_cree_la_table_d_archive(self):
+        chemin_initial = database.DATABASE_PATH
+        dossier_initial = database.DATA_DIR
+        code_initial = database.RECOVERY_CODE_PATH
+        with tempfile.TemporaryDirectory() as dossier:
+            database.DATABASE_PATH = os.path.join(dossier, 'test.db')
+            database.DATA_DIR = dossier
+            database.RECOVERY_CODE_PATH = os.path.join(
+                dossier, 'code_recuperation.txt')
+            try:
+                database.init_db()
+                conn = database.get_db()
+                colonnes = {
+                    row['name'] for row in conn.execute(
+                        f'PRAGMA table_info({database.TABLE_ARCHIVE_RAPPELS})')
+                }
+                conn.close()
+            finally:
+                database.DATABASE_PATH = chemin_initial
+                database.DATA_DIR = dossier_initial
+                database.RECOVERY_CODE_PATH = code_initial
+
+        self.assertEqual(
+            colonnes,
+            set(database.COLONNES_JOURNAL_RAPPELS)
+            | {'archive_id', 'archived_at', 'archive_reason'},
+        )
 
     def test_l_historique_numerote_chaque_tentative(self):
         premier = self._log('sent', 1)

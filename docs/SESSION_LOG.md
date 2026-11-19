@@ -12,21 +12,26 @@ action imperative.
 l'historique des rappels.
 
 **Implementation**
-- Nouvelle table `rappels_email_log_archive` : les colonnes de
-  `rappels_email_log` telles qu'elles existent dans la base ouverte, plus
-  `archived_at` et `archive_reason`. Creee par `init_db()` et, a la demande,
-  par la purge (bases anciennes ou schema different).
-- `database.purger_lignes_blocked_inutiles(conn)` copie chaque ligne dans
-  l'archive avant son `DELETE`. Restaurer une ligne = la reinserer dans
-  `rappels_email_log` depuis l'archive.
+- Nouvelle table `rappels_email_log_archive` (`COLONNES_JOURNAL_RAPPELS`
+  plus `archive_id`, `archived_at`, `archive_reason`), creee par `init_db()`
+  a partir de `SQL_CREATION_TABLE_ARCHIVE_RAPPELS` : un seul DDL, partage
+  avec les tests, sans creation dynamique ni duplication de schema.
+- `database.purger_lignes_blocked_inutiles(conn)` archive en un seul
+  `INSERT ... SELECT` les lignes a supprimer avant leur `DELETE`.
+  Restaurer une ligne = la reinserer dans `rappels_email_log` depuis
+  l'archive.
 - Le message de reprise au demarrage indique l'archivage et le nom de la
   table.
 
 **Verifications**
-- Nouveau test `test_la_purge_archive_les_lignes_supprimees` : contenu
-  archive (identifiants, horodatages, raison), idempotence, restauration a
-  l'identique.
-- Suite PretGo : 62 tests OK.
+- `test_la_purge_archive_les_lignes_supprimees` : seules les lignes
+  supprimees sont archivees, colonne par colonne (dont `error_message` et
+  `depassement_heures` non par defaut), puis restauration a l'identique de
+  tout l'historique.
+- `test_init_db_cree_la_table_d_archive` : la table et ses colonnes existent
+  apres un `init_db()` reel sur une base temporaire.
+- Suite PretGo : 63 tests OK ; campagne `suite_tests.py --app pretgo
+  --offline` 2/2 PASS.
 
 **Risques / non couverts**
 - L'archive n'est jamais purgee automatiquement : elle grandit avec les
