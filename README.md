@@ -420,6 +420,26 @@ créé et le dernier snapshot valide ne sont jamais supprimés, même hors quota
 Une valeur `0` désactive la rotation. Un snapshot invalide ne déclenche jamais
 de rotation, pour qu'une série d'échecs n'efface pas l'historique sain.
 
+### Restaurer un snapshot
+
+```bash
+./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
+# ou vers un dossier de staging explicite (doit être vide) :
+./fabsuite-ubuntu.sh restore --snapshot <dossier> --dest /srv/restauration
+```
+
+Avant la moindre écriture, la commande vérifie le manifeste, son empreinte
+`manifest_sha256` stockée dans `snapshot.ok`, le `sha256` de chaque archive et
+la lisibilité de leur contenu. Elle refuse un snapshot invalide, une archive
+altérée et tout membre absolu, contenant `..`, hors `App/role` ou de type lien.
+La destination doit être vide et n'être ni un fichier ni un lien symbolique.
+
+Par défaut, l'extraction se fait dans un staging
+`$HOME/restore-fabsuite/<snapshot>` (ou `FABSUITE_RESTORE_DIR`) avec
+l'arborescence `App/role/…` : arrêter la suite, vérifier les fichiers, puis les
+recopier vers les chemins de données avant de redémarrer. Aucune donnée en
+place n'est écrasée par cette commande.
+
 `./fabsuite-ubuntu.sh update` prend automatiquement ce snapshot vérifié avant
 tout `git fetch/reset` et tout rebuild. Si le snapshot est invalide :
 

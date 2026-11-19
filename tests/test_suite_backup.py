@@ -432,6 +432,254 @@ class UpdateSnapshotTest(unittest.TestCase):
             self.assertFalse((racine / "backups").exists())
 
 
+class RestoreTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _creer_snapshot(self):
+        data = suite_backup.Source("Fabtrack", "data", self.root / "source/data")
+        creer_base(data.path / "fabtrack.db")
+        uploads = suite_backup.Source(
+            "Fabtrack", "uploads", self.root / "source/uploads"
+        )
+        uploads.path.mkdir(parents=True)
+        (uploads.path / "photo.bin").write_bytes(b"photo-restore")
+        resultat = suite_backup.creer_snapshot([data, uploads], self.dest)
+        self.assertEqual(resultat.status, "ok")
+        return resultat
+
+    def _resigner(self, dossier):
+        manifeste = dossier / "manifest.json"
+        donnees = json.loads(manifeste.read_text(encoding="utf-8"))
+        (dossier / "snapshot.ok").write_text(
+            "\n".join(
+                (
+                    f"snapshot={dossier.name}",
+                    f"created_at={donnees['created_at']}",
+                    f"manifest_sha256={suite_backup._sha256(manifeste)}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+    def test_restaure_un_snapshot_valide(self):
+        snapshot = self._creer_snapshot()
+        destination = self.root / "restauration"
+
+        resultat = suite_backup.restaurer_snapshot(snapshot.directory, destination)
+
+        self.assertEqual(resultat.errors, [])
+        self.assertEqual(
+            resultat.restored, ["Fabtrack/data", "Fabtrack/uploads"]
+        )
+        self.assertEqual(resultat.verified_archives, 2)
+        base = destination / "Fabtrack/data/fabtrack.db"
+        conn = sqlite3.connect(base)
+        try:
+            noms = [ligne[0] for ligne in conn.execute("SELECT nom FROM Personnes")]
+        finally:
+            conn.close()
+        self.assertEqual(noms, ["alpha", "beta"])
+        self.assertEqual(
+            (destination / "Fabtrack/uploads/photo.bin").read_bytes(),
+            b"photo-restore",
+        )
+
+    def test_cli_restore_restaure_un_snapshot_valide(self):
+        snapshot = self._creer_snapshot()
+        destination = self.root / "cli-restauration"
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "restore",
+                "--snapshot",
+                str(snapshot.directory),
+                "--dest",
+                str(destination),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        sortie = processus.stdout + processus.stderr
+
+        self.assertEqual(processus.returncode, 0, sortie)
+        self.assertIn("[restore] statut: ok", sortie)
+        self.assertTrue((destination / "Fabtrack/data/fabtrack.db").is_file())
+
+    def test_refuse_un_snapshot_invalide(self):
+        data = suite_backup.Source("Fabtrack", "data", self.root / "source/data")
+        creer_base(data.path / "fabtrack.db")
+        (data.path / "casse.db").write_bytes(b"SQLite format 3\x00" + b"\x00" * 2048)
+        snapshot = suite_backup.creer_snapshot([data], self.dest)
+        self.assertEqual(snapshot.status, "failed")
+        destination = self.root / "refus"
+
+        resultat = suite_backup.restaurer_snapshot(snapshot.directory, destination)
+
+        self.assertTrue(any("snapshot non valide" in erreur for erreur in resultat.errors))
+        self.assertTrue(any("snapshot.ok" in erreur for erreur in resultat.errors))
+        self.assertFalse(destination.exists())
+
+    def test_refuse_un_manifeste_altere(self):
+        snapshot = self._creer_snapshot()
+        manifeste = snapshot.directory / "manifest.json"
+        donnees = json.loads(manifeste.read_text(encoding="utf-8"))
+        donnees["label"] = "altere"
+        manifeste.write_text(json.dumps(donnees), encoding="utf-8")
+        destination = self.root / "refus"
+
+        resultat = suite_backup.restaurer_snapshot(snapshot.directory, destination)
+
+        self.assertTrue(any("manifeste altere" in erreur for erreur in resultat.errors))
+        self.assertFalse(destination.exists())
+
+    def test_refuse_une_archive_alteree(self):
+        snapshot = self._creer_snapshot()
+        with (snapshot.directory / "Fabtrack-data.tgz").open("ab") as archive:
+            archive.write(b"corruption")
+        destination = self.root / "refus"
+
+        resultat = suite_backup.restaurer_snapshot(snapshot.directory, destination)
+
+        self.assertTrue(any("archive alteree" in erreur for erreur in resultat.errors))
+        self.assertFalse(destination.exists())
+
+    def test_refuse_les_chemins_hors_destination(self):
+        snapshot = self._creer_snapshot()
+        archive = snapshot.directory / "Fabtrack-data.tgz"
+        with tarfile.open(archive, "w:gz") as tar:
+            contenu = b"ok"
+            info = tarfile.TarInfo("Fabtrack/data/ok.txt")
+            info.size = len(contenu)
+            tar.addfile(info, io.BytesIO(contenu))
+
+            evasion = b"evasion"
+            info = tarfile.TarInfo("../evasion.txt")
+            info.size = len(evasion)
+            tar.addfile(info, io.BytesIO(evasion))
+
+            lien = tarfile.TarInfo("Fabtrack/data/lien")
+            lien.type = tarfile.SYMTYPE
+            lien.linkname = "/etc/passwd"
+            tar.addfile(lien)
+
+        manifeste = snapshot.directory / "manifest.json"
+        donnees = json.loads(manifeste.read_text(encoding="utf-8"))
+        for entree in donnees["sources"]:
+            if entree.get("archive") == archive.name:
+                entree["sha256"] = suite_backup._sha256(archive)
+        manifeste.write_text(json.dumps(donnees), encoding="utf-8")
+        self._resigner(snapshot.directory)
+
+        destination = self.root / "refus"
+        resultat = suite_backup.restaurer_snapshot(snapshot.directory, destination)
+
+        self.assertTrue(any("chemin refuse" in erreur for erreur in resultat.errors))
+        self.assertTrue(
+            any("type de membre refuse" in erreur for erreur in resultat.errors)
+        )
+        self.assertFalse(destination.exists())
+        self.assertFalse((self.root / "evasion.txt").exists())
+
+    def test_refuse_une_destination_symlink(self):
+        snapshot = self._creer_snapshot()
+        cible = self.root / "vide"
+        cible.mkdir()
+        lien = self.root / "lien"
+        lien.symlink_to(cible, target_is_directory=True)
+
+        resultat = suite_backup.restaurer_snapshot(snapshot.directory, lien)
+
+        self.assertTrue(
+            any("lien symbolique" in erreur for erreur in resultat.errors)
+        )
+        self.assertEqual(list(cible.iterdir()), [])
+
+    def test_refuse_une_destination_non_vide(self):
+        snapshot = self._creer_snapshot()
+        destination = self.root / "occupee"
+        destination.mkdir()
+        (destination / "keep.txt").write_text("keep\n", encoding="utf-8")
+
+        resultat = suite_backup.restaurer_snapshot(snapshot.directory, destination)
+
+        self.assertTrue(
+            any("destination non vide" in erreur for erreur in resultat.errors)
+        )
+        self.assertEqual((destination / "keep.txt").read_text(), "keep\n")
+        self.assertFalse((destination / "Fabtrack").exists())
+
+
+class HelperRestoreIntegrationTest(unittest.TestCase):
+    def test_l_action_restore_extrait_dans_le_staging(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            install = racine / "suite"
+            install.mkdir()
+            shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
+            data = suite_backup.Source("FabHome", "data", install / "source/data")
+            creer_base(data.path / "fabhome.db")
+            snapshot = suite_backup.creer_snapshot([data], racine / "backups")
+            self.assertEqual(snapshot.status, "ok")
+
+            installer = racine / "installer"
+            installer.mkdir()
+            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+            env_file = installer / "fabsuite-ubuntu.env"
+            env_file.write_text(
+                "\n".join(
+                    (
+                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                        "GIT_BRANCH=main",
+                        f"INSTALL_DIR={install}",
+                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                        "FLASK_SECRET_KEY=test-secret",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            destination = racine / "restauration"
+            env = os.environ.copy()
+            env["HOME"] = str(racine / "home")
+            processus = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "restore",
+                    "--snapshot",
+                    str(snapshot.directory),
+                    "--dest",
+                    str(destination),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("[restore] statut: ok", sortie)
+            self.assertTrue((destination / "FabHome/data/fabhome.db").is_file())
+
+
 class RotationTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -550,6 +798,13 @@ class HelperWiringTest(unittest.TestCase):
             "FABSUITE_BACKUP_RETENTION_DAYS",
         ):
             self.assertIn(nom, module)
+
+        self.assertIn("restore)", script)
+        self.assertIn("run_suite_restore()", script)
+        self.assertIn("--snapshot", script)
+        self.assertIn("restaurer_snapshot", module)
+        self.assertIn("--snapshot", module)
+        self.assertIn("destination refusee (lien symbolique)", module)
 
         if shutil.which("bash"):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)

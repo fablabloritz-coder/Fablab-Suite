@@ -11,8 +11,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/fabsuite-ubuntu.env"
 ACTION=""
 LOG_APP=""
+RESTORE_SNAPSHOT=""
+RESTORE_DEST=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v3"
+HELPER_VERSION="2026-11-19-suite-backup-v4"
 
 usage() {
   cat <<'EOF'
@@ -25,6 +27,7 @@ Usage:
   ./fabsuite-ubuntu.sh repair-env [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh check-data-safety [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh backup [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh restore --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS [--dest /chemin/vide]
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -41,6 +44,7 @@ Examples:
   ./fabsuite-ubuntu.sh repair-env
   ./fabsuite-ubuntu.sh check-data-safety
   ./fabsuite-ubuntu.sh backup
+  ./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
   ./fabsuite-ubuntu.sh install
   ./fabsuite-ubuntu.sh status
   ./fabsuite-ubuntu.sh logs Fabtrack
@@ -49,7 +53,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -59,6 +63,22 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ENV_FILE="$2"
+      shift 2
+      ;;
+    --snapshot)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --snapshot requires a value"
+        exit 1
+      fi
+      RESTORE_SNAPSHOT="$2"
+      shift 2
+      ;;
+    --dest)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --dest requires a value"
+        exit 1
+      fi
+      RESTORE_DEST="$2"
       shift 2
       ;;
     -h|--help)
@@ -1186,6 +1206,14 @@ run_check_data_safety() {
   return 0
 }
 
+resolve_suite_backup_module() {
+  if [[ -f "${INSTALL_DIR}/suite_backup.py" ]]; then
+    printf '%s' "${INSTALL_DIR}/suite_backup.py"
+  elif [[ -f "${SCRIPT_DIR}/suite_backup.py" ]]; then
+    printf '%s' "${SCRIPT_DIR}/suite_backup.py"
+  fi
+}
+
 run_suite_backup() {
   require_cmd python3
 
@@ -1198,12 +1226,9 @@ run_suite_backup() {
     return 2
   fi
 
-  local backup_module=""
-  if [[ -f "${INSTALL_DIR}/suite_backup.py" ]]; then
-    backup_module="${INSTALL_DIR}/suite_backup.py"
-  elif [[ -f "${SCRIPT_DIR}/suite_backup.py" ]]; then
-    backup_module="${SCRIPT_DIR}/suite_backup.py"
-  else
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
     echo "[backup] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})."
     echo "[backup] Lance './fabsuite-ubuntu.sh update' pour recuperer le monorepo courant."
     return 2
@@ -1235,6 +1260,36 @@ run_suite_backup() {
 
   echo "[backup] destination: ${backup_root}"
   python3 "$backup_module" snapshot --dest "$backup_root" "${args[@]}"
+}
+
+run_suite_restore() {
+  require_cmd python3
+  echo "===== Suite restore snapshot ====="
+
+  if [[ -z "$RESTORE_SNAPSHOT" ]]; then
+    echo "[restore] ERROR: --snapshot <dossier> requis."
+    echo "[restore] Exemple: ./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000"
+    return 2
+  fi
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[restore] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})."
+    echo "[restore] Lance './fabsuite-ubuntu.sh update' pour recuperer le monorepo courant."
+    return 2
+  fi
+
+  # Par defaut, restauration dans un dossier de staging : l'operateur verifie
+  # puis copie vers les chemins de donnees, applicatifs arretes.
+  local destination="$RESTORE_DEST"
+  if [[ -z "$destination" ]]; then
+    destination="${FABSUITE_RESTORE_DIR:-$HOME/restore-fabsuite}/$(basename "${RESTORE_SNAPSHOT%/}")"
+  fi
+
+  echo "[restore] snapshot: ${RESTORE_SNAPSHOT}"
+  echo "[restore] destination: ${destination}"
+  python3 "$backup_module" restore --snapshot "$RESTORE_SNAPSHOT" --dest "$destination"
 }
 
 repo_exists() {
@@ -1793,6 +1848,9 @@ case "$ACTION" in
     ;;
   backup)
     run_suite_backup
+    ;;
+  restore)
+    run_suite_restore
     ;;
   install)
     run_install

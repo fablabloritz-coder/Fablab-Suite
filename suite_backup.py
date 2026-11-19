@@ -20,7 +20,13 @@ Apres un snapshot valide, la retention supprime les snapshots hors quota
 (nombre via `FABSUITE_BACKUP_RETENTION_COUNT`, ou age via
 `FABSUITE_BACKUP_RETENTION_DAYS`) sans jamais toucher au dernier valide.
 
-Sortie : 0 si le snapshot est valide, 2 sinon (le manifeste explique pourquoi).
+`restore` verifie le manifeste, son empreinte dans `snapshot.ok` et chaque
+archive (sha256, lisibilite, chemins) avant d'extraire dans une destination
+vide. Un snapshot invalide, une archive alteree ou un membre hors destination
+sont refuses sans rien ecrire.
+
+Sortie : 0 si le snapshot est valide (ou la restauration reussie),
+2 sinon (le manifeste explique pourquoi).
 """
 from __future__ import annotations
 
@@ -78,6 +84,18 @@ class SnapshotResult:
     @property
     def warnings(self) -> list[str]:
         return list(self.manifest.get("warnings", []))
+
+
+@dataclass
+class RestoreResult:
+    """Resultat d'une restauration : volumes extraits et refus eventuels."""
+
+    snapshot: Path
+    destination: Path
+    restored: list[str] = field(default_factory=list)
+    ignored: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    verified_archives: int = 0
 
 
 @dataclass
@@ -418,6 +436,216 @@ def _retention_depuis_env() -> tuple[int, int]:
     )
 
 
+def _lire_marqueur(chemin: Path) -> dict[str, str]:
+    try:
+        lignes = chemin.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    valeurs: dict[str, str] = {}
+    for ligne in lignes:
+        if "=" in ligne:
+            cle, valeur = ligne.split("=", 1)
+            valeurs[cle.strip()] = valeur.strip()
+    return valeurs
+
+
+def _nom_membre(nom: str) -> str:
+    return nom.rstrip("/")
+
+
+def _chemin_membre_sur(nom: str) -> bool:
+    """Nom relatif sans `..`, sans racine absolue et sans separateur Windows."""
+    if not nom or nom.startswith("/") or "\\" in nom:
+        return False
+    return all(partie not in ("", ".", "..") for partie in nom.split("/"))
+
+
+def _verifier_membres(archive: Path, app: str, role: str) -> list[str]:
+    """Controle les chemins et types de chaque membre avant toute extraction."""
+    prefixe = f"{app}/{role}"
+    erreurs: list[str] = []
+    try:
+        with tarfile.open(archive, "r:gz") as tar:
+            for membre in tar:
+                nom = _nom_membre(membre.name)
+                if not _chemin_membre_sur(nom):
+                    erreurs.append(
+                        f"{archive.name}: chemin refuse ({membre.name!r})"
+                    )
+                    continue
+                if nom != prefixe and not nom.startswith(prefixe + "/"):
+                    erreurs.append(
+                        f"{archive.name}: membre hors {prefixe} ({membre.name!r})"
+                    )
+                    continue
+                if not (membre.isfile() or membre.isdir()):
+                    erreurs.append(
+                        f"{archive.name}: type de membre refuse ({membre.name!r})"
+                    )
+                    continue
+                if membre.isfile():
+                    flux = tar.extractfile(membre)
+                    if flux is None:
+                        erreurs.append(
+                            f"{archive.name}: membre illisible ({membre.name!r})"
+                        )
+                        continue
+                    with flux:
+                        while flux.read(1024 * 1024):
+                            pass
+    except (tarfile.TarError, OSError) as exc:
+        erreurs.append(f"{archive.name}: archive illisible ({exc})")
+    return erreurs
+
+
+def _extraire_archive(
+    archive: Path,
+    destination: Path,
+    app: str,
+    role: str,
+    erreurs: list[str],
+) -> None:
+    """Extrait une archive deja verifiee, avec controle de confinement."""
+    prefixe = f"{app}/{role}"
+    racine = destination.resolve()
+    try:
+        with tarfile.open(archive, "r:gz") as tar:
+            for membre in tar:
+                nom = _nom_membre(membre.name)
+                if not _chemin_membre_sur(nom) or not (
+                    nom == prefixe or nom.startswith(prefixe + "/")
+                ):
+                    erreurs.append(
+                        f"{archive.name}: membre refuse a l'extraction ({membre.name!r})"
+                    )
+                    continue
+                cible = destination / nom
+                try:
+                    cible.resolve().relative_to(racine)
+                except ValueError:
+                    erreurs.append(
+                        f"{archive.name}: chemin hors destination ({membre.name!r})"
+                    )
+                    continue
+                if membre.isdir():
+                    cible.mkdir(parents=True, exist_ok=True)
+                    continue
+                if not membre.isfile():
+                    erreurs.append(
+                        f"{archive.name}: type de membre refuse ({membre.name!r})"
+                    )
+                    continue
+                cible.parent.mkdir(parents=True, exist_ok=True)
+                flux = tar.extractfile(membre)
+                if flux is None:
+                    erreurs.append(
+                        f"{archive.name}: membre illisible ({membre.name!r})"
+                    )
+                    continue
+                with flux, cible.open("wb") as sortie:
+                    shutil.copyfileobj(flux, sortie)
+    except (tarfile.TarError, OSError) as exc:
+        erreurs.append(f"{archive.name}: extraction impossible ({exc})")
+
+
+def restaurer_snapshot(
+    snapshot: Path | str, destination: Path | str
+) -> RestoreResult:
+    """Restaure un snapshot valide dans une destination vide.
+
+    Le manifeste, l'empreinte stockee dans `snapshot.ok` et chaque archive
+    sont verifies avant la moindre ecriture. Les chemins absolus, `..`, les
+    liens et les membres hors `App/role` sont refuses.
+    """
+    snapshot = Path(snapshot).expanduser()
+    destination = Path(destination).expanduser()
+    resultat = RestoreResult(snapshot=snapshot, destination=destination)
+
+    manifeste = _lire_manifeste(snapshot)
+    if manifeste is None:
+        resultat.errors.append(
+            f"manifeste absent ou illisible: {snapshot / 'manifest.json'}"
+        )
+        return resultat
+    if manifeste.get("format") != FORMAT_VERSION:
+        resultat.errors.append(f"format non supporte: {manifeste.get('format')!r}")
+    if manifeste.get("status") != "ok":
+        resultat.errors.append(
+            f"snapshot non valide (status={manifeste.get('status')!r})"
+        )
+    if manifeste.get("snapshot") != snapshot.name:
+        resultat.errors.append("nom du snapshot incoherent avec le manifeste")
+
+    marqueur = snapshot / "snapshot.ok"
+    if not marqueur.is_file():
+        resultat.errors.append("marqueur snapshot.ok absent")
+    else:
+        attendu = _lire_marqueur(marqueur).get("manifest_sha256", "")
+        if not attendu or _sha256(snapshot / "manifest.json") != attendu:
+            resultat.errors.append("manifeste altere (sha256 different de snapshot.ok)")
+
+    if destination.is_symlink():
+        resultat.errors.append(f"destination refusee (lien symbolique): {destination}")
+    elif destination.exists():
+        if not destination.is_dir():
+            resultat.errors.append(f"destination non valide (fichier): {destination}")
+        elif any(destination.iterdir()):
+            resultat.errors.append(f"destination non vide: {destination}")
+
+    sources = manifeste.get("sources")
+    if not isinstance(sources, list) or not sources:
+        resultat.errors.append("manifeste sans sources")
+
+    archives: list[tuple[Path, str, str]] = []
+    for entree in sources if isinstance(sources, list) else []:
+        if not isinstance(entree, dict):
+            resultat.errors.append("entree de source invalide dans le manifeste")
+            continue
+        app = str(entree.get("app") or "")
+        role = str(entree.get("role") or "")
+        if not NOM_VALIDE.match(app) or not NOM_VALIDE.match(role):
+            resultat.errors.append(f"source invalide dans le manifeste: {app!r}/{role!r}")
+            continue
+        if not entree.get("exists"):
+            resultat.ignored.append(f"{app}/{role}")
+            continue
+        nom_archive = str(entree.get("archive") or "")
+        if not nom_archive or Path(nom_archive).name != nom_archive:
+            resultat.errors.append(
+                f"{app} {role}: nom d'archive refuse ({nom_archive!r})"
+            )
+            continue
+        archive = snapshot / nom_archive
+        if not archive.is_file():
+            resultat.errors.append(f"{app} {role}: archive absente ({nom_archive})")
+            continue
+        attendu_sha = str(entree.get("sha256") or "")
+        if not attendu_sha or _sha256(archive) != attendu_sha:
+            resultat.errors.append(f"{app} {role}: archive alteree ({nom_archive})")
+            continue
+        resultat.errors.extend(_verifier_membres(archive, app, role))
+        archives.append((archive, app, role))
+
+    if not resultat.errors and not archives:
+        resultat.errors.append("aucune archive a restaurer")
+    if resultat.errors:
+        return resultat
+
+    resultat.verified_archives = len(archives)
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        resultat.errors.append(f"destination impossible ({exc})")
+        return resultat
+
+    for archive, app, role in archives:
+        avant = len(resultat.errors)
+        _extraire_archive(archive, destination, app, role, resultat.errors)
+        if len(resultat.errors) == avant:
+            resultat.restored.append(f"{app}/{role}")
+    return resultat
+
+
 def _parser_source(brut: str) -> Source:
     morceaux = brut.split("|", 2)
     if len(morceaux) != 3 or not all(morceau.strip() for morceau in morceaux):
@@ -430,9 +658,14 @@ def main(argv: list[str] | None = None) -> int:
     parseur = argparse.ArgumentParser(
         description="Snapshot horodate et verifie des donnees de la FabLab Suite."
     )
-    parseur.add_argument("command", choices=["snapshot"])
+    parseur.add_argument("command", choices=["snapshot", "restore"])
     parseur.add_argument(
-        "--dest", required=True, help="dossier racine des snapshots"
+        "--dest",
+        required=True,
+        help="racine des snapshots (snapshot) ou destination vide (restore)",
+    )
+    parseur.add_argument(
+        "--snapshot", default="", help="dossier du snapshot a restaurer"
     )
     parseur.add_argument(
         "--source",
@@ -455,6 +688,30 @@ def main(argv: list[str] | None = None) -> int:
         help="age maximal en jours (prioritaire sur le nombre; 0 = mode nombre)",
     )
     args = parseur.parse_args(argv)
+
+    if args.command == "restore":
+        if not args.snapshot.strip():
+            print("[restore] ECHEC: --snapshot requis", file=sys.stderr)
+            return 2
+        resultat = restaurer_snapshot(args.snapshot, args.dest)
+        for ignore in resultat.ignored:
+            print(f"[restore] ignore (source absente au snapshot): {ignore}")
+        for erreur in resultat.errors:
+            print(f"[restore] ERROR: {erreur}", file=sys.stderr)
+        if resultat.errors:
+            print(
+                f"[restore] ECHEC: restauration refusee ou incomplete "
+                f"({len(resultat.errors)} erreur(s))",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"[restore] snapshot: {resultat.snapshot}")
+        print(f"[restore] verifie: {resultat.verified_archives} archive(s)")
+        print(f"[restore] destination: {resultat.destination}")
+        for volume in resultat.restored:
+            print(f"[restore] restaure: {volume}")
+        print("[restore] statut: ok")
+        return 0
 
     try:
         sources = [_parser_source(brut) for brut in args.source]

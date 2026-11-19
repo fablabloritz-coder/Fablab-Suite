@@ -69,6 +69,9 @@ Ce que fait la commande:
 # (prend d'abord un snapshot vérifié dans ~/backup-fabsuite)
 ./fabsuite-ubuntu.sh update
 
+# Restaurer un snapshot dans un dossier de staging vérifié
+./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
+
 # Démarrer / arrêter / redémarrer
 ./fabsuite-ubuntu.sh start
 ./fabsuite-ubuntu.sh stop

@@ -6,6 +6,54 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : restauration verifiee d'un snapshot
+
+**Objectif** : restaurer un snapshot sans jamais ecrire de donnees non
+verifiees, et sans permettre a une archive piegee de sortir de la destination.
+
+**Implementation**
+- `restaurer_snapshot()` dans `suite_backup.py` + commande
+  `restore --snapshot <dossier> --dest <dossier vide>`.
+- Verification avant toute extraction : format, `status=ok`, nom coherent avec
+  le manifeste, presence de `snapshot.ok`, `manifest_sha256` identique au
+  manifeste, `sha256` de chaque archive, lisibilite gzip/tar des membres.
+- Refus : snapshot invalide, archive alteree, membre absolu, `..`, backslash,
+  hors `App/role`, membre non fichier/dossier (liens, devices), destination
+  non vide, fichier ou lien symbolique.
+- Extraction manuelle member par member, avec confinement
+  `Path.resolve().relative_to(destination)` re-verifie ; rien n'est cree avant
+  la fin des verifications.
+- Helper : action `restore --snapshot <dossier> [--dest <dossier>]`, staging
+  par defaut `$FABSUITE_RESTORE_DIR` ou `$HOME/restore-fabsuite/<snapshot>` ;
+  resolution du module factorisee dans `resolve_suite_backup_module()` ;
+  `HELPER_VERSION` passe a `2026-11-19-suite-backup-v4`.
+- Docs : README, INSTALL_UBUNTU, `FABSUITE_RESTORE_DIR` dans l'env example.
+
+**Verifications**
+- 25 tests du module, dont 9 pour la restauration : restauration valide
+  (SQLite + uploads relus), CLI module, action helper reelle, snapshot invalide,
+  manifeste altere, archive alteree, traversal + lien symbolique dans
+  l'archive, destination symlink, destination non vide.
+- `bash -n fabsuite-ubuntu.sh` OK.
+- Suite racine : 46 tests OK.
+- Campagne `suite_tests.py --offline` : 9/9 PASS (1 SKIP attendu : contrat
+  FabInventory absent), exit 0.
+
+**Risques / non couverts**
+- Restauration en staging uniquement : la copie vers les chemins de donnees en
+  place reste manuelle et volontairement non automatisee.
+- Pas de selection d'une app/role : toutes les archives valides du snapshot
+  sont extraites.
+- Une erreur d'ecriture pendant l'extraction peut laisser une destination
+  partielle, a supprimer avant de reessayer.
+- L'integrite SQLite n'est pas revalidee a la restauration : elle l'a ete a la
+  creation et les archives sont couvertes par leur sha256.
+
+**Prochaine action** : exposer backup/restore dans le GUI, puis proposer une
+restauration ciblee par application.
+
+---
+
 ## 2026-11-19 — Suite : rotation des snapshots
 
 **Objectif** : eviter l'accumulation des snapshots sans risque de perdre la
