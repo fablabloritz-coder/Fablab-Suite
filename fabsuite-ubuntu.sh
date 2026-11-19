@@ -1626,19 +1626,6 @@ notify_state_file() {
   printf '%s\n' "${backup_root}/notify-${service}.state"
 }
 
-notify_state_info() {
-  # Lecture unique de l'etat d'anti-rebond : `present|date`, ou
-  # `lien symbolique|` pour un fichier d'etat qui n'est jamais suivi.
-  local state="$1"
-  if [[ -L "$state" ]]; then
-    printf 'lien symbolique|\n'
-  elif [[ -f "$state" ]]; then
-    printf '1|%s\n' "$(stat -c '%y' "$state" 2>/dev/null || true)"
-  else
-    printf '0|\n'
-  fi
-}
-
 notify_validate_service() {
   local service="$1"
   if [[ -z "$service" ]]; then
@@ -1696,12 +1683,19 @@ run_notify_status() {
   echo "[notify-status] webhook=${webhook}"
   echo "[notify-status] email=${email}"
 
-  local service state info present at
+  local service state present at
   for service in backup verify; do
     state="$(notify_state_file "$service")"
-    info="$(notify_state_info "$state")"
-    present="${info%%|*}"
-    at="${info#*|}"
+    # Un fichier d'etat en lien symbolique n'est jamais suivi ; sa presence est
+    # signalee pour que l'operateur sache qu'aucune alerte n'est possible.
+    present=0
+    at=""
+    if [[ -L "$state" ]]; then
+      present="lien symbolique"
+    elif [[ -f "$state" ]]; then
+      present=1
+      at="$(stat -c '%y' "$state" 2>/dev/null || true)"
+    fi
     echo "[notify-status] ${service}_state=${state}"
     echo "[notify-status] ${service}_state_present=${present}"
     echo "[notify-status] ${service}_alert_at=${at}"

@@ -6,6 +6,35 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Revue finale de la chaîne de notifications
+
+**Objectif** : dernier passage sur l'anti-rebond et ses consommateurs, retirer
+ce qui ne sert plus et couvrir les cas encore muets.
+
+**Implementation**
+- Suppression de `notify_state_info` : après le retrait de son second appelant,
+  il ne restait qu'un usage et son encodage `present|date` (puis `${info%%|*}`)
+  était plus opaque que la lecture directe. `notify-status` lit désormais l'état
+  dans sa boucle (lien symbolique / fichier / absent).
+- README : ponctuation homogène de la liste anti-rebond.
+
+**Verifications**
+- Nouveau test : `notify-status` sans `FABSUITE_BACKUP_DIR` utilise bien
+  `$HOME/backup-fabsuite` pour le dossier et les deux chemins d'état.
+- Test « aucune cible » étendu : `notify-status` renvoie
+  `webhook=absent`/`email=absent` (source du signalement orange du GUI).
+- Suite complète 128 tests OK, `bash -n`, `py_compile`, `node --check` ; plus
+  aucune référence à `notify_state_info`.
+
+**Risques / non couverts**
+- Inchangés : branches `sendmail` et « ni mail ni sendmail » non testées, rendu
+  navigateur non vérifié, unités systemd non exécutées.
+
+**Prochaine action** : vérifier visuellement la carte Sauvegarde &
+restauration dans le navigateur.
+
+---
+
 ## 2026-11-19 — Contrôle complet de la chaîne de notifications
 
 **Objectif** : vérifier de bout en bout `notify-status`, l'anti-rebond, le reset

@@ -595,7 +595,7 @@ exécutions suivantes en échec ne renvoient rien et journalisent seulement
 - l'état est propre à chaque service : un échec de `verify` n'est pas masqué par
   une alerte `backup` déjà envoyée ;
 - un backup réussi (même lancé à la main depuis le GUI) ou un `verify --all`
-  sain réinitialise l'anti-rebond du service correspondant via `notify-reset`.
+  sain réinitialise l'anti-rebond du service correspondant via `notify-reset` ;
 - un envoi totalement échoué (webhook injoignable, `mail` absent) n'arme pas
   l'anti-rebond : la tentative est refaite à l'exécution suivante ;
 - `notify-status` donne les destinations configurées et l'état détaillé des

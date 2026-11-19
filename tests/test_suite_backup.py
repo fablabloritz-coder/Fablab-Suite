@@ -1607,7 +1607,9 @@ class HelperClearMarkersTest(unittest.TestCase):
 class HelperNotifyFailureTest(unittest.TestCase):
     """Notification externe configurable, sans faire echouer l'unite."""
 
-    def _preparer(self, racine, lignes_env=(), curl_exit=0, mail_exit=0):
+    def _preparer(
+        self, racine, lignes_env=(), curl_exit=0, mail_exit=0, backup_dir=True
+    ):
         install = racine / "suite"
         install.mkdir()
         installer = racine / "installer"
@@ -1636,19 +1638,15 @@ class HelperNotifyFailureTest(unittest.TestCase):
         (faux_bin / "mail").chmod(0o755)
 
         env_file = installer / "fabsuite-ubuntu.env"
-        env_file.write_text(
-            "\n".join(
-                (
-                    f"INSTALL_DIR={install}",
-                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
-                    "FLASK_SECRET_KEY=test-secret",
-                    f"FABSUITE_BACKUP_DIR={racine / 'backups'}",
-                    *lignes_env,
-                    "",
-                )
-            ),
-            encoding="utf-8",
-        )
+        entrees = [
+            f"INSTALL_DIR={install}",
+            'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+            "FLASK_SECRET_KEY=test-secret",
+        ]
+        if backup_dir:
+            entrees.append(f"FABSUITE_BACKUP_DIR={racine / 'backups'}")
+        entrees.extend(lignes_env)
+        env_file.write_text("\n".join((*entrees, "")), encoding="utf-8")
 
         env = os.environ.copy()
         env["PATH"] = f"{faux_bin}:{env['PATH']}"
@@ -1786,6 +1784,11 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertFalse(journal.exists())
             self.assertFalse(args.exists())
             self.assertFalse(corps.exists())
+
+            # Le GUI s'appuie sur ces deux lignes pour signaler l'absence de cible.
+            statut = self._status(installer, env_file, env)
+            self.assertIn("[notify-status] webhook=absent", statut.stdout)
+            self.assertIn("[notify-status] email=absent", statut.stdout)
 
     def test_erreur_d_envoi_ne_fait_pas_echouer(self):
         if not shutil.which("bash"):
@@ -2016,6 +2019,31 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
             self.assertEqual(reset.returncode, 2, sortie)
             self.assertIn("doit valoir backup ou verify", sortie)
+
+    def test_notify_status_utilise_le_dossier_par_defaut(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, _args, _corps = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+                backup_dir=False,
+            )
+            defaut = racine / "home" / "backup-fabsuite"
+
+            processus = self._status(installer, env_file, env)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn(f"[notify-status] backup_dir={defaut}", sortie)
+            self.assertIn(
+                f"[notify-status] backup_state={defaut / 'notify-backup.state'}",
+                sortie,
+            )
 
     def test_notify_status_destinations_configurees(self):
         if not shutil.which("bash"):
