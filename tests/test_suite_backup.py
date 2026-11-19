@@ -638,6 +638,38 @@ class RestoreTest(unittest.TestCase):
         self.assertTrue((destination / "Fabtrack/data/fabtrack.db").is_file())
         self.assertFalse((destination / "Fabtrack/uploads").exists())
 
+    def test_liste_les_volumes_restaurables_du_snapshot(self):
+        snapshot = self._creer_snapshot()
+
+        volumes = suite_backup.lister_volumes(snapshot.directory)
+
+        self.assertEqual(
+            [volume["label"] for volume in volumes],
+            ["Fabtrack/data", "Fabtrack/uploads"],
+        )
+        self.assertGreater(volumes[0]["bytes"], 0)
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "volumes",
+                "--snapshot",
+                str(snapshot.directory),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(processus.returncode, 0, processus.stderr)
+        self.assertIn("Fabtrack/data|", processus.stdout)
+        self.assertIn("Fabtrack/uploads|", processus.stdout)
+
+        invalide = self.root / "manifeste-invalide"
+        invalide.mkdir()
+        with self.assertRaises(suite_backup.SnapshotError):
+            suite_backup.lister_volumes(invalide)
+
     def test_refuse_un_snapshot_invalide(self):
         data = suite_backup.Source("Fabtrack", "data", self.root / "source/data")
         creer_base(data.path / "fabtrack.db")
@@ -839,6 +871,29 @@ class HelperRestoreIntegrationTest(unittest.TestCase):
             self.assertTrue((cible / "FabHome/data/fabhome.db").is_file())
             self.assertFalse((cible / "FabHome/icons").exists())
 
+            # L'action helper utilisee par le GUI liste les volumes du snapshot.
+            listing = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "volumes",
+                    "--snapshot",
+                    str(snapshot.directory),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            sortie = listing.stdout + listing.stderr
+
+            self.assertEqual(listing.returncode, 0, sortie)
+            self.assertIn("FabHome/data|", sortie)
+            self.assertIn("FabHome/icons|", sortie)
+
 
 class RotationTest(unittest.TestCase):
     def setUp(self):
@@ -968,6 +1023,9 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("snapshots)", script)
         self.assertIn("run_suite_list_snapshots()", script)
         self.assertIn("def lister_snapshots", module)
+        self.assertIn("volumes)", script)
+        self.assertIn("run_suite_list_volumes()", script)
+        self.assertIn("def lister_volumes", module)
 
         if shutil.which("bash"):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)

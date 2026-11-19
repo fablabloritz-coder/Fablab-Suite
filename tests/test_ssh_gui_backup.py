@@ -138,6 +138,89 @@ class GuiBackupRestoreTest(unittest.TestCase):
         )
         self.assertEqual(self.alertes[0][0], "Restauration refusee")
 
+    def test_list_volumes_parse_la_sortie_du_helper(self):
+        self.backend._is_local_mode = lambda: False
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        commandes = []
+        self.backend._exec_remote_simple = lambda commande: (
+            commandes.append(commande)
+            or "FabHome/data|2048\nFabtrack/uploads|512\n[volumes] bruit\n"
+        )
+
+        resultat = self.backend.list_volumes(
+            "/home/fablab/backup-fabsuite/suite-2026-11-19-120000"
+        )
+
+        self.assertNotIn("error", resultat)
+        self.assertEqual(
+            resultat["volumes"],
+            [
+                {"path": "FabHome/data", "bytes": 2048},
+                {"path": "Fabtrack/uploads", "bytes": 512},
+            ],
+        )
+        self.assertIn("volumes --snapshot", commandes[0])
+        self.assertIn("suite-2026-11-19-120000", commandes[0])
+
+    def test_list_volumes_signale_l_erreur_ssh(self):
+        self.backend._is_local_mode = lambda: False
+
+        def echouer():
+            raise RuntimeError("connexion perdue")
+
+        self.backend._require_connection = echouer
+
+        resultat = self.backend.list_volumes("/home/fablab/suite-2026-11-19-120000")
+
+        self.assertIn("error", resultat)
+        self.assertIn("connexion perdue", resultat["error"])
+
+    def test_restore_worker_transmet_les_volumes_selectionnes(self):
+        appels = []
+        self.backend._run_helper_action = (
+            lambda action, **kwargs: appels.append((action, kwargs)) or 0
+        )
+
+        self.backend._restore_worker(
+            "/home/fablab/backup-fabsuite/suite-2026-11-19-120000",
+            "/home/fablab/staging",
+            ["FabHome|data", " Fabtrack/uploads ", ""],
+        )
+
+        self.assertEqual(
+            appels[0][1]["extra_args"],
+            [
+                "--snapshot",
+                "/home/fablab/backup-fabsuite/suite-2026-11-19-120000",
+                "--dest",
+                "/home/fablab/staging",
+                "--source",
+                "FabHome|data",
+                "--source",
+                "Fabtrack/uploads",
+            ],
+        )
+        self.assertIn("FabHome|data, Fabtrack/uploads", self.alertes[0][1])
+
+    def test_action_restore_transmet_la_selection_de_volumes(self):
+        appels = []
+        self.backend._run_async = lambda label, cible: cible()
+        self.backend._restore_worker = (
+            lambda snapshot, destination, sources: appels.append(
+                (snapshot, destination, sources)
+            )
+        )
+
+        self.backend.action_restore(
+            " /home/fablab/suite-2026-11-19-120000 ", "", ["FabHome|data"]
+        )
+
+        self.assertEqual(
+            appels,
+            [("/home/fablab/suite-2026-11-19-120000", "", ["FabHome|data"])],
+        )
+
     def test_action_restore_refuse_un_snapshot_vide(self):
         lancements = []
         self.backend._run_async = lambda label, cible: lancements.append(label)

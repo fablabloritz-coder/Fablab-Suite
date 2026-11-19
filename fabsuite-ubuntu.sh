@@ -15,7 +15,7 @@ RESTORE_SNAPSHOT=""
 RESTORE_DEST=""
 RESTORE_SOURCES=()
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v6"
+HELPER_VERSION="2026-11-19-suite-backup-v7"
 
 usage() {
   cat <<'EOF'
@@ -30,6 +30,7 @@ Usage:
   ./fabsuite-ubuntu.sh backup [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh restore --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS [--dest /chemin/vide] [--source APP|ROLE]...
   ./fabsuite-ubuntu.sh snapshots
+  ./fabsuite-ubuntu.sh volumes --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -56,7 +57,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1326,6 +1327,24 @@ run_suite_list_snapshots() {
   python3 "$backup_module" list --dest "$backup_root"
 }
 
+run_suite_list_volumes() {
+  require_cmd python3
+
+  if [[ -z "$RESTORE_SNAPSHOT" ]]; then
+    echo "[volumes] ERROR: --snapshot <dossier> requis." >&2
+    return 2
+  fi
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[volumes] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})." >&2
+    return 2
+  fi
+
+  python3 "$backup_module" volumes --snapshot "$RESTORE_SNAPSHOT"
+}
+
 repo_exists() {
   local app="$1"
   [[ -d "${INSTALL_DIR}/${app}" && -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]
@@ -1888,6 +1907,9 @@ case "$ACTION" in
     ;;
   snapshots)
     run_suite_list_snapshots
+    ;;
+  volumes)
+    run_suite_list_volumes
     ;;
   install)
     run_install

@@ -215,12 +215,16 @@ class FabSuiteBackend:
             self.action_backup()
 
         @eel.expose
-        def action_restore(snapshot, destination=""):
-            self.action_restore(snapshot, destination)
+        def action_restore(snapshot, destination="", sources=None):
+            self.action_restore(snapshot, destination, sources)
 
         @eel.expose
         def list_snapshots():
             return self.list_snapshots()
+
+        @eel.expose
+        def list_volumes(snapshot):
+            return self.list_volumes(snapshot)
 
         @eel.expose
         def action_scan_dirs():
@@ -1486,17 +1490,26 @@ exit 0
             return
         self._run_async("Sauvegarde suite", self._backup_worker)
 
-    def _restore_worker(self, snapshot, destination):
+    def _restore_worker(self, snapshot, destination, sources=None):
         args = ["--snapshot", snapshot]
         if destination:
             args.extend(["--dest", destination])
+        volumes = [str(volume).strip() for volume in (sources or []) if str(volume).strip()]
+        for volume in volumes:
+            args.extend(["--source", volume])
         code = self._run_helper_action("restore", allow_failure=True, extra_args=args)
         if code == 0:
             staging = destination or "le staging par defaut du helper (voir [restore])"
             self._log(f"Restauration: snapshot extrait dans {staging}.")
+            detail = (
+                f"Volumes demandes: {', '.join(volumes)}.\n\n"
+                if volumes
+                else ""
+            )
             self._show_alert(
                 "Restauration terminee",
                 f"Snapshot verifie et extrait dans {staging}.\n\n"
+                f"{detail}"
                 "Arrete la suite, copie les fichiers vers les chemins de donnees, puis redemarre.",
             )
             return
@@ -1507,18 +1520,19 @@ exit 0
         )
         raise RuntimeError(f"restauration refusee (code {code})")
 
-    def action_restore(self, snapshot, destination=""):
+    def action_restore(self, snapshot, destination="", sources=None):
         if self._is_local_mode():
             self._show_ssh_only_info("Restauration d'un snapshot")
             return
         snapshot = (snapshot or "").strip()
         destination = (destination or "").strip()
+        volumes = [str(volume).strip() for volume in (sources or []) if str(volume).strip()]
         if not snapshot:
             self._show_alert("Restauration", "Choisis un snapshot a restaurer.")
             return
         self._run_async(
             "Restauration snapshot",
-            lambda: self._restore_worker(snapshot, destination),
+            lambda: self._restore_worker(snapshot, destination, volumes),
         )
 
     def list_snapshots(self):
@@ -1549,6 +1563,41 @@ exit 0
                 }
             )
         return {"snapshots": snapshots}
+
+    def list_volumes(self, snapshot):
+        """Volumes restaurables d'un snapshot, via l'action helper `volumes`.
+
+        Le helper delegue a `suite_backup.py volumes` : la validite du snapshot
+        et de son manifeste est verifiee par le module, pas par le GUI.
+        """
+        if self._is_local_mode():
+            return {
+                "error": "La restauration est disponible uniquement en mode Serveur SSH."
+            }
+        snapshot = (snapshot or "").strip()
+        if not snapshot:
+            return {"volumes": []}
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            sortie = self._exec_remote_simple(
+                self._helper_command("volumes", extra_args=["--snapshot", snapshot])
+            )
+        except Exception as exc:
+            return {"error": f"Impossible de lister les volumes: {exc}"}
+
+        volumes = []
+        for ligne in sortie.splitlines():
+            morceaux = [morceau.strip() for morceau in ligne.strip().split("|")]
+            if len(morceaux) != 2 or not morceaux[0] or "/" not in morceaux[0]:
+                continue
+            label, taille = morceaux
+            try:
+                octets = int(taille)
+            except ValueError:
+                octets = 0
+            volumes.append({"path": label, "bytes": octets})
+        return {"volumes": volumes}
 
 
 def main():

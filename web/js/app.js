@@ -149,12 +149,59 @@ async function openRestoreDialog() {
   });
   document.getElementById("restoreDest").value = "";
 
+  // Volumes du snapshot choisi : la liste vient du helper (`volumes`), qui
+  // reutilise les controles du module, pas d'une lecture locale du manifeste.
+  const volumeSelect = document.getElementById("restoreVolumes");
+  const volumeHint = document.getElementById("restoreVolumesHint");
+  let volumeRequest = 0;
+
+  function formatRestoreSize(octets) {
+    if (!octets) return "0 o";
+    if (octets < 1024) return `${octets} o`;
+    if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(1)} Ko`;
+    return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
+  }
+
+  async function loadVolumes() {
+    const request = ++volumeRequest;
+    volumeSelect.innerHTML = "";
+    volumeHint.textContent = "Chargement des volumes...";
+    let resultat;
+    try {
+      resultat = await eel.list_volumes(select.value)();
+    } catch (e) {
+      if (request !== volumeRequest) return;
+      volumeHint.textContent = "Impossible de lister les volumes: " + e;
+      return;
+    }
+    if (request !== volumeRequest) return;
+    if (resultat.error) {
+      volumeHint.textContent = resultat.error;
+      return;
+    }
+    const volumes = resultat.volumes || [];
+    volumeSelect.innerHTML = "";
+    volumes.forEach(v => {
+      const option = document.createElement("option");
+      option.value = v.path;
+      option.textContent = `${v.path} (${formatRestoreSize(v.bytes)})`;
+      volumeSelect.appendChild(option);
+    });
+    volumeHint.textContent = volumes.length
+      ? "Aucune sélection = tous les volumes. Ctrl+clic pour en choisir plusieurs."
+      : "Aucun volume restaurable dans ce snapshot.";
+  }
+
+  select.onchange = loadVolumes;
+  await loadVolumes();
+
   const modal = new bootstrap.Modal("#restoreModal");
   const okBtn = document.getElementById("restoreOk");
   const handler = () => {
     const destination = document.getElementById("restoreDest").value.trim();
+    const sources = Array.from(volumeSelect.selectedOptions).map(o => o.value);
     modal.hide();
-    eel.action_restore(select.value, destination);
+    eel.action_restore(select.value, destination, sources);
     okBtn.removeEventListener("click", handler);
   };
   okBtn.addEventListener("click", handler);

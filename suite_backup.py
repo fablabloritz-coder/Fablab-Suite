@@ -16,6 +16,7 @@ Usage direct :
         --source "Fabtrack|data|/srv/fablab-suite/Fabtrack/docker-data/data" \
         --retention-count 7
     python3 suite_backup.py list --dest ~/backup-fabsuite    # path|status|date
+    python3 suite_backup.py volumes --snapshot <dossier>      # App/role|taille
     python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide>
     python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide> \
         --source Fabtrack/data --source Fabtrack/uploads
@@ -448,6 +449,44 @@ def lister_snapshots(destination: Path | str) -> list[dict]:
     )
 
 
+def lister_volumes(snapshot: Path | str) -> list[dict]:
+    """Volumes restaurables d'un snapshot valide, dans l'ordre du manifeste.
+
+    Reutilise les memes controles d'integrite que `restaurer_snapshot` (format,
+    statut, marqueur et empreinte du manifeste). Aucune archive n'est relue :
+    la restauration les verifie de nouveau avant d'extraire. Un snapshot
+    invalide leve `SnapshotError`.
+    """
+    snapshot = Path(snapshot).expanduser()
+    manifeste = _lire_manifeste(snapshot)
+    if manifeste is None:
+        raise SnapshotError(
+            f"manifeste absent ou illisible: {snapshot / 'manifest.json'}"
+        )
+    erreurs = _erreurs_snapshot(snapshot, manifeste)
+    if erreurs:
+        raise SnapshotError("; ".join(erreurs))
+
+    sources = manifeste.get("sources")
+    volumes: list[dict] = []
+    for entree in sources if isinstance(sources, list) else []:
+        if not isinstance(entree, dict) or not entree.get("exists"):
+            continue
+        app = str(entree.get("app") or "")
+        role = str(entree.get("role") or "")
+        if not NOM_VALIDE.match(app) or not NOM_VALIDE.match(role):
+            continue
+        volumes.append(
+            {
+                "label": f"{app}/{role}",
+                "app": app,
+                "role": role,
+                "bytes": int(entree.get("bytes") or 0),
+            }
+        )
+    return volumes
+
+
 def _retention_depuis_env() -> tuple[int, int]:
     def lire(nom: str, defaut: int) -> int:
         brut = os.environ.get(nom, "").strip()
@@ -595,6 +634,23 @@ def _selection(brut: str) -> tuple[str, str]:
     return app, role
 
 
+def _erreurs_snapshot(snapshot: Path, manifeste: dict) -> list[str]:
+    """Controles d'integrite partages par `restore` et `volumes`."""
+    erreurs: list[str] = []
+    if manifeste.get("format") != FORMAT_VERSION:
+        erreurs.append(f"format non supporte: {manifeste.get('format')!r}")
+    if manifeste.get("status") != "ok":
+        erreurs.append(f"snapshot non valide (status={manifeste.get('status')!r})")
+    marqueur = snapshot / "snapshot.ok"
+    if not marqueur.is_file():
+        erreurs.append("marqueur snapshot.ok absent")
+    else:
+        attendu = _lire_marqueur(marqueur).get("manifest_sha256", "")
+        if not attendu or _sha256(snapshot / "manifest.json") != attendu:
+            erreurs.append("manifeste altere (sha256 different de snapshot.ok)")
+    return erreurs
+
+
 def restaurer_snapshot(
     snapshot: Path | str,
     destination: Path | str,
@@ -632,19 +688,7 @@ def restaurer_snapshot(
             f"manifeste absent ou illisible: {snapshot / 'manifest.json'}"
         )
         return resultat
-    if manifeste.get("format") != FORMAT_VERSION:
-        resultat.errors.append(f"format non supporte: {manifeste.get('format')!r}")
-    if manifeste.get("status") != "ok":
-        resultat.errors.append(
-            f"snapshot non valide (status={manifeste.get('status')!r})"
-        )
-    marqueur = snapshot / "snapshot.ok"
-    if not marqueur.is_file():
-        resultat.errors.append("marqueur snapshot.ok absent")
-    else:
-        attendu = _lire_marqueur(marqueur).get("manifest_sha256", "")
-        if not attendu or _sha256(snapshot / "manifest.json") != attendu:
-            resultat.errors.append("manifeste altere (sha256 different de snapshot.ok)")
+    resultat.errors.extend(_erreurs_snapshot(snapshot, manifeste))
 
     if destination.is_symlink():
         resultat.errors.append(f"destination refusee (lien symbolique): {destination}")
@@ -731,11 +775,16 @@ def main(argv: list[str] | None = None) -> int:
     parseur = argparse.ArgumentParser(
         description="Snapshot horodate et verifie des donnees de la FabLab Suite."
     )
-    parseur.add_argument("command", choices=["snapshot", "restore", "list"])
+    parseur.add_argument(
+        "command", choices=["snapshot", "restore", "list", "volumes"]
+    )
     parseur.add_argument(
         "--dest",
-        required=True,
-        help="racine des snapshots (snapshot) ou destination vide (restore)",
+        default="",
+        help=(
+            "racine des snapshots (snapshot/list) ou destination vide (restore) ; "
+            "inutile pour volumes"
+        ),
     )
     parseur.add_argument(
         "--snapshot", default="", help="dossier du snapshot a restaurer"
@@ -764,6 +813,22 @@ def main(argv: list[str] | None = None) -> int:
         help="age maximal en jours (prioritaire sur le nombre; 0 = mode nombre)",
     )
     args = parseur.parse_args(argv)
+
+    if args.command != "volumes" and not args.dest.strip():
+        parseur.error("--dest requis pour cette commande")
+
+    if args.command == "volumes":
+        if not args.snapshot.strip():
+            print("[volumes] ECHEC: --snapshot requis", file=sys.stderr)
+            return 2
+        try:
+            volumes = lister_volumes(args.snapshot)
+        except SnapshotError as exc:
+            print(f"[volumes] ECHEC: {exc}", file=sys.stderr)
+            return 2
+        for volume in volumes:
+            print(f"{volume['label']}|{volume['bytes']}")
+        return 0
 
     if args.command == "list":
         for entree in lister_snapshots(args.dest):

@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : volumes du snapshot dans le modal de restauration
+
+**Objectif** : choisir dans le GUI SSH les volumes à restaurer, sans que
+l'interface ne reimplemente les controles du module.
+
+**Implementation**
+- Module : commande `volumes --snapshot <dossier>` → `App/role|taille`, avec
+  `lister_volumes` qui reutilise `_erreurs_snapshot` (format, statut, marqueur,
+  empreinte du manifeste), desormais partage avec `restaurer_snapshot`.
+- Helper : action `volumes --snapshot` delegant a `suite_backup.py volumes` ;
+  `HELPER_VERSION` passe à `2026-11-19-suite-backup-v7`.
+- GUI : `list_volumes(snapshot)` (backend), modal avec liste multi-selection
+  rechargee au changement de snapshot, hint « aucune sélection = tous les
+  volumes » ; `action_restore(snapshot, destination, sources)` transmet chaque
+  volume via `--source` et rappelle la selection dans l'alerte de fin.
+- `--dest` du CLI module devient optionnel pour laisser `volumes` sans
+  destination ; `snapshot`, `list` et `restore` l'exigent toujours.
+
+**Verifications**
+- Tests backend GUI : parsing `volumes`, erreur SSH, transmission des
+  `--source` (nettoyage des vides) et de la sélection par `action_restore`.
+- Test module : `lister_volumes` + CLI `volumes`, snapshot invalide refusé.
+- `bash -n`, `py_compile`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- La liste des volumes vient du manifeste ; une archive alteree n'est detectee
+  qu'au `restore`, qui revalide sha256 et membres.
+
+**Prochaine action** : verifier le rendu du modal dans un navigateur (non fait
+ici) et, si utile, proposer une copie assistee du staging vers les donnees.
+
+---
+
 ## 2026-11-19 — Suite : restauration ciblée par application ou volume
 
 **Objectif** : restaurer un seul volume (`Fabtrack/data`, `FabHome/icons`…) sans

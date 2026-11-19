@@ -101,9 +101,12 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 **Sauvegarde & restauration**
 - **Sauvegarder** : lance `backup` via le helper (snapshot vérifié, rotation incluse)
 - **Restaurer un snapshot** : liste les snapshots valides du serveur, puis lance
-  `restore` sur celui choisi. Sans destination saisie, le helper utilise son
-  staging par défaut (`FABSUITE_RESTORE_DIR` ou `~/restore-fabsuite/<snapshot>`).
-  Une destination explicite doit être un dossier vide ; rien n'est écrasé en place.
+  `restore` sur celui choisi. Le modal liste aussi les volumes du snapshot
+  (`Fabtrack/data`, `FabHome/icons`…) : sans sélection, tout est restauré ;
+  sinon seuls les volumes choisis sont transmis au helper via `--source`.
+  Sans destination saisie, le helper utilise son staging par défaut
+  (`FABSUITE_RESTORE_DIR` ou `~/restore-fabsuite/<snapshot>`). Une destination
+  explicite doit être un dossier vide ; rien n'est écrasé en place.
 
 **Maintenance dossiers** : scan, inspection, correction permissions, archivage, suppression
 
