@@ -30,6 +30,9 @@ function set_connection_status(text, connected) {
   document.getElementById("connectionDot").className =
     "status-dot " + (connected ? "text-success" : "text-danger");
   refreshModeUI();
+  // Etat du timer de verification : lecture des la connexion, sans attendre
+  // que l'operateur clique sur « Etat verification ».
+  if (connected) refreshVerifyTimerState();
 }
 
 eel.expose(set_dir_rows);
@@ -118,9 +121,15 @@ function syncField(id, key) {
 
 /* ─── Action dispatch ─── */
 
+eel.expose(refreshVerifyTimerState);
 async function refreshVerifyTimerState() {
   const el = document.getElementById("verifyTimerState");
   if (!el) return;
+  if (typeof currentMode !== "undefined" && currentMode === "local") {
+    el.className = "text-muted";
+    el.textContent = "Vérification planifiée : disponible en mode Serveur SSH.";
+    return;
+  }
   el.className = "text-muted";
   el.textContent = "Vérification planifiée : chargement...";
 

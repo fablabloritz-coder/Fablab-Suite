@@ -6,6 +6,31 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : rafraîchissement automatique de l'état du timer
+
+**Objectif** : ne plus dépendre du bouton « État vérification » pour voir
+l'état de la vérification planifiée.
+
+**Implementation**
+- JS : `set_connection_status(..., true)` appelle `refreshVerifyTimerState()` à
+  chaque connexion SSH réussie ; la fonction est exposée à Python via
+  `eel.expose(refreshVerifyTimerState)`.
+- Backend : `_verify_worker` enveloppe `_verify_worker_run` dans un `try/finally`
+  et demande le rafraîchissement (`_request_verify_state_refresh`) en fin de
+  vérification, succès comme échec ; une erreur de rafraîchissement est ignorée
+  pour ne pas masquer le résultat de `verify`.
+- Le bouton manuel reste disponible.
+
+**Verifications**
+- Tests backend : rafraîchissement demandé après succès et après échec de
+  vérification ; `node --check`, `py_compile`, suite `tests/`.
+
+**Risques / non couverts**
+- Le rafraîchissement JS n'est pas testé en navigateur ; pas de rafraîchissement
+  périodique (uniquement connexion + fin de verify + bouton).
+
+---
+
 ## 2026-11-19 — Suite : état du timer dans le GUI SSH
 
 **Objectif** : voir depuis le GUI la prochaine vérification planifiée, le

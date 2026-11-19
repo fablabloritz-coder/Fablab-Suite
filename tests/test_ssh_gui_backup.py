@@ -230,6 +230,40 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertIn("error", etat)
         self.assertIn("connexion perdue", etat["error"])
 
+    def test_verify_worker_rafraichit_l_etat_du_timer(self):
+        sortie = (
+            "[verify] /home/fablab/backup-fabsuite/suite-2026-11-19-120000: ok (2 archive(s))\n"
+            "[verify] bilan: 1 ok, 0 invalide(s)\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (0, sortie)
+        rafraichissements = []
+        self.backend._request_verify_state_refresh = (
+            lambda: rafraichissements.append(True)
+        )
+
+        self.backend._verify_worker()
+
+        self.assertEqual(rafraichissements, [True])
+
+    def test_verify_worker_rafraichit_aussi_apres_echec(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (
+            2,
+            "[verify] ECHEC: aucun snapshot dans /home/fablab/backup-fabsuite\n",
+        )
+        rafraichissements = []
+        self.backend._request_verify_state_refresh = (
+            lambda: rafraichissements.append(True)
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._verify_worker()
+
+        self.assertEqual(rafraichissements, [True])
+
     def test_verify_worker_affiche_les_snapshots_degrades(self):
         commandes = []
         sortie = (

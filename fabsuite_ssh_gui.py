@@ -1539,7 +1539,25 @@ exit 0
             invalides.setdefault(nom, []).append(detail)
         return {"bilan": bilan, "invalides": invalides}
 
+    def _request_verify_state_refresh(self):
+        """Demande au front de relire l'etat du timer apres une verification."""
+        rafraichir = getattr(eel, "refreshVerifyTimerState", None)
+        if rafraichir is None:
+            return
+        try:
+            rafraichir()()
+        except Exception:
+            # L'etat du timer est indicatif : ne jamais masquer le resultat
+            # de la verification avec une erreur de rafraichissement.
+            pass
+
     def _verify_worker(self):
+        try:
+            self._verify_worker_run()
+        finally:
+            self._request_verify_state_refresh()
+
+    def _verify_worker_run(self):
         self._log("Verification des snapshots: verify --all en cours...")
         try:
             self._require_connection()
