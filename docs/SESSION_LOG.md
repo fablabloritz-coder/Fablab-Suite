@@ -6,6 +6,38 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : signal persistant d'un backup planifié en échec
+
+**Objectif** : un backup planifié échoué ne doit pas se limiter à une unité
+systemd en échec ; l'opérateur doit le voir dans le GUI et sur disque.
+
+**Implementation**
+- `install-backup-timer` : `ExecStopPost` supprime
+  `$FABSUITE_BACKUP_DIR/backup-failed` sur code 0 et, sinon, écrit le marqueur
+  (`ECHEC <date> code <n> - journalctl -u fabsuite-backup`) tout en journalisant
+  un avertissement ; le chemin est affiché à l'installation.
+- `backup-timer-status` expose `marker`, `marker_at` et `marker_content` en
+  réutilisant le même format que `verify-degrade`.
+- GUI : la ligne **État sauvegarde** affiche `MARQUEUR ÉCHEC : <chemin> (date)`
+  en rouge quand il est présent, sinon « marqueur échec : absent ».
+- Docs : README (section snapshots planifiés), INSTALL_UBUNTU.
+
+**Verifications**
+- Test d'intégration timer : `EXIT_STATUS`, `backup-failed`, renvoi
+  `journalctl -u fabsuite-backup` dans l'unité, ligne « signal echec » à
+  l'installation.
+- Test backend : statut avec marqueur d'échec (chemin + date + code 1).
+- `bash -n`, `node --check`, suite `tests/`.
+
+**Risques / non couverts**
+- Exécution réelle sous systemd non testée dans cette VM ; le marqueur n'est pas
+  purgé manuellement depuis le GUI (un backup réussi le supprime).
+
+**Prochaine action** : proposer la suppression du marqueur depuis le GUI et une
+notification externe (mail/webhook) en cas d'échec.
+
+---
+
 ## 2026-11-19 — Suite : snapshots périodiques (timer systemd)
 
 **Objectif** : produire des snapshots réguliers sans action manuelle, en

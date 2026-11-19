@@ -213,8 +213,13 @@ async function refreshBackupTimerState() {
       "Timer non installé : lance ./fabsuite-ubuntu.sh install-backup-timer.";
     return;
   }
-  el.className = "text-muted";
-  el.textContent = "Sauvegarde planifiée — " + timerStateSummary(etat);
+  const marker = etat.marker
+    ? ` — MARQUEUR ÉCHEC : ${etat.marker}${
+        etat.marker_at ? ` (${etat.marker_at})` : ""
+      }`
+    : " — marqueur échec : absent";
+  el.className = etat.marker ? "text-danger" : "text-muted";
+  el.textContent = "Sauvegarde planifiée — " + timerStateSummary(etat) + marker;
 }
 
 async function openRestoreDialog() {

@@ -486,10 +486,17 @@ cat ~/backup-fabsuite/verify-degrade   # vérification planifiée, si présente
 sudo systemctl disable --now fabsuite-backup.timer
 ```
 
-Un échec (pré-check non sûr, snapshot invalide, disque plein) laisse l'unité en
-échec, visible via `systemctl --failed`. Le GUI SSH affiche la prochaine
-exécution et le dernier résultat (bouton **État sauvegarde**, rafraîchi à la
-connexion et après un backup lancé depuis l'interface).
+Signal clair en cas d'échec (pré-check non sûr, snapshot invalide, disque
+plein, etc.) :
+
+- l'unité `fabsuite-backup.service` échoue → `systemctl --failed` ;
+- le marqueur `~/backup-fabsuite/backup-failed` est créé avec l'horodatage, le
+  code de sortie et le renvoi vers le journal ; il est supprimé au prochain
+  backup réussi ;
+- le détail est dans `journalctl -u fabsuite-backup.service -n 100` ;
+- le GUI SSH affiche la prochaine exécution, le dernier résultat et, si présent,
+  le marqueur en rouge (bouton **État sauvegarde**, rafraîchi à la connexion et
+  après un backup lancé depuis l'interface).
 
 ### Vérification planifiée (timer systemd)
 

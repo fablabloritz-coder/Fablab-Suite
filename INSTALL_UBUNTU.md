@@ -81,6 +81,7 @@ Ce que fait la commande:
 ./fabsuite-ubuntu.sh verify --all
 
 # Planifier les snapshots (timer systemd, rotation incluse)
+# échec signalé par ~/backup-fabsuite/backup-failed et l'unité systemd
 ./fabsuite-ubuntu.sh install-backup-timer
 
 # Planifier verify --all (timer systemd, signal ~/backup-fabsuite/verify-degrade)

@@ -193,6 +193,30 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(etat["last_code"], "0")
         self.assertIn("2026-11-20", etat["last_run"])
 
+    def test_backup_timer_status_parse_le_marqueur_d_echec(self):
+        sortie = (
+            "[backup-timer] installed=1\n"
+            "[backup-timer] active=failed\n"
+            "[backup-timer] next=Fri 2026-11-20 03:30:00 CET\n"
+            "[backup-timer] result=exit-code\n"
+            "[backup-timer] result_code=1\n"
+            "[backup-timer] result_at=Fri 2026-11-20 03:30:12 CET\n"
+            "[backup-timer] marker=/home/fablab/backup-fabsuite/backup-failed\n"
+            "[backup-timer] marker_at=2026-11-20 03:30:12.000\n"
+        )
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=60: (0, sortie)
+
+        etat = self.backend.backup_timer_status()
+
+        self.assertTrue(etat["installed"])
+        self.assertEqual(etat["last_code"], "1")
+        self.assertEqual(
+            etat["marker"], "/home/fablab/backup-fabsuite/backup-failed"
+        )
+        self.assertIn("2026-11-20", etat["marker_at"])
+
     def test_backup_timer_status_sans_timer_installe(self):
         sortie = (
             "[backup-timer] backup_dir=/home/fablab/backup-fabsuite\n"

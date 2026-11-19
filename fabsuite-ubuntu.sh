@@ -1526,6 +1526,9 @@ run_install_backup_timer() {
   local run_user="${SUDO_USER:-$(id -un)}"
   local calendar="${FABSUITE_BACKUP_ON_CALENDAR:-*-*-* 03:30:00}"
   local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local marker="${backup_root}/backup-failed"
+  local marker_dir
+  marker_dir="$(dirname "$marker")"
 
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -1545,6 +1548,7 @@ User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-backup
 ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh backup'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; else mkdir -p "${marker_dir}"; echo "ECHEC \$(date -Is) code \$EXIT_STATUS - voir journalctl -u fabsuite-backup" > "${marker}"; echo "ATTENTION: snapshot periodique en echec (code \$EXIT_STATUS) - ${marker}"; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-backup.timer" <<EOF
@@ -1564,6 +1568,7 @@ EOF
   echo "[backup-timer] utilisateur: ${run_user}"
   echo "[backup-timer] calendrier: ${calendar}"
   echo "[backup-timer] destination: ${backup_root}"
+  echo "[backup-timer] signal echec: ${marker}"
 
   run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.service" /etc/systemd/system/fabsuite-backup.service
   run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.timer" /etc/systemd/system/fabsuite-backup.timer
@@ -1579,9 +1584,18 @@ run_backup_timer_status() {
   echo "===== Suite backup timer status ====="
 
   local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local marker="${backup_root}/backup-failed"
   echo "[backup-timer] backup_dir=${backup_root}"
 
   print_systemd_timer_status "fabsuite-backup" "[backup-timer]" || return 0
+
+  if [[ -f "$marker" ]]; then
+    echo "[backup-timer] marker=${marker}"
+    echo "[backup-timer] marker_at=$(stat -c '%y' "$marker" 2>/dev/null || true)"
+    echo "[backup-timer] marker_content=$(tr '\n' ' ' < "$marker" 2>/dev/null | cut -c1-200)"
+  else
+    echo "[backup-timer] marker="
+  fi
 }
 
 repo_exists() {
