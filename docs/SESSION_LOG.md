@@ -6,6 +6,46 @@ action imperative.
 
 ---
 
+## 2026-11-19 — Suite : backup et restore dans le GUI SSH
+
+**Objectif** : lancer un snapshot et restaurer un snapshot choisi depuis le GUI,
+sans reimplementer la logique dans l'interface.
+
+**Implementation**
+- Carte « Sauvegarde & restauration » dans l'onglet SSH : bouton **Sauvegarder**
+  (confirmation, appel `./fabsuite-ubuntu.sh backup`) et bouton **Restaurer un
+  snapshot** (liste des snapshots valides, choix, destination optionnelle).
+- Backend GUI : `action_backup`, `action_restore(snapshot, destination)`,
+  `list_snapshots()` ; `_helper_command`/`_run_helper_action` acceptent des
+  arguments supplementaires (`--snapshot`, `--dest`) et un timeout de 900 s pour
+  backup/restore.
+- Nouvelle action helper `snapshots` : liste `chemin|ok|date` via
+  `suite_backup.py list`, qui reutilise `_snapshots`, `_snapshot_valide` et
+  `_date_snapshot` (aucune logique de sauvegarde dupliquee).
+- Le GUI filtre les snapshots invalides, affiche des alertes dediees en cas de
+  succes/echec et rappelle que la copie vers les donnees reste manuelle.
+- Staging par defaut : destination vide dans le GUI -> le helper applique
+  `FABSUITE_RESTORE_DIR` / `~/restore-fabsuite/<snapshot>`.
+- `HELPER_VERSION` passe a `2026-11-19-suite-backup-v5`.
+
+**Verifications**
+- 8 tests backend GUI (`tests/test_ssh_gui_backup.py`) : commande helper
+  backup/restore, filtrage des snapshots invalides, erreur SSH, messages de
+  succes/echec, transmission du staging, refus d'un snapshot vide.
+- Test module `list` (statuts + sortie CLI) ; 27 tests `tests/test_suite_backup.py`.
+- Suite racine : 56 tests OK.
+- Campagne `suite_tests.py --offline` : 9/9 PASS (1 SKIP attendu), exit 0.
+- `node --check web/js/app.js` et `bash -n fabsuite-ubuntu.sh` : OK.
+
+**Risques / non couverts**
+- Pas de test d'integration GUI/Eel reel (necessite un navigateur) ; seuls les
+  appels backend et le cablage HTML/JS sont verifies.
+- La liste des snapshots depend de la version du module presente dans
+  `INSTALL_DIR` (un `update` est necessaire sur un serveur ancien).
+- Toujours pas de copie automatique du staging vers les chemins de donnees.
+
+---
+
 ## 2026-11-19 — Suite : restauration d'un snapshot renomme
 
 **Objectif** : ne plus refuser un snapshot intact dont le dossier a ete

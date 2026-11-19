@@ -118,7 +118,56 @@ function syncField(id, key) {
 
 /* ─── Action dispatch ─── */
 
+async function openRestoreDialog() {
+  let resultat;
+  try {
+    resultat = await eel.list_snapshots()();
+  } catch (e) {
+    show_alert("Restauration", "Impossible de lister les snapshots: " + e);
+    return;
+  }
+  if (resultat.error) {
+    show_alert("Restauration", resultat.error);
+    return;
+  }
+  const snapshots = resultat.snapshots || [];
+  if (!snapshots.length) {
+    show_alert(
+      "Aucun snapshot",
+      "Aucun snapshot valide trouve. Lance d'abord une sauvegarde."
+    );
+    return;
+  }
+
+  const select = document.getElementById("restoreSnapshot");
+  select.innerHTML = "";
+  snapshots.forEach(s => {
+    const option = document.createElement("option");
+    option.value = s.path;
+    option.textContent = `${s.name} — ${s.created_at}`;
+    select.appendChild(option);
+  });
+  document.getElementById("restoreDest").value = "";
+
+  const modal = new bootstrap.Modal("#restoreModal");
+  const okBtn = document.getElementById("restoreOk");
+  const handler = () => {
+    const destination = document.getElementById("restoreDest").value.trim();
+    modal.hide();
+    eel.action_restore(select.value, destination);
+    okBtn.removeEventListener("click", handler);
+  };
+  okBtn.addEventListener("click", handler);
+  modal.show();
+}
+
 async function dispatchAction(action, btn) {
+  // Restauration: choisir un snapshot valide avant l'appel au helper.
+  if (action === "action_restore") {
+    await openRestoreDialog();
+    return;
+  }
+
   // Actions requiring a selected dir
   const dirActions = {
     action_inspect_dir: "action_inspect_selected_dir",

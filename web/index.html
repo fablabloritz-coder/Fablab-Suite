@@ -161,6 +161,18 @@
           </div>
         </div>
 
+        <!-- Sauvegarde / restauration -->
+        <div class="card card-dark mb-2">
+          <div class="card-header py-1 px-2"><small>&#x1F4BE; Sauvegarde &amp; restauration</small></div>
+          <div class="card-body py-2 px-2">
+            <div class="row g-2 align-items-center">
+              <div class="col-auto"><button class="btn btn-outline-success btn-sm action-btn ssh-btn" data-action="action_backup" data-confirm="Creer un snapshot verifie de la suite maintenant ? L'operation peut prendre plusieurs minutes." data-help="Snapshot horodate des bases SQLite et uploads, verifie avant validation.">&#x1F4BE; Sauvegarder</button></div>
+              <div class="col-auto"><button class="btn btn-outline-warning btn-sm action-btn ssh-btn" data-action="action_restore" data-help="Restaure un snapshot valide choisi dans un dossier de staging vide.">&#x21BA; Restaurer un snapshot</button></div>
+              <div class="col"><span class="text-muted small">Staging par defaut du helper si aucune destination n'est saisie.</span></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Maintenance dossiers -->
         <div class="card card-dark mb-2">
           <div class="card-header py-1 px-2"><small>&#x2637; Maintenance dossiers</small></div>
@@ -230,6 +242,24 @@
       <div class="modal-footer py-1">
         <button type="button" class="btn btn-sm btn-secondary" id="confirmCancel" data-bs-dismiss="modal">Annuler</button>
         <button type="button" class="btn btn-sm btn-primary" id="confirmOk">Confirmer</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Restore modal -->
+  <div class="modal fade" id="restoreModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content bg-modal">
+      <div class="modal-header py-2"><h6 class="modal-title">Restaurer un snapshot</h6><button type="button" class="btn-close btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label small mb-1" for="restoreSnapshot">Snapshot valide :</label>
+        <select class="form-select form-select-sm mb-2" id="restoreSnapshot"></select>
+        <label class="form-label small mb-1" for="restoreDest">Destination (staging, doit etre vide) :</label>
+        <input type="text" class="form-control form-control-sm" id="restoreDest" placeholder="Vide = staging par defaut du helper">
+        <p class="text-muted small mt-2 mb-0">La restauration verifie le manifeste, le marqueur et les sha256 avant toute ecriture. Aucune donnee en place n'est ecrasee.</p>
+      </div>
+      <div class="modal-footer py-1">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-sm btn-warning" id="restoreOk">Restaurer</button>
       </div>
     </div></div>
   </div>

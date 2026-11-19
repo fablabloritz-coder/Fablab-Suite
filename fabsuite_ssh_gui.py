@@ -211,6 +211,18 @@ class FabSuiteBackend:
             self.action_logs_app()
 
         @eel.expose
+        def action_backup():
+            self.action_backup()
+
+        @eel.expose
+        def action_restore(snapshot, destination=""):
+            self.action_restore(snapshot, destination)
+
+        @eel.expose
+        def list_snapshots():
+            return self.list_snapshots()
+
+        @eel.expose
         def action_scan_dirs():
             self.action_scan_dirs()
 
@@ -584,7 +596,7 @@ class FabSuiteBackend:
 
     # ─── Deployment helpers ───
 
-    def _helper_command(self, action, app_name=None):
+    def _helper_command(self, action, app_name=None, extra_args=None):
         remote_dir = self._resolve_remote_dir()
         sudo_pass = self.state.get("sudo_password", "").strip()
         repo_url = self._effective_repo_url()
@@ -598,6 +610,8 @@ class FabSuiteBackend:
         helper_call = "./fabsuite-ubuntu.sh " + action
         if app_name:
             helper_call += " " + shlex.quote(app_name)
+        for argument in extra_args or []:
+            helper_call += " " + shlex.quote(str(argument))
 
         env_prefix = "NON_INTERACTIVE=1"
         if sudo_pass:
@@ -1023,15 +1037,17 @@ fi
 
         return remote_dir
 
-    def _run_helper_action(self, action, app_name=None, allow_failure=False):
+    def _run_helper_action(
+        self, action, app_name=None, allow_failure=False, extra_args=None
+    ):
         self._ensure_remote_helper_ready()
         timeout_sec = 180
-        if action in ("prepare-host", "install", "update"):
+        if action in ("prepare-host", "install", "update", "backup", "restore"):
             timeout_sec = 900
         elif action in ("repair-env", "check-data-safety"):
             timeout_sec = 300
         return self._exec_remote_logged(
-            self._helper_command(action, app_name=app_name),
+            self._helper_command(action, app_name=app_name, extra_args=extra_args),
             allow_failure=allow_failure,
             timeout_sec=timeout_sec,
         )
@@ -1442,6 +1458,97 @@ exit 0
             self._run_async(f"Logs {app} (local)", lambda a=app: self._run_operation_local_compose_logs_app(a))
             return
         self._run_async(f"Logs {app}", lambda: self._run_helper_action("logs", app_name=app))
+
+
+    # ─── Sauvegarde / restauration (via le helper) ───
+
+    def _backup_worker(self):
+        self._log("Sauvegarde suite: snapshot verifie en cours...")
+        code = self._run_helper_action("backup", allow_failure=True)
+        if code == 0:
+            self._log("Sauvegarde suite: snapshot valide (chemin et rotation dans [backup]).")
+            self._show_alert(
+                "Sauvegarde terminee",
+                "Snapshot verifie cree.\n\n"
+                "Le chemin du snapshot et le bilan de rotation sont dans le journal ([backup]).",
+            )
+            return
+        self._show_alert(
+            "Sauvegarde invalide",
+            f"Le snapshot n'a pas ete valide (code {code}).\n\n"
+            "Consulte le journal [backup] pour identifier la source ou la base en cause.",
+        )
+        raise RuntimeError(f"snapshot invalide (code {code})")
+
+    def action_backup(self):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Sauvegarde de la suite")
+            return
+        self._run_async("Sauvegarde suite", self._backup_worker)
+
+    def _restore_worker(self, snapshot, destination):
+        args = ["--snapshot", snapshot]
+        if destination:
+            args.extend(["--dest", destination])
+        code = self._run_helper_action("restore", allow_failure=True, extra_args=args)
+        if code == 0:
+            staging = destination or "le staging par defaut du helper (voir [restore])"
+            self._log(f"Restauration: snapshot extrait dans {staging}.")
+            self._show_alert(
+                "Restauration terminee",
+                f"Snapshot verifie et extrait dans {staging}.\n\n"
+                "Arrete la suite, copie les fichiers vers les chemins de donnees, puis redemarre.",
+            )
+            return
+        self._show_alert(
+            "Restauration refusee",
+            f"La restauration a ete refusee ou interrompue (code {code}).\n\n"
+            "Consulte le journal [restore]: manifeste, marqueur ou sha256 invalide.",
+        )
+        raise RuntimeError(f"restauration refusee (code {code})")
+
+    def action_restore(self, snapshot, destination=""):
+        if self._is_local_mode():
+            self._show_ssh_only_info("Restauration d'un snapshot")
+            return
+        snapshot = (snapshot or "").strip()
+        destination = (destination or "").strip()
+        if not snapshot:
+            self._show_alert("Restauration", "Choisis un snapshot a restaurer.")
+            return
+        self._run_async(
+            "Restauration snapshot",
+            lambda: self._restore_worker(snapshot, destination),
+        )
+
+    def list_snapshots(self):
+        if self._is_local_mode():
+            return {
+                "error": "La restauration est disponible uniquement en mode Serveur SSH."
+            }
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            sortie = self._exec_remote_simple(self._helper_command("snapshots"))
+        except Exception as exc:
+            return {"error": f"Impossible de lister les snapshots: {exc}"}
+
+        snapshots = []
+        for ligne in sortie.splitlines():
+            morceaux = [morceau.strip() for morceau in ligne.strip().split("|")]
+            if len(morceaux) != 3 or not morceaux[0]:
+                continue
+            chemin, statut, cree = morceaux
+            if statut != "ok":
+                continue
+            snapshots.append(
+                {
+                    "path": chemin,
+                    "name": Path(chemin).name,
+                    "created_at": cree,
+                }
+            )
+        return {"snapshots": snapshots}
 
 
 def main():

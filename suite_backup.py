@@ -15,6 +15,8 @@ Usage direct :
     python3 suite_backup.py snapshot --dest ~/backup-fabsuite \
         --source "Fabtrack|data|/srv/fablab-suite/Fabtrack/docker-data/data" \
         --retention-count 7
+    python3 suite_backup.py list --dest ~/backup-fabsuite    # path|status|date
+    python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide>
 
 Apres un snapshot valide, la retention supprime les snapshots hors quota
 (nombre via `FABSUITE_BACKUP_RETENTION_COUNT`, ou age via
@@ -420,6 +422,23 @@ def rotation_snapshots(
     return resultat
 
 
+def lister_snapshots(destination: Path | str) -> list[dict]:
+    """Snapshots presents (valides ou non), du plus recent au plus ancien."""
+    destination = Path(destination).expanduser()
+    entrees = [
+        {
+            "name": dossier.name,
+            "path": str(dossier),
+            "status": "ok" if _snapshot_valide(dossier) else "invalide",
+            "created_at": _date_snapshot(dossier).isoformat(timespec="seconds"),
+        }
+        for dossier in _snapshots(destination)
+    ]
+    return sorted(
+        entrees, key=lambda entree: (entree["created_at"], entree["name"]), reverse=True
+    )
+
+
 def _retention_depuis_env() -> tuple[int, int]:
     def lire(nom: str, defaut: int) -> int:
         brut = os.environ.get(nom, "").strip()
@@ -656,7 +675,7 @@ def main(argv: list[str] | None = None) -> int:
     parseur = argparse.ArgumentParser(
         description="Snapshot horodate et verifie des donnees de la FabLab Suite."
     )
-    parseur.add_argument("command", choices=["snapshot", "restore"])
+    parseur.add_argument("command", choices=["snapshot", "restore", "list"])
     parseur.add_argument(
         "--dest",
         required=True,
@@ -686,6 +705,11 @@ def main(argv: list[str] | None = None) -> int:
         help="age maximal en jours (prioritaire sur le nombre; 0 = mode nombre)",
     )
     args = parseur.parse_args(argv)
+
+    if args.command == "list":
+        for entree in lister_snapshots(args.dest):
+            print(f"{entree['path']}|{entree['status']}|{entree['created_at']}")
+        return 0
 
     if args.command == "restore":
         if not args.snapshot.strip():

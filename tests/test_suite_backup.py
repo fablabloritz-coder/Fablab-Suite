@@ -505,6 +505,45 @@ class RestoreTest(unittest.TestCase):
         )
         self.assertTrue((destination / "Fabtrack/data/fabtrack.db").is_file())
 
+    def test_liste_les_snapshots_avec_leur_statut(self):
+        snapshot = self._creer_snapshot()
+        invalide = self.dest / "suite-2026-01-01-000000"
+        invalide.mkdir()
+        (invalide / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "format": 1,
+                    "snapshot": invalide.name,
+                    "status": "failed",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "sources": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        entrees = suite_backup.lister_snapshots(self.dest)
+        statuts = {entree["path"]: entree["status"] for entree in entrees}
+
+        self.assertEqual(statuts[str(snapshot.directory)], "ok")
+        self.assertEqual(statuts[str(invalide)], "invalide")
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "list",
+                "--dest",
+                str(self.dest),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(processus.returncode, 0, processus.stderr)
+        self.assertIn(f"{snapshot.directory}|ok|", processus.stdout)
+        self.assertIn(f"{invalide}|invalide|", processus.stdout)
+
     def test_cli_restore_restaure_un_snapshot_valide(self):
         snapshot = self._creer_snapshot()
         destination = self.root / "cli-restauration"
@@ -819,6 +858,9 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("restaurer_snapshot", module)
         self.assertIn("--snapshot", module)
         self.assertIn("destination refusee (lien symbolique)", module)
+        self.assertIn("snapshots)", script)
+        self.assertIn("run_suite_list_snapshots()", script)
+        self.assertIn("def lister_snapshots", module)
 
         if shutil.which("bash"):
             subprocess.run(["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True)

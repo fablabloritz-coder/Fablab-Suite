@@ -14,7 +14,7 @@ LOG_APP=""
 RESTORE_SNAPSHOT=""
 RESTORE_DEST=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v4"
+HELPER_VERSION="2026-11-19-suite-backup-v5"
 
 usage() {
   cat <<'EOF'
@@ -28,6 +28,7 @@ Usage:
   ./fabsuite-ubuntu.sh check-data-safety [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh backup [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh restore --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS [--dest /chemin/vide]
+  ./fabsuite-ubuntu.sh snapshots
   ./fabsuite-ubuntu.sh install [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh bootstrap [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh update [--env-file /path/to/fabsuite-ubuntu.env]
@@ -53,7 +54,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1292,6 +1293,20 @@ run_suite_restore() {
   python3 "$backup_module" restore --snapshot "$RESTORE_SNAPSHOT" --dest "$destination"
 }
 
+run_suite_list_snapshots() {
+  require_cmd python3
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[snapshots] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})." >&2
+    return 2
+  fi
+
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  python3 "$backup_module" list --dest "$backup_root"
+}
+
 repo_exists() {
   local app="$1"
   [[ -d "${INSTALL_DIR}/${app}" && -f "${INSTALL_DIR}/${app}/docker-compose.yml" ]]
@@ -1851,6 +1866,9 @@ case "$ACTION" in
     ;;
   restore)
     run_suite_restore
+    ;;
+  snapshots)
+    run_suite_list_snapshots
     ;;
   install)
     run_install
