@@ -6,6 +6,43 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Test permanent des états « inconnu » de la carte Sauvegarde
+
+**Contexte** : la règle « inconnu hors SSH connecté » n'était couverte que par un
+harnais Node jetable dans `/tmp`, donc rien ne la protégeait dans le dépôt.
+
+**Ajouté**
+- `tests/js/backup_states_check.js` : pilote Node permanent qui exécute
+  `web/js/app.js` dans un contexte `vm` isolé (DOM et `eel` simulés, appels
+  backend comptés) et rend ses mesures en JSON. Aucun accès réseau, aucun Eel
+  réel, aucun `package.json` ajouté au dépôt.
+- `tests/test_backup_states_js.py` : 6 tests unittest qui portent les assertions
+  (donc visibles dans `python3 -m unittest discover -s tests`). Si `node` est
+  absent, la classe est `skip`, pas en échec.
+
+**Cas couverts**
+1. connexion → 3 lectures, données serveur affichées ;
+2. déconnexion → 3 lignes « inconnu (serveur SSH non connecté) », 0 appel ;
+3. bascule d'onglet Local → « inconnu (mode Local, cible serveur SSH requise) »,
+   0 appel ;
+4. rafraîchissement Python tardif en Local (fin de backup/verify après bascule)
+   → reste « inconnu », 0 appel ;
+5. retour sur l'onglet SSH connecté → 3 lectures, données réelles ;
+6. rafraîchissement Python après perte de connexion → « inconnu », 0 appel
+   (et non une ligne d'erreur du helper).
+
+**Vérifications**
+- `node --check tests/js/backup_states_check.js` → OK.
+- `python3 -m unittest tests.test_backup_states_js -v` → 6 tests OK.
+- `python3 -m unittest discover -s tests` → 141 tests OK (135 + 6).
+- Contrôle de non-vacuité : sur une copie jetable de `app.js` sans la garde
+  `if (!backupStateAvailable(el)) return;`, le pilote rapporte des appels
+  backend dans les scénarios hors connexion, donc les tests échouent bien.
+
+**First next action for next session**
+Rejouer le contrôle navigateur 1200×900 sur Windows/Edge avec une vraie cible
+SSH ; le comportement JS est désormais couvert automatiquement.
+
 ## 2026-11-20 — Revue : un seul point de décision pour les états Sauvegarde
 
 **Contexte** : après la remise à « inconnu » hors SSH connecté, trois branches
