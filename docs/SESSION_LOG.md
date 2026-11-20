@@ -6,6 +6,43 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Contrôle navigateur de la carte Sauvegarde & restauration
+
+**Contexte** : essai réel de l'UI Eel servie sur le port de prévisualisation
+(websocket `/eel` non proxifié → 502, réponses backend simulées dans la page
+pour juger le rendu/l'état).
+
+**Constaté (rendu correct)**
+- Les 7 boutons de la carte sont présents et les trois états s'affichent dans
+  toutes les variantes : timer actif/inactif, marqueur échec (rouge), marqueur
+  dégradé (rouge), webhook/mail configuré ou absent (orange + consigne), état en
+  lien symbolique, erreur backend (rouge), mode Local, aucun débordement
+  horizontal (carte 701 px pour fenêtre 736 px).
+
+**Corrigé**
+1. Boutons SSH inertes : `refreshModeUI()` ne faisait que désactiver et ne
+   réactivait jamais, donc après un passage par le mode Local tous les boutons
+   `ssh-btn` restaient désactivés (y compris le bouton « État notifications »).
+   Le résultat est désormais recalculé à chaque bascule et intègre l'état de
+   connexion (`actionsEnabled`, alimenté par `set_actions_enabled`).
+2. Initialisation bloquante : `DOMContentLoaded` attendait `eel.get_state()`
+   avant d'attacher les écouteurs ; si le backend ne répond pas, plus aucun
+   bouton ne réagit. Le chargement de l'état passe par `applyBackendState`
+   (`then/catch`) et les écouteurs sont attachés immédiatement.
+3. Date d'alerte brute (`2026-11-21T02:05:12+01:00`) → `formatAlertDate`
+   l'affiche comme les dates systemd (`2026-11-21 02:05:12`).
+
+**Vérifications** : clics réels sur « État vérification », « État sauvegarde »
+« État notifications » avec réponses simulées → libellés corrects ; bascules
+Local → SSH avec connexion active → boutons réactivés ; 135 tests OK ;
+`node --check`.
+
+**Limites** : pas de connexion SSH réelle dans la VM cloud (badge « Non
+connecté »), donc l'aller-retour helper n'est pas exercé par le navigateur ;
+rendu seulement à 736 px de large.
+
+---
+
 ## 2026-11-19 — Tests des transports mail/sendmail en PATH isolé
 
 **Objectif** : couvrir les deux branches de `notify_send_email` qui restaient

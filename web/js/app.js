@@ -16,12 +16,16 @@ function log_append(text, tag) {
   terminal.scrollTop = terminal.scrollHeight;
 }
 
+// Boutons actifs seulement en mode Serveur SSH et une fois connecte.
+let actionsEnabled = false;
+
 eel.expose(set_actions_enabled);
 function set_actions_enabled(enabled) {
+  actionsEnabled = enabled;
   document.querySelectorAll(".action-btn").forEach(btn => {
     btn.disabled = !enabled;
   });
-  if (enabled) refreshModeUI();
+  refreshModeUI();
 }
 
 eel.expose(set_connection_status);
@@ -110,7 +114,9 @@ function promptDialog(title, msg) {
 function refreshModeUI() {
   const isLocal = currentMode === "local";
   document.querySelectorAll(".ssh-btn").forEach(btn => {
-    if (isLocal) btn.disabled = true;
+    // Recalcule a chaque bascule d'onglet : sinon les boutons restent
+    // desactives apres un passage par le mode Local.
+    btn.disabled = isLocal || !actionsEnabled;
   });
 }
 
@@ -231,6 +237,15 @@ function notificationDestinationSummary(etat) {
   return cibles.join(", ");
 }
 
+function formatAlertDate(valeur) {
+  // Le helper ecrit un horodatage ISO (`date -Is`) : on l'affiche comme les
+  // dates systemd de la carte, sans le `T` ni le decalage horaire.
+  const texte = String(valeur || "").trim();
+  const correspondance = texte.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  if (correspondance) return `${correspondance[1]} ${correspondance[2]}`;
+  return texte || "date inconnue";
+}
+
 function notificationServiceSummary(nom, details) {
   if (details.symlink) {
     return `${nom} : état ignoré (lien symbolique)`;
@@ -238,7 +253,7 @@ function notificationServiceSummary(nom, details) {
   if (!details.present) {
     return `${nom} : aucune alerte envoyée en cours`;
   }
-  const date = details.alert_at || "date inconnue";
+  const date = formatAlertDate(details.alert_at);
   return `${nom} : alerte déjà envoyée (${date}), pas de rappel avant un succès`;
 }
 
@@ -472,51 +487,47 @@ function esc(s) {
 
 /* ─── Init ─── */
 
-document.addEventListener("DOMContentLoaded", async () => {
-
-  // Load state from Python
-  try {
-    const state = await eel.get_state()();
-
-    // Populate form fields
-    const fields = {
-      target: "target", password: "password", port: "port",
-      key_path: "keyPath", remote_dir: "remoteDir",
-      sudo_password: "sudoPassword", repo_url: "repoUrl",
-      dir_root: "dirRoot", dir_depth: "dirDepth",
-    };
-    for (const [key, id] of Object.entries(fields)) {
-      const el = document.getElementById(id);
-      if (el && state[key]) el.value = state[key];
-    }
-
-    // Logs app
-    if (state.logs_app) {
-      document.getElementById("localLogsApp").value = state.logs_app;
-      document.getElementById("sshLogsApp").value = state.logs_app;
-    }
-
-    // Auth method
-    if (state.auth === "key") {
-      document.getElementById("authKey").checked = true;
-      document.getElementById("keyPathRow").style.display = "";
-    }
-
-    // Advanced
-    if (state.advanced) {
-      document.getElementById("advancedToggle").checked = true;
-      new bootstrap.Collapse("#advancedOptions", { toggle: false }).show();
-    }
-
-    // Select correct tab
-    currentMode = state.run_mode || "local";
-    if (currentMode === "ssh") {
-      const sshTabBtn = document.getElementById("sshTab");
-      new bootstrap.Tab(sshTabBtn).show();
-    }
-  } catch (e) {
-    console.error("Failed to load state:", e);
+function applyBackendState(state) {
+  const fields = {
+    target: "target", password: "password", port: "port",
+    key_path: "keyPath", remote_dir: "remoteDir",
+    sudo_password: "sudoPassword", repo_url: "repoUrl",
+    dir_root: "dirRoot", dir_depth: "dirDepth",
+  };
+  for (const [key, id] of Object.entries(fields)) {
+    const el = document.getElementById(id);
+    if (el && state[key]) el.value = state[key];
   }
+
+  if (state.logs_app) {
+    document.getElementById("localLogsApp").value = state.logs_app;
+    document.getElementById("sshLogsApp").value = state.logs_app;
+  }
+
+  if (state.auth === "key") {
+    document.getElementById("authKey").checked = true;
+    document.getElementById("keyPathRow").style.display = "";
+  }
+
+  if (state.advanced) {
+    document.getElementById("advancedToggle").checked = true;
+    new bootstrap.Collapse("#advancedOptions", { toggle: false }).show();
+  }
+
+  currentMode = state.run_mode || "local";
+  if (currentMode === "ssh") {
+    new bootstrap.Tab(document.getElementById("sshTab")).show();
+  }
+  refreshModeUI();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  // Chargement de l'etat Python sans bloquer l'initialisation : les boutons
+  // restent utilisables meme si le backend repond lentement ou pas du tout.
+  eel.get_state()()
+    .then(applyBackendState)
+    .catch((e) => console.error("Failed to load state:", e));
 
   // Sync form fields to Python
   syncField("target", "target");
