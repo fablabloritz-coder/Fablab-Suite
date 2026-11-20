@@ -1660,7 +1660,8 @@ class HelperNotifyFailureTest(unittest.TestCase):
     def _notifier(self, installer, env_file, env, service="backup", code="1"):
         return subprocess.run(
             [
-                "bash",
+                # Chemin absolu : certains tests fixent un PATH isole sans bash.
+                shutil.which("bash") or "bash",
                 str(installer / "fabsuite-ubuntu.sh"),
                 "notify-failure",
                 "--notify-service",
@@ -2129,28 +2130,38 @@ class HelperNotifyFailureTest(unittest.TestCase):
                 return "\n".join(lignes[debut : fin + 1])
         return None
 
-    def _notify_send_email_isole(self, racine, transports):
+    @staticmethod
+    def _ecrire_faux_transport(faux_bin, bash, transport, code=0):
+        """Faux mail/sendmail en bash pur : aucune commande resolue via PATH."""
+        script = faux_bin / transport
+        script.write_text(
+            f"#!{bash}\n"
+            "entree=''\n"
+            "while IFS= read -r ligne; do\n"
+            "  entree=\"${entree}${ligne}\"$'\\n'\n"
+            "done\n"
+            f"printf '%s|%s|%s\\n' '{transport}' \"$*\" \"$entree\" >> \"${{FAKE_SEND_LOG}}\"\n"
+            f"exit {code}\n",
+            encoding="utf-8",
+        )
+        script.chmod(0o755)
+        return script
+
+    def _notify_send_email_isole(self, racine, transports, codes=None):
         """Execute `notify_send_email` avec un PATH ne contenant que les faux
         transports demandes : ni mail, ni sendmail systeme ne peuvent etre vus."""
         bash = shutil.which("bash")
         if not bash:
             self.skipTest("bash indisponible")
 
+        codes = codes or {}
         faux_bin = racine / "bin"
         faux_bin.mkdir()
         journal = racine / "envois.log"
         for transport in transports:
-            script = faux_bin / transport
-            script.write_text(
-                f"#!{bash}\n"
-                "entree=''\n"
-                "while IFS= read -r ligne; do\n"
-                "  entree=\"${entree}${ligne}\"$'\\n'\n"
-                "done\n"
-                f"printf '%s|%s|%s\\n' '{transport}' \"$*\" \"$entree\" >> \"${{FAKE_SEND_LOG}}\"\n",
-                encoding="utf-8",
+            self._ecrire_faux_transport(
+                faux_bin, bash, transport, codes.get(transport, 0)
             )
-            script.chmod(0o755)
 
         fonction = self._extraire_fonction("notify_send_email")
         self.assertIsNotNone(
@@ -2203,6 +2214,90 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("ERROR email: ni mail ni sendmail disponible", processus.stderr)
             self.assertNotIn("email envoye", sortie)
             self.assertFalse(journal.exists())
+
+    def test_echec_sendmail_journalise_et_renvoie_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            processus, journal = self._notify_send_email_isole(
+                Path(tmp), ("sendmail",), codes={"sendmail": 7}
+            )
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("rc=1", processus.stdout)
+            self.assertIn("ERROR email: envoi impossible", processus.stderr)
+            self.assertNotIn("email envoye", sortie)
+            self.assertIn(
+                "sendmail|ops@example.invalid", journal.read_text(encoding="utf-8")
+            )
+
+    def _preparer_path_isole(self, racine, sendmail_exit=0):
+        """Installateur + env file + PATH ne contenant qu'un faux sendmail et les
+        outils systeme explicitement necessaires au helper."""
+        bash = shutil.which("bash")
+        if not bash:
+            self.skipTest("bash indisponible")
+
+        outils = ("grep", "sed", "dirname", "mkdir", "hostname", "date", "rm", "mv")
+        manquants = [outil for outil in outils if not shutil.which(outil)]
+        if manquants:
+            self.skipTest(f"outils systeme indisponibles : {', '.join(manquants)}")
+
+        install = racine / "suite"
+        install.mkdir()
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        journal = racine / "sendmail.log"
+        self._ecrire_faux_transport(faux_bin, bash, "sendmail", sendmail_exit)
+        for outil in outils:
+            os.symlink(shutil.which(outil), faux_bin / outil)
+
+        env_file = installer / "fabsuite-ubuntu.env"
+        env_file.write_text(
+            "\n".join(
+                (
+                    f"INSTALL_DIR={install}",
+                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    f"FABSUITE_BACKUP_DIR={racine / 'backups'}",
+                    "FABSUITE_NOTIFY_EMAIL=ops@example.invalid",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        env = os.environ.copy()
+        # PATH isole : uniquement le faux sendmail et les outils listes ci-dessus.
+        env["PATH"] = str(faux_bin)
+        env["HOME"] = str(racine / "home")
+        env["NON_INTERACTIVE"] = "1"
+        env["FAKE_SEND_LOG"] = str(journal)
+        return installer, env_file, env, journal
+
+    def test_notify_failure_sendmail_en_echec_n_arme_pas_l_etat(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal = self._preparer_path_isole(
+                racine, sendmail_exit=7
+            )
+
+            processus = self._notifier(installer=installer, env_file=env_file, env=env)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("ERROR email: envoi impossible", processus.stderr)
+            self.assertIn("anti-rebond non arme", sortie)
+            self.assertFalse((racine / "backups" / "notify-backup.state").exists())
+
+            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            self.assertEqual(nom, "sendmail")
+            self.assertEqual(arguments, "ops@example.invalid")
+            self.assertIn("Subject: [FabLab Suite] backup en echec (code 1)", corps)
+            self.assertIn("To: ops@example.invalid", corps)
 
     def test_mail_prioritaire_quand_les_deux_transports_existent(self):
         with tempfile.TemporaryDirectory() as tmp:

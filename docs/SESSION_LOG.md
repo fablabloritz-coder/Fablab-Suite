@@ -25,8 +25,13 @@ serveur.
 - Nouveaux tests : repli `sendmail` (destinataire, `Subject:`/`To:`, corps,
   `email envoye`, code 0) ; aucun transport (`ni mail ni sendmail disponible`,
   code 1, aucun envoi) ; `mail` prioritaire quand les deux existent (arguments
-  `-s`, corps brut).
-- Suite complète 131 tests OK, `bash -n`, `py_compile`, `node --check`.
+  `-s`, corps brut) ; faux `sendmail` en échec (code 7) → `ERROR email: envoi
+  impossible`, code 1, corps bien transmis.
+- Test CLI `notify-failure` avec le même PATH isolé (faux `sendmail` en échec +
+  symlinks explicites vers `grep`, `sed`, `dirname`, `mkdir`, `hostname`,
+  `date`, `rm`, `mv`) : unité non en échec (code 0), `anti-rebond non arme`,
+  aucun `notify-backup.state` créé.
+- Suite complète 133 tests OK, `bash -n`, `py_compile`, `node --check`.
 
 **Risques / non couverts**
 - Le test exécute la fonction hors du dispatch complet : l'intégration
