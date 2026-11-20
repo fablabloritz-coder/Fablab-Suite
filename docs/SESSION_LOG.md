@@ -6,6 +6,30 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Test permanent du contrat helper `notify-status` → GUI
+
+**Contexte** : la chaîne « vraie sortie du helper → `_parse_notify_status` »
+n'avait été validée qu'à la main. Les tests existants couvraient le helper (CLI)
+et le parseur (sorties simulées) séparément.
+
+**Ajouté** (`tests/test_suite_backup.py`)
+- `_parse_notify_status_gui(sortie)` : importe `fabsuite_ssh_gui` sous stubs
+  Eel/paramiko (`mock.patch.dict(sys.modules, …)`) et appelle le parseur réel.
+- `test_notify_status_est_parsable_par_le_gui` : lance le vrai
+  `./fabsuite-ubuntu.sh notify-status` via le harnais existant (HOME temporaire,
+  faux `curl`, `--env-file`), puis vérifie :
+  - clés de premier niveau `backup_dir`, `webhook`, `email`, `backup`, `verify` ;
+  - `webhook` vrai quand `FABSUITE_NOTIFY_WEBHOOK_URL` est configurée,
+    `email` faux sans `FABSUITE_NOTIFY_EMAIL` ;
+  - par service, `state`/`present`/`symlink`/`alert_at`, chemins
+    `notify-<service>.state` sous `FABSUITE_BACKUP_DIR`, `present` faux et date
+    vide sans alerte ;
+  - après un `notify-failure` réel, anti-rebond armé : `backup.present` vrai,
+    `alert_at` au format `AAAA-MM-JJ hh:mm:ss` (mtime `stat`), `verify` intact.
+
+**Vérifications** : test ciblé OK ; `python3 -m unittest discover -s tests` →
+**145 tests OK**.
+
 ## 2026-11-20 — Revue du pilote après l'ajout des boutons
 
 **Retiré**

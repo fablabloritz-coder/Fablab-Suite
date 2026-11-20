@@ -9,9 +9,11 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import types
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -1640,6 +1642,26 @@ class HelperClearMarkersTest(unittest.TestCase):
             self.assertTrue((backups / "verify-degrade").is_symlink())
 
 
+def _parse_notify_status_gui(sortie):
+    """Fait parser une sortie du helper par le parseur reel du GUI.
+
+    `fabsuite_ssh_gui` importe Eel/paramiko au chargement : des modules vides
+    les remplacent le temps de l'import, sans toucher aux modules deja charges
+    par d'autres tests.
+    """
+    stubs = {}
+    if "eel" not in sys.modules:
+        eel_stub = types.ModuleType("eel")
+        eel_stub.expose = lambda fonction: fonction
+        stubs["eel"] = eel_stub
+    if "paramiko" not in sys.modules:
+        stubs["paramiko"] = types.ModuleType("paramiko")
+    with mock.patch.dict(sys.modules, stubs):
+        import fabsuite_ssh_gui
+
+        return fabsuite_ssh_gui.FabSuiteBackend._parse_notify_status(sortie)
+
+
 class HelperNotifyFailureTest(unittest.TestCase):
     """Notification externe configurable, sans faire echouer l'unite."""
 
@@ -2141,6 +2163,67 @@ class HelperNotifyFailureTest(unittest.TestCase):
             final = self._status(installer, env_file, env)
             self.assertIn("[notify-status] verify_state_present=0", final.stdout)
             self.assertIn("[notify-status] verify_alert_at=", final.stdout)
+
+    def test_notify_status_est_parsable_par_le_gui(self):
+        """La sortie reelle de `notify-status` alimente le parseur du GUI.
+
+        Contrat entre les deux couches : les cles lues par
+        `FabSuiteBackend._parse_notify_status` et les etats (cible configuree,
+        anti-rebond arme ou non) doivent sortir tels quels du helper.
+        """
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, _journal, _mail_log = self._preparer(
+                racine,
+                lignes_env=(
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                ),
+            )
+            backups = racine / "backups"
+
+            def etat_gui():
+                statut = self._status(installer, env_file, env)
+                sortie = statut.stdout + statut.stderr
+                self.assertEqual(statut.returncode, 0, sortie)
+                etat = _parse_notify_status_gui(sortie)
+                self.assertIsNotNone(etat, f"sortie non reconnue par le GUI:\n{sortie}")
+                return etat
+
+            # Aucune alerte envoyee : destinations lues, anti-rebond vide.
+            etat = etat_gui()
+            self.assertEqual(
+                set(etat), {"backup_dir", "webhook", "email", "backup", "verify"}
+            )
+            self.assertEqual(etat["backup_dir"], str(backups))
+            self.assertIs(etat["webhook"], True)
+            self.assertIs(etat["email"], False)
+            for service in ("backup", "verify"):
+                self.assertEqual(
+                    set(etat[service]), {"state", "present", "symlink", "alert_at"}
+                )
+                self.assertEqual(
+                    etat[service]["state"], str(backups / f"notify-{service}.state")
+                )
+                self.assertIs(etat[service]["present"], False)
+                self.assertIs(etat[service]["symlink"], False)
+                self.assertEqual(etat[service]["alert_at"], "")
+
+            # Une alerte d'echec arme l'anti-rebond du seul service concerne.
+            echec = self._notifier(installer=installer, env_file=env_file, env=env)
+            self.assertEqual(echec.returncode, 0, echec.stdout + echec.stderr)
+            self.assertIn("anti-rebond arme", echec.stdout + echec.stderr)
+
+            etat = etat_gui()
+            self.assertIs(etat["backup"]["present"], True)
+            self.assertRegex(
+                etat["backup"]["alert_at"],
+                r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}",
+                "la date de la derniere alerte doit etre lisible par le GUI",
+            )
+            self.assertIs(etat["verify"]["present"], False)
 
     @staticmethod
     def _extraire_fonction(nom):
