@@ -78,6 +78,26 @@ class BackupStatesJsTest(unittest.TestCase):
             )
             self.assertNotIn("inconnu", texte, f"{nom} : {identifiant} est reste inconnu")
 
+    def assertBoutons(self, nom, attendu):
+        """Les boutons `.ssh-btn` sont tous dans l'etat attendu."""
+        boutons = self.mesures_de(nom)["boutons"]
+        self.assertTrue(boutons, f"{nom} : aucun bouton .ssh-btn mesure")
+        self.assertEqual(
+            boutons,
+            [attendu] * len(boutons),
+            f"{nom} : boutons .ssh-btn pas tous a disabled={attendu}",
+        )
+
+    def test_boutons_desactives_en_mode_local(self):
+        self.assertBoutons("bascule_local", True)
+
+    def test_boutons_reactives_une_fois_connecte(self):
+        self.assertBoutons("connexion", False)
+        self.assertBoutons("retour_onglet_ssh", False)
+
+    def test_boutons_desactives_hors_connexion(self):
+        self.assertBoutons("deconnexion", True)
+
     def test_connexion_lit_les_trois_etats(self):
         self.assertLuDepuisLeServeur("connexion")
 

@@ -6,6 +6,36 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Test permanent étendu aux boutons `ssh-btn`
+
+**Ajouté**
+- Le pilote rend 7 boutons `.ssh-btn` (même nombre que la carte dans
+  `web/index.html`) au lieu d'une liste vide, et chaque scénario mesure leur
+  `disabled` en plus des textes et du nombre d'appels backend.
+- Le pilote modélise désormais la séquence réelle du backend : à la connexion
+  `set_connection_status` puis `set_actions_enabled(true)` (`_run_async` →
+  `_refresh_actions_state`) ; à la déconnexion l'inverse
+  (`disconnect_ssh`) ; à chaque bascule de `run_mode`, `set_actions_enabled`
+  est rappelé — y compris en Local, où il renvoie `true` sans réactiver les
+  boutons.
+- 3 tests : boutons désactivés en Local, désactivés hors connexion, réactivés
+  une fois connecté (et à nouveau au retour sur l'onglet SSH).
+
+**Point relevé par le pilote** : revenir sur l'onglet SSH sans que le backend
+recalcule les actions laisse les boutons inactifs ; c'est `set_state("run_mode")`
+→ `_refresh_actions_state` qui les réactive. Le scénario `retour_onglet_ssh`
+modélise cet appel (aucun appel backend supplémentaire, toujours 3 lectures).
+
+**Vérifications**
+- `node --check tests/js/backup_states_check.js` → OK.
+- `python3 -m unittest tests.test_backup_states_js -v` → 9 tests OK (6 existants
+  inchangés).
+- `python3 -m unittest discover -s tests` → 144 tests OK.
+- Non-vacuité boutons : avec `btn.disabled = false;` à la place de
+  `isLocal || !actionsEnabled` sur une copie jetable, `bascule_local` et
+  `deconnexion` rapportent des boutons actifs → tests en échec. Copie
+  supprimée.
+
 ## 2026-11-20 — Revue du test permanent (stubs et scénarios allégés)
 
 **Retiré du pilote** : stub `window` (aucun `window.` dans `app.js`),
