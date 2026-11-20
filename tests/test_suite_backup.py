@@ -2193,23 +2193,26 @@ class HelperNotifyFailureTest(unittest.TestCase):
                 return etat
 
             # Aucune alerte envoyee : destinations lues, anti-rebond vide.
-            etat = etat_gui()
+            etat_initial = etat_gui()
             self.assertEqual(
-                set(etat), {"backup_dir", "webhook", "email", "backup", "verify"}
+                set(etat_initial),
+                {"backup_dir", "webhook", "email", "backup", "verify"},
             )
-            self.assertEqual(etat["backup_dir"], str(backups))
-            self.assertIs(etat["webhook"], True)
-            self.assertIs(etat["email"], False)
+            self.assertEqual(etat_initial["backup_dir"], str(backups))
+            self.assertIs(etat_initial["webhook"], True)
+            self.assertIs(etat_initial["email"], False)
             for service in ("backup", "verify"):
                 self.assertEqual(
-                    set(etat[service]), {"state", "present", "symlink", "alert_at"}
+                    set(etat_initial[service]),
+                    {"state", "present", "symlink", "alert_at"},
                 )
                 self.assertEqual(
-                    etat[service]["state"], str(backups / f"notify-{service}.state")
+                    etat_initial[service]["state"],
+                    str(backups / f"notify-{service}.state"),
                 )
-                self.assertIs(etat[service]["present"], False)
-                self.assertIs(etat[service]["symlink"], False)
-                self.assertEqual(etat[service]["alert_at"], "")
+                self.assertIs(etat_initial[service]["present"], False)
+                self.assertIs(etat_initial[service]["symlink"], False)
+                self.assertEqual(etat_initial[service]["alert_at"], "")
 
             # Une alerte d'echec arme l'anti-rebond du seul service concerne.
             echec = self._notifier(installer=installer, env_file=env_file, env=env)
@@ -2224,6 +2227,40 @@ class HelperNotifyFailureTest(unittest.TestCase):
                 "la date de la derniere alerte doit etre lisible par le GUI",
             )
             self.assertIs(etat["verify"]["present"], False)
+
+            # Un succes reinitialise l'anti-rebond : le GUI doit revoir l'etat vide.
+            reset = self._reset(
+                installer=installer, env_file=env_file, env=env, service="backup"
+            )
+            self.assertEqual(reset.returncode, 0, reset.stdout + reset.stderr)
+            self.assertIn("anti-rebond reinitialise", reset.stdout + reset.stderr)
+
+            # Le reset supprime l'etat du service : le GUI doit relire exactement
+            # l'etat d'avant l'alerte (present, date, chemins, destinations).
+            # `verify` n'a jamais ete arme, inutile de le recontroler ici.
+            self.assertEqual(
+                etat_gui(),
+                etat_initial,
+                "apres notify-reset, le GUI doit relire l'etat initial",
+            )
+
+            # Un etat en lien symbolique n'est jamais suivi par le helper : le
+            # GUI doit le lire comme absent (`present` faux) tout en signalant
+            # le lien (`symlink` vrai), sans date d'alerte.
+            cible = racine / "ailleurs.txt"
+            cible.write_text("ne pas toucher\n", encoding="utf-8")
+            (backups / "notify-backup.state").symlink_to(cible)
+
+            self.assertEqual(
+                etat_gui(),
+                {
+                    **etat_initial,
+                    "backup": {**etat_initial["backup"], "symlink": True},
+                },
+                "un etat en lien symbolique doit ressortir absent mais signale",
+            )
+            self.assertTrue((backups / "notify-backup.state").is_symlink())
+            self.assertEqual(cible.read_text(encoding="utf-8"), "ne pas toucher\n")
 
     @staticmethod
     def _extraire_fonction(nom):

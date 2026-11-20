@@ -25,10 +25,21 @@ et le parseur (sorties simulées) séparément.
     `notify-<service>.state` sous `FABSUITE_BACKUP_DIR`, `present` faux et date
     vide sans alerte ;
   - après un `notify-failure` réel, anti-rebond armé : `backup.present` vrai,
-    `alert_at` au format `AAAA-MM-JJ hh:mm:ss` (mtime `stat`), `verify` intact.
+    `alert_at` au format `AAAA-MM-JJ hh:mm:ss` (mtime `stat`), `verify` intact ;
+  - après un `notify-reset` réel : l'état relu par le GUI est **égal à l'état
+    initial** (dict complet : `present`, `alert_at`, chemins `state`,
+    `symlink`, destinations), donc le retour à vide est lu par le GUI et pas
+    seulement l'armement. Une seule assertion remplace les trois vérifications
+    partielles, et elle est strictement plus large ; `verify` n'est pas
+    recontrolé à part puisqu'il n'a jamais été armé (contrôle vide) ;
+  - état `notify-backup.state` remplacé par un **lien symbolique** puis relu :
+    le GUI doit voir `present` faux **et** `symlink` vrai, `alert_at` vide, et
+    le helper ne doit pas suivre le lien (cible intacte). L'état attendu est
+    l'état initial avec `symlink: True`, donc tout autre écart reste détecté.
 
 **Vérifications** : test ciblé OK ; `python3 -m unittest discover -s tests` →
-**145 tests OK**.
+**145 tests OK**. Non-vacuité du cas lien : en forçant `symlink` à faux dans le
+parseur, le test échoue bien sur ce seul champ.
 
 ## 2026-11-20 — Revue du pilote après l'ajout des boutons
 
