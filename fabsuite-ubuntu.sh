@@ -1436,14 +1436,21 @@ systemd_unit_dir() {
   # des tests : l'installation et la lecture d'etat doivent viser le meme
   # dossier, sinon `*-timer-status` ne voit jamais le timer installe.
   local dossier="${FABSUITE_SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
+  # Un chemin relatif installerait les unites ailleurs que dans le dossier lu
+  # par systemd (et par `*-timer-status`) : refus explicite.
+  if [[ "$dossier" != /* ]]; then
+    echo "[systemd] ERROR: FABSUITE_SYSTEMD_UNIT_DIR doit etre un chemin absolu (recu: ${dossier})." >&2
+    return 2
+  fi
   printf '%s\n' "${dossier%/}"
 }
 
 print_systemd_timer_status() {
   local nom="$1"
   local prefix="$2"
-  local timer_unit
-  timer_unit="$(systemd_unit_dir)/${nom}.timer"
+  local dossier timer_unit
+  dossier="$(systemd_unit_dir)" || return 2
+  timer_unit="${dossier}/${nom}.timer"
 
   if [[ ! -f "$timer_unit" ]]; then
     echo "${prefix} installed=0"
@@ -1478,7 +1485,7 @@ run_install_verify_timer() {
   local marker_dir
   marker_dir="$(dirname "$marker")"
   local unit_dir
-  unit_dir="$(systemd_unit_dir)"
+  unit_dir="$(systemd_unit_dir)" || return 2
 
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -1539,8 +1546,13 @@ run_verify_timer_status() {
   echo "[verify-timer] backup_dir=${backup_root}"
 
   # Pas de timer installe : signaler clairement l'action a faire, sans erreur.
-  if ! print_systemd_timer_status "fabsuite-verify" "[verify-timer]"; then
+  # Une configuration invalide (dossier non absolu) doit en revanche echouer.
+  local statut=0
+  print_systemd_timer_status "fabsuite-verify" "[verify-timer]" || statut=$?
+  if [[ "$statut" -eq 1 ]]; then
     return 0
+  elif [[ "$statut" -ne 0 ]]; then
+    return "$statut"
   fi
 
   if [[ -f "$marker" ]]; then
@@ -1564,7 +1576,7 @@ run_install_backup_timer() {
   local marker_dir
   marker_dir="$(dirname "$marker")"
   local unit_dir
-  unit_dir="$(systemd_unit_dir)"
+  unit_dir="$(systemd_unit_dir)" || return 2
 
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -1624,7 +1636,13 @@ run_backup_timer_status() {
   local marker="${backup_root}/backup-failed"
   echo "[backup-timer] backup_dir=${backup_root}"
 
-  print_systemd_timer_status "fabsuite-backup" "[backup-timer]" || return 0
+  local statut=0
+  print_systemd_timer_status "fabsuite-backup" "[backup-timer]" || statut=$?
+  if [[ "$statut" -eq 1 ]]; then
+    return 0
+  elif [[ "$statut" -ne 0 ]]; then
+    return "$statut"
+  fi
 
   if [[ -f "$marker" ]]; then
     echo "[backup-timer] marker=${marker}"

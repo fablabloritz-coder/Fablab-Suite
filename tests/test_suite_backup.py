@@ -1811,8 +1811,55 @@ class HelperTimerUnitDirTest(unittest.TestCase):
             # Sans la variable, la lecture retombe sur /etc/systemd/system : les
             # unites du dossier surcharge ne sont donc pas vues.
             defaut = self._lancer(contexte, "verify-timer-status", contexte["env_file_defaut"])
+            self.assertEqual(defaut.returncode, 0, defaut.stdout + defaut.stderr)
             self.assertIn("[verify-timer] installed=0", defaut.stdout)
             self.assertNotIn("[verify-timer] installed=1", defaut.stdout)
+
+    def test_refuse_un_dossier_d_unites_non_absolu(self):
+        """Un chemin relatif n'installe rien et fait echouer la lecture d'etat."""
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            relatif = contexte["installer"] / "relatif.env"
+            relatif.write_text(
+                "\n".join(
+                    (
+                        f"INSTALL_DIR={contexte['installer']}",
+                        "FLASK_SECRET_KEY=test-secret",
+                        f"FABSUITE_BACKUP_DIR={contexte['backups']}",
+                        "FABSUITE_SYSTEMD_UNIT_DIR=systemd",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+            attendu = (
+                "FABSUITE_SYSTEMD_UNIT_DIR doit etre un chemin absolu "
+                "(recu: systemd)."
+            )
+            # Le chemin relatif se resoudrait sous le cwd du helper : sans refus,
+            # `install` ecrirait ici, sans erreur.
+            piege = contexte["installer"] / "systemd"
+            piege.mkdir()
+
+            for action in ("install-verify-timer", "install-backup-timer"):
+                processus = self._lancer(contexte, action, relatif)
+                sortie = processus.stdout + processus.stderr
+                self.assertEqual(processus.returncode, 2, sortie)
+                self.assertIn(attendu, sortie)
+                self.assertEqual(list(piege.iterdir()), [], sortie)
+
+            for action in ("verify-timer-status", "backup-timer-status"):
+                processus = self._lancer(contexte, action, relatif)
+                sortie = processus.stdout + processus.stderr
+                self.assertEqual(processus.returncode, 2, sortie)
+                self.assertNotIn("[verify-timer] installed", sortie)
+                self.assertNotIn("[backup-timer] installed", sortie)
+                self.assertIn(attendu, sortie)
+                # Pas de faux "timer non installe" : le GUI doit voir l'erreur.
+                self.assertNotIn("installed=", processus.stdout, sortie)
 
 
 def _gui_backend():

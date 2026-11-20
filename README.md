@@ -529,7 +529,8 @@ Le helper installe `/etc/systemd/system/fabsuite-verify.service` et
 `/etc/systemd/system` par défaut et peut être changé avec
 `FABSUITE_SYSTEMD_UNIT_DIR` (dans `fabsuite-ubuntu.env`) : l'installation et la
 lecture d'état (`verify-timer-status`, `backup-timer-status`) visent alors le
-même dossier. Le service lance
+même dossier. La valeur doit être un **chemin absolu** ; un chemin relatif est
+refusé (code 2) par ces quatre actions. Le service lance
 `verify --all` sous l'utilisateur opérateur (pas root), par défaut tous les
 jours (`OnCalendar=daily`, `Persistent=true` pour rattraper un démarrage
 manqué). Pour un autre horaire, définir dans `fabsuite-ubuntu.env` :

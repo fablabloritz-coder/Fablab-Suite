@@ -6,6 +6,44 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Refus explicite d'un dossier d'unités systemd non absolu
+
+**Contexte** : `FABSUITE_SYSTEMD_UNIT_DIR=relatif` était accepté ; l'installation
+écrivait les unités sous le cwd du helper (voire échouait sans message utile) et
+la lecture d'état répondait `installed=0`, donc la carte affichait « timer non
+installé » pour une simple faute de configuration.
+
+**Helper (v17, même version)**
+- `systemd_unit_dir()` refuse toute valeur qui ne commence pas par `/` :
+  `[systemd] ERROR: FABSUITE_SYSTEMD_UNIT_DIR doit etre un chemin absolu (recu: …).`
+  sur stderr, code de retour 2.
+- `print_systemd_timer_status` propage ce code (au lieu de « non installé ») ;
+  `run_verify_timer_status` / `run_backup_timer_status` distinguent 1 (non
+  installé → code 0, comportement inchangé) de 2 (configuration invalide → 2),
+  donc le GUI affiche l'erreur au lieu d'un faux « timer non installé ».
+- `install-verify-timer` / `install-backup-timer` échouent avant toute copie.
+- Documenté dans `fabsuite-ubuntu.env.example` et le README.
+
+**Piège rencontré** : `set -euo pipefail` est actif, donc l'appel nu à
+`print_systemd_timer_status` (qui renvoie 1 quand le timer manque) tuait le
+script en code 1. Forme retenue : `local statut=0` puis
+`print_systemd_timer_status … || statut=$?`. Le test
+`HelperTimerUnitDirTest.test_installe_et_lit_le_dossier_d_unites_surcharge`
+vérifie désormais le code 0 du cas par défaut et l'aurait attrapé.
+
+**Test ajouté** : `HelperTimerUnitDirTest.test_refuse_un_dossier_d_unites_non_absolu`
+- installation avec `FABSUITE_SYSTEMD_UNIT_DIR=systemd` → code 2, message exact,
+  et le dossier piège `systemd/` créé sous le cwd reste vide ;
+- `verify-timer-status` / `backup-timer-status` → code 2, message, et aucune
+  ligne `installed=` (pas de faux « non installé »).
+
+**Vérifications**
+- `bash -n fabsuite-ubuntu.sh` OK ; `python3 -m unittest discover -s tests` →
+  **151 tests OK**.
+- Non-vacuité : avec le contrôle neutralisé, l'installation sort en code 0 et
+  écrit `fabsuite-verify.service`/`.timer` dans `./relatif`, et la lecture
+  répond `installed=1` — exactement le défaut signalé.
+
 ## 2026-11-20 — Dossier d'unités systemd réglable, branche « timer installé » testée
 
 **Contexte** : `print_systemd_timer_status` testait le chemin absolu
