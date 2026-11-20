@@ -2230,9 +2230,9 @@ class HelperNotifyFailureTest(unittest.TestCase):
                 "sendmail|ops@example.invalid", journal.read_text(encoding="utf-8")
             )
 
-    def _preparer_path_isole(self, racine, sendmail_exit=0):
-        """Installateur + env file + PATH ne contenant qu'un faux sendmail et les
-        outils systeme explicitement necessaires au helper."""
+    def _preparer_path_isole(self, racine, transports=(("sendmail", 0),)):
+        """Installateur + env file + PATH ne contenant que les faux transports
+        demandes et les outils systeme explicitement necessaires au helper."""
         bash = shutil.which("bash")
         if not bash:
             self.skipTest("bash indisponible")
@@ -2251,7 +2251,8 @@ class HelperNotifyFailureTest(unittest.TestCase):
         faux_bin = racine / "bin"
         faux_bin.mkdir()
         journal = racine / "sendmail.log"
-        self._ecrire_faux_transport(faux_bin, bash, "sendmail", sendmail_exit)
+        for nom, code in transports:
+            self._ecrire_faux_transport(faux_bin, bash, nom, code)
         for outil in outils:
             os.symlink(shutil.which(outil), faux_bin / outil)
 
@@ -2282,7 +2283,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
             installer, env_file, env, journal = self._preparer_path_isole(
-                racine, sendmail_exit=7
+                racine, transports=(("sendmail", 7),)
             )
 
             processus = self._notifier(installer=installer, env_file=env_file, env=env)
@@ -2298,6 +2299,69 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertEqual(arguments, "ops@example.invalid")
             self.assertIn("Subject: [FabLab Suite] backup en echec (code 1)", corps)
             self.assertIn("To: ops@example.invalid", corps)
+
+    @staticmethod
+    def _transports_visibles(env):
+        """Transports que le PATH de cet environnement permet reellement d'executer."""
+        bash = shutil.which("bash") or "bash"
+        processus = subprocess.run(
+            [
+                bash,
+                "-c",
+                'for nom in mail sendmail; do command -v "$nom" >/dev/null && echo "$nom"; done',
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return set(processus.stdout.split())
+
+    def test_notify_failure_envoi_sendmail_isole_reussi(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal = self._preparer_path_isole(racine)
+
+            # Preuve d'isolation : seul le faux sendmail est executable.
+            self.assertEqual(self._transports_visibles(env), {"sendmail"})
+
+            processus = self._notifier(installer=installer, env_file=env_file, env=env)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("email envoye", sortie)
+            self.assertIn("anti-rebond arme", sortie)
+
+            contenu = (racine / "backups" / "notify-backup.state").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("ECHEC ", contenu)
+            self.assertIn("service=backup code=1", contenu)
+
+            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            self.assertEqual(nom, "sendmail")
+            self.assertEqual(arguments, "ops@example.invalid")
+            self.assertIn("Subject: [FabLab Suite] backup en echec (code 1)", corps)
+            self.assertIn("To: ops@example.invalid", corps)
+
+    def test_notify_failure_sans_transport_isole_n_arme_pas_l_etat(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            installer, env_file, env, journal = self._preparer_path_isole(
+                racine, transports=()
+            )
+
+            # Preuve d'isolation : ni mail ni sendmail systeme ne sont joignables.
+            self.assertEqual(self._transports_visibles(env), set())
+
+            processus = self._notifier(installer=installer, env_file=env_file, env=env)
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("ERROR email: ni mail ni sendmail disponible", processus.stderr)
+            self.assertIn("anti-rebond non arme", sortie)
+            self.assertFalse((racine / "backups" / "notify-backup.state").exists())
+            self.assertFalse(journal.exists())
 
     def test_mail_prioritaire_quand_les_deux_transports_existent(self):
         with tempfile.TemporaryDirectory() as tmp:

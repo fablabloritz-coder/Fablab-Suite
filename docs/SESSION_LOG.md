@@ -27,11 +27,18 @@ serveur.
   code 1, aucun envoi) ; `mail` prioritaire quand les deux existent (arguments
   `-s`, corps brut) ; faux `sendmail` en échec (code 7) → `ERROR email: envoi
   impossible`, code 1, corps bien transmis.
-- Test CLI `notify-failure` avec le même PATH isolé (faux `sendmail` en échec +
-  symlinks explicites vers `grep`, `sed`, `dirname`, `mkdir`, `hostname`,
-  `date`, `rm`, `mv`) : unité non en échec (code 0), `anti-rebond non arme`,
-  aucun `notify-backup.state` créé.
-- Suite complète 133 tests OK, `bash -n`, `py_compile`, `node --check`.
+- Tests CLI `notify-failure` de bout en bout avec le même PATH isolé (faux
+  transport(s) + symlinks explicites vers `grep`, `sed`, `dirname`, `mkdir`,
+  `hostname`, `date`, `rm`, `mv`) :
+  - `sendmail` en échec (code 7) : `ERROR email: envoi impossible`, code unité 0,
+    `anti-rebond non arme`, aucun `notify-backup.state` ;
+  - `sendmail` en succès : `email envoye`, `anti-rebond arme`, état
+    `ECHEC … service=backup code=1`, corps envoyé ;
+  - aucun transport : `ni mail ni sendmail disponible`, aucun envoi, aucun état.
+- Chaque test e2e vérifie d'abord `command -v mail/sendmail` dans ce PATH : seul
+  le faux transport attendu est visible, preuve qu'aucun binaire système ne
+  fuit dans le chemin complet.
+- Suite complète 135 tests OK, `bash -n`, `py_compile`, `node --check`.
 
 **Risques / non couverts**
 - Le test exécute la fonction hors du dispatch complet : l'intégration
