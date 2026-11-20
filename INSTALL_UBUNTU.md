@@ -91,7 +91,8 @@ Ce que fait la commande:
 # Planifier verify --all (timer systemd, signal ~/backup-fabsuite/verify-degrade)
 ./fabsuite-ubuntu.sh install-verify-timer
 
-# Arreter la planification (unites conservees, reactivation avec install-*-timer)
+# Arreter la planification (unites conservees ; reactivation par bouton
+# Reactiver ou install-*-timer)
 ./fabsuite-ubuntu.sh disable-backup-timer
 ./fabsuite-ubuntu.sh disable-verify-timer
 
@@ -124,6 +125,20 @@ Ce que fait la commande:
 ./fabsuite-ubuntu.sh logs
 ./fabsuite-ubuntu.sh logs Fabtrack
 ```
+
+### Timers planifiés dans le GUI
+
+La carte **Sauvegarde & restauration** adapte la ligne d'état et le bouton
+d'installation :
+
+- après `disable-*-timer` : « timer désactivé », prochaine exécution masquée,
+  bouton **Réactiver** (au lieu d'« Installer timer ») ;
+- timer relancé à la main après désactivation : « timer actif (désactivé au
+  démarrage) », prochaine exécution conservée, bouton **Réactiver** pour
+  rétablir l'activation au démarrage.
+
+Le détail des états et des commandes est dans le README, section
+« Timers planifiés ».
 
 ## 5) Accès navigateur
 
