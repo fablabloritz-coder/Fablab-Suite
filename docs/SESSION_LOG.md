@@ -6,6 +6,44 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Revue : un seul point de décision pour les états Sauvegarde
+
+**Contexte** : après la remise à « inconnu » hors SSH connecté, trois branches
+`currentMode === "local"` subsistaient dans `refreshVerifyTimerState`,
+`refreshBackupTimerState` et `refreshNotificationState`.
+
+**Constat de revue — branches atteignables** : ces trois fonctions sont aussi
+appelées depuis Python (`_request_front_refresh` en fin de backup, de verify et
+d'acquittement, plus le bouton dédié). Un worker peut donc terminer alors que
+l'utilisateur a basculé sur l'onglet Local : sans garde, la ligne du panneau
+Local serait écrasée par des données serveur, ou par une erreur du helper si la
+connexion est tombée. Les branches ne sont donc pas du code mort.
+
+**Simplifié**
+- `setBackupStateUnknown()` et la décision de `refreshBackupCardStates()` sont
+  fusionnés en `backupStateAvailable(el)` : un seul endroit teste
+  `currentMode`/`sshConnected` et écrit le libellé « état inconnu ».
+- Chaque lecture commence par `if (!backupStateAvailable(el)) return;` — même
+  règle pour les déclencheurs Python et pour les bascules d'onglet ou de
+  connexion ; `refreshBackupCardStates()` se contente d'appeler les trois
+  lectures.
+- Effet de bord voulu : un rafraîchissement demandé par Python après une perte
+  de connexion affiche « état inconnu » au lieu d'une ligne d'erreur du helper.
+
+**Vérifications**
+- `node --check web/js/app.js` → OK.
+- `python3 -m unittest discover -s tests` → 135 tests OK.
+- Harnais Node (DOM/eel simulés) : connexion → 3 appels et données ;
+  déconnexion → inconnu, 0 appel ; bascule Local → inconnu, 0 appel ; appel
+  Python direct en Local → inconnu, 0 appel ; retour onglet SSH connecté →
+  3 appels et données réelles ; déconnexion puis appel Python direct → inconnu,
+  0 appel.
+
+**First next action for next session**
+Rejouer le contrôle navigateur 1200×900 sur Windows/Edge avec une vraie cible
+SSH, en vérifiant que les trois lignes passent bien à « état inconnu » à la
+déconnexion puis se rechargent à la reconnexion.
+
 ## 2026-11-20 — Carte Sauvegarde : états remis à inconnu en Local / déconnecté
 
 **Contexte** : en repassant en mode Local ou en coupant la connexion SSH, les

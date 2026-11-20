@@ -137,28 +137,24 @@ const BACKUP_STATE_TITLES = {
   notifyState: "Notifications d'échec",
 };
 
-function setBackupStateUnknown(el, raison) {
-  // Aucun appel au backend : sans cible SSH joignable, la seule information
-  // honnete est "inconnu". Sans ce reset, les lignes gardent le dernier texte
-  // du serveur (ou un ancien message de mode) apres un retour en Local ou une
-  // deconnexion.
+// Un seul point de decision : une ligne d'etat n'est valable que pour un
+// serveur SSH connecte. Hors de ce cas elle repasse a "inconnu" sans appel au
+// backend, et l'appelant doit s'arreter. Retourne `false` dans ce cas.
+function backupStateAvailable(el) {
+  if (currentMode !== "local" && sshConnected) return true;
   const detail =
-    raison === "local"
+    currentMode === "local"
       ? "mode Local, cible serveur SSH requise"
       : "serveur SSH non connecté";
   el.className = "text-muted";
   el.textContent = `${BACKUP_STATE_TITLES[el.id]} : état inconnu (${detail}).`;
+  return false;
 }
 
 function refreshBackupCardStates() {
-  const enLocal = currentMode === "local";
-  if (enLocal || !sshConnected) {
-    Object.keys(BACKUP_STATE_TITLES).forEach(id => {
-      const el = document.getElementById(id);
-      if (el) setBackupStateUnknown(el, enLocal ? "local" : "deconnecte");
-    });
-    return;
-  }
+  // Chaque lecture verifie elle-meme la disponibilite : les appels venant de
+  // Python (fin de backup/verify) passent par les memes fonctions et tombent
+  // donc sur la meme regle, sans decision dupliquee ici.
   refreshVerifyTimerState();
   refreshBackupTimerState();
   refreshNotificationState();
@@ -170,10 +166,7 @@ eel.expose(refreshVerifyTimerState);
 async function refreshVerifyTimerState() {
   const el = document.getElementById("verifyTimerState");
   if (!el) return;
-  if (typeof currentMode !== "undefined" && currentMode === "local") {
-    setBackupStateUnknown(el, "local");
-    return;
-  }
+  if (!backupStateAvailable(el)) return;
   el.className = "text-muted";
   el.textContent = "Vérification planifiée : chargement...";
 
@@ -226,10 +219,7 @@ eel.expose(refreshBackupTimerState);
 async function refreshBackupTimerState() {
   const el = document.getElementById("backupTimerState");
   if (!el) return;
-  if (typeof currentMode !== "undefined" && currentMode === "local") {
-    setBackupStateUnknown(el, "local");
-    return;
-  }
+  if (!backupStateAvailable(el)) return;
   el.className = "text-muted";
   el.textContent = "Sauvegarde planifiée : chargement...";
 
@@ -294,10 +284,7 @@ eel.expose(refreshNotificationState);
 async function refreshNotificationState() {
   const el = document.getElementById("notifyState");
   if (!el) return;
-  if (typeof currentMode !== "undefined" && currentMode === "local") {
-    setBackupStateUnknown(el, "local");
-    return;
-  }
+  if (!backupStateAvailable(el)) return;
   el.className = "text-muted";
   el.textContent = "Notifications d'échec : chargement...";
 
