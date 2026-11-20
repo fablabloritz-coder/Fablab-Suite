@@ -103,22 +103,16 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 - **Vérifier les snapshots** : lance `verify --all` sur le serveur, affiche le
   bilan et la liste des snapshots dégradés (archive altérée, base corrompue,
   manifeste modifié), avec le détail des erreurs dans le journal `[verify]`.
-- **État vérification** : lit le timer planifié (prochaine exécution, dernier
-  résultat) et signale le marqueur `verify-degrade` ; si le timer n'est pas
-  installé, la ligne indique la commande `install-verify-timer`.
-- **Installer timer vérification** / **Installer timer sauvegarde** : installent
-  et activent le timer systemd correspondant via le helper (sudo requis), puis
-  relisent la ligne d'état. Le premier montage se fait donc entièrement depuis
-  le GUI, sans retenir les commandes `install-*-timer`. Relancer l'action met
-  l'unité à jour (par exemple après une mise à jour du helper).
-- **Désactiver timer vérification** / **Désactiver timer sauvegarde** : après
-  confirmation, arrêtent et désactivent le timer via `disable-*-timer` (les
-  unités restent installées), puis relisent la ligne d'état. Un échec sudo ou
-  `systemctl` est affiché avec le détail renvoyé par le helper. La ligne affiche
-  alors explicitement « timer désactivé » et le bouton d'installation devient
-  **Réactiver** (même action `install-*-timer`, qui réactive le timer). Si le
-  timer a été relancé à la main, elle indique « timer actif (désactivé au
-  démarrage) » et conserve la prochaine exécution.
+- **Timers vérification / sauvegarde** : **État vérification** / **État
+  sauvegarde** relisent la prochaine exécution, le dernier résultat et le
+  marqueur. **Installer timer vérification** / **Installer timer sauvegarde**
+  installent ou actualisent l'unité et l'activent (sudo requis) ;
+  **Désactiver timer vérification** / **Désactiver timer sauvegarde** demandent
+  confirmation puis exécutent `disable-*-timer` (unités conservées). Un échec
+  sudo ou `systemctl` est affiché avec le détail du helper. L'état désactivé
+  affiche « timer désactivé » et le bouton devient **Réactiver** ; un timer
+  relancé à la main affiche « timer actif (désactivé au démarrage) ». Voir
+  « Timers planifiés » pour le détail des états.
 - **État notifications** : lit `notify-status` du helper et affiche les
   destinations configurées (`webhook configuré/absent`, `mail configuré/absent`),
   puis, pour `backup` et `verify`, si le fichier `notify-<service>.state` existe
@@ -438,7 +432,7 @@ kill <pid>          # puis kill -9 <pid> si nécessaire
 ./fabsuite-ubuntu.sh logs Fabtrack
 ```
 
-### Sauvegarde de la suite
+### Créer un snapshot
 
 `./fabsuite-ubuntu.sh backup` crée un snapshot horodaté des bases SQLite, des
 uploads et de la configuration des cinq applications, dans
@@ -487,106 +481,100 @@ Codes de sortie : `0` snapshots sains, `3` au moins un snapshot dégradé,
 Cette distinction permet aux automatisations de ne signaler que les vraies
 dégradations.
 
-### Snapshots planifiés (timer systemd)
+### Timers planifiés (sauvegarde et vérification)
+
+Deux timers systemd indépendants planifient les opérations récurrentes :
 
 ```bash
 ./fabsuite-ubuntu.sh install-backup-timer
-```
-
-Le helper installe `fabsuite-backup.service` et `fabsuite-backup.timer`, puis
-active le timer. Le service exécute `NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh
-backup` sous l'utilisateur opérateur : le pré-check `check-data-safety`, la
-vérification du snapshot et la rotation (`FABSUITE_BACKUP_RETENTION_*`) sont
-réutilisés tels quels. Par défaut tous les jours à 03:30
-(`OnCalendar=*-*-* 03:30:00`, `Persistent=true` pour rattraper un démarrage
-manqué), personnalisable dans `fabsuite-ubuntu.env` :
-
-```bash
-FABSUITE_BACKUP_ON_CALENDAR="*-*-* 03:30:00"   # syntaxe systemd OnCalendar
-```
-
-Suivi et arrêt :
-
-```bash
-systemctl list-timers fabsuite-backup.timer
-journalctl -u fabsuite-backup.service -n 100
-cat ~/backup-fabsuite/backup-failed    # dernier échec planifié, si présent
-./fabsuite-ubuntu.sh disable-backup-timer   # arrêt + désactivation, unités conservées
-sudo systemctl disable --now fabsuite-backup.timer   # équivalent direct
-```
-
-`disable-backup-timer` est idempotent : si le timer n'est pas installé, il
-signale qu'aucune exécution n'est planifiée sans erreur. La réactivation se fait
-avec `install-backup-timer`.
-
-Signal clair en cas d'échec (pré-check non sûr, snapshot invalide, disque
-plein, etc.) :
-
-- l'unité `fabsuite-backup.service` échoue → `systemctl --failed` ;
-- le marqueur `~/backup-fabsuite/backup-failed` est créé avec l'horodatage, le
-  code de sortie et le renvoi vers le journal ; il est supprimé au prochain
-  backup réussi ;
-- le détail est dans `journalctl -u fabsuite-backup.service -n 100` ;
-- le GUI SSH affiche la prochaine exécution, le dernier résultat et, si présent,
-  le marqueur en rouge (bouton **État sauvegarde**, rafraîchi à la connexion et
-  après un backup lancé depuis l'interface).
-
-Après avoir corrigé la cause, le bouton **Acquitter les alertes** (ou
-`./fabsuite-ubuntu.sh clear-markers`) supprime le marqueur uniquement si un
-snapshot valide a été créé après l'échec ; sinon il est conservé et la raison
-est affichée.
-
-### Vérification planifiée (timer systemd)
-
-```bash
 ./fabsuite-ubuntu.sh install-verify-timer
 ```
 
-Le helper installe `/etc/systemd/system/fabsuite-verify.service` et
-`fabsuite-verify.timer`, puis active le timer. Le dossier des unités est
-`/etc/systemd/system` par défaut et peut être changé avec
-`FABSUITE_SYSTEMD_UNIT_DIR` (dans `fabsuite-ubuntu.env`) : l'installation et la
-lecture d'état (`verify-timer-status`, `backup-timer-status`) visent alors le
-même dossier. La valeur doit être un **chemin absolu** ; un chemin relatif est
-refusé (code 2) par ces actions. Le service lance
-`verify --all` sous l'utilisateur opérateur (pas root), par défaut tous les
-jours (`OnCalendar=daily`, `Persistent=true` pour rattraper un démarrage
-manqué). Pour un autre horaire, définir dans `fabsuite-ubuntu.env` :
+Le helper installe `fabsuite-backup.service`/`fabsuite-backup.timer` et
+`fabsuite-verify.service`/`fabsuite-verify.timer`, puis les active. Les services
+tournent sous l'utilisateur opérateur (pas root) et réutilisent `backup` et
+`verify --all` avec leurs contrôles et marqueurs habituels. `Persistent=true`
+rattrape un démarrage manqué.
+
+| Timer | Fonction | Horaire par défaut | Variable |
+| --- | --- | --- | --- |
+| `fabsuite-backup.timer` | snapshot vérifié + rotation | tous les jours à 03:30 | `FABSUITE_BACKUP_ON_CALENDAR` |
+| `fabsuite-verify.timer` | `verify --all` | tous les jours | `FABSUITE_VERIFY_ON_CALENDAR` |
+
+Les horaires se personnalisent dans `fabsuite-ubuntu.env` :
 
 ```bash
-FABSUITE_VERIFY_ON_CALENDAR="*-*-* 04:30:00"   # syntaxe systemd OnCalendar
+FABSUITE_BACKUP_ON_CALENDAR="*-*-* 03:30:00"   # syntaxe systemd OnCalendar
+FABSUITE_VERIFY_ON_CALENDAR="*-*-* 04:30:00"
 ```
 
-Signal clair en cas de snapshot dégradé :
+Le dossier des unités est `/etc/systemd/system` par défaut.
+`FABSUITE_SYSTEMD_UNIT_DIR` le remplace pour l'installation, la lecture d'état
+et la désactivation ; la valeur doit être un **chemin absolu** (un chemin
+relatif est refusé, code 2).
 
-- l'unité `fabsuite-verify.service` échoue (code 3) → `systemctl --failed` ;
-- le fichier `~/backup-fabsuite/verify-degrade` est créé (supprimé à la
-  prochaine vérification saine) avec l'horodatage et la commande à consulter ;
-- le détail (snapshot et erreurs) est dans
+**Suivre l'état**
+
+```bash
+systemctl list-timers fabsuite-backup.timer fabsuite-verify.timer
+journalctl -u fabsuite-backup.service -n 100
+journalctl -u fabsuite-verify.service -n 100
+cat ~/backup-fabsuite/backup-failed    # dernier échec backup, si présent
+cat ~/backup-fabsuite/verify-degrade   # dernier snapshot dégradé, si présent
+```
+
+Les boutons **État vérification** / **État sauvegarde** du GUI relisent ces
+informations à la connexion et après une action. La ligne et le bouton
+d'installation suivent l'état systemd :
+
+| Ligne affichée | Condition | Bouton d'installation | Prochaine exécution |
+| --- | --- | --- | --- |
+| `timer active` | installé, actif, activé au démarrage | Installer timer | affichée |
+| `timer inactive` | installé, arrêté, activé au démarrage | Installer timer | affichée (ou inconnue) |
+| `timer désactivé` | installé, arrêté, désactivé au démarrage | **Réactiver** | masquée |
+| `timer actif (désactivé au démarrage)` | relancé à la main après désactivation | **Réactiver** | affichée |
+| `Timer non installe : ...` | unité absente | Installer timer | — |
+
+Un marqueur (`backup-failed`, `verify-degrade`) passe la ligne en rouge, quel
+que soit l'état du timer.
+
+**Désactiver / réactiver**
+
+```bash
+./fabsuite-ubuntu.sh disable-backup-timer
+./fabsuite-ubuntu.sh disable-verify-timer
+sudo systemctl disable --now fabsuite-backup.timer   # équivalent direct
+```
+
+`disable-*-timer` exécute `systemctl disable --now` sans supprimer les unités.
+L'action est idempotente : si le timer n'est pas installé, elle signale qu'aucune
+exécution n'est planifiée, sans erreur. La réactivation passe par
+`install-*-timer` ou le bouton **Réactiver** : l'unité est remise à jour puis
+activée.
+
+**Échecs et marqueurs**
+
+- `fabsuite-backup.service` échoue → `systemctl --failed` ;
+  `~/backup-fabsuite/backup-failed` contient l'horodatage, le code de sortie et
+  le renvoi au journal, et il est supprimé au prochain backup réussi. Détail :
+  `journalctl -u fabsuite-backup.service -n 100`.
+- `fabsuite-verify.service` échoue avec le code 3 → `verify-degrade` est créé ;
+  il est supprimé à la prochaine vérification saine. Le code 2 (vérification
+  impossible : aucun snapshot, module ancien, argument invalide) ne pose pas de
+  marqueur et laisse une ligne explicite ; un marqueur existant n'est pas effacé
+  par une erreur passagère. Détail :
   `journalctl -u fabsuite-verify.service -n 100`.
+- **Acquitter les alertes** (GUI) ou `./fabsuite-ubuntu.sh clear-markers`
+  supprime `verify-degrade` seulement si un `verify --all` sain vient de réussir,
+  et `backup-failed` seulement si un snapshot valide est postérieur à l'échec.
+  Sinon les marqueurs sont conservés avec la raison.
 
-Le marqueur est réservé aux snapshots réellement dégradés (code 3). Une
-vérification impossible (code 2 : aucun snapshot, module ancien, argument
-invalide) ne pose pas le marqueur et laisse une ligne explicite dans le
-journal ; un marqueur existant n'est pas effacé par une erreur passagère.
-Après contrôle, **Acquitter les alertes** (GUI) ou
-`./fabsuite-ubuntu.sh clear-markers` supprime `verify-degrade` seulement si un
-`verify --all` sain vient de réussir (et `backup-failed` seulement si un
-snapshot valide est postérieur à l'échec). Sinon les marqueurs sont conservés
-avec la raison.
-
-Commandes utiles :
+Pour vérifier tout de suite sans attendre le timer :
 
 ```bash
-systemctl list-timers fabsuite-verify.timer   # prochaine exécution
-sudo systemctl start fabsuite-verify.service  # vérifier maintenant
-./fabsuite-ubuntu.sh disable-verify-timer     # arrêt + désactivation, unités conservées
-sudo systemctl disable --now fabsuite-verify.timer   # équivalent direct
-cat ~/backup-fabsuite/verify-degrade          # si présent : snapshot dégradé
+sudo systemctl start fabsuite-verify.service
+sudo systemctl start fabsuite-backup.service
 ```
-
-Comme pour le backup, `disable-verify-timer` est idempotent et la réactivation
-passe par `install-verify-timer`.
 
 ### Notifications d'échec (mail ou webhook)
 
