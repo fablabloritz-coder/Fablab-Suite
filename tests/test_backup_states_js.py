@@ -17,7 +17,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.test_suite_backup import _parse_notify_status_gui, _parse_timer_status_gui
+from tests.test_suite_backup import (
+    _faux_sudo,
+    _faux_systemctl,
+    _parse_notify_status_gui,
+    _parse_timer_status_gui,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "web" / "js" / "app.js"
@@ -123,6 +128,95 @@ class BackupStatesJsTest(unittest.TestCase):
         self.assertInconnu("python_tardif_apres_deconnexion", INCONNU_DECONNECTE)
 
 
+class _HarnaisHelper:
+    """HOME temporaire + copie du helper : ni reseau, ni systemd, ni root."""
+
+    def __init__(self, racine, unit_dir=None):
+        self.installer = racine / "installer"
+        self.installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", self.installer / "fabsuite-ubuntu.sh")
+
+        self.backups = racine / "backups"
+        self.backups.mkdir()
+
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        # `curl` factice : l'envoi webhook reussit, donc l'anti-rebond s'arme et
+        # le helper ecrit un vrai fichier d'etat avec sa date.
+        (faux_bin / "curl").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        (faux_bin / "curl").chmod(0o755)
+
+        lignes = [
+            f"INSTALL_DIR={racine / 'suite'}",
+            'APPS="FabHome"',
+            "FLASK_SECRET_KEY=test-secret",
+            f"FABSUITE_BACKUP_DIR={self.backups}",
+            "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+        ]
+        if unit_dir is not None:
+            # Installation et lecture d'etat visent ce dossier : `sudo` et
+            # `systemctl` simules suffisent, sans root ni systemd reel.
+            _faux_sudo(faux_bin)
+            _faux_systemctl(faux_bin, racine / "systemctl.log")
+            lignes.append(f"FABSUITE_SYSTEMD_UNIT_DIR={unit_dir}")
+            self.unit_dir = unit_dir
+
+        self.env_file = self.installer / "fabsuite-ubuntu.env"
+        self.env_file.write_text("\n".join(lignes + [""]), encoding="utf-8")
+
+        self.env = os.environ.copy()
+        self.env["PATH"] = f"{faux_bin}:{self.env['PATH']}"
+        self.env["HOME"] = str(racine / "home")
+        self.env["NON_INTERACTIVE"] = "1"
+        self.env.pop("SUDO_USER", None)
+        self.env.pop("FABSUITE_SYSTEMD_UNIT_DIR", None)
+
+    def lancer(self, action, *args):
+        return subprocess.run(
+            [
+                shutil.which("bash"),
+                str(self.installer / "fabsuite-ubuntu.sh"),
+                action,
+                *args,
+                "--env-file",
+                str(self.env_file),
+            ],
+            cwd=str(self.installer),
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def sortie(self, action, *args):
+        """Sortie complete d'une action, exigee sans erreur."""
+        processus = self.lancer(action, *args)
+        sortie = processus.stdout + processus.stderr
+        if processus.returncode != 0:
+            raise AssertionError(
+                f"{action} en echec (code {processus.returncode}):\n{sortie}"
+            )
+        return sortie
+
+
+def _rendre(racine, reponses):
+    """Injecte les payloads reels dans le pilote et rend les mesures."""
+    payload = racine / "etats-reels.json"
+    payload.write_text(json.dumps(reponses), encoding="utf-8")
+    proc = subprocess.run(
+        [NODE, str(DRIVER), str(APP), str(payload)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            "le pilote JS a echoue (code %s) :\n%s" % (proc.returncode, proc.stderr)
+        )
+    return json.loads(proc.stdout)["scenarios"]
+
+
 class EtatsReelsRendTest(unittest.TestCase):
     """Les trois lignes rendues depuis de vraies sorties du helper.
 
@@ -130,133 +224,57 @@ class EtatsReelsRendTest(unittest.TestCase):
     de lecture (`notify-status`, `verify-timer-status`, `backup-timer-status`)
     -> parseurs du GUI -> payloads injectes dans `app.js` -> textes de la carte.
 
-    Sans root, `/etc/systemd/system/<unit>.timer` ne peut pas exister : les deux
-    actions de timer sortent donc leur branche "timer non installe" (`installed=0`
-    et son `hint`), qui est bien celle que la carte affiche sur un hote sans
-    timer. Le resume "timer installe" reste couvert par la reponse simulee de
-    `BackupStatesJsTest` et par `tests/test_ssh_gui_backup.py`.
+    Aucun timer n'est installe ici : les deux actions de timer sortent leur
+    branche `installed=0` et son `hint`. La branche "timer installe" est couverte
+    par `TimersInstallesRendTest`, avec un dossier d'unites surcharge.
     """
 
     @classmethod
     def setUpClass(cls):
         if not NODE:
             raise unittest.SkipTest("node introuvable")
-        bash = shutil.which("bash")
-        if not bash:
+        if not shutil.which("bash"):
             raise unittest.SkipTest("bash indisponible")
 
         cls._tmp = tempfile.TemporaryDirectory()
-        racine = Path(cls._tmp.name)
+        cls.harnais = _HarnaisHelper(Path(cls._tmp.name))
 
-        installer = racine / "installer"
-        installer.mkdir()
-        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
-
-        # `curl` factice : l'envoi webhook reussit, donc l'anti-rebond s'arme et
-        # le helper ecrit un vrai fichier d'etat avec sa date.
-        faux_bin = racine / "bin"
-        faux_bin.mkdir()
-        faux_curl = faux_bin / "curl"
-        faux_curl.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-        faux_curl.chmod(0o755)
-
-        backups = racine / "backups"
-        env_file = installer / "fabsuite-ubuntu.env"
-        env_file.write_text(
-            "\n".join(
-                (
-                    f"INSTALL_DIR={racine / 'suite'}",
-                    'APPS="FabHome"',
-                    "FLASK_SECRET_KEY=test-secret",
-                    f"FABSUITE_BACKUP_DIR={backups}",
-                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
-                    "",
-                )
-            ),
-            encoding="utf-8",
-        )
-
-        env = os.environ.copy()
-        env["PATH"] = f"{faux_bin}:{env['PATH']}"
-        env["HOME"] = str(racine / "home")
-        env["NON_INTERACTIVE"] = "1"
-
-        cls.installer, cls.env_file, cls.env = installer, env_file, env
-
-        echec = cls._helper(
+        echec = cls.harnais.sortie(
             "notify-failure", "--notify-service", "backup", "--notify-code", "1"
         )
-        sortie = echec.stdout + echec.stderr
-        if echec.returncode != 0 or "anti-rebond arme" not in sortie:
-            raise AssertionError(f"anti-rebond non arme (code {echec.returncode}):\n{sortie}")
+        if "anti-rebond arme" not in echec:
+            raise AssertionError(f"anti-rebond non arme:\n{echec}")
 
-        cls.sorties = {}
-        cls.etat_notify = cls._etat("notify-status", _parse_notify_status_gui)
-        cls.etat_verify = cls._etat(
-            "verify-timer-status", _parse_timer_status_gui, "[verify-timer] "
+        cls.sorties = {
+            action: cls.harnais.sortie(action)
+            for action in (
+                "notify-status",
+                "verify-timer-status",
+                "backup-timer-status",
+            )
+        }
+        cls.etat_notify = _parse_notify_status_gui(cls.sorties["notify-status"])
+        cls.etat_verify = _parse_timer_status_gui(
+            cls.sorties["verify-timer-status"], "[verify-timer] "
         )
-        cls.etat_backup = cls._etat(
-            "backup-timer-status", _parse_timer_status_gui, "[backup-timer] "
+        cls.etat_backup = _parse_timer_status_gui(
+            cls.sorties["backup-timer-status"], "[backup-timer] "
         )
 
         # Un seul passage du pilote : les scenarios `*_reel` rendent chaque ligne
         # avec la reponse reelle de l'action correspondante.
-        payload = Path(cls._tmp.name) / "etats-reels.json"
-        payload.write_text(
-            json.dumps(
-                {
-                    "notify_status": cls.etat_notify,
-                    "verify_timer_status": cls.etat_verify,
-                    "backup_timer_status": cls.etat_backup,
-                }
-            ),
-            encoding="utf-8",
+        cls.mesures = _rendre(
+            Path(cls._tmp.name),
+            {
+                "notify_status": cls.etat_notify,
+                "verify_timer_status": cls.etat_verify,
+                "backup_timer_status": cls.etat_backup,
+            },
         )
-        proc = subprocess.run(
-            [NODE, str(DRIVER), str(APP), str(payload)],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if proc.returncode != 0:
-            raise AssertionError(
-                "le pilote JS a echoue (code %s) :\n%s" % (proc.returncode, proc.stderr)
-            )
-        cls.mesures = json.loads(proc.stdout)["scenarios"]
-
-    @classmethod
-    def _etat(cls, action, parseur, *args):
-        processus = cls._helper(action)
-        sortie = processus.stdout + processus.stderr
-        if processus.returncode != 0:
-            raise AssertionError(
-                f"{action} en echec (code {processus.returncode}):\n{sortie}"
-            )
-        cls.sorties[action] = sortie
-        return parseur(sortie, *args)
 
     @classmethod
     def tearDownClass(cls):
         cls._tmp.cleanup()
-
-    @classmethod
-    def _helper(cls, action, *args):
-        return subprocess.run(
-            [
-                shutil.which("bash"),
-                str(cls.installer / "fabsuite-ubuntu.sh"),
-                action,
-                *args,
-                "--env-file",
-                str(cls.env_file),
-            ],
-            cwd=str(cls.installer),
-            env=cls.env,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
 
     def test_notify_state_reel_dans_la_carte(self):
         etat = self.etat_notify
@@ -319,6 +337,110 @@ class EtatsReelsRendTest(unittest.TestCase):
                 self.assertEqual(mesure["calls"], 1)
                 self.assertEqual(mesure["texts"][ligne], etat["hint"])
                 self.assertEqual(mesure["classes"][ligne], "text-warning")
+
+
+class TimersInstallesRendTest(unittest.TestCase):
+    """Branche "timer installe" et marqueurs, depuis le helper reel.
+
+    `FABSUITE_SYSTEMD_UNIT_DIR` fait installer les unites dans un dossier
+    temporaire : `verify-timer-status` et `backup-timer-status` sortent alors
+    `installed=1`, les valeurs `systemctl` simulees et les marqueurs, sans root.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not NODE:
+            raise unittest.SkipTest("node introuvable")
+        if not shutil.which("bash"):
+            raise unittest.SkipTest("bash indisponible")
+
+        cls._tmp = tempfile.TemporaryDirectory()
+        racine = Path(cls._tmp.name)
+        unit_dir = racine / "systemd"
+        unit_dir.mkdir()
+        cls.harnais = _HarnaisHelper(racine, unit_dir=unit_dir)
+
+        for action, unite in (
+            ("install-verify-timer", "fabsuite-verify.timer"),
+            ("install-backup-timer", "fabsuite-backup.timer"),
+        ):
+            sortie = cls.harnais.sortie(action)
+            if not (unit_dir / unite).exists():
+                raise AssertionError(f"{unite} non installe:\n{sortie}")
+
+        (cls.harnais.backups / "verify-degrade").write_text(
+            "DEGRADE 2026-11-20T04:30:00+01:00 - test\n", encoding="utf-8"
+        )
+        (cls.harnais.backups / "backup-failed").write_text(
+            "ECHEC 2026-11-20T03:30:00+01:00 code 1 - test\n", encoding="utf-8"
+        )
+
+        cls.sorties = {
+            action: cls.harnais.sortie(action)
+            for action in ("verify-timer-status", "backup-timer-status")
+        }
+        cls.etat_verify = _parse_timer_status_gui(
+            cls.sorties["verify-timer-status"], "[verify-timer] "
+        )
+        cls.etat_backup = _parse_timer_status_gui(
+            cls.sorties["backup-timer-status"], "[backup-timer] "
+        )
+
+        cls.mesures = _rendre(
+            racine,
+            {
+                "verify_timer_status": cls.etat_verify,
+                "backup_timer_status": cls.etat_backup,
+            },
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_verification_installee_dans_la_carte(self):
+        self.assertIn("[verify-timer] installed=1", self.sorties["verify-timer-status"])
+        self.assertIs(self.etat_verify["installed"], True)
+        self.assertEqual(self.etat_verify["active"], "active")
+        self.assertEqual(self.etat_verify["next"], "Fri 2026-11-21 04:30:00 CET")
+        self.assertEqual(self.etat_verify["last_code"], "3")
+        marqueur = self.harnais.backups / "verify-degrade"
+        self.assertEqual(self.etat_verify["marker"], str(marqueur))
+
+        mesure = self.mesures["verify_reel"]
+        self.assertEqual(mesure["calls"], 1)
+        self.assertEqual(
+            mesure["texts"]["verifyTimerState"],
+            "Vérification planifiée — timer active — "
+            "prochaine exécution : Fri 2026-11-21 04:30:00 CET — "
+            "dernière vérification : exit-code (code 3) "
+            "le Thu 2026-11-20 04:30:00 CET — "
+            f"MARQUEUR DÉGRADÉ : {marqueur}",
+        )
+        self.assertEqual(mesure["classes"]["verifyTimerState"], "text-danger")
+
+    def test_sauvegarde_installee_dans_la_carte(self):
+        self.assertIn("[backup-timer] installed=1", self.sorties["backup-timer-status"])
+        self.assertIs(self.etat_backup["installed"], True)
+        self.assertEqual(self.etat_backup["next"], "Fri 2026-11-21 04:30:00 CET")
+        marqueur = self.harnais.backups / "backup-failed"
+        self.assertEqual(self.etat_backup["marker"], str(marqueur))
+
+        # La date du marqueur est celle de `stat -c %y`, ramenee a la seconde
+        # comme les autres horodatages de la carte.
+        date_marqueur = self.etat_backup["marker_at"]
+        self.assertRegex(date_marqueur, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+
+        mesure = self.mesures["backup_reel"]
+        self.assertEqual(mesure["calls"], 1)
+        self.assertEqual(
+            mesure["texts"]["backupTimerState"],
+            "Sauvegarde planifiée — timer active — "
+            "prochaine exécution : Fri 2026-11-21 04:30:00 CET — "
+            "dernière : exit-code (code 3) le Thu 2026-11-20 04:30:00 CET — "
+            f"MARQUEUR ÉCHEC : {marqueur} ({date_marqueur[:19]})",
+        )
+        self.assertEqual(mesure["classes"]["backupTimerState"], "text-danger")
 
 
 if __name__ == "__main__":

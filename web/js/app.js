@@ -245,7 +245,7 @@ async function refreshBackupTimerState() {
   }
   const marker = etat.marker
     ? ` — MARQUEUR ÉCHEC : ${etat.marker}${
-        etat.marker_at ? ` (${etat.marker_at})` : ""
+        etat.marker_at ? ` (${formatAlertDate(etat.marker_at)})` : ""
       }`
     : " — marqueur échec : absent";
   el.className = etat.marker ? "text-danger" : "text-muted";

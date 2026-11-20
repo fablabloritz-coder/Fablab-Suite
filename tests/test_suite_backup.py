@@ -1642,6 +1642,179 @@ class HelperClearMarkersTest(unittest.TestCase):
             self.assertTrue((backups / "verify-degrade").is_symlink())
 
 
+def _faux_sudo(faux_bin):
+    """`sudo` factice : retire les options de mot de passe puis execute."""
+    chemin = faux_bin / "sudo"
+    chemin.write_text(
+        "#!/usr/bin/env bash\n"
+        "declare -a args=()\n"
+        "while [[ $# -gt 0 ]]; do\n"
+        '  case "$1" in\n'
+        "    -S|-n|-E) shift ;;\n"
+        "    -p) shift 2 ;;\n"
+        '    *) args+=("$1"); shift ;;\n'
+        "  esac\n"
+        "done\n"
+        'exec "${args[@]}"\n',
+        encoding="utf-8",
+    )
+    chemin.chmod(0o755)
+
+
+def _faux_systemctl(faux_bin, journal):
+    """`systemctl` factice : valeurs stables pour `*-timer-status`.
+
+    Seules les lectures faites par `print_systemd_timer_status` sont simulees ;
+    `daemon-reload` / `enable --now` reussissent sans rien faire.
+    """
+    chemin = faux_bin / "systemctl"
+    chemin.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"" + str(journal) + "\"\n"
+        'case "$1" in\n'
+        '  is-active) echo "active" ;;\n'
+        '  is-enabled) echo "enabled" ;;\n'
+        "  show)\n"
+        '    case "$*" in\n'
+        '      *NextElapseUSecRealtime*) echo "Fri 2026-11-21 04:30:00 CET" ;;\n'
+        '      *LastTriggerUSec*) echo "Thu 2026-11-20 04:30:00 CET" ;;\n'
+        '      *ExecMainStatus*) echo "3" ;;\n'
+        '      *Result*) echo "exit-code" ;;\n'
+        '      *ExecMainExitTimestamp*) echo "Thu 2026-11-20 04:30:00 CET" ;;\n'
+        "    esac ;;\n"
+        "esac\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    chemin.chmod(0o755)
+
+
+class HelperTimerUnitDirTest(unittest.TestCase):
+    """`FABSUITE_SYSTEMD_UNIT_DIR` pilote l'installation et la lecture d'etat."""
+
+    def _preparer(self, racine):
+        install = racine / "suite"
+        install.mkdir()
+        backups = racine / "backups"
+        backups.mkdir()
+        unit_dir = racine / "systemd"
+        unit_dir.mkdir()
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+
+        def ecrire_env(nom, avec_dir):
+            lignes = [
+                f"INSTALL_DIR={install}",
+                'APPS="FabHome"',
+                "FLASK_SECRET_KEY=test-secret",
+                f"FABSUITE_BACKUP_DIR={backups}",
+            ]
+            if avec_dir:
+                lignes.append(f"FABSUITE_SYSTEMD_UNIT_DIR={unit_dir}")
+            chemin = installer / nom
+            chemin.write_text("\n".join(lignes + [""]), encoding="utf-8")
+            return chemin
+
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        _faux_sudo(faux_bin)
+        _faux_systemctl(faux_bin, racine / "systemctl.log")
+
+        env = os.environ.copy()
+        env["PATH"] = f"{faux_bin}:{env['PATH']}"
+        env["HOME"] = str(racine / "home")
+        env["NON_INTERACTIVE"] = "1"
+        env.pop("SUDO_USER", None)
+        env.pop("FABSUITE_SYSTEMD_UNIT_DIR", None)
+
+        return {
+            "installer": installer,
+            "env": env,
+            "env_file": ecrire_env("fabsuite-ubuntu.env", True),
+            "env_file_defaut": ecrire_env("defaut.env", False),
+            "unit_dir": unit_dir,
+            "backups": backups,
+        }
+
+    def _lancer(self, contexte, action, env_file=None):
+        return subprocess.run(
+            [
+                "bash",
+                str(contexte["installer"] / "fabsuite-ubuntu.sh"),
+                action,
+                "--env-file",
+                str(env_file or contexte["env_file"]),
+            ],
+            cwd=contexte["installer"],
+            env=contexte["env"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_installe_et_lit_le_dossier_d_unites_surcharge(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            unit_dir = contexte["unit_dir"]
+
+            # L'installation vise le dossier surcharge, pas /etc/systemd/system.
+            for action, unite in (
+                ("install-verify-timer", "fabsuite-verify.timer"),
+                ("install-backup-timer", "fabsuite-backup.timer"),
+            ):
+                processus = self._lancer(contexte, action)
+                sortie = processus.stdout + processus.stderr
+                self.assertEqual(processus.returncode, 0, sortie)
+                self.assertIn(f"dossier unites: {unit_dir}", sortie)
+                self.assertTrue((unit_dir / unite).exists(), sortie)
+
+            (contexte["backups"] / "verify-degrade").write_text(
+                "DEGRADE 2026-11-20T04:30:00+01:00 - test\n", encoding="utf-8"
+            )
+            (contexte["backups"] / "backup-failed").write_text(
+                "ECHEC 2026-11-20T03:30:00+01:00 code 1 - test\n", encoding="utf-8"
+            )
+
+            verif = self._lancer(contexte, "verify-timer-status")
+            sortie = verif.stdout + verif.stderr
+            self.assertEqual(verif.returncode, 0, sortie)
+            self.assertIn("[verify-timer] installed=1", sortie)
+            self.assertIn("[verify-timer] active=active", sortie)
+            self.assertIn("[verify-timer] next=Fri 2026-11-21 04:30:00 CET", sortie)
+            self.assertIn("[verify-timer] result=exit-code", sortie)
+            self.assertIn("[verify-timer] result_code=3", sortie)
+            self.assertIn(
+                f"[verify-timer] marker={contexte['backups'] / 'verify-degrade'}", sortie
+            )
+            self.assertIn("[verify-timer] marker_content=DEGRADE", sortie)
+
+            etat = _parse_timer_status_gui(sortie, "[verify-timer] ")
+            self.assertIs(etat["installed"], True)
+            self.assertEqual(etat["last_result"], "exit-code")
+            self.assertEqual(etat["last_code"], "3")
+            self.assertEqual(etat["marker"], str(contexte["backups"] / "verify-degrade"))
+            self.assertRegex(etat["marker_at"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+
+            sauvegarde = self._lancer(contexte, "backup-timer-status")
+            sortie = sauvegarde.stdout + sauvegarde.stderr
+            self.assertEqual(sauvegarde.returncode, 0, sortie)
+            self.assertIn("[backup-timer] installed=1", sortie)
+            self.assertIn(
+                f"[backup-timer] marker={contexte['backups'] / 'backup-failed'}", sortie
+            )
+            self.assertIn("[backup-timer] marker_content=ECHEC", sortie)
+
+            # Sans la variable, la lecture retombe sur /etc/systemd/system : les
+            # unites du dossier surcharge ne sont donc pas vues.
+            defaut = self._lancer(contexte, "verify-timer-status", contexte["env_file_defaut"])
+            self.assertIn("[verify-timer] installed=0", defaut.stdout)
+            self.assertNotIn("[verify-timer] installed=1", defaut.stdout)
+
+
 def _gui_backend():
     """Importe `fabsuite_ssh_gui` sans dependre d'Eel ni de paramiko.
 

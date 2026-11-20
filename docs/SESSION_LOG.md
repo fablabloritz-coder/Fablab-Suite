@@ -6,6 +6,45 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Dossier d'unités systemd réglable, branche « timer installé » testée
+
+**Contexte** : `print_systemd_timer_status` testait le chemin absolu
+`/etc/systemd/system/<unit>.timer`. Sans root, la branche `installed=1` (active,
+prochaine exécution, dernier résultat, marqueurs) n'était donc validée que sur
+payload simulé.
+
+**Helper (v17)**
+- `systemd_unit_dir()` : `FABSUITE_SYSTEMD_UNIT_DIR`, défaut `/etc/systemd/system`
+  (barre finale retirée).
+- Utilisé par `print_systemd_timer_status` (existence de l'unité) et par
+  `install-verify-timer` / `install-backup-timer` (cibles `install`, plus une
+  ligne `dossier unites: ...` dans le journal).
+- `HELPER_VERSION` → `2026-11-20-suite-backup-v17` ; documenté dans
+  `fabsuite-ubuntu.env.example` et le README (section timers).
+
+**Défaut révélé et corrigé** : le marqueur d'échec de la sauvegarde affichait
+`marker_at` brut (`2026-11-20 12:17:48.874232943 +0100`). Il passe par
+`formatAlertDate`, comme la date d'alerte des notifications.
+
+**Tests**
+- `HelperTimerUnitDirTest` (`tests/test_suite_backup.py`) : installation dans un
+dossier surchargé puis `verify-timer-status`/`backup-timer-status` →
+`installed=1`, `active`, `next`, `result`, `result_code`, `marker`,
+`marker_at`, `marker_content` ; et sans la variable, `installed=0` (défaut
+`/etc/systemd/system` inchangé).
+- `TimersInstallesRendTest` (`tests/test_backup_states_js.py`) : mêmes actions
+réelles, parseurs du GUI, rendu `app.js`, égalité exacte des deux textes et
+classe `text-danger` (marqueurs présents).
+- Harnais partagé `_HarnaisHelper` / `_rendre` dans ce module, plus
+`_faux_sudo` / `_faux_systemctl` mutualisés dans `tests/test_suite_backup.py`.
+
+**Vérifications**
+- `bash -n fabsuite-ubuntu.sh`, `node --check app.js` et pilote, `py_compile` → OK.
+- `python3 -m unittest discover -s tests` → **150 tests OK** (14 ciblés).
+- Non-vacuité : avec `marker_at` brut, la ligne de sauvegarde affiche
+  `(2026-11-20 12:17:48.874232943 +0100)` et l'égalité échoue ; sans les payloads
+  de timer, le résumé simulé réapparaît (`text-muted`).
+
 ## 2026-11-20 — Les trois lignes de la carte rendues depuis le helper réel
 
 **Contexte** : seule la ligne « Notifications d'échec » était rendue depuis une

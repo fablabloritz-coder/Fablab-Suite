@@ -525,7 +525,11 @@ est affichée.
 ```
 
 Le helper installe `/etc/systemd/system/fabsuite-verify.service` et
-`fabsuite-verify.timer`, puis active le timer. Le service lance
+`fabsuite-verify.timer`, puis active le timer. Le dossier des unités est
+`/etc/systemd/system` par défaut et peut être changé avec
+`FABSUITE_SYSTEMD_UNIT_DIR` (dans `fabsuite-ubuntu.env`) : l'installation et la
+lecture d'état (`verify-timer-status`, `backup-timer-status`) visent alors le
+même dossier. Le service lance
 `verify --all` sous l'utilisateur opérateur (pas root), par défaut tous les
 jours (`OnCalendar=daily`, `Persistent=true` pour rattraper un démarrage
 manqué). Pour un autre horaire, définir dans `fabsuite-ubuntu.env` :

@@ -18,7 +18,7 @@ VERIFY_ALL=""
 NOTIFY_SERVICE=""
 NOTIFY_CODE=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-19-suite-backup-v16"
+HELPER_VERSION="2026-11-20-suite-backup-v17"
 
 usage() {
   cat <<'EOF'
@@ -1431,10 +1431,19 @@ run_suite_verify() {
   python3 "$backup_module" verify "${args[@]}"
 }
 
+systemd_unit_dir() {
+  # Dossier des unites systemd, surchargeable pour une installation non-root ou
+  # des tests : l'installation et la lecture d'etat doivent viser le meme
+  # dossier, sinon `*-timer-status` ne voit jamais le timer installe.
+  local dossier="${FABSUITE_SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
+  printf '%s\n' "${dossier%/}"
+}
+
 print_systemd_timer_status() {
   local nom="$1"
   local prefix="$2"
-  local timer_unit="/etc/systemd/system/${nom}.timer"
+  local timer_unit
+  timer_unit="$(systemd_unit_dir)/${nom}.timer"
 
   if [[ ! -f "$timer_unit" ]]; then
     echo "${prefix} installed=0"
@@ -1468,6 +1477,8 @@ run_install_verify_timer() {
   local marker="${backup_root}/verify-degrade"
   local marker_dir
   marker_dir="$(dirname "$marker")"
+  local unit_dir
+  unit_dir="$(systemd_unit_dir)"
 
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -1507,9 +1518,10 @@ EOF
   echo "[verify-timer] utilisateur: ${run_user}"
   echo "[verify-timer] calendrier: ${calendar}"
   echo "[verify-timer] signal degrade: ${marker}"
+  echo "[verify-timer] dossier unites: ${unit_dir}"
 
-  run_privileged install -m 0644 "${tmpdir}/fabsuite-verify.service" /etc/systemd/system/fabsuite-verify.service
-  run_privileged install -m 0644 "${tmpdir}/fabsuite-verify.timer" /etc/systemd/system/fabsuite-verify.timer
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-verify.service" "${unit_dir}/fabsuite-verify.service"
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-verify.timer" "${unit_dir}/fabsuite-verify.timer"
   run_privileged systemctl daemon-reload
   run_privileged systemctl enable --now fabsuite-verify.timer
 
@@ -1551,6 +1563,8 @@ run_install_backup_timer() {
   local marker="${backup_root}/backup-failed"
   local marker_dir
   marker_dir="$(dirname "$marker")"
+  local unit_dir
+  unit_dir="$(systemd_unit_dir)"
 
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -1591,9 +1605,10 @@ EOF
   echo "[backup-timer] calendrier: ${calendar}"
   echo "[backup-timer] destination: ${backup_root}"
   echo "[backup-timer] signal echec: ${marker}"
+  echo "[backup-timer] dossier unites: ${unit_dir}"
 
-  run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.service" /etc/systemd/system/fabsuite-backup.service
-  run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.timer" /etc/systemd/system/fabsuite-backup.timer
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.service" "${unit_dir}/fabsuite-backup.service"
+  run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.timer" "${unit_dir}/fabsuite-backup.timer"
   run_privileged systemctl daemon-reload
   run_privileged systemctl enable --now fabsuite-backup.timer
 
