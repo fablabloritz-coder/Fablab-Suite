@@ -18,7 +18,7 @@ VERIFY_ALL=""
 NOTIFY_SERVICE=""
 NOTIFY_CODE=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-20-suite-backup-v17"
+HELPER_VERSION="2026-11-20-suite-backup-v18"
 
 usage() {
   cat <<'EOF'
@@ -1486,6 +1486,10 @@ run_install_verify_timer() {
   marker_dir="$(dirname "$marker")"
   local unit_dir
   unit_dir="$(systemd_unit_dir)" || return 2
+  # Meme fichier que celui lu par le GUI et par cette installation : les
+  # executions planifiees ne dependent pas d'un env auto-cree dans INSTALL_DIR.
+  local env_file
+  env_file="$(readlink -f -- "$ENV_FILE" 2>/dev/null || printf '%s' "$ENV_FILE")"
 
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -1504,8 +1508,8 @@ Type=oneshot
 User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-verify
-ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh verify --all'
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "3" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; elif [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-reset --notify-service verify || true; else echo "Verification impossible (code \$EXIT_STATUS), aucun snapshot degrade signale - voir journalctl -u fabsuite-verify"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service verify --notify-code "\$EXIT_STATUS" || true; fi'
+ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 bash ./fabsuite-ubuntu.sh verify --all --env-file "${env_file}"'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "3" ]; then mkdir -p "${marker_dir}"; echo "DEGRADE \$(date -Is) - voir journalctl -u fabsuite-verify" > "${marker}"; echo "ATTENTION: snapshot(s) degrade(s) - ${marker}"; elif [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; NON_INTERACTIVE=1 bash ./fabsuite-ubuntu.sh notify-reset --notify-service verify --env-file "${env_file}" || true; else echo "Verification impossible (code \$EXIT_STATUS), aucun snapshot degrade signale - voir journalctl -u fabsuite-verify"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 bash ./fabsuite-ubuntu.sh notify-failure --notify-service verify --notify-code "\$EXIT_STATUS" --env-file "${env_file}" || true; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-verify.timer" <<EOF
@@ -1525,6 +1529,7 @@ EOF
   echo "[verify-timer] utilisateur: ${run_user}"
   echo "[verify-timer] calendrier: ${calendar}"
   echo "[verify-timer] signal degrade: ${marker}"
+  echo "[verify-timer] env file: ${env_file}"
   echo "[verify-timer] dossier unites: ${unit_dir}"
 
   run_privileged install -m 0644 "${tmpdir}/fabsuite-verify.service" "${unit_dir}/fabsuite-verify.service"
@@ -1577,6 +1582,10 @@ run_install_backup_timer() {
   marker_dir="$(dirname "$marker")"
   local unit_dir
   unit_dir="$(systemd_unit_dir)" || return 2
+  # Meme fichier que celui lu par le GUI et par cette installation : les
+  # executions planifiees ne dependent pas d'un env auto-cree dans INSTALL_DIR.
+  local env_file
+  env_file="$(readlink -f -- "$ENV_FILE" 2>/dev/null || printf '%s' "$ENV_FILE")"
 
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -1595,8 +1604,8 @@ Type=oneshot
 User=${run_user}
 WorkingDirectory=${INSTALL_DIR}
 SyslogIdentifier=fabsuite-backup
-ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh backup'
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-reset --notify-service backup || true; else mkdir -p "${marker_dir}"; echo "ECHEC \$(date -Is) code \$EXIT_STATUS - voir journalctl -u fabsuite-backup" > "${marker}"; echo "ATTENTION: snapshot periodique en echec (code \$EXIT_STATUS) - ${marker}"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code "\$EXIT_STATUS" || true; fi'
+ExecStart=/bin/bash -c 'NON_INTERACTIVE=1 bash ./fabsuite-ubuntu.sh backup --env-file "${env_file}"'
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" = "0" ]; then rm -f "${marker}"; NON_INTERACTIVE=1 bash ./fabsuite-ubuntu.sh notify-reset --notify-service backup --env-file "${env_file}" || true; else mkdir -p "${marker_dir}"; echo "ECHEC \$(date -Is) code \$EXIT_STATUS - voir journalctl -u fabsuite-backup" > "${marker}"; echo "ATTENTION: snapshot periodique en echec (code \$EXIT_STATUS) - ${marker}"; fi; if [ "\$EXIT_STATUS" != "0" ]; then NON_INTERACTIVE=1 bash ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code "\$EXIT_STATUS" --env-file "${env_file}" || true; fi'
 EOF
 
   cat >"${tmpdir}/fabsuite-backup.timer" <<EOF
@@ -1617,6 +1626,7 @@ EOF
   echo "[backup-timer] calendrier: ${calendar}"
   echo "[backup-timer] destination: ${backup_root}"
   echo "[backup-timer] signal echec: ${marker}"
+  echo "[backup-timer] env file: ${env_file}"
   echo "[backup-timer] dossier unites: ${unit_dir}"
 
   run_privileged install -m 0644 "${tmpdir}/fabsuite-backup.service" "${unit_dir}/fabsuite-backup.service"

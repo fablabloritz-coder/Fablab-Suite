@@ -6,6 +6,45 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Les timers lisent le même env que le GUI
+
+**Contexte** : les unités systemd démarraient dans `INSTALL_DIR` et exécutaient
+`./fabsuite-ubuntu.sh` sans `--env-file`. Le helper y créait alors un
+`fabsuite-ubuntu.env` par défaut : une notification configurée une seule fois
+dans le fichier du GUI (`~/fabsuite-installer/fabsuite-ubuntu.env`) n'était
+jamais utilisée par les exécutions planifiées, alors que `notify-status`
+affichait bien la cible.
+
+**Helper (v18)**
+- `install-verify-timer` / `install-backup-timer` résolvent le fichier en
+  absolu (`readlink -f`, repli sur la valeur reçue) et l'inscrivent dans toutes
+  les commandes de l'unité : `ExecStart`, `notify-reset` après succès,
+  `notify-failure` en cas d'échec (`--env-file "…"`).
+- Une ligne `env file: …` est journalisée à l'installation.
+- Les commandes invoquent `bash ./fabsuite-ubuntu.sh` : le helper cloné est en
+  mode `100644`, donc `./fabsuite-ubuntu.sh` échouait en « Permission denied »
+  et le timer ne pouvait lire aucun env. Le test l'a révélé.
+- `HELPER_VERSION` → `2026-11-20-suite-backup-v18` ; README précisé.
+
+**Tests**
+- `HelperVerifyTimerTest` : chaque service contient exactement trois fois
+  `--env-file "<env résolu>"` (ExecStart + notify-reset + notify-failure).
+- `HelperTimersEnvFileTest.test_execstoppost_utilise_l_env_de_l_installation` :
+  installe le timer réel, extrait la commande `ExecStopPost` de l'unité et
+  l'exécute dans `INSTALL_DIR` qui contient un env différent (dossier piège,
+  aucune cible). Avec `EXIT_STATUS=0`, seul l'état du dossier de l'env GUI est
+  supprimé ; avec `EXIT_STATUS=2`, `notify-failure` tente la cible configurée
+  dans l'env GUI (pas de « aucune cible configuree »).
+
+**Vérifications**
+- `bash -n fabsuite-ubuntu.sh` OK ; `python3 -m unittest discover -s tests` →
+  **152 tests OK**.
+
+**Risques / non couverts**
+- Exécution réelle sous systemd non testée dans cette VM : les unités déjà
+  installées doivent être réinstallées (`install-verify-timer`,
+  `install-backup-timer`) pour recevoir `--env-file` et l'appel via `bash`.
+
 ## 2026-11-20 — Refus explicite d'un dossier d'unités systemd non absolu
 
 **Contexte** : `FABSUITE_SYSTEMD_UNIT_DIR=relatif` était accepté ; l'installation

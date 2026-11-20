@@ -613,10 +613,17 @@ exécutions suivantes en échec ne renvoient rien et journalisent seulement
 rm -f ~/backup-fabsuite/notify-backup.state                 # équivalent manuel
 ```
 
-La configuration est lue à chaque exécution. Si les unités ont été installées
-avant cette version, relancer `install-backup-timer` et `install-verify-timer`
-pour ajouter l'appel `notify-failure` **et** l'appel `notify-reset` après un
-succès. Test manuel (le second appel immédiat est filtré par l'anti-rebond) :
+La configuration est lue à chaque exécution. Les unités installées passent
+explicitement `--env-file` avec le `fabsuite-ubuntu.env` utilisé lors de
+`install-backup-timer` / `install-verify-timer` : les exécutions planifiées
+lisent donc le même fichier que le GUI, et une notification configurée une
+seule fois est réellement utilisée. Si le fichier est déplacé, relancer les deux
+`install-*-timer`.
+
+Si les unités ont été installées avant cette version, relancer
+`install-backup-timer` et `install-verify-timer` pour ajouter l'appel
+`notify-failure` **et** l'appel `notify-reset` après un succès. Test manuel (le
+second appel immédiat est filtré par l'anti-rebond) :
 
 ```bash
 ./fabsuite-ubuntu.sh notify-failure --notify-service backup --notify-code 1
