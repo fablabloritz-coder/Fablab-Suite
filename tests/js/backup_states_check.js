@@ -9,7 +9,10 @@
  *
  * Sortie : { scenarios: { nom: { calls, texts, boutons } } } en JSON sur stdout,
  * ou `boutons` liste l'etat `disabled` des `.ssh-btn` de la carte.
- * Usage : node tests/js/backup_states_check.js [chemin/vers/app.js]
+ *
+ * Usage : node tests/js/backup_states_check.js [app.js] [notify-status.json]
+ * Le troisieme argument est un payload `notify_status` reel (issu du helper et
+ * du parseur du GUI) ; sans lui, la reponse simulee ci-dessous est utilisee.
  *
  * Les assertions sont dans tests/test_backup_states_js.py ; lancer ce script
  * seul n'affiche que les mesures.
@@ -59,6 +62,12 @@ const STATUT = {
   verify: { present: false },
 };
 
+// Payload `notify_status` optionnel : une vraie sortie du helper, pour que la
+// troisieme ligne soit rendue avec des donnees reelles et non simulees.
+const notifyReel = process.argv[3]
+  ? JSON.parse(fs.readFileSync(process.argv[3], "utf8"))
+  : null;
+
 // app.js appelle `eel.<action>()()` : le proxy simule Eel et compte les appels.
 let calls = 0;
 const eel = new Proxy(
@@ -67,9 +76,10 @@ const eel = new Proxy(
     get(_target, prop) {
       if (typeof prop === "symbol" || prop === "then") return undefined;
       if (prop === "expose") return () => {};
+      const reponse = String(prop) === "notify_status" && notifyReel ? notifyReel : STATUT;
       return () => {
         calls += 1;
-        return () => Promise.resolve(STATUT);
+        return () => Promise.resolve(reponse);
       };
     },
   },
@@ -112,6 +122,9 @@ async function scenario(nom, action) {
     set_connection_status("Connecte: fablab@hote:22", true);
     set_actions_enabled(true);
   });
+
+  // Troisieme ligne rendue depuis le payload reel quand le pilote en recoit un.
+  await scenario("notify_reel", () => refreshNotificationState());
 
   // Bascule de `run_mode` vers Local avec la connexion toujours ouverte : le
   // backend rappelle `set_actions_enabled`, qui renvoie `true` en Local — ce

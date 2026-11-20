@@ -261,10 +261,11 @@ function notificationDestinationSummary(etat) {
 }
 
 function formatAlertDate(valeur) {
-  // Le helper ecrit un horodatage ISO (`date -Is`) : on l'affiche comme les
-  // dates systemd de la carte, sans le `T` ni le decalage horaire.
+  // Horodatage ISO (`date -Is`) ou format `stat -c %y`
+  // (`2026-11-20 11:26:10.707155994 +0100`) : on n'affiche que date et heure,
+  // comme les dates systemd de la carte, sans fraction ni decalage horaire.
   const texte = String(valeur || "").trim();
-  const correspondance = texte.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  const correspondance = texte.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
   if (correspondance) return `${correspondance[1]} ${correspondance[2]}`;
   return texte || "date inconnue";
 }

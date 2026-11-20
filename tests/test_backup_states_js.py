@@ -10,10 +10,14 @@ Node isole (DOM et `eel` simules, appels backend comptes) et rend ses mesures en
 JSON ; les assertions restent ici, dans la suite unittest du projet.
 """
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+
+from tests.test_suite_backup import _parse_notify_status_gui
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "web" / "js" / "app.js"
@@ -117,6 +121,131 @@ class BackupStatesJsTest(unittest.TestCase):
 
     def test_rafraichissement_python_apres_deconnexion_sans_appel(self):
         self.assertInconnu("python_tardif_apres_deconnexion", INCONNU_DECONNECTE)
+
+
+class NotifyReelRendTest(unittest.TestCase):
+    """Troisieme ligne rendue depuis une vraie sortie du helper `notify-status`.
+
+    Chaine complete : `./fabsuite-ubuntu.sh notify-failure` puis `notify-status`
+    dans un HOME temporaire -> parseur du GUI -> payload injecte dans `app.js` ->
+    texte de la carte. Les deux autres lignes restent couvertes par la reponse
+    simulee de `BackupStatesJsTest` (pas de systemd dans cet environnement).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not NODE:
+            raise unittest.SkipTest("node introuvable")
+        bash = shutil.which("bash")
+        if not bash:
+            raise unittest.SkipTest("bash indisponible")
+
+        cls._tmp = tempfile.TemporaryDirectory()
+        racine = Path(cls._tmp.name)
+
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+
+        # `curl` factice : l'envoi webhook reussit, donc l'anti-rebond s'arme et
+        # le helper ecrit un vrai fichier d'etat avec sa date.
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        faux_curl = faux_bin / "curl"
+        faux_curl.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        faux_curl.chmod(0o755)
+
+        backups = racine / "backups"
+        env_file = installer / "fabsuite-ubuntu.env"
+        env_file.write_text(
+            "\n".join(
+                (
+                    f"INSTALL_DIR={racine / 'suite'}",
+                    'APPS="FabHome"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    f"FABSUITE_BACKUP_DIR={backups}",
+                    "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        env = os.environ.copy()
+        env["PATH"] = f"{faux_bin}:{env['PATH']}"
+        env["HOME"] = str(racine / "home")
+        env["NON_INTERACTIVE"] = "1"
+
+        cls.installer, cls.env_file, cls.env = installer, env_file, env
+
+        echec = cls._helper(
+            "notify-failure", "--notify-service", "backup", "--notify-code", "1"
+        )
+        sortie = echec.stdout + echec.stderr
+        if echec.returncode != 0 or "anti-rebond arme" not in sortie:
+            raise AssertionError(f"anti-rebond non arme (code {echec.returncode}):\n{sortie}")
+
+        cls.statut = cls._helper("notify-status")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    @classmethod
+    def _helper(cls, action, *args):
+        return subprocess.run(
+            [
+                shutil.which("bash"),
+                str(cls.installer / "fabsuite-ubuntu.sh"),
+                action,
+                *args,
+                "--env-file",
+                str(cls.env_file),
+            ],
+            cwd=str(cls.installer),
+            env=cls.env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_notify_state_reel_dans_la_carte(self):
+        sortie = self.statut.stdout + self.statut.stderr
+        self.assertEqual(self.statut.returncode, 0, sortie)
+
+        etat = _parse_notify_status_gui(sortie)
+        self.assertIsNotNone(etat, f"sortie non reconnue par le GUI:\n{sortie}")
+        self.assertIs(etat["backup"]["present"], True)
+        self.assertIs(etat["verify"]["present"], False)
+
+        payload = Path(self._tmp.name) / "notify-status.json"
+        payload.write_text(json.dumps(etat), encoding="utf-8")
+        proc = subprocess.run(
+            [NODE, str(DRIVER), str(APP), str(payload)],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if proc.returncode != 0:
+            raise AssertionError(
+                "le pilote JS a echoue (code %s) :\n%s" % (proc.returncode, proc.stderr)
+            )
+
+        mesure = json.loads(proc.stdout)["scenarios"]["notify_reel"]
+        self.assertEqual(mesure["calls"], 1)
+        texte = mesure["texts"]["notifyState"]
+
+        # La date affichee est celle du fichier d'etat reel, ramenee a la minute
+        # pres comme les dates systemd de la carte.
+        date_lue = etat["backup"]["alert_at"][:19]
+        self.assertEqual(
+            texte,
+            "Notifications d'échec — webhook configuré, mail absent — "
+            f"backup : alerte déjà envoyée ({date_lue}), "
+            "pas de rappel avant un succès — "
+            "verify : aucune alerte envoyée en cours",
+        )
 
 
 if __name__ == "__main__":

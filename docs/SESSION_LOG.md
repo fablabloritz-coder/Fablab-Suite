@@ -6,6 +6,36 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Rendu de la carte Sauvegarde depuis une vraie sortie du helper
+
+**Contexte** : le pilote JS ne rendait les trois états qu'à partir d'une
+réponse simulée ; rien ne garantissait que le rendu accepte les données réelles
+du helper.
+
+**Ajouté**
+- `tests/js/backup_states_check.js` accepte un 3e argument : un payload
+  `notify_status` réel, injecté à la place de la réponse simulée. Nouveau
+  scénario `notify_reel` (1 lecture), exécuté connexion ouverte.
+- `tests/test_backup_states_js.py` : classe `NotifyReelRendTest` qui arme
+  l'anti-rebond avec un vrai `notify-failure` (HOME temporaire, `curl` factice),
+  lit un vrai `notify-status`, le fait parser par le parseur du GUI, écrit le
+  payload JSON et exige le **texte exact** de la ligne « Notifications d'échec »
+  dans `app.js`.
+
+**Défaut révélé et corrigé** : l'état d'alerte vient de `stat -c %y`
+(`2026-11-20 11:42:23.682557826 +0100`), pas d'un ISO `date -Is`.
+`formatAlertDate` ne reconnaissait que le `T`, donc la carte affichait la date
+brute avec nanosecondes et décalage. La regex accepte maintenant `T` ou espace
+et ne garde que `AAAA-MM-JJ hh:mm:ss`.
+
+**Vérifications**
+- `node --check` sur `app.js` et le pilote → OK.
+- `python3 -m unittest tests.test_backup_states_js` → 10 tests OK.
+- `python3 -m unittest discover -s tests` → **146 tests OK**.
+- Non-vacuité : avec l'ancienne regex (T seul), le rendu réel redevient
+  `2026-11-20 11:42:23.682557826 +0100` et l'égalité exacte échoue ; sans
+  payload injecté, la date simulée ne correspond pas à celle du helper.
+
 ## 2026-11-20 — Test permanent du contrat helper `notify-status` → GUI
 
 **Contexte** : la chaîne « vraie sortie du helper → `_parse_notify_status` »
