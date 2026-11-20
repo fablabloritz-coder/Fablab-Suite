@@ -116,7 +116,9 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   unités restent installées), puis relisent la ligne d'état. Un échec sudo ou
   `systemctl` est affiché avec le détail renvoyé par le helper. La ligne affiche
   alors explicitement « timer désactivé » et le bouton d'installation devient
-  **Réactiver** (même action `install-*-timer`, qui réactive le timer).
+  **Réactiver** (même action `install-*-timer`, qui réactive le timer). Si le
+  timer a été relancé à la main, elle indique « timer actif (désactivé au
+  démarrage) » et conserve la prochaine exécution.
 - **État notifications** : lit `notify-status` du helper et affiche les
   destinations configurées (`webhook configuré/absent`, `mail configuré/absent`),
   puis, pour `backup` et `verify`, si le fichier `notify-<service>.state` existe

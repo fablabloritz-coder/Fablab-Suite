@@ -6,6 +6,32 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Timer desactive au demarrage mais relance a la main
+
+**Contexte** : un timer `enabled=disabled` etait toujours presente comme
+« timer desactive », meme si `systemctl start` l'avait relance : sa prochaine
+execution etait masquee alors qu'elle existe.
+
+**Rendu (`web/js/app.js`)**
+- Separation explicite entre `timerDesactiveAuDemarrage` (`enabled=disabled`) et
+  `timerActif` (`active`), au lieu de deduire l'etat d'un seul champ.
+- Timer desactive et inactif : « timer désactivé », sans prochaine execution.
+- Timer desactive mais actif : « timer actif (désactivé au démarrage) », avec la
+  prochaine execution ; le bouton reste **Réactiver** pour l'activation au boot.
+- Classe `text-warning` dans les deux cas (danger si marqueur), helper inchange.
+
+**Tests**
+- Second rendu du helper reel avec `active=active`, `enabled=disabled` et une
+  prochaine execution ; verifie les deux textes exacts, la presence de la
+  prochaine execution, l'absence de « timer désactivé » et le bouton Réactiver.
+
+**Verifications**
+- `node --check` sur `app.js`, `python3 -m unittest discover -s tests` →
+  **174 tests OK** ; `git diff --check` OK.
+
+**Risques / non couverts**
+- Pas de controle visuel navigateur ; rendu verifie par le DOM simule.
+
 ## 2026-11-20 — Etat « timer desactive » et bouton Reactiver
 
 **Contexte** : apres `disable-*-timer`, la carte affichait encore « timer

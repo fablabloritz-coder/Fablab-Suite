@@ -361,7 +361,9 @@ class TimersDesactivesRendTest(unittest.TestCase):
 
     Les unites sont installees, puis le faux `systemctl` passe a
     `inactive` / `disabled` et sans prochaine execution, comme apres
-    `disable-*-timer` : le helper lui-meme n'est pas modifie.
+    `disable-*-timer`. Un second rendu reprend `active` / `disabled` avec une
+    prochaine execution, pour le timer relance a la main : le helper lui-meme
+    n'est pas modifie.
     """
 
     @classmethod
@@ -411,6 +413,32 @@ class TimersDesactivesRendTest(unittest.TestCase):
             },
         )
 
+        # Meme timer, mais relance a la main : il tourne et garde une prochaine
+        # execution alors qu'il ne redemarrera pas au boot.
+        _faux_systemctl(
+            cls.harnais.faux_bin,
+            cls.harnais.systemctl_log,
+            active="active",
+            enabled="disabled",
+        )
+        cls.sorties_relance = {
+            action: cls.harnais.sortie(action)
+            for action in ("verify-timer-status", "backup-timer-status")
+        }
+        cls.etat_verify_relance = _parse_timer_status_gui(
+            cls.sorties_relance["verify-timer-status"], "[verify-timer] "
+        )
+        cls.etat_backup_relance = _parse_timer_status_gui(
+            cls.sorties_relance["backup-timer-status"], "[backup-timer] "
+        )
+        cls.mesures_relance = _rendre(
+            racine,
+            {
+                "verify_timer_status": cls.etat_verify_relance,
+                "backup_timer_status": cls.etat_backup_relance,
+            },
+        )
+
     @classmethod
     def tearDownClass(cls):
         cls._tmp.cleanup()
@@ -447,6 +475,44 @@ class TimersDesactivesRendTest(unittest.TestCase):
                 self.assertEqual(mesure["calls"], 1)
                 self.assertEqual(mesure["texts"][ligne], texte)
                 self.assertNotIn("prochaine exécution", mesure["texts"][ligne])
+                self.assertEqual(mesure["classes"][ligne], "text-warning")
+                self.assertEqual(mesure["labels"][libelle], "Réactiver")
+
+    def test_timer_desactive_mais_relance_garde_la_prochaine_execution(self):
+        cas = (
+            (
+                "verifyTimerState",
+                "verifyTimerInstallLabel",
+                "verify_reel",
+                self.etat_verify_relance,
+                "Vérification planifiée — timer actif (désactivé au démarrage) — "
+                "prochaine exécution : Fri 2026-11-21 04:30:00 CET — "
+                "dernière vérification : exit-code (code 3) "
+                "le Thu 2026-11-20 04:30:00 CET — marqueur dégradé : absent",
+            ),
+            (
+                "backupTimerState",
+                "backupTimerInstallLabel",
+                "backup_reel",
+                self.etat_backup_relance,
+                "Sauvegarde planifiée — timer actif (désactivé au démarrage) — "
+                "prochaine exécution : Fri 2026-11-21 04:30:00 CET — "
+                "dernière : exit-code (code 3) "
+                "le Thu 2026-11-20 04:30:00 CET — marqueur échec : absent",
+            ),
+        )
+        for ligne, libelle, scenario, etat, texte in cas:
+            with self.subTest(ligne=ligne):
+                self.assertIs(etat["installed"], True)
+                self.assertEqual(etat["active"], "active")
+                self.assertEqual(etat["enabled"], "disabled")
+                self.assertNotEqual(etat["next"], "")
+
+                mesure = self.mesures_relance[scenario]
+                self.assertEqual(mesure["calls"], 1)
+                self.assertEqual(mesure["texts"][ligne], texte)
+                self.assertIn("prochaine exécution", mesure["texts"][ligne])
+                self.assertNotIn("timer désactivé", mesure["texts"][ligne])
                 self.assertEqual(mesure["classes"][ligne], "text-warning")
                 self.assertEqual(mesure["labels"][libelle], "Réactiver")
 

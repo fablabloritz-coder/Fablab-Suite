@@ -170,20 +170,35 @@ const TIMER_INSTALL_LABELS = {
 // Un timer installe mais `disabled` ne planifie plus rien : la ligne et le
 // bouton doivent le dire explicitement. `enabled` vient de `systemctl
 // is-enabled` via le helper ; aucune deduction depuis `active`.
-function timerDesactive(etat) {
+function timerDesactiveAuDemarrage(etat) {
   return etat.installed && etat.enabled === "disabled";
 }
 
+function timerActif(etat) {
+  return String(etat.active || "").startsWith("active");
+}
+
+// Un timer peut etre desactive au demarrage et relance a la main : il est
+// actif et garde une prochaine execution, mais ne redemarrera pas au boot.
+function timerDescription(etat, desactiveAuDemarrage) {
+  if (!desactiveAuDemarrage) return `timer ${etat.active || "inconnu"}`;
+  return timerActif(etat)
+    ? "timer actif (désactivé au démarrage)"
+    : "timer désactivé";
+}
+
 // Seul le libelle change : l'icone du bouton reste dans le HTML.
-function setTimerInstallLabel(id, desactive) {
+function setTimerInstallLabel(id, desactiveAuDemarrage) {
   const label = document.getElementById(id);
   if (!label) return;
-  label.textContent = desactive ? "Réactiver" : TIMER_INSTALL_LABELS[id];
+  label.textContent = desactiveAuDemarrage
+    ? "Réactiver"
+    : TIMER_INSTALL_LABELS[id];
 }
 
 function timerStateClass(etat) {
   if (etat.marker) return "text-danger";
-  return timerDesactive(etat) ? "text-warning" : "text-muted";
+  return timerDesactiveAuDemarrage(etat) ? "text-warning" : "text-muted";
 }
 
 eel.expose(refreshVerifyTimerState);
@@ -221,16 +236,14 @@ async function refreshVerifyTimerState() {
     return;
   }
 
-  const desactive = timerDesactive(etat);
-  setTimerInstallLabel("verifyTimerInstallLabel", desactive);
+  const desactiveAuDemarrage = timerDesactiveAuDemarrage(etat);
+  setTimerInstallLabel("verifyTimerInstallLabel", desactiveAuDemarrage);
   const code = etat.last_code ? ` (code ${etat.last_code})` : "";
   const dernier = etat.last_run
     ? `${etat.last_result || "resultat inconnu"}${code} le ${etat.last_run}`
     : "aucune exécution enregistrée";
-  const parties = [
-    desactive ? "timer désactivé" : `timer ${etat.active || "inconnu"}`,
-  ];
-  if (!desactive) {
+  const parties = [timerDescription(etat, desactiveAuDemarrage)];
+  if (!desactiveAuDemarrage || timerActif(etat)) {
     parties.push(`prochaine exécution : ${etat.next || "inconnue"}`);
   }
   parties.push(`dernière vérification : ${dernier}`);
@@ -241,13 +254,16 @@ async function refreshVerifyTimerState() {
   el.textContent = "Vérification planifiée — " + parties.join(" — ");
 }
 
-function timerStateSummary(etat, desactive) {
+function timerStateSummary(etat, desactiveAuDemarrage) {
   const code = etat.last_code ? ` (code ${etat.last_code})` : "";
   const dernier = etat.last_run
     ? `${etat.last_result || "resultat inconnu"}${code} le ${etat.last_run}`
     : "aucune exécution enregistrée";
-  if (desactive) return `timer désactivé — dernière : ${dernier}`;
-  return `timer ${etat.active || "inconnu"} — prochaine exécution : ${
+  const description = timerDescription(etat, desactiveAuDemarrage);
+  if (desactiveAuDemarrage && !timerActif(etat)) {
+    return `${description} — dernière : ${dernier}`;
+  }
+  return `${description} — prochaine exécution : ${
     etat.next || "inconnue"
   } — dernière : ${dernier}`;
 }
@@ -286,8 +302,8 @@ async function refreshBackupTimerState() {
       "Timer non installé : lance ./fabsuite-ubuntu.sh install-backup-timer.";
     return;
   }
-  const desactive = timerDesactive(etat);
-  setTimerInstallLabel("backupTimerInstallLabel", desactive);
+  const desactiveAuDemarrage = timerDesactiveAuDemarrage(etat);
+  setTimerInstallLabel("backupTimerInstallLabel", desactiveAuDemarrage);
   const marker = etat.marker
     ? ` — MARQUEUR ÉCHEC : ${etat.marker}${
         etat.marker_at ? ` (${formatAlertDate(etat.marker_at)})` : ""
@@ -295,7 +311,9 @@ async function refreshBackupTimerState() {
     : " — marqueur échec : absent";
   el.className = timerStateClass(etat);
   el.textContent =
-    "Sauvegarde planifiée — " + timerStateSummary(etat, desactive) + marker;
+    "Sauvegarde planifiée — " +
+    timerStateSummary(etat, desactiveAuDemarrage) +
+    marker;
 }
 
 function notificationDestinationSummary(etat) {
