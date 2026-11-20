@@ -6,6 +6,31 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Revue du test permanent (stubs et scénarios allégés)
+
+**Retiré du pilote** : stub `window` (aucun `window.` dans `app.js`),
+`createElement`/`querySelector`/`body`/`addEventListener` d'élément, champs
+`value`/`style`/`innerHTML`/`classList`/`focus`/`setAttribute` jamais lus (le
+code testé n'écrit que `textContent` et `className` sur ces lignes), globals
+`JSON`/`Object`/`Array`/`Math`/`Date`/… redondants avec ceux du contexte `vm`,
+et le hack `__setMode` : `currentMode` est maintenant modifié par un
+`vm.runInContext` sur le vrai module. Réponse serveur simulée réduite aux
+champs réellement affichés.
+
+**Scénarios** : `reconnexion` supprimé (il ne servait qu'à préparer la bascule
+Local) ; la bascule Local se fait désormais juste après la connexion, donc avec
+`sshConnected` à vrai — le cas exact du bug. 6 scénarios restants.
+
+**Assertions renforcées** : `assertInconnu` compare le texte **exact** des trois
+lignes (plus de sous-ensemble d'identifiants, plus de `assertIn`),
+`assertLuDepuisLeServeur` exige 3 appels et un texte commençant par
+« <titre> — » sans « inconnu ».
+
+**Vérifications** : `node --check` OK ; 6 tests OK ; 141 tests OK ; sur une
+copie jetable sans la garde `backupStateAvailable`, les 4 scénarios hors
+connexion rapportent 3/1/3/1 appels et ne sont plus conformes — les assertions
+mordent toujours.
+
 ## 2026-11-20 — Test permanent des états « inconnu » de la carte Sauvegarde
 
 **Contexte** : la règle « inconnu hors SSH connecté » n'était couverte que par un

@@ -3,15 +3,15 @@
  * Pilote `web/js/app.js` hors navigateur pour la carte Sauvegarde.
  *
  * Verifie la regle "etat inconnu hors SSH connecte" des trois lignes d'etat :
- * aucun reseau, aucun Eel reel. Le DOM et l'objet `eel` sont simules et
- * comptent les appels au backend, ce qui permet de distinguer "remis a inconnu
- * sans appel" de "relu depuis le serveur".
+ * aucun reseau, aucun Eel reel. Le DOM et l'objet `eel` sont simules et les
+ * appels backend sont comptes, ce qui distingue "remis a inconnu sans appel" de
+ * "relu depuis le serveur".
  *
  * Sortie : { scenarios: { nom: { calls, texts } } } en JSON sur stdout.
  * Usage : node tests/js/backup_states_check.js [chemin/vers/app.js]
  *
- * Le fichier est pilote par tests/test_backup_states_js.py, qui porte les
- * assertions ; lancer ce script seul affiche seulement les mesures.
+ * Les assertions sont dans tests/test_backup_states_js.py ; lancer ce script
+ * seul n'affiche que les mesures.
  */
 "use strict";
 
@@ -23,59 +23,37 @@ const appPath = process.argv[2] || path.resolve(__dirname, "../../web/js/app.js"
 const appSource = fs.readFileSync(appPath, "utf8");
 
 const IDS = ["verifyTimerState", "backupTimerState", "notifyState"];
+
+// Le code teste n'ecrit que `textContent`/`className` sur ces lignes et ne
+// parcourt que des listes de boutons, vides ici.
 const elements = new Map();
-
-function makeElement(id) {
-  return {
-    id,
-    textContent: "",
-    className: "",
-    value: "",
-    style: {},
-    innerHTML: "",
-    classList: { add() {}, remove() {}, toggle() {} },
-    appendChild() {},
-    addEventListener() {},
-    focus() {},
-    setAttribute() {},
-    querySelectorAll() { return []; },
-  };
-}
-
 function getElement(id) {
-  if (!elements.has(id)) elements.set(id, makeElement(id));
+  if (!elements.has(id)) elements.set(id, { id, textContent: "", className: "" });
   return elements.get(id);
 }
 
 const document = {
   getElementById: getElement,
-  querySelectorAll() { return []; },
-  querySelector() { return null; },
-  createElement() { return makeElement("tmp"); },
+  querySelectorAll: () => [],
   addEventListener() {},
-  body: makeElement("body"),
 };
 
-const window = { addEventListener() {}, location: { href: "" } };
+// Reponse type des trois actions de lecture du helper : "pleine", pour que le
+// texte affiche soit reconnaissable comme une vraie lecture serveur.
+const STATUT = {
+  installed: true,
+  active: "active (waiting)",
+  next: "demain",
+  last_run: "2026-11-19 03:00:00",
+  last_result: "success",
+  marker: "",
+  webhook: true,
+  email: false,
+  backup: { present: true, alert_at: "2026-11-19T03:10:00+01:00" },
+  verify: { present: false },
+};
 
-// Reponse type des trois actions de lecture du helper : volontairement
-// "pleine" pour que le texte affiche soit reconnaissable comme une vraie
-// lecture serveur (et non un etat inconnu).
-function backendStatus() {
-  return {
-    installed: true,
-    active: "active (waiting)",
-    next: "demain",
-    last_run: "2026-11-19 03:00:00",
-    last_result: "success",
-    marker: "",
-    webhook: true,
-    email: false,
-    backup: { present: true, alert_at: "2026-11-19T03:10:00+01:00" },
-    verify: { present: false },
-  };
-}
-
+// app.js appelle `eel.<action>()()` : le proxy simule Eel et compte les appels.
 let calls = 0;
 const eel = new Proxy(
   {},
@@ -85,45 +63,22 @@ const eel = new Proxy(
       if (prop === "expose") return () => {};
       return () => {
         calls += 1;
-        return () => Promise.resolve(backendStatus());
+        return () => Promise.resolve(STATUT);
       };
     },
   },
 );
 
-const sandbox = {
-  document,
-  window,
-  eel,
-  console,
-  setTimeout,
-  clearTimeout,
-  Promise,
-  Date,
-  JSON,
-  Object,
-  Array,
-  String,
-  Number,
-  Boolean,
-  Math,
-  parseInt,
-  parseFloat,
-  isNaN,
-};
-sandbox.globalThis = sandbox;
-const context = vm.createContext(sandbox);
+const context = vm.createContext({ document, eel, console, setTimeout });
 
-// `currentMode` est une `let` du module : on l'expose pour simuler la bascule
-// d'onglet Local pouvant arriver pendant qu'un worker distant tourne.
-vm.runInContext(
-  appSource + "\nglobalThis.__setMode = (mode) => { currentMode = mode; };\n",
-  context,
-  { filename: appPath },
-);
+vm.runInContext(appSource, context, { filename: appPath });
 
+// `currentMode` est une `let` du module : on la modifie dans le meme contexte
+// pour simuler la bascule d'onglet Local.
+const setMode = (mode) => vm.runInContext(`currentMode = ${JSON.stringify(mode)};`, context);
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
+const scenarios = {};
 async function scenario(nom, action) {
   const avant = calls;
   await action();
@@ -133,41 +88,35 @@ async function scenario(nom, action) {
   scenarios[nom] = { calls: calls - avant, texts };
 }
 
-const scenarios = {};
-
 (async () => {
-  context.__setMode("ssh");
+  setMode("ssh");
 
   await scenario("connexion", () =>
     context.set_connection_status("Connecte: fablab@hote:22", true),
   );
 
+  // Bascule d'onglet vers Local alors que la connexion est toujours ouverte :
+  // c'est le cas ou les lignes gardaient les donnees du serveur.
+  setMode("local");
+  await scenario("bascule_local", () => context.refreshBackupCardStates());
+
+  // Rafraichissement tardif demande par Python (fin de backup/verify) apres la
+  // bascule : la ligne doit rester "inconnu", sans appel.
+  await scenario("python_tardif_en_local", () => context.refreshVerifyTimerState());
+
+  // Retour sur l'onglet SSH, connexion intacte : relecture reelle.
+  setMode("ssh");
+  await scenario("retour_onglet_ssh", () => context.refreshBackupCardStates());
+
   await scenario("deconnexion", () =>
     context.set_connection_status("Non connecte", false),
   );
 
-  await scenario("reconnexion", () =>
-    context.set_connection_status("Connecte: fablab@hote:22", true),
-  );
-
-  // Bascule d'onglet vers Local alors que la connexion est toujours ouverte.
-  context.__setMode("local");
-  await scenario("bascule_local", () => context.refreshBackupCardStates());
-
-  // Rafraichissement tardif demande par Python (fin de backup/verify) : il
-  // arrive apres la bascule, la ligne doit rester "inconnu" sans appel.
-  await scenario("python_tardif_en_local", () => context.refreshVerifyTimerState());
-
-  // Retour sur l'onglet SSH, connexion intacte : relecture reelle.
-  context.__setMode("ssh");
-  await scenario("retour_onglet_ssh", () => context.refreshBackupCardStates());
-
   // Connexion perdue puis rafraichissement tardif : inconnu, et surtout pas
   // une ligne d'erreur du helper.
-  await scenario("python_tardif_apres_deconnexion", () => {
-    context.set_connection_status("Non connecte", false);
-    context.refreshNotificationState();
-  });
+  await scenario("python_tardif_apres_deconnexion", () =>
+    context.refreshNotificationState(),
+  );
 
   process.stdout.write(JSON.stringify({ scenarios }) + "\n");
 })().catch((erreur) => {
