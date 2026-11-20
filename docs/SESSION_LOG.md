@@ -41,6 +41,12 @@ serveur.
 - Factorisation : un seul générateur `_ecrire_faux_transport` (bash pur,
   journal `$FAKE_SEND_LOG`) sert désormais `_preparer` (mail) et les tests
   isolés ; `_lire_envoi` est l'unique décodage du journal. Mêmes assertions.
+- Revue de la factorisation : le journal tient un envoi par ligne (retours à la
+  ligne du corps échappés, `_lire_envoi` les restaure et prend le dernier
+  envoi) ; retour inutilisé du générateur retiré ; `sendmail.log` renommé
+  `envois.log` ; l'assertion d'échec `sendmail` passe par `_lire_envoi`
+  (transport/arguments/corps) au lieu d'une sous-chaîne. Vérifié sur deux
+  envois consécutifs : 2 lignes, dernier envoi relu correctement.
 - Suite complète 135 tests OK, `bash -n`, `py_compile`, `node --check`.
 
 **Risques / non couverts**

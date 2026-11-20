@@ -23,27 +23,36 @@ def _ecrire_faux_transport(faux_bin, transport, code=0):
     """Unique generateur de faux transport (mail/sendmail).
 
     Bash pur (shebang absolu, builtins seuls) : reste executable avec un PATH
-    isole. Journalise `transport|arguments|corps` dans $FAKE_SEND_LOG, puis sort
-    avec `code`.
+    isole. Journalise un envoi par ligne dans $FAKE_SEND_LOG, au format
+    `transport|arguments|corps` (retours a la ligne du corps echappes), puis
+    sort avec `code`.
     """
     script = faux_bin / transport
+    # `corps` remplace les retours a la ligne par deux caracteres (\n) pour que
+    # chaque envoi tienne sur une seule ligne du journal.
     script.write_text(
         f"#!{shutil.which('bash') or '/bin/bash'}\n"
         "entree=''\n"
         "while IFS= read -r ligne; do\n"
         "  entree=\"${entree}${ligne}\"$'\\n'\n"
         "done\n"
-        f"printf '%s|%s|%s\\n' '{transport}' \"$*\" \"$entree\" >> \"${{FAKE_SEND_LOG}}\"\n"
+        "corps=\"${entree//$'\\n'/\\\\n}\"\n"
+        f"printf '%s|%s|%s\\n' '{transport}' \"$*\" \"$corps\" >> \"${{FAKE_SEND_LOG}}\"\n"
         f"exit {code}\n",
         encoding="utf-8",
     )
     script.chmod(0o755)
-    return script
 
 
 def _lire_envoi(journal):
-    """`(transport, arguments, corps)` du dernier envoi journalise."""
-    return journal.read_text(encoding="utf-8").split("|", 2)
+    """`(transport, arguments, corps)` du dernier envoi journalise.
+
+    Un envoi par ligne (voir `_ecrire_faux_transport`) : plusieurs envois
+    restent exploitables et le dernier prime.
+    """
+    dernier = journal.read_text(encoding="utf-8").splitlines()[-1]
+    transport, arguments, corps = dernier.split("|", 2)
+    return transport, arguments, corps.replace("\\n", "\n")
 
 
 def creer_base(path, noms=("alpha", "beta")):
@@ -2223,9 +2232,10 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("rc=1", processus.stdout)
             self.assertIn("ERROR email: envoi impossible", processus.stderr)
             self.assertNotIn("email envoye", sortie)
-            self.assertIn(
-                "sendmail|ops@example.invalid", journal.read_text(encoding="utf-8")
-            )
+            transport, arguments, corps = _lire_envoi(journal)
+            self.assertEqual(transport, "sendmail")
+            self.assertEqual(arguments, "ops@example.invalid")
+            self.assertIn("Subject: Sujet test", corps)
 
     def _preparer_path_isole(self, racine, transports=(("sendmail", 0),)):
         """Installateur + env file + PATH ne contenant que les faux transports
@@ -2246,7 +2256,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         faux_bin = racine / "bin"
         faux_bin.mkdir()
-        journal = racine / "sendmail.log"
+        journal = racine / "envois.log"
         for nom, code in transports:
             _ecrire_faux_transport(faux_bin, nom, code)
         for outil in outils:
