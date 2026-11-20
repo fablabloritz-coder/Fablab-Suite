@@ -1961,22 +1961,31 @@ def _faux_sudo(faux_bin):
     chemin.chmod(0o755)
 
 
-def _faux_systemctl(faux_bin, journal):
+def _faux_systemctl(
+    faux_bin,
+    journal,
+    *,
+    active="active",
+    enabled="enabled",
+    next_run="Fri 2026-11-21 04:30:00 CET",
+):
     """`systemctl` factice : valeurs stables pour `*-timer-status`.
 
     Seules les lectures faites par `print_systemd_timer_status` sont simulees ;
-    `daemon-reload` / `enable --now` reussissent sans rien faire.
+    `daemon-reload` / `enable --now` reussissent sans rien faire. `active`,
+    `enabled` et `next_run` sont parametrables pour rendre un timer desactive
+    (`inactive`, `disabled`, prochaine execution vide) sans toucher au helper.
     """
     chemin = faux_bin / "systemctl"
     chemin.write_text(
         "#!/usr/bin/env bash\n"
         "printf '%s\\n' \"$*\" >> \"" + str(journal) + "\"\n"
         'case "$1" in\n'
-        '  is-active) echo "active" ;;\n'
-        '  is-enabled) echo "enabled" ;;\n'
+        f"  is-active) echo {shlex.quote(str(active))} ;;\n"
+        f"  is-enabled) echo {shlex.quote(str(enabled))} ;;\n"
         "  show)\n"
         '    case "$*" in\n'
-        '      *NextElapseUSecRealtime*) echo "Fri 2026-11-21 04:30:00 CET" ;;\n'
+        f"      *NextElapseUSecRealtime*) echo {shlex.quote(str(next_run))} ;;\n"
         '      *LastTriggerUSec*) echo "Thu 2026-11-20 04:30:00 CET" ;;\n'
         '      *ExecMainStatus*) echo "3" ;;\n'
         '      *Result*) echo "exit-code" ;;\n'

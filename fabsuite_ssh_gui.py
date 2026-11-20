@@ -2017,7 +2017,7 @@ exit 0
                 "Timer desactive",
                 f"Le timer de {libelle} est desactive : plus aucune execution "
                 "planifiee.\n\n"
-                "Le bouton Installer timer permet de le reactiver.",
+                "Le bouton Réactiver permet de le remettre en service.",
             )
             return
 

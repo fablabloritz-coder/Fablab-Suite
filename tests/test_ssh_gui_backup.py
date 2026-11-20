@@ -1123,7 +1123,7 @@ class GuiTimerActionsTest(unittest.TestCase):
         )
         self.assertIn("plus aucune execution planifiee", self.alertes[0][1])
         self.assertIn("plus aucune execution planifiee", self.alertes[1][1])
-        self.assertIn("Installer timer", self.alertes[0][1])
+        self.assertIn("Réactiver", self.alertes[0][1])
 
     def test_echec_desactivation_affiche_l_erreur_et_rafraichit(self):
         rafraichis = []
@@ -1219,6 +1219,13 @@ class GuiTimerActionsTest(unittest.TestCase):
         finally:
             fabsuite_ssh_gui.eel.expose = ancien
 
+        # Libelle modifiable par app.js pour passer a « Réactiver » : le span
+        # doit rester dans le bouton d'installation, sinon le texte change
+        # ailleurs que sur le bouton.
+        libelles = {
+            "action_install_verify_timer": "verifyTimerInstallLabel",
+            "action_install_backup_timer": "backupTimerInstallLabel",
+        }
         for action in (
             "action_install_verify_timer",
             "action_install_backup_timer",
@@ -1232,6 +1239,8 @@ class GuiTimerActionsTest(unittest.TestCase):
                     if f'data-action="{action}"' in ligne
                 )
                 self.assertIn(action, exposees)
+                if action in libelles:
+                    self.assertIn(f'<span id="{libelles[action]}">', ligne)
                 if action.startswith("action_disable_"):
                     # La desactivation doit toujours passer par la confirmation
                     # du dispatch (data-confirm), jamais partir au premier clic.

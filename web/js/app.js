@@ -162,11 +162,38 @@ function refreshBackupCardStates() {
 
 /* ─── Action dispatch ─── */
 
+const TIMER_INSTALL_LABELS = {
+  verifyTimerInstallLabel: "Installer timer vérification",
+  backupTimerInstallLabel: "Installer timer sauvegarde",
+};
+
+// Un timer installe mais `disabled` ne planifie plus rien : la ligne et le
+// bouton doivent le dire explicitement. `enabled` vient de `systemctl
+// is-enabled` via le helper ; aucune deduction depuis `active`.
+function timerDesactive(etat) {
+  return Boolean(etat.installed) && etat.enabled === "disabled";
+}
+
+// Seul le libelle change : l'icone du bouton reste dans le HTML.
+function setTimerInstallLabel(id, desactive) {
+  const label = document.getElementById(id);
+  if (!label) return;
+  label.textContent = desactive ? "Réactiver" : TIMER_INSTALL_LABELS[id];
+}
+
+function timerStateClass(etat, desactive) {
+  if (etat.marker) return "text-danger";
+  return desactive ? "text-warning" : "text-muted";
+}
+
 eel.expose(refreshVerifyTimerState);
 async function refreshVerifyTimerState() {
   const el = document.getElementById("verifyTimerState");
   if (!el) return;
-  if (!backupStateAvailable(el)) return;
+  if (!backupStateAvailable(el)) {
+    setTimerInstallLabel("verifyTimerInstallLabel", false);
+    return;
+  }
   el.className = "text-muted";
   el.textContent = "Vérification planifiée : chargement...";
 
@@ -174,16 +201,19 @@ async function refreshVerifyTimerState() {
   try {
     etat = await eel.verify_timer_status()();
   } catch (e) {
+    setTimerInstallLabel("verifyTimerInstallLabel", false);
     el.className = "text-danger";
     el.textContent = "Vérification planifiée : erreur (" + e + ")";
     return;
   }
   if (etat.error) {
+    setTimerInstallLabel("verifyTimerInstallLabel", false);
     el.className = "text-danger";
     el.textContent = etat.error;
     return;
   }
   if (!etat.installed) {
+    setTimerInstallLabel("verifyTimerInstallLabel", false);
     el.className = "text-warning";
     el.textContent =
       etat.hint ||
@@ -191,25 +221,32 @@ async function refreshVerifyTimerState() {
     return;
   }
 
+  const desactive = timerDesactive(etat);
+  setTimerInstallLabel("verifyTimerInstallLabel", desactive);
   const code = etat.last_code ? ` (code ${etat.last_code})` : "";
   const dernier = etat.last_run
     ? `${etat.last_result || "resultat inconnu"}${code} le ${etat.last_run}`
     : "aucune exécution enregistrée";
   const parties = [
-    `timer ${etat.active || "inconnu"}`,
-    `prochaine exécution : ${etat.next || "inconnue"}`,
-    `dernière vérification : ${dernier}`,
-    etat.marker ? `MARQUEUR DÉGRADÉ : ${etat.marker}` : "marqueur dégradé : absent",
+    desactive ? "timer désactivé" : `timer ${etat.active || "inconnu"}`,
   ];
-  el.className = etat.marker ? "text-danger" : "text-muted";
+  if (!desactive) {
+    parties.push(`prochaine exécution : ${etat.next || "inconnue"}`);
+  }
+  parties.push(`dernière vérification : ${dernier}`);
+  parties.push(
+    etat.marker ? `MARQUEUR DÉGRADÉ : ${etat.marker}` : "marqueur dégradé : absent",
+  );
+  el.className = timerStateClass(etat, desactive);
   el.textContent = "Vérification planifiée — " + parties.join(" — ");
 }
 
-function timerStateSummary(etat) {
+function timerStateSummary(etat, desactive) {
   const code = etat.last_code ? ` (code ${etat.last_code})` : "";
   const dernier = etat.last_run
     ? `${etat.last_result || "resultat inconnu"}${code} le ${etat.last_run}`
     : "aucune exécution enregistrée";
+  if (desactive) return `timer désactivé — dernière : ${dernier}`;
   return `timer ${etat.active || "inconnu"} — prochaine exécution : ${
     etat.next || "inconnue"
   } — dernière : ${dernier}`;
@@ -219,7 +256,10 @@ eel.expose(refreshBackupTimerState);
 async function refreshBackupTimerState() {
   const el = document.getElementById("backupTimerState");
   if (!el) return;
-  if (!backupStateAvailable(el)) return;
+  if (!backupStateAvailable(el)) {
+    setTimerInstallLabel("backupTimerInstallLabel", false);
+    return;
+  }
   el.className = "text-muted";
   el.textContent = "Sauvegarde planifiée : chargement...";
 
@@ -227,29 +267,35 @@ async function refreshBackupTimerState() {
   try {
     etat = await eel.backup_timer_status()();
   } catch (e) {
+    setTimerInstallLabel("backupTimerInstallLabel", false);
     el.className = "text-danger";
     el.textContent = "Sauvegarde planifiée : erreur (" + e + ")";
     return;
   }
   if (etat.error) {
+    setTimerInstallLabel("backupTimerInstallLabel", false);
     el.className = "text-danger";
     el.textContent = etat.error;
     return;
   }
   if (!etat.installed) {
+    setTimerInstallLabel("backupTimerInstallLabel", false);
     el.className = "text-warning";
     el.textContent =
       etat.hint ||
       "Timer non installé : lance ./fabsuite-ubuntu.sh install-backup-timer.";
     return;
   }
+  const desactive = timerDesactive(etat);
+  setTimerInstallLabel("backupTimerInstallLabel", desactive);
   const marker = etat.marker
     ? ` — MARQUEUR ÉCHEC : ${etat.marker}${
         etat.marker_at ? ` (${formatAlertDate(etat.marker_at)})` : ""
       }`
     : " — marqueur échec : absent";
-  el.className = etat.marker ? "text-danger" : "text-muted";
-  el.textContent = "Sauvegarde planifiée — " + timerStateSummary(etat) + marker;
+  el.className = timerStateClass(etat, desactive);
+  el.textContent =
+    "Sauvegarde planifiée — " + timerStateSummary(etat, desactive) + marker;
 }
 
 function notificationDestinationSummary(etat) {

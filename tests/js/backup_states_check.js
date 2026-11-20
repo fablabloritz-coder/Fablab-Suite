@@ -7,9 +7,11 @@
  * appels backend sont comptes, ce qui distingue "remis a inconnu sans appel" de
  * "relu depuis le serveur".
  *
- * Sortie : { scenarios: { nom: { calls, texts, classes, boutons } } } en JSON
- * sur stdout, ou `boutons` liste l'etat `disabled` des `.ssh-btn` de la carte et
- * `classes` la classe CSS de chaque ligne (text-muted / text-warning / ...).
+ * Sortie : { scenarios: { nom: { calls, texts, classes, labels, boutons } } } en
+ * JSON sur stdout, ou `boutons` liste l'etat `disabled` des `.ssh-btn` de la
+ * carte, `classes` la classe CSS de chaque ligne (text-muted / text-warning / ...)
+ * et `labels` le libelle des boutons d'installation ("Installer timer ..." ou
+ * "Réactiver" selon l'etat du timer), sans leur icone.
  *
  * Usage : node tests/js/backup_states_check.js [app.js] [etats-reels.json]
  * Le troisieme argument est une map `{"<action>": payload}` de reponses reelles
@@ -29,6 +31,7 @@ const appPath = process.argv[2] || path.resolve(__dirname, "../../web/js/app.js"
 const appSource = fs.readFileSync(appPath, "utf8");
 
 const IDS = ["verifyTimerState", "backupTimerState", "notifyState"];
+const LABELS = ["verifyTimerInstallLabel", "backupTimerInstallLabel"];
 
 // Le code teste n'ecrit que `textContent`/`className` sur ces lignes.
 const elements = new Map();
@@ -117,10 +120,13 @@ async function scenario(nom, action) {
     texts[id] = getElement(id).textContent;
     classes[id] = getElement(id).className;
   }
+  const labels = {};
+  for (const id of LABELS) labels[id] = getElement(id).textContent;
   scenarios[nom] = {
     calls: calls - avant,
     texts,
     classes,
+    labels,
     boutons: boutonsSsh.map((b) => b.disabled),
   };
 }

@@ -112,6 +112,21 @@ class BackupStatesJsTest(unittest.TestCase):
     def test_connexion_lit_les_trois_etats(self):
         self.assertLuDepuisLeServeur("connexion")
 
+    def assertLibellesInstaller(self, nom):
+        """Les deux boutons gardent leur libelle d'installation."""
+        labels = self.mesures_de(nom)["labels"]
+        self.assertEqual(labels["verifyTimerInstallLabel"], "Installer timer vérification")
+        self.assertEqual(labels["backupTimerInstallLabel"], "Installer timer sauvegarde")
+
+    def test_connexion_garde_les_boutons_installer(self):
+        self.assertLibellesInstaller("connexion")
+
+    def test_deconnexion_remet_les_boutons_installer(self):
+        self.assertLibellesInstaller("deconnexion")
+
+    def test_bascule_local_remet_les_boutons_installer(self):
+        self.assertLibellesInstaller("bascule_local")
+
     def test_bascule_local_remet_a_inconnu_sans_appel(self):
         self.assertInconnu("bascule_local", INCONNU_LOCAL)
 
@@ -141,6 +156,8 @@ class _HarnaisHelper:
 
         faux_bin = racine / "bin"
         faux_bin.mkdir()
+        self.faux_bin = faux_bin
+        self.systemctl_log = racine / "systemctl.log"
         # `curl` factice : l'envoi webhook reussit, donc l'anti-rebond s'arme et
         # le helper ecrit un vrai fichier d'etat avec sa date.
         (faux_bin / "curl").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
@@ -157,7 +174,7 @@ class _HarnaisHelper:
             # Installation et lecture d'etat visent ce dossier : `sudo` et
             # `systemctl` simules suffisent, sans root ni systemd reel.
             _faux_sudo(faux_bin)
-            _faux_systemctl(faux_bin, racine / "systemctl.log")
+            _faux_systemctl(faux_bin, self.systemctl_log)
             lignes.append(f"FABSUITE_SYSTEMD_UNIT_DIR={unit_dir}")
             self.unit_dir = unit_dir
 
@@ -339,6 +356,100 @@ class EtatsReelsRendTest(unittest.TestCase):
                 self.assertEqual(mesure["classes"][ligne], "text-warning")
 
 
+class TimersDesactivesRendTest(unittest.TestCase):
+    """Etat `disabled` rendu depuis de vraies sorties du helper.
+
+    Les unites sont installees, puis le faux `systemctl` passe a
+    `inactive` / `disabled` et sans prochaine execution, comme apres
+    `disable-*-timer` : le helper lui-meme n'est pas modifie.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not NODE:
+            raise unittest.SkipTest("node introuvable")
+        if not shutil.which("bash"):
+            raise unittest.SkipTest("bash indisponible")
+
+        cls._tmp = tempfile.TemporaryDirectory()
+        racine = Path(cls._tmp.name)
+        unit_dir = racine / "systemd"
+        unit_dir.mkdir()
+        cls.harnais = _HarnaisHelper(racine, unit_dir=unit_dir)
+
+        for action, unite in (
+            ("install-verify-timer", "fabsuite-verify.timer"),
+            ("install-backup-timer", "fabsuite-backup.timer"),
+        ):
+            sortie = cls.harnais.sortie(action)
+            if not (unit_dir / unite).exists():
+                raise AssertionError(f"{unite} non installe:\n{sortie}")
+
+        _faux_systemctl(
+            cls.harnais.faux_bin,
+            cls.harnais.systemctl_log,
+            active="inactive",
+            enabled="disabled",
+            next_run="",
+        )
+
+        cls.sorties = {
+            action: cls.harnais.sortie(action)
+            for action in ("verify-timer-status", "backup-timer-status")
+        }
+        cls.etat_verify = _parse_timer_status_gui(
+            cls.sorties["verify-timer-status"], "[verify-timer] "
+        )
+        cls.etat_backup = _parse_timer_status_gui(
+            cls.sorties["backup-timer-status"], "[backup-timer] "
+        )
+        cls.mesures = _rendre(
+            racine,
+            {
+                "verify_timer_status": cls.etat_verify,
+                "backup_timer_status": cls.etat_backup,
+            },
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_lignes_et_boutons_explicitement_desactives(self):
+        cas = (
+            (
+                "verifyTimerState",
+                "verifyTimerInstallLabel",
+                "verify_reel",
+                self.etat_verify,
+                "Vérification planifiée — timer désactivé — "
+                "dernière vérification : exit-code (code 3) "
+                "le Thu 2026-11-20 04:30:00 CET — marqueur dégradé : absent",
+            ),
+            (
+                "backupTimerState",
+                "backupTimerInstallLabel",
+                "backup_reel",
+                self.etat_backup,
+                "Sauvegarde planifiée — timer désactivé — "
+                "dernière : exit-code (code 3) "
+                "le Thu 2026-11-20 04:30:00 CET — marqueur échec : absent",
+            ),
+        )
+        for ligne, bouton, scenario, etat, texte in cas:
+            with self.subTest(ligne=ligne):
+                self.assertIs(etat["installed"], True)
+                self.assertEqual(etat["enabled"], "disabled")
+                self.assertEqual(etat["next"], "")
+
+                mesure = self.mesures[scenario]
+                self.assertEqual(mesure["calls"], 1)
+                self.assertEqual(mesure["texts"][ligne], texte)
+                self.assertNotIn("prochaine exécution", mesure["texts"][ligne])
+                self.assertEqual(mesure["classes"][ligne], "text-warning")
+                self.assertEqual(mesure["labels"][bouton], "Réactiver")
+
+
 class TimersInstallesRendTest(unittest.TestCase):
     """Branche "timer installe" et marqueurs, depuis le helper reel.
 
@@ -418,6 +529,10 @@ class TimersInstallesRendTest(unittest.TestCase):
             f"MARQUEUR DÉGRADÉ : {marqueur}",
         )
         self.assertEqual(mesure["classes"]["verifyTimerState"], "text-danger")
+        self.assertEqual(
+            mesure["labels"]["verifyTimerInstallLabel"],
+            "Installer timer vérification",
+        )
 
     def test_sauvegarde_installee_dans_la_carte(self):
         self.assertIn("[backup-timer] installed=1", self.sorties["backup-timer-status"])
@@ -441,6 +556,14 @@ class TimersInstallesRendTest(unittest.TestCase):
             f"MARQUEUR ÉCHEC : {marqueur} ({date_marqueur[:19]})",
         )
         self.assertEqual(mesure["classes"]["backupTimerState"], "text-danger")
+        self.assertEqual(
+            mesure["labels"]["verifyTimerInstallLabel"],
+            "Installer timer vérification",
+        )
+        self.assertEqual(
+            mesure["labels"]["backupTimerInstallLabel"],
+            "Installer timer sauvegarde",
+        )
 
 
 if __name__ == "__main__":

@@ -6,6 +6,43 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Etat « timer desactive » et bouton Reactiver
+
+**Contexte** : apres `disable-*-timer`, la carte affichait encore « timer
+inactive — prochaine execution : inconnue » et le bouton restait « Installer
+timer ». L'etat resultant etait indistinguable d'un timer simplement arrete.
+
+**Rendu (`web/js/app.js`)**
+- `enabled=disabled` (sortie du helper, via `systemctl is-enabled`) definit
+  l'etat desactive ; aucune deduction depuis `active` et aucune modification du
+  helper.
+- Les deux lignes affichent « timer désactivé » et omettent la prochaine
+  execution (vide dans ce cas). Classe `text-warning` sans marqueur,
+  `text-danger` si un marqueur existe.
+- Le bouton d'installation de chaque ligne devient **Réactiver** tant que le
+  timer est desactive, puis reprend son libelle « Installer timer ... » des
+  qu'il est actif, absent, en erreur, en mode Local ou deconnecte. L'action
+  reste `install-*-timer` : c'est elle qui reactive, sans nouvelle logique.
+- Alerte de succes et textes de confirmation alignes sur le bouton Réactiver.
+
+**Tests**
+- Le pilote mesure desormais les libelles des deux boutons d'installation ; le
+  texte vit dans un `span` interne pour conserver l'icone du bouton.
+- `TimersDesactivesRendTest` : unites installees puis faux `systemctl` en
+  `inactive`/`disabled` sans prochaine execution ; verifie les deux textes
+  exacts, l'absence de « prochaine exécution », `text-warning` et « Réactiver ».
+- Les scenarios actifs verifient que les boutons gardent « Installer timer ... »
+  et que la deconnexion ou le mode Local les y remet ; le test HTML verifie que
+  chaque `span` de libelle reste dans son bouton d'installation.
+
+**Verifications**
+- `node --check` sur `app.js` et le pilote, `py_compile` du GUI ;
+  `python3 -m unittest discover -s tests` → **173 tests OK**.
+
+**Risques / non couverts**
+- Pas de navigateur dans la VM : rendu verifie par le DOM simule du pilote, pas
+  visuellement. Le helper et son comportement sont inchanges.
+
 ## 2026-11-20 — Desactiver les timers depuis le GUI
 
 **Contexte** : le GUI savait installer les timers, mais pour les arrêter il
