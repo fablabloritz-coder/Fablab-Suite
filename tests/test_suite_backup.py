@@ -1534,131 +1534,154 @@ class HelperTimersEnvFileTest(unittest.TestCase):
     fois dans le dossier installateur ne serait jamais utilisee par le timer.
     """
 
-    def test_execstoppost_utilise_l_env_de_l_installation(self):
+    def _preparer(self, racine):
+        install = racine / "suite"
+        install.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", install / "fabsuite-ubuntu.sh")
+
+        backups = racine / "backups"
+        backups.mkdir()
+        decoy = racine / "decoy"
+        decoy.mkdir()
+
+        # Env cree automatiquement dans INSTALL_DIR au premier lancement du
+        # timer : aucune cible de notification, autre dossier de snapshots.
+        (install / "fabsuite-ubuntu.env").write_text(
+            "\n".join(
+                (
+                    "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                    "GIT_BRANCH=main",
+                    f"INSTALL_DIR={install}",
+                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                    "FLASK_SECRET_KEY=auto",
+                    f"FABSUITE_BACKUP_DIR={decoy}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(
+            ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh"
+        )
+        env_file = installer / "fabsuite-ubuntu.env"
+        env_file.write_text(
+            "\n".join(
+                (
+                    "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                    "GIT_BRANCH=main",
+                    f"INSTALL_DIR={install}",
+                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    f"FABSUITE_BACKUP_DIR={backups}",
+                    "FABSUITE_NOTIFY_EMAIL=ops@example.invalid",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        systemd_dir = racine / "systemd"
+        systemd_dir.mkdir()
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        (faux_bin / "sudo").write_text(
+            "#!/usr/bin/env bash\n"
+            'while [[ "$1" == "-n" ]]; do shift; done\n'
+            'exec "$@"\n',
+            encoding="utf-8",
+        )
+        (faux_bin / "systemctl").write_text(
+            "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8"
+        )
+        (faux_bin / "sudo").chmod(0o755)
+        (faux_bin / "systemctl").chmod(0o755)
+
+        env = os.environ.copy()
+        env["HOME"] = str(racine / "home")
+        env["PATH"] = f"{faux_bin}:{env['PATH']}"
+        env["NON_INTERACTIVE"] = "1"
+        env["FABSUITE_SYSTEMD_UNIT_DIR"] = str(systemd_dir)
+        env.pop("SUDO_USER", None)
+        env.pop("SUDO_PASSWORD", None)
+
+        return {
+            "install": install,
+            "backups": backups,
+            "decoy": decoy,
+            "installer": installer,
+            "env_file": env_file,
+            "systemd_dir": systemd_dir,
+            "env": env,
+        }
+
+    def _installer(self, contexte, action):
+        processus = subprocess.run(
+            [
+                "bash",
+                str(contexte["installer"] / "fabsuite-ubuntu.sh"),
+                action,
+                "--env-file",
+                str(contexte["env_file"]),
+            ],
+            cwd=contexte["installer"],
+            env=contexte["env"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        sortie = processus.stdout + processus.stderr
+        self.assertEqual(processus.returncode, 0, sortie)
+
+    def _commande_execstoppost(self, contexte, service):
+        texte = (contexte["systemd_dir"] / service).read_text(encoding="utf-8")
+        ligne = next(
+            ligne
+            for ligne in texte.splitlines()
+            if ligne.startswith("ExecStopPost=")
+        )
+        commande = shlex.split(ligne.split("=", 1)[1])
+        self.assertEqual(commande[:2], ["/bin/bash", "-c"], commande)
+        return commande
+
+    def _executer_execstoppost(self, contexte, commande, code):
+        env = dict(contexte["env"])
+        env["EXIT_STATUS"] = str(code)
+        resultat = subprocess.run(
+            commande,
+            cwd=contexte["install"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        sortie = resultat.stdout + resultat.stderr
+        self.assertEqual(resultat.returncode, 0, sortie)
+        return sortie
+
+    def test_execstoppost_verify_utilise_l_env_de_l_installation(self):
         if not shutil.which("bash"):
             self.skipTest("bash indisponible")
 
         with tempfile.TemporaryDirectory() as tmp:
-            racine = Path(tmp)
-            install = racine / "suite"
-            install.mkdir()
-            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", install / "fabsuite-ubuntu.sh")
-
-            backups = racine / "backups"
-            backups.mkdir()
-            decoy = racine / "decoy"
-            decoy.mkdir()
-
-            # Env cree automatiquement dans INSTALL_DIR au premier lancement du
-            # timer : aucune cible de notification, autre dossier de snapshots.
-            (install / "fabsuite-ubuntu.env").write_text(
-                "\n".join(
-                    (
-                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
-                        "GIT_BRANCH=main",
-                        f"INSTALL_DIR={install}",
-                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
-                        "FLASK_SECRET_KEY=auto",
-                        f"FABSUITE_BACKUP_DIR={decoy}",
-                        "",
-                    )
-                ),
-                encoding="utf-8",
+            contexte = self._preparer(Path(tmp))
+            backups = contexte["backups"]
+            decoy = contexte["decoy"]
+            self._installer(contexte, "install-verify-timer")
+            commande = self._commande_execstoppost(
+                contexte, "fabsuite-verify.service"
             )
 
-            installer = racine / "installer"
-            installer.mkdir()
-            shutil.copy2(
-                ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh"
-            )
-            env_file = installer / "fabsuite-ubuntu.env"
-            env_file.write_text(
-                "\n".join(
-                    (
-                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
-                        "GIT_BRANCH=main",
-                        f"INSTALL_DIR={install}",
-                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
-                        "FLASK_SECRET_KEY=test-secret",
-                        f"FABSUITE_BACKUP_DIR={backups}",
-                        "FABSUITE_NOTIFY_EMAIL=ops@example.invalid",
-                        "",
-                    )
-                ),
-                encoding="utf-8",
-            )
-
-            systemd_dir = racine / "systemd"
-            systemd_dir.mkdir()
-            faux_bin = racine / "bin"
-            faux_bin.mkdir()
-            (faux_bin / "sudo").write_text(
-                "#!/usr/bin/env bash\n"
-                'while [[ "$1" == "-n" ]]; do shift; done\n'
-                'exec "$@"\n',
-                encoding="utf-8",
-            )
-            (faux_bin / "systemctl").write_text(
-                "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8"
-            )
-            (faux_bin / "sudo").chmod(0o755)
-            (faux_bin / "systemctl").chmod(0o755)
-
-            env = os.environ.copy()
-            env["HOME"] = str(racine / "home")
-            env["PATH"] = f"{faux_bin}:{env['PATH']}"
-            env["NON_INTERACTIVE"] = "1"
-            env["FABSUITE_SYSTEMD_UNIT_DIR"] = str(systemd_dir)
-            env.pop("SUDO_USER", None)
-            env.pop("SUDO_PASSWORD", None)
-
-            processus = subprocess.run(
-                [
-                    "bash",
-                    str(installer / "fabsuite-ubuntu.sh"),
-                    "install-verify-timer",
-                    "--env-file",
-                    str(env_file),
-                ],
-                cwd=installer,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            sortie = processus.stdout + processus.stderr
-            self.assertEqual(processus.returncode, 0, sortie)
-
-            service = (systemd_dir / "fabsuite-verify.service").read_text(
-                encoding="utf-8"
-            )
-            ligne = next(
-                ligne
-                for ligne in service.splitlines()
-                if ligne.startswith("ExecStopPost=")
-            )
-            commande = shlex.split(ligne.split("=", 1)[1])
-            self.assertEqual(commande[:2], ["/bin/bash", "-c"], commande)
-
-            # Etat d'anti-rebond des deux envs : seule celui de l'env du GUI
+            # Etat d'anti-rebond des deux envs : seul celui de l'env du GUI
             # doit etre lu par la commande ExecStopPost de l'unite.
             (backups / "notify-verify.state").write_text(
                 "ECHEC\n", encoding="utf-8"
             )
             (decoy / "notify-verify.state").write_text("ECHEC\n", encoding="utf-8")
 
-            env_execution = dict(env)
-            env_execution["EXIT_STATUS"] = "0"
-            reussite = subprocess.run(
-                commande,
-                cwd=install,
-                env=env_execution,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            sortie = reussite.stdout + reussite.stderr
-            self.assertEqual(reussite.returncode, 0, sortie)
+            sortie = self._executer_execstoppost(contexte, commande, 0)
             self.assertIn(
                 f"anti-rebond reinitialise ({backups / 'notify-verify.state'})",
                 sortie,
@@ -1668,19 +1691,55 @@ class HelperTimersEnvFileTest(unittest.TestCase):
 
             # Echec : la cible configuree dans l'env du GUI doit etre tentee
             # (sinon le helper dirait "aucune cible configuree").
-            env_execution["EXIT_STATUS"] = "2"
-            echec = subprocess.run(
-                commande,
-                cwd=install,
-                env=env_execution,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            sortie = echec.stdout + echec.stderr
-            self.assertEqual(echec.returncode, 0, sortie)
+            sortie = self._executer_execstoppost(contexte, commande, 2)
             self.assertIn("[notify] service=verify code=2", sortie)
             self.assertNotIn("aucune cible configuree", sortie)
+
+    def test_execstoppost_backup_utilise_l_env_de_l_installation(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            backups = contexte["backups"]
+            decoy = contexte["decoy"]
+            self._installer(contexte, "install-backup-timer")
+            commande = self._commande_execstoppost(
+                contexte, "fabsuite-backup.service"
+            )
+
+            (backups / "notify-backup.state").write_text(
+                "ECHEC\n", encoding="utf-8"
+            )
+            (decoy / "notify-backup.state").write_text("ECHEC\n", encoding="utf-8")
+            (backups / "backup-failed").write_text("ECHEC\n", encoding="utf-8")
+            (decoy / "backup-failed").write_text("ECHEC\n", encoding="utf-8")
+
+            # Succes : l'anti-rebond et le marqueur du dossier de l'env GUI
+            # sont retires ; ceux du dossier piege restent intacts.
+            sortie = self._executer_execstoppost(contexte, commande, 0)
+            self.assertIn(
+                f"anti-rebond reinitialise ({backups / 'notify-backup.state'})",
+                sortie,
+            )
+            self.assertFalse((backups / "notify-backup.state").exists())
+            self.assertFalse((backups / "backup-failed").exists())
+            self.assertTrue((decoy / "notify-backup.state").is_file())
+            self.assertEqual(
+                (decoy / "backup-failed").read_text(encoding="utf-8"), "ECHEC\n"
+            )
+
+            # Echec : marqueur ecrit dans l'env GUI et cible de notification
+            # effectivement tentee (pas de "aucune cible configuree").
+            sortie = self._executer_execstoppost(contexte, commande, 2)
+            self.assertIn("[notify] service=backup code=2", sortie)
+            self.assertNotIn("aucune cible configuree", sortie)
+            marqueur = (backups / "backup-failed").read_text(encoding="utf-8")
+            self.assertIn("ECHEC", marqueur)
+            self.assertIn("journalctl -u fabsuite-backup", marqueur)
+            self.assertEqual(
+                (decoy / "backup-failed").read_text(encoding="utf-8"), "ECHEC\n"
+            )
 
 
 class HelperClearMarkersTest(unittest.TestCase):

@@ -29,16 +29,18 @@ affichait bien la cible.
 **Tests**
 - `HelperVerifyTimerTest` : chaque service contient exactement trois fois
   `--env-file "<env résolu>"` (ExecStart + notify-reset + notify-failure).
-- `HelperTimersEnvFileTest.test_execstoppost_utilise_l_env_de_l_installation` :
-  installe le timer réel, extrait la commande `ExecStopPost` de l'unité et
-  l'exécute dans `INSTALL_DIR` qui contient un env différent (dossier piège,
-  aucune cible). Avec `EXIT_STATUS=0`, seul l'état du dossier de l'env GUI est
-  supprimé ; avec `EXIT_STATUS=2`, `notify-failure` tente la cible configurée
-  dans l'env GUI (pas de « aucune cible configuree »).
+- `HelperTimersEnvFileTest` : installe chaque timer réel, extrait la commande
+  `ExecStopPost` de l'unité et l'exécute dans `INSTALL_DIR` qui contient un env
+  différent (dossier piège, aucune cible). Pour `verify` et `backup` :
+  - succès (`EXIT_STATUS=0`) : seul l'état d'anti-rebond du dossier de l'env
+    GUI est supprimé (et, pour backup, le marqueur `backup-failed`) ;
+  - échec (`EXIT_STATUS=2`) : la cible configurée dans l'env GUI est tentée
+    (pas de « aucune cible configuree ») et, pour backup, le marqueur est écrit
+    dans le dossier de l'env GUI, pas dans le dossier piège.
 
 **Vérifications**
 - `bash -n fabsuite-ubuntu.sh` OK ; `python3 -m unittest discover -s tests` →
-  **152 tests OK**.
+  **153 tests OK**.
 
 **Risques / non couverts**
 - Exécution réelle sous systemd non testée dans cette VM : les unités déjà
