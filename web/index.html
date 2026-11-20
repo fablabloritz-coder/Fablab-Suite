@@ -174,10 +174,12 @@
             </div>
             <div class="row g-2 align-items-center mt-1">
               <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" style="width:180px" data-action="action_verify_timer_status" data-help="Affiche la prochaine execution du timer, le dernier resultat de verification et la presence du marqueur verify-degrade.">&#x1F5D3; État vérification</button></div>
+              <div class="col-auto"><button class="btn btn-outline-primary btn-sm action-btn ssh-btn" style="width:210px" data-action="action_install_verify_timer" data-help="Installe et active le timer systemd de verification des snapshots. Sudo requis ; relancer l'action met l'unite a jour.">&#x1F5D3; Installer timer vérification</button></div>
               <div class="col"><small class="text-muted" id="verifyTimerState">Vérification planifiée : état inconnu (clique sur État vérification).</small></div>
             </div>
             <div class="row g-2 align-items-center mt-1">
               <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" style="width:180px" data-action="action_backup_timer_status" data-help="Affiche la prochaine execution du timer de snapshots et le resultat du dernier backup (rotation incluse).">&#x23F0; État sauvegarde</button></div>
+              <div class="col-auto"><button class="btn btn-outline-primary btn-sm action-btn ssh-btn" style="width:210px" data-action="action_install_backup_timer" data-help="Installe et active le timer systemd de snapshots quotidiens. Sudo requis ; relancer l'action met l'unite a jour.">&#x23F0; Installer timer sauvegarde</button></div>
               <div class="col"><small class="text-muted" id="backupTimerState">Sauvegarde planifiée : état inconnu (clique sur État sauvegarde).</small></div>
             </div>
             <div class="row g-2 align-items-center mt-1">

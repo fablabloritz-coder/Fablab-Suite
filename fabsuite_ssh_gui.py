@@ -243,6 +243,14 @@ class FabSuiteBackend:
             return self.notify_status()
 
         @eel.expose
+        def action_install_verify_timer():
+            self.action_install_verify_timer()
+
+        @eel.expose
+        def action_install_backup_timer():
+            self.action_install_backup_timer()
+
+        @eel.expose
         def action_clear_markers():
             self.action_clear_markers()
 
@@ -1089,6 +1097,18 @@ fi
             timeout_sec=timeout_sec,
         )
 
+    def _exec_helper_action_capture(self, action, timeout_sec=180):
+        """Execute une action du helper et retourne `(code, sortie)`.
+
+        Variante de `_run_helper_action` pour les actions dont l'echec doit etre
+        explique a l'operateur : le code seul ne distingue pas un sudo manquant
+        d'une configuration systemd invalide.
+        """
+        self._ensure_remote_helper_ready()
+        return self._exec_remote_capture(
+            self._helper_command(action), timeout_sec=timeout_sec
+        )
+
     # ─── Path safety ───
 
     def _ensure_safe_remote_path(self, path):
@@ -1920,6 +1940,92 @@ exit 0
                 "error": f"Impossible de lire l'etat des notifications (code {code})."
             }
         return etat
+
+    # ─── Installation des timers planifies ───
+
+    _TIMERS = {
+        "verify": ("verification", "install-verify-timer"),
+        "backup": ("sauvegarde", "install-backup-timer"),
+    }
+
+    def _install_timer_worker(self, service):
+        """Installe le timer systemd demande via le helper, puis relit son etat.
+
+        Le bouton evite au debutant de connaitre `install-*-timer`. Le code et
+        la sortie du helper sont conserves pour expliquer un echec (sudo
+        manquant, dossier d'unites invalide, systemctl absent).
+        """
+        libelle, action = self._TIMERS[service]
+        rafraichir = (
+            self._request_verify_state_refresh
+            if service == "verify"
+            else self._request_backup_state_refresh
+        )
+        self._log(f"Installation du timer de {libelle}...")
+
+        try:
+            code, sortie = self._exec_helper_action_capture(action)
+        except Exception as exc:
+            self._show_alert(
+                "Installation impossible",
+                f"Impossible de lancer l'installation du timer de {libelle} :\n"
+                f"{exc}\n\n"
+                "Verifie la connexion SSH, l'URL du monorepo et le mot de passe "
+                "sudo (section Avance), puis reessaie.",
+            )
+            raise
+
+        # Le helper a repondu : l'etat a pu changer, meme en echec partiel.
+        rafraichir()
+
+        if code != 0:
+            erreur = next(
+                (
+                    ligne.strip()
+                    for ligne in reversed(sortie.splitlines())
+                    if "ERROR" in ligne
+                ),
+                "",
+            )
+            conseil = (
+                "Renseigne le mot de passe sudo dans la section Avance "
+                "(ou autorise sudo sans mot de passe), puis reessaie."
+                if "sudo" in sortie.lower()
+                else "Consulte le journal du terminal, corrige la cause, "
+                "puis reessaie."
+            )
+            self._show_alert(
+                "Installation impossible",
+                f"Le timer de {libelle} n'a pas pu etre installe (code {code})."
+                + (f"\n\n{erreur}" if erreur else "")
+                + f"\n\n{conseil}",
+            )
+            raise RuntimeError(
+                f"installation du timer {service} echouee (code {code})"
+            )
+
+        self._log(f"Timer de {libelle} installe et active.")
+        self._show_alert(
+            "Timer installe",
+            f"Le timer de {libelle} est installe et active.\n\n"
+            "La ligne d'etat de la carte se met a jour automatiquement.",
+        )
+
+    def _start_timer_install(self, service):
+        libelle = self._TIMERS[service][0]
+        if self._is_local_mode():
+            self._show_ssh_only_info(f"Installation du timer de {libelle}")
+            return
+        self._run_async(
+            f"Installation timer {libelle}",
+            lambda: self._install_timer_worker(service),
+        )
+
+    def action_install_verify_timer(self):
+        self._start_timer_install("verify")
+
+    def action_install_backup_timer(self):
+        self._start_timer_install("backup")
 
     def _restore_worker(self, snapshot, destination, sources=None):
         args = ["--snapshot", snapshot]

@@ -6,6 +6,50 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Installer les timers depuis le GUI
+
+**Contexte** : la carte « Sauvegarde & restauration » affichait « Timer non
+installé : lance './fabsuite-ubuntu.sh install-verify-timer' » sans offre
+equivalente dans le GUI. Un débutant devait ouvrir un terminal SSH et retenir
+le nom de l'action pour un montage de base.
+
+**GUI**
+- Deux boutons dans la carte, à côté de chaque ligne d'état : **Installer timer
+  vérification** (`action_install_verify_timer`) et **Installer timer
+  sauvegarde** (`action_install_backup_timer`), marqués `ssh-btn` (désactivés
+  en mode Local).
+- `FabSuiteBackend._install_timer_worker(service)` s'appuie sur
+  `_exec_helper_action_capture` (nouveau) pour garder le code **et** la sortie
+  du helper : le helper est synchronisé et le mot de passe sudo du GUI reste
+  utilisé.
+- Erreurs : la dernière ligne `ERROR` du helper est affichée dans l'alerte
+  « Installation impossible ». Un échec sudo renvoie vers le mot de passe de la
+  section Avance ; les autres causes (dossier d'unités invalide, `systemctl`
+  absent) renvoient vers le journal. Une exception de lancement (SSH, URL
+  monorepo) alerte aussi et ne déclenche pas de relecture d'état inutile ; la
+  ligne n'est relue qu'après une vraie réponse du helper (succès ou code non
+  nul).
+- Table `_TIMERS` + `_start_timer_install` : une seule implémentation pour les
+  deux boutons, plus de branches verify/backup dupliquées.
+- README précisé (plus besoin de retenir `install-*-timer`).
+
+**Tests**
+- `GuiInstallTimerTest` (`tests/test_ssh_gui_backup.py`, 8 tests) : actions et
+  rafraîchissement de la bonne ligne ; détail `ERROR` exact et conseil journal ;
+  conseil mot de passe sudo quand le helper le demande ; exception de lancement
+  alertée sans rafraîchissement ; `_exec_helper_action_capture` transmet la
+  commande et le timeout ; programmation SSH, refus en mode Local ; présence des
+  deux `data-action` et exposition Eel.
+
+**Vérifications**
+- `python3 -m py_compile fabsuite_ssh_gui.py` OK ;
+  `python3 -m unittest discover -s tests` → **163 tests OK**.
+
+**Risques / non couverts**
+- Pas de test d'installation réelle sous systemd ni de session SSH réelle dans
+  cette VM ; le bouton exige le mot de passe sudo du GUI (ou un sudo sans mot
+  de passe) et le signale en cas d'échec.
+
 ## 2026-11-20 — Les timers lisent le même env que le GUI
 
 **Contexte** : les unités systemd démarraient dans `INSTALL_DIR` et exécutaient

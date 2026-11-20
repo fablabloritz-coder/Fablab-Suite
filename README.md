@@ -105,7 +105,12 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   manifeste modifié), avec le détail des erreurs dans le journal `[verify]`.
 - **État vérification** : lit le timer planifié (prochaine exécution, dernier
   résultat) et signale le marqueur `verify-degrade` ; si le timer n'est pas
-  installé, indique la commande `install-verify-timer` à lancer.
+  installé, la ligne indique la commande `install-verify-timer`.
+- **Installer timer vérification** / **Installer timer sauvegarde** : installent
+  et activent le timer systemd correspondant via le helper (sudo requis), puis
+  relisent la ligne d'état. Le premier montage se fait donc entièrement depuis
+  le GUI, sans retenir les commandes `install-*-timer`. Relancer l'action met
+  l'unité à jour (par exemple après une mise à jour du helper).
 - **État notifications** : lit `notify-status` du helper et affiche les
   destinations configurées (`webhook configuré/absent`, `mail configuré/absent`),
   puis, pour `backup` et `verify`, si le fichier `notify-<service>.state` existe

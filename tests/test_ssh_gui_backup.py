@@ -981,5 +981,190 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(self.alertes[0][0], "Restauration")
 
 
+class GuiInstallTimerTest(unittest.TestCase):
+    """Boutons d'installation des timers : helper, erreurs, rafraichissement."""
+
+    def setUp(self):
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend.state["remote_dir"] = "/opt/fabsuite"
+        self.backend.state["repo_url"] = fabsuite_ssh_gui.DEFAULT_MONOREPO_URL
+        self.alertes = []
+        self.backend._show_alert = lambda titre, message: self.alertes.append(
+            (titre, message)
+        )
+        self.backend._log = lambda message: None
+
+    def test_installe_les_deux_timers_et_rafraichit_la_bonne_ligne(self):
+        appels = []
+        rafraichis = []
+        self.backend._exec_helper_action_capture = (
+            lambda action, timeout_sec=180: appels.append(action) or (0, "")
+        )
+        self.backend._request_verify_state_refresh = lambda: rafraichis.append(
+            "verify"
+        )
+        self.backend._request_backup_state_refresh = lambda: rafraichis.append(
+            "backup"
+        )
+
+        self.backend._install_timer_worker("verify")
+        self.backend._install_timer_worker("backup")
+
+        self.assertEqual(appels, ["install-verify-timer", "install-backup-timer"])
+        self.assertEqual(rafraichis, ["verify", "backup"])
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Timer installe", "Timer installe"],
+        )
+        self.assertIn("verification", self.alertes[0][1])
+        self.assertIn("sauvegarde", self.alertes[1][1])
+
+    def test_echec_affiche_l_erreur_du_helper_et_rafraichit(self):
+        rafraichis = []
+        sortie = (
+            "[systemd] ERROR: FABSUITE_SYSTEMD_UNIT_DIR doit etre un chemin "
+            "absolu (recu: systemd).\n"
+        )
+        self.backend._exec_helper_action_capture = (
+            lambda action, timeout_sec=180: (2, sortie)
+        )
+        self.backend._request_verify_state_refresh = lambda: rafraichis.append(
+            "verify"
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._install_timer_worker("verify")
+
+        self.assertEqual(rafraichis, ["verify"])
+        self.assertEqual(self.alertes[0][0], "Installation impossible")
+        message = self.alertes[0][1]
+        self.assertIn("code 2", message)
+        self.assertIn(
+            "FABSUITE_SYSTEMD_UNIT_DIR doit etre un chemin absolu", message
+        )
+        self.assertIn("journal du terminal", message)
+        self.assertNotIn("mot de passe sudo", message)
+
+    def test_echec_sudo_conseille_le_mot_de_passe(self):
+        self.backend._exec_helper_action_capture = (
+            lambda action, timeout_sec=180: (
+                1,
+                "ERROR: sudo privileges are required for this action.\n"
+                "Tip: fill 'Sudo password' in the GUI advanced section.\n",
+            )
+        )
+        self.backend._request_verify_state_refresh = lambda: None
+
+        with self.assertRaises(RuntimeError):
+            self.backend._install_timer_worker("verify")
+
+        message = self.alertes[0][1]
+        self.assertIn("ERROR: sudo privileges are required", message)
+        self.assertIn("mot de passe sudo", message)
+
+    def test_erreur_de_lancement_alerta_sans_rafraichir(self):
+        rafraichis = []
+
+        def echouer(action, timeout_sec=180):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._exec_helper_action_capture = echouer
+        self.backend._request_verify_state_refresh = lambda: rafraichis.append(
+            "verify"
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._install_timer_worker("verify")
+
+        self.assertEqual(rafraichis, [])
+        self.assertEqual(self.alertes[0][0], "Installation impossible")
+        self.assertIn("connexion perdue", self.alertes[0][1])
+        self.assertIn("mot de passe sudo", self.alertes[0][1])
+
+    def test_exec_helper_action_capture_transmet_commande_et_timeout(self):
+        appels = []
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._helper_command = lambda action: f"commande {action}"
+        self.backend._exec_remote_capture = (
+            lambda commande, timeout_sec=180: appels.append(
+                (commande, timeout_sec)
+            )
+            or (0, "ok")
+        )
+
+        resultat = self.backend._exec_helper_action_capture(
+            "install-verify-timer", timeout_sec=42
+        )
+
+        self.assertEqual(resultat, (0, "ok"))
+        self.assertEqual(appels, [("commande install-verify-timer", 42)])
+
+    def test_action_ssh_programme_l_installation(self):
+        lancements = []
+        installes = []
+        self.backend._is_local_mode = lambda: False
+        self.backend._run_async = lambda label, cible: lancements.append(
+            (label, cible)
+        )
+        self.backend._install_timer_worker = lambda service: installes.append(
+            service
+        )
+
+        self.backend.action_install_verify_timer()
+        self.backend.action_install_backup_timer()
+        for _, cible in lancements:
+            cible()
+
+        self.assertEqual(
+            [label for label, _ in lancements],
+            [
+                "Installation timer verification",
+                "Installation timer sauvegarde",
+            ],
+        )
+        self.assertEqual(installes, ["verify", "backup"])
+
+    def test_mode_local_refuse_l_installation(self):
+        infos = []
+        lancements = []
+        self.backend._is_local_mode = lambda: True
+        self.backend._show_ssh_only_info = lambda action: infos.append(action)
+        self.backend._run_async = lambda label, cible: lancements.append(label)
+
+        self.backend.action_install_verify_timer()
+        self.backend.action_install_backup_timer()
+
+        self.assertEqual(
+            infos,
+            [
+                "Installation du timer de verification",
+                "Installation du timer de sauvegarde",
+            ],
+        )
+        self.assertEqual(lancements, [])
+
+    def test_les_boutons_et_actions_eel_existent(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        exposees = []
+        ancien = fabsuite_ssh_gui.eel.expose
+        # Le stub de test ne tient pas de registre : on capture les noms
+        # exposes pendant l'enregistrement reel du backend.
+        fabsuite_ssh_gui.eel.expose = (
+            lambda fonction: exposees.append(fonction.__name__) or fonction
+        )
+        try:
+            self.backend._register_exposed()
+        finally:
+            fabsuite_ssh_gui.eel.expose = ancien
+
+        for action in (
+            "action_install_verify_timer",
+            "action_install_backup_timer",
+        ):
+            with self.subTest(action=action):
+                self.assertIn(f'data-action="{action}"', html)
+                self.assertIn(action, exposees)
+
+
 if __name__ == "__main__":
     unittest.main()
