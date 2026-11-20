@@ -91,6 +91,10 @@ Ce que fait la commande:
 # Planifier verify --all (timer systemd, signal ~/backup-fabsuite/verify-degrade)
 ./fabsuite-ubuntu.sh install-verify-timer
 
+# Arreter la planification (unites conservees, reactivation avec install-*-timer)
+./fabsuite-ubuntu.sh disable-backup-timer
+./fabsuite-ubuntu.sh disable-verify-timer
+
 # Notifications externes des échecs planifiés (facultatif, dans fabsuite-ubuntu.env)
 # FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.exemple.invalid/fabsuite
 # FABSUITE_NOTIFY_EMAIL=admin@exemple.invalid

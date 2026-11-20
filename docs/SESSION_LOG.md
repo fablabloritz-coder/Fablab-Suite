@@ -6,6 +6,50 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Desactiver les timers depuis le GUI
+
+**Contexte** : le GUI savait installer les timers, mais pour les arrêter il
+fallait revenir à un terminal et lancer `systemctl disable --now`. La carte
+n'offrait aucune action de désactivation.
+
+**Helper (v19)**
+- Actions `disable-verify-timer` / `disable-backup-timer`, branchées sur un
+  `run_disable_timer` commun : `systemctl disable --now`, unités conservées
+  pour une réactivation par `install-*-timer`.
+- Même validation `FABSUITE_SYSTEMD_UNIT_DIR` (absolu obligatoire, code 2).
+  Timer absent : code 0 avec « aucune execution planifiee », sans appel
+  `systemctl` ; échec `systemctl` : code 1 et ligne `ERROR` sur stderr.
+- `HELPER_VERSION` → `2026-11-20-suite-backup-v19` ; README et INSTALL_UBUNTU.
+
+**GUI**
+- Deux boutons **Désactiver timer vérification** / **Désactiver timer
+  sauvegarde**, avec `data-confirm` (l'action n'est lancée qu'après validation)
+  et `ssh-btn` (désactivés en mode Local).
+- `_timer_worker(service, action)` est maintenant commun à l'installation et à
+  la désactivation : même capture `(code, sortie)`, même reprise de la ligne
+  `ERROR`, même conseil sudo ciblé, même relecture de la ligne d'état après une
+  réponse du helper. `_start_timer_action` supprime la duplication des actions
+  Eel ; les quatre actions sont exposées.
+- Alerte de succès : « Timer desactive », avec rappel que le bouton Installer
+  timer le réactive.
+
+**Tests**
+- `HelperDisableTimerTest` : désactivation des deux unités (journal
+  `disable --now`), timer absent idempotent sans `systemctl`, refus d'un dossier
+  d'unités relatif (code 2), échec `systemctl` (code 1 + `ERROR`).
+- `GuiTimerActionsTest` : succès de désactivation verify/backup avec
+  rafraîchissement, échec `Desactivation impossible` avec le détail du helper,
+  programmation des quatre actions, refus en mode Local, présence des boutons
+  et exposition Eel.
+
+**Vérifications**
+- `bash -n fabsuite-ubuntu.sh`, `py_compile` du GUI OK ;
+  `python3 -m unittest discover -s tests` → **169 tests OK**.
+
+**Risques / non couverts**
+- Pas d'exécution systemd/SSH réelle ni de contrôle visuel du GUI dans cette
+  VM ; `systemctl disable` n'est vérifié qu'avec le faux systemctl des tests.
+
 ## 2026-11-20 — Installer les timers depuis le GUI
 
 **Contexte** : la carte « Sauvegarde & restauration » affichait « Timer non

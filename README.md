@@ -111,6 +111,10 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   relisent la ligne d'état. Le premier montage se fait donc entièrement depuis
   le GUI, sans retenir les commandes `install-*-timer`. Relancer l'action met
   l'unité à jour (par exemple après une mise à jour du helper).
+- **Désactiver timer vérification** / **Désactiver timer sauvegarde** : après
+  confirmation, arrêtent et désactivent le timer via `disable-*-timer` (les
+  unités restent installées), puis relisent la ligne d'état. Un échec sudo ou
+  `systemctl` est affiché avec le détail renvoyé par le helper.
 - **État notifications** : lit `notify-status` du helper et affiche les
   destinations configurées (`webhook configuré/absent`, `mail configuré/absent`),
   puis, pour `backup` et `verify`, si le fichier `notify-<service>.state` existe
@@ -503,8 +507,13 @@ Suivi et arrêt :
 systemctl list-timers fabsuite-backup.timer
 journalctl -u fabsuite-backup.service -n 100
 cat ~/backup-fabsuite/backup-failed    # dernier échec planifié, si présent
-sudo systemctl disable --now fabsuite-backup.timer
+./fabsuite-ubuntu.sh disable-backup-timer   # arrêt + désactivation, unités conservées
+sudo systemctl disable --now fabsuite-backup.timer   # équivalent direct
 ```
+
+`disable-backup-timer` est idempotent : si le timer n'est pas installé, il
+signale qu'aucune exécution n'est planifiée sans erreur. La réactivation se fait
+avec `install-backup-timer`.
 
 Signal clair en cas d'échec (pré-check non sûr, snapshot invalide, disque
 plein, etc.) :
@@ -535,7 +544,7 @@ Le helper installe `/etc/systemd/system/fabsuite-verify.service` et
 `FABSUITE_SYSTEMD_UNIT_DIR` (dans `fabsuite-ubuntu.env`) : l'installation et la
 lecture d'état (`verify-timer-status`, `backup-timer-status`) visent alors le
 même dossier. La valeur doit être un **chemin absolu** ; un chemin relatif est
-refusé (code 2) par ces quatre actions. Le service lance
+refusé (code 2) par ces actions. Le service lance
 `verify --all` sous l'utilisateur opérateur (pas root), par défaut tous les
 jours (`OnCalendar=daily`, `Persistent=true` pour rattraper un démarrage
 manqué). Pour un autre horaire, définir dans `fabsuite-ubuntu.env` :
@@ -567,9 +576,13 @@ Commandes utiles :
 ```bash
 systemctl list-timers fabsuite-verify.timer   # prochaine exécution
 sudo systemctl start fabsuite-verify.service  # vérifier maintenant
-sudo systemctl disable --now fabsuite-verify.timer
+./fabsuite-ubuntu.sh disable-verify-timer     # arrêt + désactivation, unités conservées
+sudo systemctl disable --now fabsuite-verify.timer   # équivalent direct
 cat ~/backup-fabsuite/verify-degrade          # si présent : snapshot dégradé
 ```
+
+Comme pour le backup, `disable-verify-timer` est idempotent et la réactivation
+passe par `install-verify-timer`.
 
 ### Notifications d'échec (mail ou webhook)
 

@@ -1261,10 +1261,14 @@ class HelperWiringTest(unittest.TestCase):
         self.assertIn("run_install_verify_timer()", script)
         self.assertIn("verify-timer-status)", script)
         self.assertIn("run_verify_timer_status()", script)
+        self.assertIn("disable-verify-timer)", script)
+        self.assertIn("run_disable_verify_timer()", script)
         self.assertIn("install-backup-timer)", script)
         self.assertIn("run_install_backup_timer()", script)
         self.assertIn("backup-timer-status)", script)
         self.assertIn("run_backup_timer_status()", script)
+        self.assertIn("disable-backup-timer)", script)
+        self.assertIn("run_disable_backup_timer()", script)
         self.assertIn("fabsuite-backup.timer", script)
         self.assertIn("FABSUITE_BACKUP_ON_CALENDAR", script)
         self.assertIn("clear-markers)", script)
@@ -2156,6 +2160,185 @@ class HelperTimerUnitDirTest(unittest.TestCase):
                 self.assertIn(attendu, sortie)
                 # Pas de faux "timer non installe" : le GUI doit voir l'erreur.
                 self.assertNotIn("installed=", processus.stdout, sortie)
+
+
+class HelperDisableTimerTest(unittest.TestCase):
+    """`disable-*-timer` arrete et desactive les unites sans les supprimer."""
+
+    def _preparer(self, racine):
+        install = racine / "suite"
+        install.mkdir()
+        backups = racine / "backups"
+        backups.mkdir()
+        unit_dir = racine / "systemd"
+        unit_dir.mkdir()
+        installer = racine / "installer"
+        installer.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+
+        env_file = installer / "fabsuite-ubuntu.env"
+        env_file.write_text(
+            "\n".join(
+                (
+                    f"INSTALL_DIR={install}",
+                    'APPS="FabHome"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    f"FABSUITE_BACKUP_DIR={backups}",
+                    f"FABSUITE_SYSTEMD_UNIT_DIR={unit_dir}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        faux_bin = racine / "bin"
+        faux_bin.mkdir()
+        _faux_sudo(faux_bin)
+        journal = racine / "systemctl.log"
+        _faux_systemctl(faux_bin, journal)
+
+        env = os.environ.copy()
+        env["PATH"] = f"{faux_bin}:{env['PATH']}"
+        env["HOME"] = str(racine / "home")
+        env["NON_INTERACTIVE"] = "1"
+        env.pop("SUDO_USER", None)
+        env.pop("FABSUITE_SYSTEMD_UNIT_DIR", None)
+
+        return {
+            "installer": installer,
+            "env": env,
+            "env_file": env_file,
+            "faux_bin": faux_bin,
+            "unit_dir": unit_dir,
+            "journal": journal,
+        }
+
+    def _lancer(self, contexte, action, env_file=None):
+        return subprocess.run(
+            [
+                "bash",
+                str(contexte["installer"] / "fabsuite-ubuntu.sh"),
+                action,
+                "--env-file",
+                str(env_file or contexte["env_file"]),
+            ],
+            cwd=contexte["installer"],
+            env=contexte["env"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_desactive_les_deux_timers_installes(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            for action, unite, prefixe in (
+                (
+                    "disable-verify-timer",
+                    "fabsuite-verify.timer",
+                    "[verify-timer]",
+                ),
+                (
+                    "disable-backup-timer",
+                    "fabsuite-backup.timer",
+                    "[backup-timer]",
+                ),
+            ):
+                with self.subTest(action=action):
+                    (contexte["unit_dir"] / unite).write_text(
+                        "[Timer]\n", encoding="utf-8"
+                    )
+
+                    processus = self._lancer(contexte, action)
+                    sortie = processus.stdout + processus.stderr
+
+                    self.assertEqual(processus.returncode, 0, sortie)
+                    self.assertIn(f"{prefixe} desactive=1", sortie)
+                    self.assertIn("Timer desactive", sortie)
+                    self.assertIn(
+                        f"disable --now {unite}",
+                        contexte["journal"].read_text(encoding="utf-8"),
+                    )
+
+    def test_timer_absent_est_deja_inactif_sans_systemctl(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+
+            for action, prefixe in (
+                ("disable-verify-timer", "[verify-timer]"),
+                ("disable-backup-timer", "[backup-timer]"),
+            ):
+                with self.subTest(action=action):
+                    processus = self._lancer(contexte, action)
+                    sortie = processus.stdout + processus.stderr
+
+                    self.assertEqual(processus.returncode, 0, sortie)
+                    self.assertIn(f"{prefixe} desactive=1", sortie)
+                    self.assertIn("Timer non installe", sortie)
+                    self.assertFalse(contexte["journal"].exists(), sortie)
+
+    def test_refuse_un_dossier_d_unites_non_absolu(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            relatif = contexte["installer"] / "relatif.env"
+            relatif.write_text(
+                "\n".join(
+                    (
+                        f"INSTALL_DIR={contexte['installer']}",
+                        "FLASK_SECRET_KEY=test-secret",
+                        "FABSUITE_SYSTEMD_UNIT_DIR=systemd",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+            attendu = (
+                "FABSUITE_SYSTEMD_UNIT_DIR doit etre un chemin absolu "
+                "(recu: systemd)."
+            )
+
+            for action in ("disable-verify-timer", "disable-backup-timer"):
+                with self.subTest(action=action):
+                    processus = self._lancer(contexte, action, relatif)
+                    sortie = processus.stdout + processus.stderr
+
+                    self.assertEqual(processus.returncode, 2, sortie)
+                    self.assertIn(attendu, sortie)
+                    self.assertNotIn("desactive=", processus.stdout, sortie)
+
+    def test_echec_systemctl_est_signale(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            (contexte["unit_dir"] / "fabsuite-verify.timer").write_text(
+                "[Timer]\n", encoding="utf-8"
+            )
+            (contexte["faux_bin"] / "systemctl").write_text(
+                "#!/usr/bin/env bash\nexit 1\n", encoding="utf-8"
+            )
+            (contexte["faux_bin"] / "systemctl").chmod(0o755)
+
+            processus = self._lancer(contexte, "disable-verify-timer")
+            sortie = processus.stdout + processus.stderr
+
+            self.assertEqual(processus.returncode, 1, sortie)
+            self.assertIn(
+                "[verify-timer] ERROR: desactivation impossible "
+                "(fabsuite-verify.timer).",
+                sortie,
+            )
+            self.assertIn("[verify-timer] desactive=0", processus.stdout)
 
 
 def _gui_backend():

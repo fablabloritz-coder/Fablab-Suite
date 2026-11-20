@@ -18,7 +18,7 @@ VERIFY_ALL=""
 NOTIFY_SERVICE=""
 NOTIFY_CODE=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-20-suite-backup-v18"
+HELPER_VERSION="2026-11-20-suite-backup-v19"
 
 usage() {
   cat <<'EOF'
@@ -38,8 +38,10 @@ Usage:
   ./fabsuite-ubuntu.sh verify --all [--dest /path/to/backups]
   ./fabsuite-ubuntu.sh install-verify-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh verify-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh disable-verify-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh install-backup-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh backup-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
+  ./fabsuite-ubuntu.sh disable-backup-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh clear-markers [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh notify-failure --notify-service backup|verify --notify-code N [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh notify-reset --notify-service backup|verify [--env-file /path/to/fabsuite-ubuntu.env]
@@ -70,7 +72,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|install-backup-timer|backup-timer-status|clear-markers|notify-failure|notify-reset|notify-status|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|disable-verify-timer|install-backup-timer|backup-timer-status|disable-backup-timer|clear-markers|notify-failure|notify-reset|notify-status|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -1663,6 +1665,47 @@ run_backup_timer_status() {
   fi
 }
 
+run_disable_timer() {
+  local nom="$1"
+  local prefix="$2"
+
+  require_cmd systemctl
+
+  echo "===== Suite ${nom} timer disable ====="
+
+  local dossier timer_unit
+  dossier="$(systemd_unit_dir)" || return 2
+  timer_unit="${dossier}/${nom}.timer"
+
+  echo "${prefix} dossier unites: ${dossier}"
+
+  # Un timer absent n'a rien a desactiver : etat final deja atteint, sans
+  # erreur pour le GUI. Ce cas evite aussi un echec systemctl peu lisible.
+  if [[ ! -f "$timer_unit" ]]; then
+    echo "${prefix} desactive=1"
+    echo "${prefix} message=Timer non installe : aucune execution planifiee."
+    return 0
+  fi
+
+  if run_privileged systemctl disable --now "${nom}.timer"; then
+    echo "${prefix} desactive=1"
+    echo "${prefix} message=Timer desactive (unites conservees, reactivation via install-*-timer)."
+    return 0
+  fi
+
+  echo "${prefix} desactive=0"
+  echo "${prefix} ERROR: desactivation impossible (${nom}.timer)." >&2
+  return 1
+}
+
+run_disable_verify_timer() {
+  run_disable_timer "fabsuite-verify" "[verify-timer]"
+}
+
+run_disable_backup_timer() {
+  run_disable_timer "fabsuite-backup" "[backup-timer]"
+}
+
 notify_state_file() {
   local service="$1"
   local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
@@ -2503,11 +2546,17 @@ case "$ACTION" in
   verify-timer-status)
     run_verify_timer_status
     ;;
+  disable-verify-timer)
+    run_disable_verify_timer
+    ;;
   install-backup-timer)
     run_install_backup_timer
     ;;
   backup-timer-status)
     run_backup_timer_status
+    ;;
+  disable-backup-timer)
+    run_disable_backup_timer
     ;;
   clear-markers)
     run_clear_markers

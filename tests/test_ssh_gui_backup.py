@@ -981,8 +981,8 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(self.alertes[0][0], "Restauration")
 
 
-class GuiInstallTimerTest(unittest.TestCase):
-    """Boutons d'installation des timers : helper, erreurs, rafraichissement."""
+class GuiTimerActionsTest(unittest.TestCase):
+    """Boutons d'installation et de desactivation : helper, erreurs, etat."""
 
     def setUp(self):
         self.backend = fabsuite_ssh_gui.FabSuiteBackend()
@@ -1007,8 +1007,8 @@ class GuiInstallTimerTest(unittest.TestCase):
             "backup"
         )
 
-        self.backend._install_timer_worker("verify")
-        self.backend._install_timer_worker("backup")
+        self.backend._timer_worker("verify", "install-verify-timer")
+        self.backend._timer_worker("backup", "install-backup-timer")
 
         self.assertEqual(appels, ["install-verify-timer", "install-backup-timer"])
         self.assertEqual(rafraichis, ["verify", "backup"])
@@ -1033,7 +1033,7 @@ class GuiInstallTimerTest(unittest.TestCase):
         )
 
         with self.assertRaises(RuntimeError):
-            self.backend._install_timer_worker("verify")
+            self.backend._timer_worker("verify", "install-verify-timer")
 
         self.assertEqual(rafraichis, ["verify"])
         self.assertEqual(self.alertes[0][0], "Installation impossible")
@@ -1056,7 +1056,7 @@ class GuiInstallTimerTest(unittest.TestCase):
         self.backend._request_verify_state_refresh = lambda: None
 
         with self.assertRaises(RuntimeError):
-            self.backend._install_timer_worker("verify")
+            self.backend._timer_worker("verify", "install-verify-timer")
 
         message = self.alertes[0][1]
         self.assertIn("ERROR: sudo privileges are required", message)
@@ -1074,7 +1074,7 @@ class GuiInstallTimerTest(unittest.TestCase):
         )
 
         with self.assertRaises(RuntimeError):
-            self.backend._install_timer_worker("verify")
+            self.backend._timer_worker("verify", "install-verify-timer")
 
         self.assertEqual(rafraichis, [])
         self.assertEqual(self.alertes[0][0], "Installation impossible")
@@ -1099,19 +1099,67 @@ class GuiInstallTimerTest(unittest.TestCase):
         self.assertEqual(resultat, (0, "ok"))
         self.assertEqual(appels, [("commande install-verify-timer", 42)])
 
-    def test_action_ssh_programme_l_installation(self):
+    def test_desactive_les_deux_timers_et_rafraichit_la_bonne_ligne(self):
+        appels = []
+        rafraichis = []
+        self.backend._exec_helper_action_capture = (
+            lambda action, timeout_sec=180: appels.append(action) or (0, "")
+        )
+        self.backend._request_verify_state_refresh = lambda: rafraichis.append(
+            "verify"
+        )
+        self.backend._request_backup_state_refresh = lambda: rafraichis.append(
+            "backup"
+        )
+
+        self.backend._timer_worker("verify", "disable-verify-timer")
+        self.backend._timer_worker("backup", "disable-backup-timer")
+
+        self.assertEqual(appels, ["disable-verify-timer", "disable-backup-timer"])
+        self.assertEqual(rafraichis, ["verify", "backup"])
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Timer desactive", "Timer desactive"],
+        )
+        self.assertIn("plus aucune execution planifiee", self.alertes[0][1])
+        self.assertIn("plus aucune execution planifiee", self.alertes[1][1])
+        self.assertIn("Installer timer", self.alertes[0][1])
+
+    def test_echec_desactivation_affiche_l_erreur_et_rafraichit(self):
+        rafraichis = []
+        sortie = "[backup-timer] ERROR: desactivation impossible (fabsuite-backup.timer).\n"
+        self.backend._exec_helper_action_capture = (
+            lambda action, timeout_sec=180: (1, sortie)
+        )
+        self.backend._request_backup_state_refresh = lambda: rafraichis.append(
+            "backup"
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._timer_worker("backup", "disable-backup-timer")
+
+        self.assertEqual(rafraichis, ["backup"])
+        self.assertEqual(self.alertes[0][0], "Desactivation impossible")
+        message = self.alertes[0][1]
+        self.assertIn("code 1", message)
+        self.assertIn("desactivation impossible (fabsuite-backup.timer)", message)
+        self.assertIn("journal du terminal", message)
+
+    def test_actions_programment_les_workers(self):
         lancements = []
-        installes = []
+        appels = []
         self.backend._is_local_mode = lambda: False
         self.backend._run_async = lambda label, cible: lancements.append(
             (label, cible)
         )
-        self.backend._install_timer_worker = lambda service: installes.append(
-            service
+        self.backend._timer_worker = lambda service, action: appels.append(
+            (service, action)
         )
 
         self.backend.action_install_verify_timer()
         self.backend.action_install_backup_timer()
+        self.backend.action_disable_verify_timer()
+        self.backend.action_disable_backup_timer()
         for _, cible in lancements:
             cible()
 
@@ -1120,11 +1168,21 @@ class GuiInstallTimerTest(unittest.TestCase):
             [
                 "Installation timer verification",
                 "Installation timer sauvegarde",
+                "Desactivation timer verification",
+                "Desactivation timer sauvegarde",
             ],
         )
-        self.assertEqual(installes, ["verify", "backup"])
+        self.assertEqual(
+            appels,
+            [
+                ("verify", "install-verify-timer"),
+                ("backup", "install-backup-timer"),
+                ("verify", "disable-verify-timer"),
+                ("backup", "disable-backup-timer"),
+            ],
+        )
 
-    def test_mode_local_refuse_l_installation(self):
+    def test_mode_local_refuse_les_actions_timers(self):
         infos = []
         lancements = []
         self.backend._is_local_mode = lambda: True
@@ -1133,12 +1191,16 @@ class GuiInstallTimerTest(unittest.TestCase):
 
         self.backend.action_install_verify_timer()
         self.backend.action_install_backup_timer()
+        self.backend.action_disable_verify_timer()
+        self.backend.action_disable_backup_timer()
 
         self.assertEqual(
             infos,
             [
                 "Installation du timer de verification",
                 "Installation du timer de sauvegarde",
+                "Desactivation du timer de verification",
+                "Desactivation du timer de sauvegarde",
             ],
         )
         self.assertEqual(lancements, [])
@@ -1160,10 +1222,20 @@ class GuiInstallTimerTest(unittest.TestCase):
         for action in (
             "action_install_verify_timer",
             "action_install_backup_timer",
+            "action_disable_verify_timer",
+            "action_disable_backup_timer",
         ):
             with self.subTest(action=action):
-                self.assertIn(f'data-action="{action}"', html)
+                ligne = next(
+                    ligne
+                    for ligne in html.splitlines()
+                    if f'data-action="{action}"' in ligne
+                )
                 self.assertIn(action, exposees)
+                if action.startswith("action_disable_"):
+                    # La desactivation doit toujours passer par la confirmation
+                    # du dispatch (data-confirm), jamais partir au premier clic.
+                    self.assertIn("data-confirm=", ligne)
 
 
 if __name__ == "__main__":

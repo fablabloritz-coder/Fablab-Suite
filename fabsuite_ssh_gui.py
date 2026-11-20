@@ -251,6 +251,14 @@ class FabSuiteBackend:
             self.action_install_backup_timer()
 
         @eel.expose
+        def action_disable_verify_timer():
+            self.action_disable_verify_timer()
+
+        @eel.expose
+        def action_disable_backup_timer():
+            self.action_disable_backup_timer()
+
+        @eel.expose
         def action_clear_markers():
             self.action_clear_markers()
 
@@ -1941,34 +1949,34 @@ exit 0
             }
         return etat
 
-    # ─── Installation des timers planifies ───
+    # ─── Installation / desactivation des timers planifies ───
 
-    _TIMERS = {
-        "verify": ("verification", "install-verify-timer"),
-        "backup": ("sauvegarde", "install-backup-timer"),
-    }
+    _TIMERS = {"verify": "verification", "backup": "sauvegarde"}
 
-    def _install_timer_worker(self, service):
-        """Installe le timer systemd demande via le helper, puis relit son etat.
+    def _timer_worker(self, service, action):
+        """Installe ou desactive un timer via le helper, puis relit son etat.
 
-        Le bouton evite au debutant de connaitre `install-*-timer`. Le code et
-        la sortie du helper sont conserves pour expliquer un echec (sudo
-        manquant, dossier d'unites invalide, systemctl absent).
+        `action` est une action du helper (`install-<service>-timer` ou
+        `disable-<service>-timer`). Le code et la sortie du helper sont
+        conserves pour expliquer un echec (sudo manquant, dossier d'unites
+        invalide, systemctl absent).
         """
-        libelle, action = self._TIMERS[service]
+        libelle = self._TIMERS[service]
+        desactivation = action.startswith("disable-")
+        verbe = "Desactivation" if desactivation else "Installation"
         rafraichir = (
             self._request_verify_state_refresh
             if service == "verify"
             else self._request_backup_state_refresh
         )
-        self._log(f"Installation du timer de {libelle}...")
+        self._log(f"{verbe} du timer de {libelle}...")
 
         try:
             code, sortie = self._exec_helper_action_capture(action)
         except Exception as exc:
             self._show_alert(
-                "Installation impossible",
-                f"Impossible de lancer l'installation du timer de {libelle} :\n"
+                f"{verbe} impossible",
+                f"Impossible d'executer '{action}' pour le timer de {libelle} :\n"
                 f"{exc}\n\n"
                 "Verifie la connexion SSH, l'URL du monorepo et le mot de passe "
                 "sudo (section Avance), puis reessaie.",
@@ -1995,14 +2003,23 @@ exit 0
                 "puis reessaie."
             )
             self._show_alert(
-                "Installation impossible",
-                f"Le timer de {libelle} n'a pas pu etre installe (code {code})."
+                f"{verbe} impossible",
+                f"Le timer de {libelle} n'a pas pu etre "
+                f"{'desactive' if desactivation else 'installe'} (code {code})."
                 + (f"\n\n{erreur}" if erreur else "")
                 + f"\n\n{conseil}",
             )
-            raise RuntimeError(
-                f"installation du timer {service} echouee (code {code})"
+            raise RuntimeError(f"{action} echoue (code {code})")
+
+        if desactivation:
+            self._log(f"Timer de {libelle} desactive.")
+            self._show_alert(
+                "Timer desactive",
+                f"Le timer de {libelle} est desactive : plus aucune execution "
+                "planifiee.\n\n"
+                "Le bouton Installer timer permet de le reactiver.",
             )
+            return
 
         self._log(f"Timer de {libelle} installe et active.")
         self._show_alert(
@@ -2011,21 +2028,28 @@ exit 0
             "La ligne d'etat de la carte se met a jour automatiquement.",
         )
 
-    def _start_timer_install(self, service):
-        libelle = self._TIMERS[service][0]
+    def _start_timer_action(self, service, action):
+        libelle = self._TIMERS[service]
+        verbe = "Desactivation" if action.startswith("disable-") else "Installation"
         if self._is_local_mode():
-            self._show_ssh_only_info(f"Installation du timer de {libelle}")
+            self._show_ssh_only_info(f"{verbe} du timer de {libelle}")
             return
         self._run_async(
-            f"Installation timer {libelle}",
-            lambda: self._install_timer_worker(service),
+            f"{verbe} timer {libelle}",
+            lambda: self._timer_worker(service, action),
         )
 
     def action_install_verify_timer(self):
-        self._start_timer_install("verify")
+        self._start_timer_action("verify", "install-verify-timer")
 
     def action_install_backup_timer(self):
-        self._start_timer_install("backup")
+        self._start_timer_action("backup", "install-backup-timer")
+
+    def action_disable_verify_timer(self):
+        self._start_timer_action("verify", "disable-verify-timer")
+
+    def action_disable_backup_timer(self):
+        self._start_timer_action("backup", "disable-backup-timer")
 
     def _restore_worker(self, snapshot, destination, sources=None):
         args = ["--snapshot", snapshot]
