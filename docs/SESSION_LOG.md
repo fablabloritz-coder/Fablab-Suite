@@ -6,6 +6,47 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Carte Sauvegarde : états remis à inconnu en Local / déconnecté
+
+**Contexte** : en repassant en mode Local ou en coupant la connexion SSH, les
+lignes `verifyTimerState`, `backupTimerState` et `notifyState` gardaient le
+dernier texte affiché (données du serveur, ou l'ancien message « disponible en
+mode Serveur SSH » selon le dernier rafraîchissement).
+
+**Corrigé**
+- `web/js/app.js` : `refreshBackupCardStates()` décide des trois lignes à partir
+de `currentMode` et d'un drapeau `sshConnected` (alimenté par
+`set_connection_status`) ; hors SSH connecté, `setBackupStateUnknown()` écrit
+« état inconnu (mode Local, cible serveur SSH requise) » ou « état inconnu
+(serveur SSH non connecté) ».
+- Déclencheurs : `set_connection_status(..., false)` (déconnexion) et l'onglet
+`shown.bs.tab` (bascule Local / SSH).
+- Coût backend inchangé : la remise à inconnu ne fait aucun appel ; la
+connexion garde ses 3 lectures, et un retour sur l'onglet SSH quand la
+connexion est toujours ouverte les rejoue (3 appels) pour réafficher les
+données réelles.
+- Les branches « mode Local » de `refreshVerifyTimerState`,
+`refreshBackupTimerState` et `refreshNotificationState` utilisent le même
+libellé inconnu : un seul message, plus de « disponible en mode Serveur SSH ».
+
+**Vérifications**
+- `node --check web/js/app.js` → OK.
+- `python3 -m unittest discover -s tests` → 135 tests OK.
+- Harnais Node (DOM/eel stubs, aucun fichier du dépôt) : connecté → 3 appels et
+données serveur ; déconnexion → états inconnus, 0 appel ; bascule Local →
+états inconnus, 0 appel ; retour onglet SSH connecté → 3 appels et données
+réelles.
+
+**Limites**
+- Pas de contrôle visuel dans un navigateur pour ce changement (harnais DOM
+seul) : le rendu des nouvelles lignes courtes reste à confirmer sur le poste
+Windows/Edge avec une vraie cible SSH.
+
+**First next action for next session**
+Rejouer le contrôle navigateur 1200×900 sur Windows/Edge avec une vraie cible
+SSH, en vérifiant que les trois lignes passent bien à « état inconnu » à la
+déconnexion puis se rechargent à la reconnexion.
+
 ## 2026-11-20 — Contrôle navigateur à la taille Eel réelle (1200×900)
 
 **Contexte** : app Eel réelle servie sur le port de prévisualisation

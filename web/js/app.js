@@ -18,6 +18,9 @@ function log_append(text, tag) {
 
 // Boutons actifs seulement en mode Serveur SSH et une fois connecte.
 let actionsEnabled = false;
+// Connexion SSH reelle : les lignes d'etat de la carte Sauvegarde ne sont
+// valables que dans ce cas (mode Local ou deconnecte = etat inconnu).
+let sshConnected = false;
 
 eel.expose(set_actions_enabled);
 function set_actions_enabled(enabled) {
@@ -33,14 +36,11 @@ function set_connection_status(text, connected) {
   document.getElementById("connectionText").textContent = text;
   document.getElementById("connectionDot").className =
     "status-dot " + (connected ? "text-success" : "text-danger");
+  sshConnected = !!connected;
   refreshModeUI();
-  // Etats des timers planifies : lecture des la connexion, sans attendre les
-  // boutons dedies.
-  if (connected) {
-    refreshVerifyTimerState();
-    refreshBackupTimerState();
-    refreshNotificationState();
-  }
+  // Etats de la carte Sauvegarde : lecture des la connexion ; a la
+  // deconnexion on repasse a inconnu, sans appel au backend (plus de cible).
+  refreshBackupCardStates();
 }
 
 eel.expose(set_dir_rows);
@@ -129,6 +129,41 @@ function syncField(id, key) {
   el.addEventListener("blur", () => eel.set_state(key, el.value));
 }
 
+/* ─── Etats de la carte Sauvegarde ─── */
+
+const BACKUP_STATE_TITLES = {
+  verifyTimerState: "Vérification planifiée",
+  backupTimerState: "Sauvegarde planifiée",
+  notifyState: "Notifications d'échec",
+};
+
+function setBackupStateUnknown(el, raison) {
+  // Aucun appel au backend : sans cible SSH joignable, la seule information
+  // honnete est "inconnu". Sans ce reset, les lignes gardent le dernier texte
+  // du serveur (ou un ancien message de mode) apres un retour en Local ou une
+  // deconnexion.
+  const detail =
+    raison === "local"
+      ? "mode Local, cible serveur SSH requise"
+      : "serveur SSH non connecté";
+  el.className = "text-muted";
+  el.textContent = `${BACKUP_STATE_TITLES[el.id]} : état inconnu (${detail}).`;
+}
+
+function refreshBackupCardStates() {
+  const enLocal = currentMode === "local";
+  if (enLocal || !sshConnected) {
+    Object.keys(BACKUP_STATE_TITLES).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) setBackupStateUnknown(el, enLocal ? "local" : "deconnecte");
+    });
+    return;
+  }
+  refreshVerifyTimerState();
+  refreshBackupTimerState();
+  refreshNotificationState();
+}
+
 /* ─── Action dispatch ─── */
 
 eel.expose(refreshVerifyTimerState);
@@ -136,8 +171,7 @@ async function refreshVerifyTimerState() {
   const el = document.getElementById("verifyTimerState");
   if (!el) return;
   if (typeof currentMode !== "undefined" && currentMode === "local") {
-    el.className = "text-muted";
-    el.textContent = "Vérification planifiée : disponible en mode Serveur SSH.";
+    setBackupStateUnknown(el, "local");
     return;
   }
   el.className = "text-muted";
@@ -193,8 +227,7 @@ async function refreshBackupTimerState() {
   const el = document.getElementById("backupTimerState");
   if (!el) return;
   if (typeof currentMode !== "undefined" && currentMode === "local") {
-    el.className = "text-muted";
-    el.textContent = "Sauvegarde planifiée : disponible en mode Serveur SSH.";
+    setBackupStateUnknown(el, "local");
     return;
   }
   el.className = "text-muted";
@@ -262,8 +295,7 @@ async function refreshNotificationState() {
   const el = document.getElementById("notifyState");
   if (!el) return;
   if (typeof currentMode !== "undefined" && currentMode === "local") {
-    el.className = "text-muted";
-    el.textContent = "Notifications d'échec : disponible en mode Serveur SSH.";
+    setBackupStateUnknown(el, "local");
     return;
   }
   el.className = "text-muted";
@@ -548,6 +580,9 @@ document.addEventListener("DOMContentLoaded", () => {
       currentMode = e.target.dataset.mode;
       eel.set_state("run_mode", currentMode);
       refreshModeUI();
+      // Un passage en Local (ou un onglet SSH sans connexion) ne doit pas
+      // laisser les lignes d'etat issues du serveur.
+      refreshBackupCardStates();
       eel.refresh_actions_state();
     });
   });
