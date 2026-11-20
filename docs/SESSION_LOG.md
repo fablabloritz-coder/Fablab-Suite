@@ -6,6 +6,52 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Contrôle navigateur à la taille Eel réelle (1200×900)
+
+**Contexte** : app Eel réelle servie sur le port de prévisualisation
+(`mode=None`, backend Python chargé), page mesurée à 1200×900 puis 1180×790
+(viewport utile d'une fenêtre Eel 1200×900), en mode Local puis SSH
+déconnecté/connecté. Le websocket `/eel` n'étant toujours pas proxifié, la
+connexion SSH et les réponses du helper sont simulées dans la page.
+
+**Constaté (conforme)**
+- Retour à la ligne des trois états : 2 lignes chacun avec les textes les plus
+  longs (marqueurs `backup-failed` et `verify-degrade`, deux alertes déjà
+  envoyées), sans troncature ni débordement horizontal (marge ≥ 12 px,
+  `scrollWidth == clientWidth`).
+- Boutons : les 7 boutons `ssh-btn` de la carte sont désactivés en mode Local
+  et en SSH déconnecté, puis réactivés après connexion ; les 7 boutons du mode
+  Local restent actifs en mode Local.
+
+**Corrigé**
+1. Les trois états n'étaient pas alignés : « Sauvegarde planifiée » démarrait
+   130 px plus à droite que les deux autres, parce que « Acquitter les
+   alertes » partageait sa ligne ; ses lignes de continuation ne s'alignaient
+   donc pas avec celles des autres états. Le bouton d'acquittement rejoint la
+   rangée d'actions du haut, et les trois boutons d'état ont une largeur fixe
+   (180 px) : les trois textes commencent désormais à la même abscisse
+   (209 px) et se replient de la même façon.
+
+**Limites**
+- Pas de cible SSH réelle : la bascule déconnecté/connecté est simulée par
+  `set_connection_status` / `set_actions_enabled`, comme le fait le backend.
+- Rendu des emoji d'état non vérifiable dans la VM Linux (police Emoji
+  absente), à contrôler sur le poste Windows/Edge.
+
+**Vérifications**
+- `python3 -m unittest discover -s tests` → 135 tests OK.
+- Aucune erreur JavaScript, pas de débordement de page à 1200×900 ni à
+  1180×790.
+- Captures : `artifacts/backup-card-1200-avant.png` et
+  `artifacts/backup-card-1200-apres.png`.
+
+**Commits**
+- `007e9c6` GUI: aligner les trois etats de la carte Sauvegarde
+
+**First next action for next session**
+Rejouer ce contrôle sur un poste Windows avec Edge et une vraie cible SSH, pour
+valider la connexion réelle et le rendu des emoji d'état.
+
 ## 2026-11-20 — Contrôle navigateur de la carte Sauvegarde & restauration
 
 **Contexte** : essai réel de l'UI Eel servie sur le port de prévisualisation
