@@ -171,7 +171,7 @@ const TIMER_INSTALL_LABELS = {
 // bouton doivent le dire explicitement. `enabled` vient de `systemctl
 // is-enabled` via le helper ; aucune deduction depuis `active`.
 function timerDesactive(etat) {
-  return Boolean(etat.installed) && etat.enabled === "disabled";
+  return etat.installed && etat.enabled === "disabled";
 }
 
 // Seul le libelle change : l'icone du bouton reste dans le HTML.
@@ -181,9 +181,9 @@ function setTimerInstallLabel(id, desactive) {
   label.textContent = desactive ? "Réactiver" : TIMER_INSTALL_LABELS[id];
 }
 
-function timerStateClass(etat, desactive) {
+function timerStateClass(etat) {
   if (etat.marker) return "text-danger";
-  return desactive ? "text-warning" : "text-muted";
+  return timerDesactive(etat) ? "text-warning" : "text-muted";
 }
 
 eel.expose(refreshVerifyTimerState);
@@ -237,7 +237,7 @@ async function refreshVerifyTimerState() {
   parties.push(
     etat.marker ? `MARQUEUR DÉGRADÉ : ${etat.marker}` : "marqueur dégradé : absent",
   );
-  el.className = timerStateClass(etat, desactive);
+  el.className = timerStateClass(etat);
   el.textContent = "Vérification planifiée — " + parties.join(" — ");
 }
 
@@ -293,7 +293,7 @@ async function refreshBackupTimerState() {
         etat.marker_at ? ` (${formatAlertDate(etat.marker_at)})` : ""
       }`
     : " — marqueur échec : absent";
-  el.className = timerStateClass(etat, desactive);
+  el.className = timerStateClass(etat);
   el.textContent =
     "Sauvegarde planifiée — " + timerStateSummary(etat, desactive) + marker;
 }

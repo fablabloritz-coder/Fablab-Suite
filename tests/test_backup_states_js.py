@@ -436,9 +436,10 @@ class TimersDesactivesRendTest(unittest.TestCase):
                 "le Thu 2026-11-20 04:30:00 CET — marqueur échec : absent",
             ),
         )
-        for ligne, bouton, scenario, etat, texte in cas:
+        for ligne, libelle, scenario, etat, texte in cas:
             with self.subTest(ligne=ligne):
                 self.assertIs(etat["installed"], True)
+                self.assertEqual(etat["active"], "inactive")
                 self.assertEqual(etat["enabled"], "disabled")
                 self.assertEqual(etat["next"], "")
 
@@ -447,7 +448,7 @@ class TimersDesactivesRendTest(unittest.TestCase):
                 self.assertEqual(mesure["texts"][ligne], texte)
                 self.assertNotIn("prochaine exécution", mesure["texts"][ligne])
                 self.assertEqual(mesure["classes"][ligne], "text-warning")
-                self.assertEqual(mesure["labels"][bouton], "Réactiver")
+                self.assertEqual(mesure["labels"][libelle], "Réactiver")
 
 
 class TimersInstallesRendTest(unittest.TestCase):
