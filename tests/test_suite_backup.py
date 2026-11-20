@@ -19,6 +19,33 @@ sys.path.insert(0, str(ROOT))
 import suite_backup
 
 
+def _ecrire_faux_transport(faux_bin, transport, code=0):
+    """Unique generateur de faux transport (mail/sendmail).
+
+    Bash pur (shebang absolu, builtins seuls) : reste executable avec un PATH
+    isole. Journalise `transport|arguments|corps` dans $FAKE_SEND_LOG, puis sort
+    avec `code`.
+    """
+    script = faux_bin / transport
+    script.write_text(
+        f"#!{shutil.which('bash') or '/bin/bash'}\n"
+        "entree=''\n"
+        "while IFS= read -r ligne; do\n"
+        "  entree=\"${entree}${ligne}\"$'\\n'\n"
+        "done\n"
+        f"printf '%s|%s|%s\\n' '{transport}' \"$*\" \"$entree\" >> \"${{FAKE_SEND_LOG}}\"\n"
+        f"exit {code}\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
+def _lire_envoi(journal):
+    """`(transport, arguments, corps)` du dernier envoi journalise."""
+    return journal.read_text(encoding="utf-8").split("|", 2)
+
+
 def creer_base(path, noms=("alpha", "beta")):
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -1625,17 +1652,9 @@ class HelperNotifyFailureTest(unittest.TestCase):
             f"exit {curl_exit}\n",
             encoding="utf-8",
         )
-        corps = racine / "mail.body"
-        args = racine / "mail.args"
-        (faux_bin / "mail").write_text(
-            "#!/usr/bin/env bash\n"
-            'printf \'%s\\n\' "$*" > "${FAKE_MAIL_ARGS}"\n'
-            'cat > "${FAKE_MAIL_BODY}"\n'
-            f"exit {mail_exit}\n",
-            encoding="utf-8",
-        )
         (faux_bin / "curl").chmod(0o755)
-        (faux_bin / "mail").chmod(0o755)
+        mail_journal = racine / "mail.log"
+        _ecrire_faux_transport(faux_bin, "mail", mail_exit)
 
         env_file = installer / "fabsuite-ubuntu.env"
         entrees = [
@@ -1653,9 +1672,8 @@ class HelperNotifyFailureTest(unittest.TestCase):
         env["HOME"] = str(racine / "home")
         env["NON_INTERACTIVE"] = "1"
         env["FAKE_NOTIFY_LOG"] = str(journal)
-        env["FAKE_MAIL_ARGS"] = str(args)
-        env["FAKE_MAIL_BODY"] = str(corps)
-        return installer, env_file, env, journal, args, corps
+        env["FAKE_SEND_LOG"] = str(mail_journal)
+        return installer, env_file, env, journal, mail_journal
 
     def _notifier(self, installer, env_file, env, service="backup", code="1"):
         return subprocess.run(
@@ -1718,7 +1736,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, _args, _corps = self._preparer(
+            installer, env_file, env, journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -1744,7 +1762,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, _journal, args, corps = self._preparer(
+            installer, env_file, env, _journal, mail_log = self._preparer(
                 racine,
                 lignes_env=("FABSUITE_NOTIFY_EMAIL=ops@example.invalid",),
             )
@@ -1760,12 +1778,11 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
             self.assertEqual(processus.returncode, 0, sortie)
             self.assertIn("email envoye", sortie)
-            self.assertIn("ops@example.invalid", args.read_text(encoding="utf-8"))
-            self.assertIn("verify en echec", args.read_text(encoding="utf-8"))
-            self.assertIn(
-                "verify planifie en echec (code 3)",
-                corps.read_text(encoding="utf-8"),
-            )
+            transport, arguments, corps = _lire_envoi(mail_log)
+            self.assertEqual(transport, "mail")
+            self.assertIn("ops@example.invalid", arguments)
+            self.assertIn("verify en echec", arguments)
+            self.assertIn("verify planifie en echec (code 3)", corps)
 
     def test_sans_configuration_aucun_envoi(self):
         if not shutil.which("bash"):
@@ -1773,7 +1790,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, args, corps = self._preparer(racine)
+            installer, env_file, env, journal, mail_log = self._preparer(racine)
 
             processus = self._notifier(
                 installer=installer, env_file=env_file, env=env
@@ -1783,8 +1800,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertEqual(processus.returncode, 0, sortie)
             self.assertIn("aucune cible configuree", sortie)
             self.assertFalse(journal.exists())
-            self.assertFalse(args.exists())
-            self.assertFalse(corps.exists())
+            self.assertFalse(mail_log.exists())
 
             # Le GUI s'appuie sur ces deux lignes pour signaler l'absence de cible.
             statut = self._status(installer, env_file, env)
@@ -1797,7 +1813,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, _args, _corps = self._preparer(
+            installer, env_file, env, journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -1820,7 +1836,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, _args, _corps = self._preparer(
+            installer, env_file, env, journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -1848,7 +1864,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, _args, _corps = self._preparer(
+            installer, env_file, env, journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -1878,7 +1894,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, _args, _corps = self._preparer(
+            installer, env_file, env, journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -1915,7 +1931,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, _journal, _args, _corps = self._preparer(racine)
+            installer, env_file, env, _journal, _mail_log = self._preparer(racine)
 
             reset = self._reset(
                 installer=installer, env_file=env_file, env=env, service="backup"
@@ -1931,7 +1947,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, _args, _corps = self._preparer(
+            installer, env_file, env, journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -1957,7 +1973,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, journal, _args, _corps = self._preparer(
+            installer, env_file, env, journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -1989,7 +2005,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, _journal, _args, _corps = self._preparer(
+            installer, env_file, env, _journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=("FABSUITE_NOTIFY_EMAIL=ops@example.invalid",),
                 mail_exit=1,
@@ -2011,7 +2027,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, _journal, _args, _corps = self._preparer(racine)
+            installer, env_file, env, _journal, _mail_log = self._preparer(racine)
 
             reset = self._reset(
                 installer=installer, env_file=env_file, env=env, service="autre"
@@ -2027,7 +2043,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, _journal, _args, _corps = self._preparer(
+            installer, env_file, env, _journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -2052,7 +2068,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, _journal, _args, _corps = self._preparer(
+            installer, env_file, env, _journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -2083,7 +2099,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            installer, env_file, env, _journal, _args, _corps = self._preparer(
+            installer, env_file, env, _journal, _mail_log = self._preparer(
                 racine,
                 lignes_env=(
                     "FABSUITE_NOTIFY_WEBHOOK_URL=https://hooks.invalid/fabsuite",
@@ -2130,23 +2146,6 @@ class HelperNotifyFailureTest(unittest.TestCase):
                 return "\n".join(lignes[debut : fin + 1])
         return None
 
-    @staticmethod
-    def _ecrire_faux_transport(faux_bin, bash, transport, code=0):
-        """Faux mail/sendmail en bash pur : aucune commande resolue via PATH."""
-        script = faux_bin / transport
-        script.write_text(
-            f"#!{bash}\n"
-            "entree=''\n"
-            "while IFS= read -r ligne; do\n"
-            "  entree=\"${entree}${ligne}\"$'\\n'\n"
-            "done\n"
-            f"printf '%s|%s|%s\\n' '{transport}' \"$*\" \"$entree\" >> \"${{FAKE_SEND_LOG}}\"\n"
-            f"exit {code}\n",
-            encoding="utf-8",
-        )
-        script.chmod(0o755)
-        return script
-
     def _notify_send_email_isole(self, racine, transports, codes=None):
         """Execute `notify_send_email` avec un PATH ne contenant que les faux
         transports demandes : ni mail, ni sendmail systeme ne peuvent etre vus."""
@@ -2159,9 +2158,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
         faux_bin.mkdir()
         journal = racine / "envois.log"
         for transport in transports:
-            self._ecrire_faux_transport(
-                faux_bin, bash, transport, codes.get(transport, 0)
-            )
+            _ecrire_faux_transport(faux_bin, transport, codes.get(transport, 0))
 
         fonction = self._extraire_fonction("notify_send_email")
         self.assertIsNotNone(
@@ -2197,7 +2194,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("rc=0", processus.stdout)
             self.assertIn("email envoye", sortie)
 
-            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            nom, arguments, corps = _lire_envoi(journal)
             self.assertEqual(nom, "sendmail")
             self.assertEqual(arguments, "ops@example.invalid")
             self.assertIn("Subject: Sujet test", corps)
@@ -2233,8 +2230,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
     def _preparer_path_isole(self, racine, transports=(("sendmail", 0),)):
         """Installateur + env file + PATH ne contenant que les faux transports
         demandes et les outils systeme explicitement necessaires au helper."""
-        bash = shutil.which("bash")
-        if not bash:
+        if not shutil.which("bash"):
             self.skipTest("bash indisponible")
 
         outils = ("grep", "sed", "dirname", "mkdir", "hostname", "date", "rm", "mv")
@@ -2252,7 +2248,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
         faux_bin.mkdir()
         journal = racine / "sendmail.log"
         for nom, code in transports:
-            self._ecrire_faux_transport(faux_bin, bash, nom, code)
+            _ecrire_faux_transport(faux_bin, nom, code)
         for outil in outils:
             os.symlink(shutil.which(outil), faux_bin / outil)
 
@@ -2294,7 +2290,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("anti-rebond non arme", sortie)
             self.assertFalse((racine / "backups" / "notify-backup.state").exists())
 
-            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            nom, arguments, corps = _lire_envoi(journal)
             self.assertEqual(nom, "sendmail")
             self.assertEqual(arguments, "ops@example.invalid")
             self.assertIn("Subject: [FabLab Suite] backup en echec (code 1)", corps)
@@ -2338,7 +2334,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertIn("ECHEC ", contenu)
             self.assertIn("service=backup code=1", contenu)
 
-            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            nom, arguments, corps = _lire_envoi(journal)
             self.assertEqual(nom, "sendmail")
             self.assertEqual(arguments, "ops@example.invalid")
             self.assertIn("Subject: [FabLab Suite] backup en echec (code 1)", corps)
@@ -2372,7 +2368,7 @@ class HelperNotifyFailureTest(unittest.TestCase):
 
             self.assertEqual(processus.returncode, 0, sortie)
             self.assertIn("rc=0", processus.stdout)
-            nom, arguments, corps = journal.read_text(encoding="utf-8").split("|", 2)
+            nom, arguments, corps = _lire_envoi(journal)
             self.assertEqual(nom, "mail")
             self.assertEqual(arguments, "-s Sujet test ops@example.invalid")
             self.assertEqual(corps.strip(), "Corps du message")

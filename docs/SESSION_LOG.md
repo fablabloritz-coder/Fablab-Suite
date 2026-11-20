@@ -38,6 +38,9 @@ serveur.
 - Chaque test e2e vérifie d'abord `command -v mail/sendmail` dans ce PATH : seul
   le faux transport attendu est visible, preuve qu'aucun binaire système ne
   fuit dans le chemin complet.
+- Factorisation : un seul générateur `_ecrire_faux_transport` (bash pur,
+  journal `$FAKE_SEND_LOG`) sert désormais `_preparer` (mail) et les tests
+  isolés ; `_lire_envoi` est l'unique décodage du journal. Mêmes assertions.
 - Suite complète 135 tests OK, `bash -n`, `py_compile`, `node --check`.
 
 **Risques / non couverts**
