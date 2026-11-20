@@ -32,6 +32,10 @@ affichait bien la cible.
 - `HelperTimersEnvFileTest` : installe chaque timer réel, extrait la commande
   `ExecStopPost` de l'unité et l'exécute dans `INSTALL_DIR` qui contient un env
   différent (dossier piège, aucune cible). Pour `verify` et `backup` :
+  - `ExecStart` exécuté réellement dans `INSTALL_DIR` : verify affiche
+    `aucun snapshot dans <dossier de l'env GUI>` et backup
+    `[backup] destination: <dossier de l'env GUI>`, jamais le dossier piège
+    (faux Docker pour laisser passer le pré-check data-safety) ;
   - succès (`EXIT_STATUS=0`) : seul l'état d'anti-rebond du dossier de l'env
     GUI est supprimé (et, pour backup, le marqueur `backup-failed`) ;
   - échec (`EXIT_STATUS=2`) : la cible configurée dans l'env GUI est tentée
@@ -40,7 +44,7 @@ affichait bien la cible.
 
 **Vérifications**
 - `bash -n fabsuite-ubuntu.sh` OK ; `python3 -m unittest discover -s tests` →
-  **153 tests OK**.
+  **155 tests OK**.
 
 **Risques / non couverts**
 - Exécution réelle sous systemd non testée dans cette VM : les unités déjà

@@ -1538,6 +1538,7 @@ class HelperTimersEnvFileTest(unittest.TestCase):
         install = racine / "suite"
         install.mkdir()
         shutil.copy2(ROOT / "fabsuite-ubuntu.sh", install / "fabsuite-ubuntu.sh")
+        shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
 
         backups = racine / "backups"
         backups.mkdir()
@@ -1596,8 +1597,19 @@ class HelperTimersEnvFileTest(unittest.TestCase):
         (faux_bin / "systemctl").write_text(
             "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8"
         )
+        # Docker simule : `ExecStart` du backup passe le pre-check data-safety
+        # et affiche la destination tiree de l'env, sans toucher aux conteneurs.
+        (faux_bin / "docker").write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "$1 $2" == "compose version" ]]; then\n'
+            '  echo "Docker Compose version v2.0.0"\n'
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
         (faux_bin / "sudo").chmod(0o755)
         (faux_bin / "systemctl").chmod(0o755)
+        (faux_bin / "docker").chmod(0o755)
 
         env = os.environ.copy()
         env["HOME"] = str(racine / "home")
@@ -1635,16 +1647,36 @@ class HelperTimersEnvFileTest(unittest.TestCase):
         sortie = processus.stdout + processus.stderr
         self.assertEqual(processus.returncode, 0, sortie)
 
-    def _commande_execstoppost(self, contexte, service):
+    def _commande_unite(self, contexte, service, directive):
         texte = (contexte["systemd_dir"] / service).read_text(encoding="utf-8")
         ligne = next(
             ligne
             for ligne in texte.splitlines()
-            if ligne.startswith("ExecStopPost=")
+            if ligne.startswith(f"{directive}=")
         )
         commande = shlex.split(ligne.split("=", 1)[1])
         self.assertEqual(commande[:2], ["/bin/bash", "-c"], commande)
         return commande
+
+    def _commande_execstart(self, contexte, service):
+        return self._commande_unite(contexte, service, "ExecStart")
+
+    def _commande_execstoppost(self, contexte, service):
+        return self._commande_unite(contexte, service, "ExecStopPost")
+
+    def _executer_execstart(self, contexte, commande):
+        # L'ExecStart reel peut echouer (aucun snapshot, sources de test
+        # absentes) : le code n'est pas le sujet, seule la sortie prouve quel
+        # env a ete lu.
+        resultat = subprocess.run(
+            commande,
+            cwd=contexte["install"],
+            env=dict(contexte["env"]),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return resultat.returncode, resultat.stdout + resultat.stderr
 
     def _executer_execstoppost(self, contexte, commande, code):
         env = dict(contexte["env"])
@@ -1740,6 +1772,45 @@ class HelperTimersEnvFileTest(unittest.TestCase):
             self.assertEqual(
                 (decoy / "backup-failed").read_text(encoding="utf-8"), "ECHEC\n"
             )
+
+    def test_execstart_verify_utilise_l_env_de_l_installation(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            backups = contexte["backups"]
+            decoy = contexte["decoy"]
+            self._installer(contexte, "install-verify-timer")
+            commande = self._commande_execstart(
+                contexte, "fabsuite-verify.service"
+            )
+
+            code, sortie = self._executer_execstart(contexte, commande)
+
+            # Aucun snapshot dans les deux dossiers : le chemin affiche par le
+            # helper designe le FABSUITE_BACKUP_DIR de l'env reellement lu.
+            self.assertEqual(code, 2, sortie)
+            self.assertIn(f"aucun snapshot dans {backups}", sortie)
+            self.assertNotIn(str(decoy), sortie)
+
+    def test_execstart_backup_utilise_l_env_de_l_installation(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            contexte = self._preparer(Path(tmp))
+            backups = contexte["backups"]
+            decoy = contexte["decoy"]
+            self._installer(contexte, "install-backup-timer")
+            commande = self._commande_execstart(
+                contexte, "fabsuite-backup.service"
+            )
+
+            _code, sortie = self._executer_execstart(contexte, commande)
+
+            self.assertIn(f"[backup] destination: {backups}", sortie)
+            self.assertNotIn(str(decoy), sortie)
 
 
 class HelperClearMarkersTest(unittest.TestCase):
