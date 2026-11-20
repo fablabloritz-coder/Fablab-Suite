@@ -1642,12 +1642,11 @@ class HelperClearMarkersTest(unittest.TestCase):
             self.assertTrue((backups / "verify-degrade").is_symlink())
 
 
-def _parse_notify_status_gui(sortie):
-    """Fait parser une sortie du helper par le parseur reel du GUI.
+def _gui_backend():
+    """Importe `fabsuite_ssh_gui` sans dependre d'Eel ni de paramiko.
 
-    `fabsuite_ssh_gui` importe Eel/paramiko au chargement : des modules vides
-    les remplacent le temps de l'import, sans toucher aux modules deja charges
-    par d'autres tests.
+    Le module les importe au chargement : des modules vides les remplacent le
+    temps de l'import, sans toucher aux modules deja charges par d'autres tests.
     """
     stubs = {}
     if "eel" not in sys.modules:
@@ -1659,7 +1658,17 @@ def _parse_notify_status_gui(sortie):
     with mock.patch.dict(sys.modules, stubs):
         import fabsuite_ssh_gui
 
-        return fabsuite_ssh_gui.FabSuiteBackend._parse_notify_status(sortie)
+    return fabsuite_ssh_gui.FabSuiteBackend
+
+
+def _parse_notify_status_gui(sortie):
+    """Fait parser une sortie du helper par le parseur reel du GUI."""
+    return _gui_backend()._parse_notify_status(sortie)
+
+
+def _parse_timer_status_gui(sortie, prefixe="[verify-timer] "):
+    """Fait parser une sortie de `*-timer-status` par le parseur reel du GUI."""
+    return _gui_backend()._parse_timer_status(sortie, prefixe)
 
 
 class HelperNotifyFailureTest(unittest.TestCase):

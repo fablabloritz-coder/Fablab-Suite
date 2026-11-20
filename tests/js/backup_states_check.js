@@ -7,12 +7,14 @@
  * appels backend sont comptes, ce qui distingue "remis a inconnu sans appel" de
  * "relu depuis le serveur".
  *
- * Sortie : { scenarios: { nom: { calls, texts, boutons } } } en JSON sur stdout,
- * ou `boutons` liste l'etat `disabled` des `.ssh-btn` de la carte.
+ * Sortie : { scenarios: { nom: { calls, texts, classes, boutons } } } en JSON
+ * sur stdout, ou `boutons` liste l'etat `disabled` des `.ssh-btn` de la carte et
+ * `classes` la classe CSS de chaque ligne (text-muted / text-warning / ...).
  *
- * Usage : node tests/js/backup_states_check.js [app.js] [notify-status.json]
- * Le troisieme argument est un payload `notify_status` reel (issu du helper et
- * du parseur du GUI) ; sans lui, la reponse simulee ci-dessous est utilisee.
+ * Usage : node tests/js/backup_states_check.js [app.js] [etats-reels.json]
+ * Le troisieme argument est une map `{"<action>": payload}` de reponses reelles
+ * (sorties du helper passees par les parseurs du GUI) ; toute action absente
+ * retombe sur la reponse simulee ci-dessous.
  *
  * Les assertions sont dans tests/test_backup_states_js.py ; lancer ce script
  * seul n'affiche que les mesures.
@@ -62,11 +64,11 @@ const STATUT = {
   verify: { present: false },
 };
 
-// Payload `notify_status` optionnel : une vraie sortie du helper, pour que la
-// troisieme ligne soit rendue avec des donnees reelles et non simulees.
-const notifyReel = process.argv[3]
+// Reponses reelles optionnelles, par action (`verify_timer_status`, ...) :
+// elles remplacent la reponse simulee pour les lignes concernees.
+const reels = process.argv[3]
   ? JSON.parse(fs.readFileSync(process.argv[3], "utf8"))
-  : null;
+  : {};
 
 // app.js appelle `eel.<action>()()` : le proxy simule Eel et compte les appels.
 let calls = 0;
@@ -76,7 +78,7 @@ const eel = new Proxy(
     get(_target, prop) {
       if (typeof prop === "symbol" || prop === "then") return undefined;
       if (prop === "expose") return () => {};
-      const reponse = String(prop) === "notify_status" && notifyReel ? notifyReel : STATUT;
+      const reponse = reels[String(prop)] || STATUT;
       return () => {
         calls += 1;
         return () => Promise.resolve(reponse);
@@ -95,6 +97,7 @@ const {
   set_actions_enabled,
   refreshBackupCardStates,
   refreshVerifyTimerState,
+  refreshBackupTimerState,
   refreshNotificationState,
 } = context;
 
@@ -109,8 +112,17 @@ async function scenario(nom, action) {
   await action();
   await tick();
   const texts = {};
-  for (const id of IDS) texts[id] = getElement(id).textContent;
-  scenarios[nom] = { calls: calls - avant, texts, boutons: boutonsSsh.map((b) => b.disabled) };
+  const classes = {};
+  for (const id of IDS) {
+    texts[id] = getElement(id).textContent;
+    classes[id] = getElement(id).className;
+  }
+  scenarios[nom] = {
+    calls: calls - avant,
+    texts,
+    classes,
+    boutons: boutonsSsh.map((b) => b.disabled),
+  };
 }
 
 (async () => {
@@ -123,7 +135,10 @@ async function scenario(nom, action) {
     set_actions_enabled(true);
   });
 
-  // Troisieme ligne rendue depuis le payload reel quand le pilote en recoit un.
+  // Les deux lignes de timer et la ligne des notifications rendues depuis les
+  // payloads reels quand le pilote en recoit.
+  await scenario("verify_reel", () => refreshVerifyTimerState());
+  await scenario("backup_reel", () => refreshBackupTimerState());
   await scenario("notify_reel", () => refreshNotificationState());
 
   // Bascule de `run_mode` vers Local avec la connexion toujours ouverte : le

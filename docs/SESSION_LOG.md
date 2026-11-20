@@ -6,6 +6,40 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Les trois lignes de la carte rendues depuis le helper réel
+
+**Contexte** : seule la ligne « Notifications d'échec » était rendue depuis une
+vraie sortie ; les deux lignes de timer ne voyaient qu'un payload simulé.
+
+**Ajouté**
+- `tests/js/backup_states_check.js` : le 3ᵉ argument est désormais une map
+  `{"<action>": payload}` (les actions absentes retombent sur la réponse
+  simulée) ; mesures enrichies de `classes` (classe CSS de chaque ligne) ;
+  scénarios `verify_reel` et `backup_reel` à côté de `notify_reel`.
+- `tests/test_suite_backup.py` : `_gui_backend()` partagé par
+  `_parse_notify_status_gui` et le nouveau `_parse_timer_status_gui`.
+- `tests/test_backup_states_js.py` : la classe devient `EtatsReelsRendTest`.
+  Un seul HOME temporaire exécute `notify-failure` puis `notify-status`,
+  `verify-timer-status` et `backup-timer-status` ; les trois sorties passent par
+  les parseurs du GUI, sont injectées ensemble dans `app.js`, et les textes
+  affichés sont comparés au `hint`/date réellement produits.
+
+**Limite assumée** : sans root, `/etc/systemd/system/<unit>.timer` ne peut pas
+exister ; `print_systemd_timer_status` sort donc sa branche
+`installed=0` + `hint`. C'est bien la ligne affichée sur un hôte sans timer
+(classe `text-warning`), mais le résumé « timer installé » (active, prochaine
+exécution, marqueur) reste couvert seulement par le payload simulé du pilote et
+par `tests/test_ssh_gui_backup.py`.
+
+**Vérifications**
+- `node --check` sur `app.js` et le pilote → OK.
+- `python3 -m unittest tests.test_backup_states_js` → 11 tests OK.
+- `python3 -m unittest discover -s tests` → **147 tests OK**.
+- Non-vacuité : sans les payloads de timer, le pilote rend le résumé simulé
+  (« timer active (waiting) — prochaine exécution : demain … », classe
+  `text-muted`) au lieu du `hint` réel (`install-verify-timer` /
+  `install-backup-timer`, `text-warning`) ; les égalités échouent.
+
 ## 2026-11-20 — Rendu de la carte Sauvegarde depuis une vraie sortie du helper
 
 **Contexte** : le pilote JS ne rendait les trois états qu'à partir d'une

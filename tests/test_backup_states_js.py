@@ -17,7 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.test_suite_backup import _parse_notify_status_gui
+from tests.test_suite_backup import _parse_notify_status_gui, _parse_timer_status_gui
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "web" / "js" / "app.js"
@@ -123,13 +123,18 @@ class BackupStatesJsTest(unittest.TestCase):
         self.assertInconnu("python_tardif_apres_deconnexion", INCONNU_DECONNECTE)
 
 
-class NotifyReelRendTest(unittest.TestCase):
-    """Troisieme ligne rendue depuis une vraie sortie du helper `notify-status`.
+class EtatsReelsRendTest(unittest.TestCase):
+    """Les trois lignes rendues depuis de vraies sorties du helper.
 
-    Chaine complete : `./fabsuite-ubuntu.sh notify-failure` puis `notify-status`
-    dans un HOME temporaire -> parseur du GUI -> payload injecte dans `app.js` ->
-    texte de la carte. Les deux autres lignes restent couvertes par la reponse
-    simulee de `BackupStatesJsTest` (pas de systemd dans cet environnement).
+    Chaine complete : HOME temporaire -> `notify-failure` puis les trois actions
+    de lecture (`notify-status`, `verify-timer-status`, `backup-timer-status`)
+    -> parseurs du GUI -> payloads injectes dans `app.js` -> textes de la carte.
+
+    Sans root, `/etc/systemd/system/<unit>.timer` ne peut pas exister : les deux
+    actions de timer sortent donc leur branche "timer non installe" (`installed=0`
+    et son `hint`), qui est bien celle que la carte affiche sur un hote sans
+    timer. Le resume "timer installe" reste couvert par la reponse simulee de
+    `BackupStatesJsTest` et par `tests/test_ssh_gui_backup.py`.
     """
 
     @classmethod
@@ -185,7 +190,51 @@ class NotifyReelRendTest(unittest.TestCase):
         if echec.returncode != 0 or "anti-rebond arme" not in sortie:
             raise AssertionError(f"anti-rebond non arme (code {echec.returncode}):\n{sortie}")
 
-        cls.statut = cls._helper("notify-status")
+        cls.sorties = {}
+        cls.etat_notify = cls._etat("notify-status", _parse_notify_status_gui)
+        cls.etat_verify = cls._etat(
+            "verify-timer-status", _parse_timer_status_gui, "[verify-timer] "
+        )
+        cls.etat_backup = cls._etat(
+            "backup-timer-status", _parse_timer_status_gui, "[backup-timer] "
+        )
+
+        # Un seul passage du pilote : les scenarios `*_reel` rendent chaque ligne
+        # avec la reponse reelle de l'action correspondante.
+        payload = Path(cls._tmp.name) / "etats-reels.json"
+        payload.write_text(
+            json.dumps(
+                {
+                    "notify_status": cls.etat_notify,
+                    "verify_timer_status": cls.etat_verify,
+                    "backup_timer_status": cls.etat_backup,
+                }
+            ),
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [NODE, str(DRIVER), str(APP), str(payload)],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if proc.returncode != 0:
+            raise AssertionError(
+                "le pilote JS a echoue (code %s) :\n%s" % (proc.returncode, proc.stderr)
+            )
+        cls.mesures = json.loads(proc.stdout)["scenarios"]
+
+    @classmethod
+    def _etat(cls, action, parseur, *args):
+        processus = cls._helper(action)
+        sortie = processus.stdout + processus.stderr
+        if processus.returncode != 0:
+            raise AssertionError(
+                f"{action} en echec (code {processus.returncode}):\n{sortie}"
+            )
+        cls.sorties[action] = sortie
+        return parseur(sortie, *args)
 
     @classmethod
     def tearDownClass(cls):
@@ -210,29 +259,14 @@ class NotifyReelRendTest(unittest.TestCase):
         )
 
     def test_notify_state_reel_dans_la_carte(self):
-        sortie = self.statut.stdout + self.statut.stderr
-        self.assertEqual(self.statut.returncode, 0, sortie)
-
-        etat = _parse_notify_status_gui(sortie)
-        self.assertIsNotNone(etat, f"sortie non reconnue par le GUI:\n{sortie}")
+        etat = self.etat_notify
+        self.assertIsNotNone(
+            etat, f"sortie non reconnue par le GUI:\n{self.sorties['notify-status']}"
+        )
         self.assertIs(etat["backup"]["present"], True)
         self.assertIs(etat["verify"]["present"], False)
 
-        payload = Path(self._tmp.name) / "notify-status.json"
-        payload.write_text(json.dumps(etat), encoding="utf-8")
-        proc = subprocess.run(
-            [NODE, str(DRIVER), str(APP), str(payload)],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if proc.returncode != 0:
-            raise AssertionError(
-                "le pilote JS a echoue (code %s) :\n%s" % (proc.returncode, proc.stderr)
-            )
-
-        mesure = json.loads(proc.stdout)["scenarios"]["notify_reel"]
+        mesure = self.mesures["notify_reel"]
         self.assertEqual(mesure["calls"], 1)
         texte = mesure["texts"]["notifyState"]
 
@@ -246,6 +280,45 @@ class NotifyReelRendTest(unittest.TestCase):
             "pas de rappel avant un succès — "
             "verify : aucune alerte envoyée en cours",
         )
+
+    def test_lignes_de_timer_reelles_dans_la_carte(self):
+        """Les deux lignes de timer rendent la sortie reelle du helper.
+
+        Le `hint` provient du helper et nomme l'action d'installation du service
+        concerne : une reponse simulee ne peut pas le produire.
+        """
+        # ligne, action, prefixe du helper, scenario du pilote, etat, action
+        # d'installation nommee par le `hint`.
+        cas = (
+            (
+                "verifyTimerState",
+                "verify-timer-status",
+                "verify",
+                "verify_reel",
+                self.etat_verify,
+                "install-verify-timer",
+            ),
+            (
+                "backupTimerState",
+                "backup-timer-status",
+                "backup",
+                "backup_reel",
+                self.etat_backup,
+                "install-backup-timer",
+            ),
+        )
+        for ligne, action, prefixe, scenario, etat, factorie in cas:
+            with self.subTest(ligne=ligne):
+                self.assertIn(
+                    f"[{prefixe}-timer] installed=0", self.sorties[action]
+                )
+                self.assertIs(etat["installed"], False)
+                self.assertIn(factorie, etat["hint"])
+
+                mesure = self.mesures[scenario]
+                self.assertEqual(mesure["calls"], 1)
+                self.assertEqual(mesure["texts"][ligne], etat["hint"])
+                self.assertEqual(mesure["classes"][ligne], "text-warning")
 
 
 if __name__ == "__main__":
