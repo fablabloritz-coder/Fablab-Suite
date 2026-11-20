@@ -6,6 +6,31 @@ action imperative.
 
 ---
 
+## 2026-11-20 — Revue du pilote après l'ajout des boutons
+
+**Retiré**
+- Champ `id` des boutons simulés (jamais lu) et commentaire dupliqué au-dessus
+  de `bascule_local` (deux explications pour la même bascule).
+- Préfixe `context.` répété dans les scénarios : les cinq fonctions d'`app.js`
+  sont déstructurées une fois, après le chargement du module.
+- `assertNotIn("inconnu", …)` dans `assertLuDepuisLeServeur` : le test de
+  préfixe `Titre — ` suffit, les deux libellés inconnus commençant par
+  `Titre : `. Commentaire ajouté pour garder l'intention lisible.
+- Docstrings mises à jour (sortie avec `boutons`, règles « inconnu » **et**
+  boutons inactifs).
+
+**Conservé volontairement** : les six scénarios, y compris les doublons
+apparents (`bascule_local` vs `python_tardif_en_local`, `deconnexion` vs
+`python_tardif_apres_deconnexion`). Les fusionner masquerait une régression où
+seul le déclencheur direct est cassé (le rafraîchissement tardif réécrivant
+l'état inconnu ferait passer un test fusionné).
+
+**Vérifications**
+- `node --check` OK ; 9 tests OK ; 144 tests OK.
+- Non-vacuité des deux règles : sans la garde `backupStateAvailable`, les 4
+  scénarios hors connexion cassent ; avec `btn.disabled = false`, ce sont
+  `bascule_local` et `deconnexion` qui cassent. Copies jetables supprimées.
+
 ## 2026-11-20 — Test permanent étendu aux boutons `ssh-btn`
 
 **Ajouté**

@@ -1,8 +1,9 @@
 """Tests de la carte Sauvegarde du GUI (web/js/app.js), sans navigateur.
 
-Regle testee : les trois lignes d'etat (verification, sauvegarde,
-notifications) ne valent que pour un serveur SSH connecte. Hors de ce cas elles
-affichent un etat inconnu explicite, sans appel au backend.
+Regles testees : les trois lignes d'etat (verification, sauvegarde,
+notifications) ne valent que pour un serveur SSH connecte — hors de ce cas elles
+affichent un etat inconnu explicite, sans appel au backend — et les boutons
+`.ssh-btn` sont inactifs en mode Local comme hors connexion.
 
 Le pilote `tests/js/backup_states_check.js` execute `app.js` dans un contexte
 Node isole (DOM et `eel` simules, appels backend comptes) et rend ses mesures en
@@ -72,11 +73,12 @@ class BackupStatesJsTest(unittest.TestCase):
         self.assertEqual(mesures["calls"], 3, f"{nom} : les trois etats doivent etre relus")
         for identifiant in IDS:
             texte = mesures["texts"][identifiant]
+            # Les deux libelles "inconnu" commencent par `Titre : `, jamais par
+            # `Titre — ` : ce prefixe suffit a prouver une lecture serveur.
             self.assertTrue(
                 texte.startswith(TITRES[identifiant] + " — "),
                 f"{nom} : {identifiant} n'affiche pas les donnees serveur ({texte!r})",
             )
-            self.assertNotIn("inconnu", texte, f"{nom} : {identifiant} est reste inconnu")
 
     def assertBoutons(self, nom, attendu):
         """Les boutons `.ssh-btn` sont tous dans l'etat attendu."""
