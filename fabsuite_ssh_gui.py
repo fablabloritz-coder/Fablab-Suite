@@ -544,6 +544,18 @@ class FabSuiteBackend:
         self._log(f"Connected to {host}:{port} as {user}")
 
     def disconnect_ssh(self, silent=False):
+        if not silent and self._actions_locked:
+            # Couper la session pendant un backup, une restauration ou une
+            # verification interrompt le worker en pleine operation (snapshot
+            # partiel, staging incomplet). Seuls les appels internes (session
+            # perdue, reconnexion, fermeture de la fenetre) restent autorises.
+            self._show_alert(
+                "Action en cours",
+                "Une action est en cours (sauvegarde, restauration ou verification). "
+                "Attends qu'elle se termine avant de te deconnecter.",
+            )
+            self._log("Deconnexion refusee: action en cours.")
+            return
         if self.client is not None:
             try:
                 self.client.close()

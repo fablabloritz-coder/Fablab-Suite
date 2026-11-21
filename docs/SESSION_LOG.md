@@ -6,6 +6,37 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Deconnexion refusee pendant une action
+
+**Contexte** : les boutons d'action sont verrouilles pendant un backup ou une
+restauration, mais « Deconnecter » restait actif et coupait le worker en pleine
+operation.
+
+**Corrige (`fabsuite_ssh_gui.py`)**
+- `disconnect_ssh()` refuse une deconnexion demandee par l'operateur tant que
+`_actions_locked` est vrai : alerte « Action en cours », ligne de journal, et la
+session reste ouverte.
+- Les appels internes (`silent=True` : session perdue, reconnexion, fermeture
+de la fenetre) restent autorises, sinon une session morte ne pourrait plus etre
+nettoyee.
+
+**Verifications**
+- `GuiSshSessionTest` : deconnexion refusee pendant une action (client non
+ferme, alerte) puis autorisee apres deverrouillage ; deconnexion silencieuse
+toujours permise.
+- `python3 -m unittest discover -s tests` -> 187 tests OK ; `git diff --check`
+-> OK.
+
+**Limites**
+- Aucune cible SSH reelle dans la VM : la garde est testee avec un faux client.
+- Le bouton « Connecter » coupe la session via `disconnect_ssh(silent=True)` ;
+il reste non garde (prochain chantier possible).
+
+**Prochaine action** : cliquer Deconnecter pendant un backup reel doit afficher
+« Action en cours » sans couper la sauvegarde.
+
+---
+
 ## 2026-11-21 — Revue de la carte Sauvegarde : erreurs bloquantes
 
 **Contexte** : revue de toute la section « Sauvegarde & restauration » apres

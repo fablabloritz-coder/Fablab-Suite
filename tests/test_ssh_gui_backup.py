@@ -1451,6 +1451,45 @@ class GuiSshSessionTest(unittest.TestCase):
 
         self.assertIs(self.backend.client, client)
 
+    def test_deconnexion_refusee_pendant_une_action(self):
+        client = _FauxClient(_FauxTransport(actif=True))
+        fermetures = []
+        client.close = lambda: fermetures.append(True)
+        self.backend.client = client
+        self.backend._actions_locked = True
+        alertes = []
+        self.backend._show_alert = lambda titre, message: alertes.append((titre, message))
+
+        self.backend.disconnect_ssh()
+
+        self.assertIs(
+            self.backend.client,
+            client,
+            "un backup/restauration en cours ne doit pas etre coupe par une deconnexion",
+        )
+        self.assertEqual(fermetures, [])
+        self.assertEqual(alertes[0][0], "Action en cours")
+        self.assertIn("Attends", alertes[0][1])
+
+        # Une fois l'action terminee, la deconnexion redevient possible.
+        self.backend._actions_locked = False
+        self.backend.disconnect_ssh()
+        self.assertIsNone(self.backend.client)
+        self.assertEqual(fermetures, [True])
+
+    def test_deconnexion_silencieuse_autorisee_pendant_une_action(self):
+        """Les appels internes doivent pouvoir nettoyer une session perdue."""
+        client = _FauxClient(_FauxTransport(actif=True))
+        fermetures = []
+        client.close = lambda: fermetures.append(True)
+        self.backend.client = client
+        self.backend._actions_locked = True
+
+        self.backend.disconnect_ssh(silent=True)
+
+        self.assertIsNone(self.backend.client)
+        self.assertEqual(fermetures, [True])
+
     def test_connect_active_le_keepalive(self):
         self.backend.state["target"] = "fablab@hote"
         self.backend.state["password"] = "secret"
