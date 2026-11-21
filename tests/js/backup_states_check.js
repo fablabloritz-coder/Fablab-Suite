@@ -334,11 +334,11 @@ async function scenario(nom, action) {
   // Fermeture de fenetre / rechargement : pendant une action, le navigateur
   // doit demander confirmation (le process Eel s'arrete et tue le worker).
   await scenario("fermeture_pendant_une_action", async () => {
-    context.set_action_running(true);
+    context.set_action_running("Sauvegarde suite");
     const bloque = { preventDefault() { this.bloque = true; }, returnValue: "" };
     windowHandlers.beforeunload(bloque);
 
-    context.set_action_running(false);
+    context.set_action_running("");
     const libre = { preventDefault() { this.bloque = true; }, returnValue: "" };
     windowHandlers.beforeunload(libre);
 
@@ -346,6 +346,17 @@ async function scenario(nom, action) {
       bloquee: bloque.bloque === true,
       message: bloque.returnValue,
       libre: libre.bloque !== true,
+    };
+  });
+
+  // Libelle de l'action en cours dans la barre d'etat, pendant le verrouillage.
+  await scenario("action_en_cours_affichee", async () => {
+    context.set_action_running("Sauvegarde suite");
+    const pendant = getElement("actionState").textContent;
+    context.set_action_running("");
+    dialogues.action_en_cours = {
+      pendant,
+      apres: getElement("actionState").textContent,
     };
   });
 

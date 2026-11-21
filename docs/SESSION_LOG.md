@@ -6,6 +6,34 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Libelle de l'action en cours dans la barre d'etat
+
+**Contexte** : pendant le verrouillage des actions, le GUI ne disait pas quelle
+action tournait.
+
+**Modifie**
+- `web/index.html` : `#actionState` dans la barre d'etat (en-tete).
+- `web/js/app.js` : `set_action_running(label)` (libelle vide = aucune action)
+affiche « Action en cours : <libelle> » et vide la ligne a la fin.
+- `fabsuite_ssh_gui.py` : `_set_action_running(label="")` transmet le libelle
+du worker depuis `_run_async`, remis a vide dans son `finally`.
+- Revue : le booleen `running` redondant a ete retire de la signature ; le
+libelle non vide porte a la fois l'etat et le texte.
+
+**Verifications**
+- Pilote JS : scenario `action_en_cours_affichee` (« Action en cours :
+Sauvegarde suite » pendant, vide apres).
+- `GuiSshSessionTest` : `_run_async` envoie le libelle puis "".
+- `python3 -m unittest discover -s tests` -> 193 tests OK ; `node --check` sur
+les deux fichiers JS ; `git diff --check` -> OK.
+
+**Limites**
+- Aucun navigateur dans la VM : le rendu de la barre n'a pas ete vu.
+
+**Prochaine action** : lancer un backup et verifier le libelle dans l'en-tete.
+
+---
+
 ## 2026-11-21 — Revue des gardes : fermeture de fenetre
 
 **Contexte** : revue des chemins qui pourraient liberer le verrou ou couper le

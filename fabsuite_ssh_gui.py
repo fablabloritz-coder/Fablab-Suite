@@ -334,10 +334,14 @@ class FabSuiteBackend:
         except Exception:
             pass
 
-    def _set_action_running(self, running):
-        """Signale au front qu'un worker tourne (avertissement avant fermeture)."""
+    def _set_action_running(self, label=""):
+        """Signale au front le libelle de l'action en cours (vide = terminee).
+
+        Le front l'affiche dans la barre d'etat et s'en sert pour demander
+        confirmation avant une fermeture de fenetre.
+        """
         try:
-            eel.set_action_running(bool(running))()
+            eel.set_action_running(str(label or ""))()
         except Exception:
             pass
 
@@ -521,7 +525,7 @@ class FabSuiteBackend:
             return
         self._actions_locked = True
         self._action_running = True
-        self._set_action_running(True)
+        self._set_action_running(label)
         self._refresh_actions_state()
 
         def worker():
@@ -535,7 +539,7 @@ class FabSuiteBackend:
                 self._log(f"--- end: {label} ---")
                 self._actions_locked = False
                 self._action_running = False
-                self._set_action_running(False)
+                self._set_action_running()
                 self._refresh_actions_state()
 
         threading.Thread(target=worker, daemon=True).start()

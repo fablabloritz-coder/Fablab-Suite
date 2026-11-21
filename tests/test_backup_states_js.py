@@ -185,6 +185,18 @@ class BackupStatesJsTest(unittest.TestCase):
         self.assertTrue(mesures["libre"])
 
 
+    def test_action_en_cours_affichee_dans_la_barre(self):
+        """Pendant le verrouillage, l'operateur doit savoir ce qui tourne."""
+        self.assertIn(
+            "action_en_cours",
+            self.dialogues,
+            "scenario action en cours absent du pilote",
+        )
+        mesures = self.dialogues["action_en_cours"]
+        self.assertEqual(mesures["pendant"], "Action en cours : Sauvegarde suite")
+        self.assertEqual(mesures["apres"], "")
+
+
 class _HarnaisHelper:
     """HOME temporaire + copie du helper : ni reseau, ni systemd, ni root."""
 

@@ -1593,7 +1593,7 @@ class GuiSshSessionTest(unittest.TestCase):
         appels = []
         ancien_eel = fabsuite_ssh_gui.eel
         fabsuite_ssh_gui.eel = types.SimpleNamespace(
-            set_action_running=lambda valeur: (lambda: appels.append(valeur)),
+            set_action_running=lambda libelle: (lambda: appels.append(libelle)),
             set_actions_enabled=lambda valeur: (lambda: None),
         )
 
@@ -1612,7 +1612,11 @@ class GuiSshSessionTest(unittest.TestCase):
             fabsuite_ssh_gui.threading.Thread = ancien_thread
             fabsuite_ssh_gui.eel = ancien_eel
 
-        self.assertEqual(appels, [True, False])
+        self.assertEqual(
+            appels,
+            ["Sauvegarde suite", ""],
+            "le front doit recevoir le libelle de l'action puis sa fin",
+        )
         self.assertFalse(self.backend._action_running)
 
     def test_connect_active_le_keepalive(self):

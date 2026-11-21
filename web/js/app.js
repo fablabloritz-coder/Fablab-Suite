@@ -26,9 +26,14 @@ let sshConnected = false;
 // confirmation.
 let actionRunning = false;
 
+// Un libelle vide signifie qu'aucune action ne tourne : la barre d'etat est
+// videe et la fermeture de fenetre redevient silencieuse. Le libelle suffit,
+// pas besoin d'un booleen separe qui pourrait diverger.
 eel.expose(set_action_running);
-function set_action_running(running) {
-  actionRunning = !!running;
+function set_action_running(label) {
+  actionRunning = !!label;
+  const el = document.getElementById("actionState");
+  if (el) el.textContent = actionRunning ? "Action en cours : " + label : "";
 }
 
 window.addEventListener("beforeunload", (e) => {
