@@ -140,6 +140,12 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   Si le serveur a un ancien `suite_backup.py` sans les commandes `list` ou
   `volumes`, le modal l'indique clairement et invite à lancer `update` avant de
   réessayer.
+- **Pendant une action** (sauvegarde, restauration, vérification) : les boutons
+  d'action sont verrouillés, et **Connecter** / **Déconnecter** sont refusés
+  avec « Action en cours » pour ne jamais couper le worker. **⚡ Débloquer**
+  (barre du terminal) libère l'interface si elle semble figée, mais
+  n'interrompt jamais l'action : Connecter, Déconnecter et le lancement d'une
+  seconde action restent bloqués jusqu'à la fin du worker.
 
 **Maintenance dossiers** : scan, inspection, correction permissions, archivage, suppression
 

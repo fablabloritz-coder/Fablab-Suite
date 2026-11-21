@@ -6,6 +6,30 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Aide de Debloquer et doc de la carte
+
+**Contexte** : le comportement du bouton « Debloquer » (interface liberee,
+action en cours preservee) n'etait explique ni dans l'aide du bouton ni dans la
+documentation de la carte Sauvegarde.
+
+**Modifie**
+- `web/index.html` : `data-help` du bouton ⚡ Debloquer — il n'interrompt pas
+l'action ; Connecter, Deconnecter et le lancement d'une seconde action restent
+bloques jusqu'a la fin du worker.
+- `README.md` (carte Sauvegarde & restauration) : nouveau point « Pendant une
+action » rappelant le verrouillage des boutons, le refus de Connecter et
+Deconnecter, et le role de Debloquer.
+
+**Verifications**
+- `python3 -m unittest discover -s tests` -> 190 tests OK ; `git diff --check`
+-> OK.
+- Aide et README verifies par lecture : aucun navigateur dans la VM.
+
+**Prochaine action** : survoler le bouton Debloquer dans le GUI pour verifier
+le texte de l'aide.
+
+---
+
 ## 2026-11-21 — Pas de seconde action en parallele
 
 **Contexte** : apres « Debloquer » pendant un backup, les boutons d'action
