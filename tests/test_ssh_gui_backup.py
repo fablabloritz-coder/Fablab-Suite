@@ -1707,6 +1707,100 @@ class GuiSshSessionTest(unittest.TestCase):
         self.assertIsNone(self.backend.client)
         self.assertTrue(sftp.ferme, "la session SFTP doit etre fermee apres coupure")
 
+    def test_ssh_exception_a_l_ouverture_sftp_signale_la_coupure(self):
+        classe = _activer_erreur_ssh()
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend.remote_home = "/home/fablab"
+        self.backend._exec_remote_simple = lambda commande: "0\n"
+        client = _FauxClient(_FauxTransport())
+
+        def sftp_injoignable():
+            raise classe("SSH session not active")
+
+        client.open_sftp = sftp_injoignable
+        self.backend.client = client
+        try:
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+                self.backend._ensure_remote_helper_ready()
+        finally:
+            _restaurer_paramiko()
+
+        self.assertIn("SSH session not active", contexte.exception.detail)
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+
+    def test_ssh_exception_pendant_l_upload_du_helper_signale_la_coupure(self):
+        classe = _activer_erreur_ssh()
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend.remote_home = "/home/fablab"
+        # Helper present : `_ensure_remote_helper_ready` ne resynchronise que
+        # le script, ce qui exerce le `put` de `_upload_helper_script_only`.
+        self.backend._exec_remote_simple = lambda commande: "1\n"
+        client = _FauxClient(_FauxTransport())
+
+        class _SftpCoupe:
+            ferme = False
+
+            def put(self, local, distant):
+                raise classe("SSH session not active")
+
+            def close(self):
+                self.ferme = True
+
+        sftp = _SftpCoupe()
+        client.open_sftp = lambda: sftp
+        self.backend.client = client
+        try:
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+                self.backend._ensure_remote_helper_ready()
+        finally:
+            _restaurer_paramiko()
+
+        self.assertIn("SSH session not active", contexte.exception.detail)
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+        self.assertTrue(sftp.ferme, "la session SFTP doit etre fermee apres coupure")
+
+    def test_ssh_exception_pendant_l_upload_des_fichiers_signale_la_coupure(self):
+        """Premier `put` de `_upload_installer_files` (helper absent)."""
+        classe = _activer_erreur_ssh()
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend.remote_home = "/home/fablab"
+        self.backend._exec_remote_simple = lambda commande: "0\n"
+        client = _FauxClient(_FauxTransport())
+
+        class _SftpCoupe:
+            ferme = False
+
+            def put(self, local, distant):
+                raise classe("SSH session not active")
+
+            def close(self):
+                self.ferme = True
+
+        sftp = _SftpCoupe()
+        client.open_sftp = lambda: sftp
+        self.backend.client = client
+
+        dossier = tempfile.mkdtemp()
+        local = Path(dossier) / "fabsuite-ubuntu.sh"
+        local.write_text("#!/bin/sh\n", encoding="utf-8")
+        self.backend._installer_local_files = lambda: [local]
+        try:
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+                self.backend._ensure_remote_helper_ready()
+        finally:
+            _restaurer_paramiko()
+            shutil.rmtree(dossier, ignore_errors=True)
+
+        self.assertIn("SSH session not active", contexte.exception.detail)
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+        self.assertTrue(sftp.ferme, "la session SFTP doit etre fermee apres coupure")
+
     def test_session_inactive_repasse_non_connecte(self):
         self.backend.client = _FauxClient(_FauxTransport(actif=False))
 

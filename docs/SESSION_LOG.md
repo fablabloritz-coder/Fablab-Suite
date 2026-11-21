@@ -27,7 +27,9 @@ que seuls `OSError`/`EOFError` etaient convertis.
   `_alerter_connexion_impossible()` — alerte « Connexion SSH impossible »
   (distincte de « perdue ») avec cause traduite : authentification refusee,
   cle d'hote inattendue, delai depasse, nom d'hote introuvable.
-- SFTP (`_open_sftp`, `sftp.put`) volontairement hors de cette passe.
+- Uploads SFTP : `_open_sftp`, `_upload_installer_files` et
+  `_upload_helper_script_only` passent aussi par `_erreurs_transport()` ;
+  `_close_sftp` reste best-effort pour ne pas masquer l'erreur d'origine.
 
 **Tests (`tests/test_ssh_gui_backup.py`)**
 - `GuiSshSessionTest` : connexion initiale en timeout (alerte unique, client
@@ -36,11 +38,15 @@ que seuls `OSError`/`EOFError` etaient convertis.
   `open_session`, sur `exec_command` simple et sur `recv_exit_status` ->
   `ConnexionSSHPerdue`, canal ferme, client libere. Faux module paramiko pour
   rester independant de l'installation reelle.
+- SFTP : `SSHException` a `open_sftp`, sur le `put` du helper et sur celui de
+  `_upload_installer_files` -> `ConnexionSSHPerdue`, session SFTP fermee,
+  client libere.
 
 **Verifications** : `py_compile` OK ; `git diff --check` OK ;
-`python3 -m unittest discover -s tests` -> 268 tests OK (~14 s).
+`python3 -m unittest discover -s tests` -> 271 tests OK (~14 s).
 
-**Prochaine action** : etendre la meme conversion aux uploads SFTP si besoin.
+**Prochaine action** : derouler les cas 8 et 11-21 de la matrice sur un
+serveur reel.
 
 ---
 

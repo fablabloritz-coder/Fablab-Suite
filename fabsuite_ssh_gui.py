@@ -1297,13 +1297,13 @@ class FabSuiteBackend:
     def _open_sftp(self):
         """Ouvre une session SFTP en gardant le type de coupure.
 
-        Un transport tombe fait lever `OSError`/`EOFError` a l'ouverture : on
-        les convertit comme le reste des appels SSH, sinon le worker affiche
-        « upload impossible » au lieu de « Connexion perdue ».
+        Un transport tombe fait lever `OSError`/`EOFError`/`SSHException` a
+        l'ouverture : on les convertit comme le reste des appels SSH, sinon le
+        worker affiche « upload impossible » au lieu de « Connexion perdue ».
         """
         try:
             return self.client.open_sftp()
-        except (OSError, EOFError) as exc:
+        except _erreurs_transport() as exc:
             raise self._connexion_perdue(exc) from exc
 
     @staticmethod
@@ -1339,7 +1339,7 @@ class FabSuiteBackend:
                 remote_path = f"{remote_dir}/{f.name}"
                 self._log(f"Upload {f.name} -> {remote_path}")
                 sftp.put(str(f), remote_path)
-        except (OSError, EOFError) as exc:
+        except _erreurs_transport() as exc:
             raise self._connexion_perdue(exc) from exc
         finally:
             self._close_sftp(sftp)
@@ -1361,7 +1361,7 @@ class FabSuiteBackend:
         try:
             self._log(f"Sync helper -> {remote_path}")
             sftp.put(str(helper), remote_path)
-        except (OSError, EOFError) as exc:
+        except _erreurs_transport() as exc:
             raise self._connexion_perdue(exc) from exc
         finally:
             self._close_sftp(sftp)
