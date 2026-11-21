@@ -532,6 +532,11 @@ class FabSuiteBackend:
             kwargs["password"] = password
 
         client.connect(**kwargs)
+        transport = client.get_transport()
+        if transport is not None:
+            # Un backup ou une verification longue peut laisser la session
+            # silencieuse ; sans keepalive, le serveur peut couper la connexion.
+            transport.set_keepalive(30)
         self.client = client
         self.remote_home = self._exec_remote_simple("echo $HOME").strip()
         self._save_config()
@@ -542,6 +547,10 @@ class FabSuiteBackend:
         if self.client is not None:
             try:
                 self.client.close()
+            except Exception:
+                # Un client deja coupe ne doit pas empecher l'etat de revenir
+                # a « non connecte ».
+                pass
             finally:
                 self.client = None
                 self.remote_home = None
@@ -556,7 +565,19 @@ class FabSuiteBackend:
 
     def _require_connection(self):
         if self.client is None:
-            raise RuntimeError("Not connected. Click Connect first")
+            raise RuntimeError("Non connecte : clique sur Connecter")
+
+        try:
+            transport = self.client.get_transport()
+        except Exception:
+            transport = None
+        if transport is None or not transport.is_active():
+            # La session a ete coupee cote serveur (timeout, redemarrage ou
+            # quota de sessions) : afficher « non connecte » tout de suite
+            # plutot que de laisser l'en-tete sur « Connecte » et d'echouer
+            # action apres action.
+            self.disconnect_ssh(silent=True)
+            raise RuntimeError("Session SSH perdue : clique sur Connecter")
 
     def _resolve_remote_dir(self):
         remote_dir = self.state.get("remote_dir", DEFAULT_REMOTE_DIR).strip() or DEFAULT_REMOTE_DIR
@@ -570,14 +591,20 @@ class FabSuiteBackend:
         self._require_connection()
         wrapped = f"bash -lc {shlex.quote(command)}"
         stdin, stdout, stderr = self.client.exec_command(wrapped, timeout=30)
-        stdout.channel.settimeout(30)
-        stderr.channel.settimeout(30)
+        # Paramiko garde chaque canal ouvert dans le transport tant qu'il n'est
+        # pas ferme : sans cette fermeture, le quota de sessions du serveur
+        # (MaxSessions) s'epuise action apres action et la session tombe.
+        channel = stdout.channel
         try:
+            channel.settimeout(30)
+            stderr.channel.settimeout(30)
             out = stdout.read().decode("utf-8", errors="replace")
             err = stderr.read().decode("utf-8", errors="replace")
-            code = stdout.channel.recv_exit_status()
+            code = channel.recv_exit_status()
         except socket.timeout as exc:
             raise RuntimeError("Remote command timeout (simple).") from exc
+        finally:
+            channel.close()
         if code != 0:
             raise RuntimeError(err.strip() or out.strip() or f"command failed with code {code}")
         return out
@@ -596,47 +623,52 @@ class FabSuiteBackend:
             raise RuntimeError("SSH transport is not active")
 
         channel = transport.open_session()
-        channel.settimeout(1.0)
-        channel.exec_command(wrapped)
+        # Comme `_exec_remote_simple`, le canal doit etre ferme dans tous les
+        # cas : le transport le reference jusqu'a sa fermeture et le serveur
+        # compte les sessions ouvertes.
+        try:
+            channel.settimeout(1.0)
+            channel.exec_command(wrapped)
 
-        start = time.time()
-        morceaux = []
+            start = time.time()
+            morceaux = []
 
-        while True:
-            had_data = False
+            while True:
+                had_data = False
 
-            try:
-                if channel.recv_ready():
-                    chunk = channel.recv(8192).decode("utf-8", errors="replace")
-                    if chunk:
-                        morceaux.append(chunk)
-                        self._log(chunk.rstrip())
-                        had_data = True
-
-                if channel.recv_stderr_ready():
-                    chunk = channel.recv_stderr(8192).decode("utf-8", errors="replace")
-                    if chunk:
-                        morceaux.append(chunk)
-                        self._log(chunk.rstrip())
-                        had_data = True
-            except socket.timeout:
-                pass
-
-            if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
-                code = channel.recv_exit_status()
-                break
-
-            if (time.time() - start) > timeout_sec:
                 try:
-                    channel.close()
-                except Exception:
-                    pass
-                raise RuntimeError(
-                    f"Remote command timeout ({timeout_sec}s). Possible prompt waiting (sudo/password) or command stuck."
-                )
+                    if channel.recv_ready():
+                        chunk = channel.recv(8192).decode("utf-8", errors="replace")
+                        if chunk:
+                            morceaux.append(chunk)
+                            self._log(chunk.rstrip())
+                            had_data = True
 
-            if not had_data:
-                time.sleep(0.1)
+                    if channel.recv_stderr_ready():
+                        chunk = channel.recv_stderr(8192).decode("utf-8", errors="replace")
+                        if chunk:
+                            morceaux.append(chunk)
+                            self._log(chunk.rstrip())
+                            had_data = True
+                except socket.timeout:
+                    pass
+
+                if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
+                    code = channel.recv_exit_status()
+                    break
+
+                if (time.time() - start) > timeout_sec:
+                    raise RuntimeError(
+                        f"Remote command timeout ({timeout_sec}s). Possible prompt waiting (sudo/password) or command stuck."
+                    )
+
+                if not had_data:
+                    time.sleep(0.1)
+        finally:
+            try:
+                channel.close()
+            except Exception:
+                pass
 
         self._log(f"Exit code: {code}")
         return code, "".join(morceaux)
@@ -1588,7 +1620,17 @@ exit 0
 
     def _backup_worker_run(self):
         self._log("Sauvegarde suite: snapshot verifie en cours...")
-        code = self._run_helper_action("backup", allow_failure=True)
+        try:
+            code = self._run_helper_action("backup", allow_failure=True)
+        except Exception as exc:
+            # Session perdue, timeout ou helper absent : sans alerte, l'action
+            # se terminerait uniquement par une trace dans le terminal.
+            self._show_alert(
+                "Sauvegarde impossible",
+                f"Impossible de lancer la sauvegarde: {exc}\n\n"
+                "Verifie la connexion SSH puis relance la sauvegarde.",
+            )
+            raise RuntimeError(f"sauvegarde impossible: {exc}") from exc
         if code == 0:
             # Un snapshot valide remet la situation a zero : la prochaine panne
             # planifiee doit de nouveau declencher une notification.
@@ -1640,6 +1682,15 @@ exit 0
                 continue
             invalides.setdefault(nom, []).append(detail)
         return {"bilan": bilan, "invalides": invalides}
+
+    @staticmethod
+    def _verify_a_aucun_snapshot(sortie):
+        """Vrai si `verify --all` s'est arrete faute de snapshot a controler."""
+        for ligne in sortie.splitlines():
+            ligne = ligne.strip()
+            if ligne.startswith("[verify] ") and "aucun snapshot" in ligne.lower():
+                return True
+        return False
 
     def _request_verify_state_refresh(self):
         """Demande au front de relire l'etat du timer apres une verification."""
@@ -1695,6 +1746,17 @@ exit 0
         # signifie « verification impossible » (aucun snapshot, arguments,
         # module ancien) et ne doit pas etre presente comme une degradation.
         if code != 3:
+            # Le code 2 couvre aussi le cas courant d'un serveur sans snapshot :
+            # ce n'est pas une verification impossible a diagnostiquer, il suffit
+            # de lancer une sauvegarde.
+            if self._verify_a_aucun_snapshot(sortie):
+                self._show_alert(
+                    "Aucun snapshot",
+                    "Aucun snapshot a verifier : lance d'abord une sauvegarde, "
+                    "puis relance la verification.\n\n"
+                    "Aucun marqueur de degradation n'est pose.",
+                )
+                raise RuntimeError("aucun snapshot a verifier")
             echecs = []
             for ligne in sortie.splitlines():
                 ligne = ligne.strip()
@@ -1949,21 +2011,21 @@ exit 0
             }
         return etat
 
-    # ─── Installation / desactivation des timers planifies ───
+    # ─── Mise en service / desactivation des timers planifies ───
 
     _TIMERS = {"verify": "verification", "backup": "sauvegarde"}
 
     def _timer_worker(self, service, action):
-        """Installe ou desactive un timer via le helper, puis relit son etat.
+        """Met en service ou desactive un timer via le helper, puis relit son etat.
 
-        `action` est une action du helper (`install-<service>-timer` ou
-        `disable-<service>-timer`). Le code et la sortie du helper sont
-        conserves pour expliquer un echec (sudo manquant, dossier d'unites
-        invalide, systemctl absent).
+        `action` est une action du helper (`install-<service>-timer`, qui
+        installe/actualise et active, ou `disable-<service>-timer`). Le code et
+        la sortie du helper sont conserves pour expliquer un echec (sudo
+        manquant, dossier d'unites invalide, systemctl absent).
         """
         libelle = self._TIMERS[service]
         desactivation = action.startswith("disable-")
-        verbe = "Desactivation" if desactivation else "Installation"
+        verbe = "Desactivation" if desactivation else "Mise en service"
         rafraichir = (
             self._request_verify_state_refresh
             if service == "verify"
@@ -2005,7 +2067,8 @@ exit 0
             self._show_alert(
                 f"{verbe} impossible",
                 f"Le timer de {libelle} n'a pas pu etre "
-                f"{'desactive' if desactivation else 'installe'} (code {code})."
+                f"{'desactive' if desactivation else 'mis en service'} "
+                f"(code {code})."
                 + (f"\n\n{erreur}" if erreur else "")
                 + f"\n\n{conseil}",
             )
@@ -2021,21 +2084,22 @@ exit 0
             )
             return
 
-        self._log(f"Timer de {libelle} installe et active.")
+        self._log(f"Timer de {libelle} en service.")
         self._show_alert(
-            "Timer installe",
-            f"Le timer de {libelle} est installe et active.\n\n"
+            "Timer en service",
+            f"Le timer de {libelle} est actif.\n\n"
             "La ligne d'etat de la carte se met a jour automatiquement.",
         )
 
     def _start_timer_action(self, service, action):
         libelle = self._TIMERS[service]
-        verbe = "Desactivation" if action.startswith("disable-") else "Installation"
+        verbe = "Desactivation" if action.startswith("disable-") else "Mise en service"
+        libelle_action = f"{verbe} du timer de {libelle}"
         if self._is_local_mode():
-            self._show_ssh_only_info(f"{verbe} du timer de {libelle}")
+            self._show_ssh_only_info(libelle_action)
             return
         self._run_async(
-            f"{verbe} timer {libelle}",
+            libelle_action,
             lambda: self._timer_worker(service, action),
         )
 
@@ -2058,7 +2122,17 @@ exit 0
         volumes = [str(volume).strip() for volume in (sources or []) if str(volume).strip()]
         for volume in volumes:
             args.extend(["--source", volume])
-        code = self._run_helper_action("restore", allow_failure=True, extra_args=args)
+        try:
+            code = self._run_helper_action(
+                "restore", allow_failure=True, extra_args=args
+            )
+        except Exception as exc:
+            self._show_alert(
+                "Restauration impossible",
+                f"Impossible de lancer la restauration: {exc}\n\n"
+                "Verifie la connexion SSH puis rouvre le dialogue de restauration.",
+            )
+            raise RuntimeError(f"restauration impossible: {exc}") from exc
         if code == 0:
             staging = destination or "le staging par defaut du helper (voir [restore])"
             self._log(f"Restauration: snapshot extrait dans {staging}.")

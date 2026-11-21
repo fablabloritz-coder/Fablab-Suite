@@ -33,12 +33,60 @@ const appSource = fs.readFileSync(appPath, "utf8");
 const IDS = ["verifyTimerState", "backupTimerState", "notifyState"];
 const LABELS = ["verifyTimerInstallLabel", "backupTimerInstallLabel"];
 
-// Le code teste n'ecrit que `textContent`/`className` sur ces lignes.
+// Le code teste n'ecrit que `textContent`/`className` sur ces lignes ; les
+// modales utilisent en plus `classList` et des ecouteurs d'evenements.
 const elements = new Map();
 function getElement(id) {
-  if (!elements.has(id)) elements.set(id, { id, textContent: "", className: "" });
+  if (!elements.has(id)) {
+    const ecouteurs = {};
+    elements.set(id, {
+      id,
+      textContent: "",
+      innerHTML: "",
+      className: "",
+      value: "",
+      selectedOptions: [],
+      appendChild() {},
+      classList: { add() {}, remove() {} },
+      addEventListener(type, fonction) {
+        (ecouteurs[type] = ecouteurs[type] || []).push(fonction);
+      },
+      removeEventListener(type, fonction) {
+        ecouteurs[type] = (ecouteurs[type] || []).filter((f) => f !== fonction);
+      },
+      declencher(type) {
+        (ecouteurs[type] || []).slice().forEach((fonction) => fonction({ type }));
+        // Comme le DOM : un `onclick` est appele en plus des ecouteurs.
+        if (type === "click" && typeof this.onclick === "function") {
+          this.onclick({ type });
+        }
+      },
+    });
+  }
   return elements.get(id);
 }
+
+// Modales Bootstrap simulees : une instance par element et un evenement
+// `hidden.bs.modal` emis a la fermeture, comme le fait Bootstrap.
+const modalesOuvertes = new Set();
+const modales = new Map();
+const bootstrap = {
+  Modal: {
+    getOrCreateInstance(el) {
+      if (!modales.has(el)) {
+        modales.set(el, {
+          show() {
+            modalesOuvertes.add(el);
+          },
+          hide() {
+            if (modalesOuvertes.delete(el)) el.declencher("hidden.bs.modal");
+          },
+        });
+      }
+      return modales.get(el);
+    },
+  },
+};
 
 // `refreshModeUI` desactive les `.ssh-btn` en mode Local et hors connexion :
 // meme nombre de boutons que la carte dans web/index.html. Les `.action-btn`
@@ -48,7 +96,12 @@ const boutonsSsh = Array.from({ length: N_BOUTONS_SSH }, () => ({ disabled: fals
 
 const document = {
   getElementById: getElement,
-  querySelectorAll: (selecteur) => (selecteur === ".ssh-btn" ? boutonsSsh : []),
+  createElement: () => ({ value: "", textContent: "" }),
+  querySelectorAll: (selecteur) => {
+    if (selecteur === ".ssh-btn") return boutonsSsh;
+    if (selecteur === ".modal.show") return Array.from(modalesOuvertes);
+    return [];
+  },
   addEventListener() {},
 };
 
@@ -75,12 +128,45 @@ const reels = process.argv[3]
 
 // app.js appelle `eel.<action>()()` : le proxy simule Eel et compte les appels.
 let calls = 0;
+// Compteurs du dialogue de restauration : deux ouvertures ne doivent produire
+// qu'une lecture de snapshots, et un seul clic qu'une seule restauration.
+let snapshotListCalls = 0;
+let restoreCalls = 0;
 const eel = new Proxy(
   {},
   {
     get(_target, prop) {
       if (typeof prop === "symbol" || prop === "then") return undefined;
       if (prop === "expose") return () => {};
+      if (prop === "list_snapshots") {
+        return () => {
+          calls += 1;
+          snapshotListCalls += 1;
+          return () =>
+            Promise.resolve({
+              snapshots: [
+                {
+                  path: "/home/fablab/backup-fabsuite/suite-2026-11-19-120000",
+                  name: "suite-2026-11-19-120000",
+                  created_at: "2026-11-19 12:00:00",
+                },
+              ],
+            });
+        };
+      }
+      if (prop === "list_volumes") {
+        return () => {
+          calls += 1;
+          return () =>
+            Promise.resolve({ volumes: [{ path: "FabHome|data", bytes: 1024 }] });
+        };
+      }
+      if (prop === "action_restore") {
+        return () => {
+          calls += 1;
+          restoreCalls += 1;
+        };
+      }
       const reponse = reels[String(prop)] || STATUT;
       return () => {
         calls += 1;
@@ -90,7 +176,7 @@ const eel = new Proxy(
   },
 );
 
-const context = vm.createContext({ document, eel, console, setTimeout });
+const context = vm.createContext({ document, eel, bootstrap, console, setTimeout });
 
 vm.runInContext(appSource, context, { filename: appPath });
 
@@ -179,7 +265,58 @@ async function scenario(nom, action) {
   // une ligne d'erreur du helper.
   await scenario("python_tardif_apres_deconnexion", () => refreshNotificationState());
 
-  process.stdout.write(JSON.stringify({ scenarios }) + "\n");
+  // Dialogues : la confirmation ne doit repondre qu'une fois fermee, et une
+  // alerte ne doit jamais s'ouvrir par-dessus elle (sinon un backdrop bloque
+  // tous les clics du GUI).
+  const dialogues = {};
+  await scenario("dialogue_alerte_apres_confirmation", async () => {
+    const confirmation = getElement("confirmModal");
+    const alerte = getElement("alertModal");
+    const reponse = context.confirmDialog("Confirmation", "Continuer ?");
+    getElement("confirmOk").declencher("click");
+    const accepte = await reponse;
+    dialogues.confirmation = {
+      accepte,
+      fermee_a_la_resolution: !modalesOuvertes.has(confirmation),
+    };
+
+    context.show_alert("Sauvegarde invalide", "Le snapshot n'a pas ete valide (code 2).");
+    dialogues.alerte = {
+      ouverte: modalesOuvertes.has(alerte),
+      confirmation_ouverte: modalesOuvertes.has(confirmation),
+      titre: getElement("alertTitle").textContent,
+    };
+  });
+
+  // Restauration : deux clics rapides ne doivent ouvrir qu'un dialogue et ne
+  // lire les snapshots qu'une fois ; après une annulation, le dialogue rouvert
+  // ne doit lancer qu'une seule restauration (l'ecouteur de la premiere
+  // ouverture est retire a la fermeture).
+  await scenario("dialogue_restauration_une_seule_fois", async () => {
+    await Promise.all([
+      context.openRestoreDialog(),
+      context.openRestoreDialog(),
+    ]);
+
+    const modalEl = getElement("restoreModal");
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+    // Annulation (croix, Echap ou Annuler) : fermeture sans restaurer.
+    modal.hide();
+    await tick();
+
+    await context.openRestoreDialog();
+    getElement("restoreOk").declencher("click");
+    await tick();
+
+    dialogues.restauration = {
+      ouvertures_lues: snapshotListCalls,
+      restaurations: restoreCalls,
+      dialogue_ferme: !modalesOuvertes.has(modalEl),
+    };
+  });
+
+  process.stdout.write(JSON.stringify({ scenarios, dialogues }) + "\n");
 })().catch((erreur) => {
   process.stderr.write(String((erreur && erreur.stack) || erreur) + "\n");
   process.exitCode = 1;

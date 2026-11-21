@@ -57,7 +57,9 @@ class BackupStatesJsTest(unittest.TestCase):
             raise AssertionError(
                 "le pilote JS a echoue (code %s) :\n%s" % (proc.returncode, proc.stderr)
             )
-        cls.mesures = json.loads(proc.stdout)["scenarios"]
+        donnees = json.loads(proc.stdout)
+        cls.mesures = donnees["scenarios"]
+        cls.dialogues = donnees.get("dialogues", {})
 
     def mesures_de(self, nom):
         self.assertIn(nom, self.mesures, f"scenario absent du pilote : {nom}")
@@ -141,6 +143,34 @@ class BackupStatesJsTest(unittest.TestCase):
 
     def test_rafraichissement_python_apres_deconnexion_sans_appel(self):
         self.assertInconnu("python_tardif_apres_deconnexion", INCONNU_DECONNECTE)
+
+    def test_alerte_ne_s_ouvre_pas_sur_une_confirmation_ouverte(self):
+        """Deux modales empilees laissent un fond qui bloque les clics.
+
+        La confirmation doit donc repondre apres sa fermeture complete, et
+        l'alerte suivante ne doit trouver aucune autre modale ouverte.
+        """
+        self.assertTrue(self.dialogues["confirmation"]["accepte"])
+        self.assertTrue(self.dialogues["confirmation"]["fermee_a_la_resolution"])
+        self.assertTrue(self.dialogues["alerte"]["ouverte"])
+        self.assertFalse(self.dialogues["alerte"]["confirmation_ouverte"])
+        self.assertEqual(self.dialogues["alerte"]["titre"], "Sauvegarde invalide")
+
+    def test_restauration_un_seul_dialogue_et_un_seul_appel(self):
+        """Deux clics rapides, puis une annulation, ne lancent qu'une restauration.
+
+        Sans garde, le dialogue s'ouvre deux fois ; sans nettoyage de
+        l'ecouteur, la seconde ouverture herite de celui de la premiere et un
+        clic sur Restaurer lance plusieurs restaurations (et bloque les
+        actions plusieurs fois).
+        """
+        self.assertIn(
+            "restauration", self.dialogues, "scenario restauration absent du pilote"
+        )
+        mesures = self.dialogues["restauration"]
+        self.assertEqual(mesures["ouvertures_lues"], 2)
+        self.assertEqual(mesures["restaurations"], 1)
+        self.assertTrue(mesures["dialogue_ferme"])
 
 
 class _HarnaisHelper:

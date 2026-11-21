@@ -6,6 +6,124 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Revue de la carte Sauvegarde : erreurs bloquantes
+
+**Contexte** : revue de toute la section « Sauvegarde & restauration » apres
+les deconnexions et le dialogue bloquant, pour supprimer les chemins qui
+peuvent coincer le GUI.
+
+**Corrige (`web/js/app.js`)**
+- Dialogue de restauration : instance Bootstrap unique via `getModal` au lieu
+de `new bootstrap.Modal(...)` — une instance par ouverture pouvait laisser un
+fond bloquant.
+- Le bouton Restaurer utilise un `onclick` unique (`restoreDialogSubmit`) :
+chaque ouverture remplace l'ecouteur precedent, donc une annulation puis une
+reouverture ne peut pas lancer deux restaurations (et aucun ecouteur
+`hidden.bs.modal` n'est necessaire).
+- Garde `restoreDialogOpening` : deux clics rapides pendant `list_snapshots`
+n'ouvrent qu'un dialogue et ne lisent les snapshots qu'une fois.
+- `dispatchAction(...).catch(...)` : une exception du front affiche « Erreur »
+au lieu de laisser le clic sans effet.
+
+**Corrige (`fabsuite_ssh_gui.py`)**
+- `_backup_worker_run` et `_restore_worker` : une exception de transport
+(`_run_helper_action` : session perdue, timeout, helper absent) affiche
+« Sauvegarde impossible » / « Restauration impossible » avec la cause, au lieu
+d'une simple trace dans le terminal.
+
+**Verifications**
+- `GuiBackupActionsTest` : alertes d'erreur SSH pour backup et restauration.
+- Pilote JS : scenario `dialogue_restauration_une_seule_fois` (2 ouvertures
+-> 2 lectures de snapshots ; annulation + reouverture + clic -> 1 seule
+restauration, dialogue ferme).
+- `python3 -m unittest discover -s tests` -> 185 tests OK ; `node --check` sur
+les deux fichiers JS ; `git diff --check` -> OK.
+
+**Limites**
+- Aucune cible SSH ni navigateur dans la VM : dialogues pilotes par un DOM
+Node simule, pas par Bootstrap reel.
+- Un backup ou une restauration en cours verrouille les boutons d'action
+(volontaire) ; le bouton Deconnecter reste accessible.
+
+**Prochaine action** : rejouer sur le vrai serveur un backup, une verification,
+une annulation de restauration puis une restauration complete, sans
+reconnexion manuelle.
+
+---
+
+## 2026-11-21 — GUI SSH : verifier sans snapshot
+
+**Contexte** : « Verifier les snapshots » sortait le code 2 quand aucun snapshot
+n'existait et affichait « Verification impossible », alors qu'il suffit de
+lancer une sauvegarde.
+
+**Corrige (`fabsuite_ssh_gui.py`)**
+- Nouveau `_verify_a_aucun_snapshot(sortie)` : repere la ligne
+  `[verify] ECHEC: aucun snapshot dans ...` renvoyee par le module.
+- Dans ce cas, l'alerte devient « Aucun snapshot » avec
+  « Aucun snapshot a verifier : lance d'abord une sauvegarde, puis relance la
+  verification. » (le code 2 reste inchange cote module).
+- Les autres causes du code 2 (arguments, module ancien, erreur SSH) gardent
+  leur message « Verification impossible ».
+
+**Verifications**
+- `GuiBackupActionsTest` : nouveau test du message « Aucun snapshot » ; le test
+  « verification impossible » utilise desormais une erreur d'arguments.
+- README : comportement du bouton precise.
+- `python3 -m unittest discover -s tests` -> 182 tests OK ; `git diff --check` -> OK.
+
+**Limites**
+- Aucune cible SSH reelle dans la VM : detection testee sur des sorties simulees.
+
+**Prochaine action** : relancer une verification reelle sur un serveur sans
+snapshot, puis sur un serveur avec snapshot, et fermer le chantier.
+
+---
+
+## 2026-11-21 — GUI SSH : session epuisee et dialogue bloquant
+
+**Contexte** : chaque action de la carte Sauvegarde & restauration obligeait a
+se reconnecter au serveur, et un backup pouvait laisser le GUI bloque par un
+fond de modale sans dialogue visible.
+
+**Corrige (`fabsuite_ssh_gui.py`)**
+- `_exec_remote_simple` et `_exec_remote_capture` ferment desormais leur canal
+  SSH. Paramiko conserve chaque canal ouvert dans le transport tant qu'il n'est
+  pas ferme : le quota de sessions du serveur (MaxSessions) s'epuisait apres
+  quelques actions, jusqu'a couper la session.
+- Keepalive de 30 s active a la connexion : un backup ou une verification
+  longue ne reste plus silencieuse assez longtemps pour etre coupee.
+- `_require_connection` detecte un transport inactif, repasse l'en-tete a
+  « Non connecte » et demande une reconnexion, au lieu de garder « Connecte »
+  et d'echouer action apres action.
+
+**Corrige (`web/js/app.js`)**
+- Une seule instance Bootstrap par modale (`getOrCreateInstance`) : deux
+  instances sur le meme element laissaient un backdrop apres fermeture.
+- `show_alert` ferme toute autre modale encore affichee ; `confirmDialog` et
+  `promptDialog` ne repondent qu'apres l'evenement `hidden.bs.modal`. Une
+  alerte de fin d'action ne peut donc plus s'ouvrir par-dessus la confirmation
+  et bloquer les clics.
+
+**Verifications**
+- `GuiSshSessionTest` (6 tests) : canal ferme en fin de commande et en timeout,
+  session inactive remise a « Non connecte », keepalive a la connexion.
+- Pilote JS : scenario `dialogue_alerte_apres_confirmation` (confirmation
+  fermee avant sa reponse, alerte seule ouverte).
+- `python3 -m unittest discover -s tests` -> 181 tests OK ; `node --check` sur
+  les deux fichiers JS ; `git diff --check` -> OK.
+
+**Limites**
+- Aucune cible SSH reelle dans la VM : la fermeture des canaux et le keepalive
+  sont testes avec des objets simules, pas contre un vrai sshd.
+- La cause exacte de la coupure observee (quota de sessions ou timeout) n'a pas
+  pu etre confirmee sur le serveur ; les deux hypotheses sont traitees.
+
+**First next action for next session**
+Rejouer sur le serveur reel plusieurs actions consecutives (Sauvegarder,
+Verifier, Etat) sans se reconnecter, et confirmer que le dialogue de fin de
+backup se ferme normalement.
+
 ## 2026-11-20 — Timer desactive au demarrage mais relance a la main
 
 **Contexte** : un timer `enabled=disabled` etait toujours presente comme

@@ -103,6 +103,8 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 - **Vérifier les snapshots** : lance `verify --all` sur le serveur, affiche le
   bilan et la liste des snapshots dégradés (archive altérée, base corrompue,
   manifeste modifié), avec le détail des erreurs dans le journal `[verify]`.
+  Sans aucun snapshot, il affiche « Aucun snapshot » et invite à lancer
+  d'abord une sauvegarde (code 2, sans marqueur de dégradation).
 - **Timers vérification / sauvegarde** : **État vérification** / **État
   sauvegarde** relisent la prochaine exécution, le dernier résultat et le
   marqueur. **Installer timer vérification** / **Installer timer sauvegarde**

@@ -63,11 +63,27 @@ function set_scan_info(text) {
   document.getElementById("scanInfo").textContent = text;
 }
 
+// Une seule instance Bootstrap par modale : deux instances sur le meme
+// element laissent un fond gris apres fermeture, qui bloque tous les clics.
+function getModal(id) {
+  return bootstrap.Modal.getOrCreateInstance(document.getElementById(id));
+}
+
+// Une alerte ne doit jamais s'ouvrir par-dessus une autre modale encore
+// affichee (confirmation en cours de fermeture) : c'est ce cas qui laisse un
+// backdrop bloquant.
+function closeOtherModals(id) {
+  document.querySelectorAll(".modal.show").forEach(el => {
+    if (el.id !== id) getModal(el.id).hide();
+  });
+}
+
 eel.expose(show_alert);
 function show_alert(title, msg) {
+  closeOtherModals("alertModal");
   document.getElementById("alertTitle").textContent = title;
   document.getElementById("alertBody").textContent = msg;
-  new bootstrap.Modal("#alertModal").show();
+  getModal("alertModal").show();
 }
 
 /* ─── Dir table ─── */
@@ -83,28 +99,45 @@ function selectDirRow(tr, path) {
 
 function confirmDialog(title, msg) {
   return new Promise(resolve => {
+    const modalEl = document.getElementById("confirmModal");
+    const modal = getModal("confirmModal");
+    const okBtn = document.getElementById("confirmOk");
+    let accepte = false;
+    const onOk = () => { accepte = true; modal.hide(); };
+    // La reponse n'arrive qu'une fois la modale fermee : l'action ne demarre
+    // jamais pendant l'animation de fermeture, sinon une alerte de fin peut
+    // s'ouvrir par-dessus et laisser un fond bloquant.
+    const onHidden = () => {
+      okBtn.removeEventListener("click", onOk);
+      modalEl.removeEventListener("hidden.bs.modal", onHidden);
+      resolve(accepte);
+    };
     document.getElementById("confirmTitle").textContent = title;
     document.getElementById("confirmBody").textContent = msg;
-    const modal = new bootstrap.Modal("#confirmModal");
-    const okBtn = document.getElementById("confirmOk");
-    const handler = () => { modal.hide(); resolve(true); okBtn.removeEventListener("click", handler); };
-    okBtn.addEventListener("click", handler);
-    document.getElementById("confirmModal").addEventListener("hidden.bs.modal", () => resolve(false), { once: true });
+    okBtn.addEventListener("click", onOk);
+    modalEl.addEventListener("hidden.bs.modal", onHidden);
     modal.show();
   });
 }
 
 function promptDialog(title, msg) {
   return new Promise(resolve => {
+    const modalEl = document.getElementById("promptModal");
+    const modal = getModal("promptModal");
+    const input = document.getElementById("promptInput");
+    const okBtn = document.getElementById("promptOk");
+    let valeur = null;
+    const onOk = () => { valeur = input.value; modal.hide(); };
+    const onHidden = () => {
+      okBtn.removeEventListener("click", onOk);
+      modalEl.removeEventListener("hidden.bs.modal", onHidden);
+      resolve(valeur);
+    };
     document.getElementById("promptTitle").textContent = title;
     document.getElementById("promptBody").textContent = msg;
-    const input = document.getElementById("promptInput");
     input.value = "";
-    const modal = new bootstrap.Modal("#promptModal");
-    const okBtn = document.getElementById("promptOk");
-    const handler = () => { modal.hide(); resolve(input.value); okBtn.removeEventListener("click", handler); };
-    okBtn.addEventListener("click", handler);
-    document.getElementById("promptModal").addEventListener("hidden.bs.modal", () => resolve(null), { once: true });
+    okBtn.addEventListener("click", onOk);
+    modalEl.addEventListener("hidden.bs.modal", onHidden);
     modal.show();
   });
 }
@@ -382,7 +415,34 @@ async function refreshNotificationState() {
       : "");
 }
 
+// Deux clics rapides pendant la lecture des snapshots empileraient deux
+// dialogues et, au final, deux restaurations : une seule ouverture a la fois.
+let restoreDialogOpening = false;
+
+// Ecouteur unique du bouton Restaurer : `onclick` remplace l'ecouteur
+// precedent a chaque ouverture, donc aucune accumulation possible (contrairement
+// a un `addEventListener` par ouverture).
+function restoreDialogSubmit() {
+  const snapshot = document.getElementById("restoreSnapshot").value;
+  const destination = document.getElementById("restoreDest").value.trim();
+  const sources = Array.from(
+    document.getElementById("restoreVolumes").selectedOptions
+  ).map(o => o.value);
+  getModal("restoreModal").hide();
+  eel.action_restore(snapshot, destination, sources);
+}
+
 async function openRestoreDialog() {
+  if (restoreDialogOpening) return;
+  restoreDialogOpening = true;
+  try {
+    await openRestoreDialogRun();
+  } finally {
+    restoreDialogOpening = false;
+  }
+}
+
+async function openRestoreDialogRun() {
   let resultat;
   try {
     resultat = await eel.list_snapshots()();
@@ -459,17 +519,10 @@ async function openRestoreDialog() {
   select.onchange = loadVolumes;
   await loadVolumes();
 
-  const modal = new bootstrap.Modal("#restoreModal");
-  const okBtn = document.getElementById("restoreOk");
-  const handler = () => {
-    const destination = document.getElementById("restoreDest").value.trim();
-    const sources = Array.from(volumeSelect.selectedOptions).map(o => o.value);
-    modal.hide();
-    eel.action_restore(select.value, destination, sources);
-    okBtn.removeEventListener("click", handler);
-  };
-  okBtn.addEventListener("click", handler);
-  modal.show();
+  // Meme instance Bootstrap que les autres dialogues (getModal) : en creer une
+  // nouvelle a chaque ouverture peut laisser un fond bloquant.
+  document.getElementById("restoreOk").onclick = restoreDialogSubmit;
+  getModal("restoreModal").show();
 }
 
 async function dispatchAction(action, btn) {
@@ -667,7 +720,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".action-btn").forEach(btn => {
     const action = btn.dataset.action;
     if (!action) return;
-    btn.addEventListener("click", () => dispatchAction(action, btn));
+    btn.addEventListener("click", () => {
+      // Une exception du front ne doit pas laisser le clic sans effet visible.
+      dispatchAction(action, btn).catch((e) =>
+        show_alert("Erreur", "Action interrompue: " + e)
+      );
+    });
   });
 
   // Button hover help

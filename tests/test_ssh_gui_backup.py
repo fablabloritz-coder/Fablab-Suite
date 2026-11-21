@@ -120,6 +120,34 @@ class GuiBackupRestoreTest(unittest.TestCase):
 
         self.assertEqual(self.alertes[0][0], "Sauvegarde invalide")
 
+    def test_backup_worker_signale_une_erreur_ssh(self):
+        def echouer(action, **kwargs):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._run_helper_action = echouer
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._backup_worker()
+
+        self.assertEqual(self.alertes[0][0], "Sauvegarde impossible")
+        self.assertIn("connexion perdue", self.alertes[0][1])
+        self.assertIn("sauvegarde impossible", str(contexte.exception))
+
+    def test_restore_worker_signale_une_erreur_ssh(self):
+        def echouer(action, **kwargs):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._run_helper_action = echouer
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._restore_worker(
+                "/home/fablab/backup-fabsuite/suite-2026-11-19-120000", ""
+            )
+
+        self.assertEqual(self.alertes[0][0], "Restauration impossible")
+        self.assertIn("connexion perdue", self.alertes[0][1])
+        self.assertIn("restauration impossible", str(contexte.exception))
+
     def test_restore_worker_transmet_snapshot_et_staging(self):
         appels = []
         self.backend._run_helper_action = (
@@ -697,7 +725,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
         self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (
             2,
-            "[verify] ECHEC: aucun snapshot dans /home/fablab/backup-fabsuite\n",
+            "[verify] ECHEC: argument invalide: --dest attendu\n",
         )
 
         with self.assertRaises(RuntimeError):
@@ -705,9 +733,28 @@ class GuiBackupRestoreTest(unittest.TestCase):
 
         titre, message = self.alertes[0]
         self.assertEqual(titre, "Verification impossible")
-        self.assertIn("aucun snapshot", message)
+        self.assertIn("argument invalide", message)
         self.assertIn("code 2", message)
         self.assertIn("Aucun marqueur de degradation", message)
+
+    def test_verify_worker_explique_qu_aucun_snapshot_n_existe(self):
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_capture = lambda commande, timeout_sec=180: (
+            2,
+            "[verify] ECHEC: aucun snapshot dans /home/fablab/backup-fabsuite\n",
+        )
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._verify_worker()
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Aucun snapshot")
+        self.assertIn("Aucun snapshot a verifier", message)
+        self.assertIn("lance d'abord une sauvegarde", message)
+        self.assertIn("Aucun marqueur de degradation", message)
+        self.assertNotIn("Verification impossible", message)
+        self.assertEqual(str(contexte.exception), "aucun snapshot a verifier")
 
     def test_verify_worker_invite_a_mettre_a_jour_un_module_ancien(self):
         self.backend._require_connection = lambda: None
@@ -982,7 +1029,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
 
 
 class GuiTimerActionsTest(unittest.TestCase):
-    """Boutons d'installation et de desactivation : helper, erreurs, etat."""
+    """Boutons de mise en service et de desactivation : helper, erreurs, etat."""
 
     def setUp(self):
         self.backend = fabsuite_ssh_gui.FabSuiteBackend()
@@ -994,7 +1041,7 @@ class GuiTimerActionsTest(unittest.TestCase):
         )
         self.backend._log = lambda message: None
 
-    def test_installe_les_deux_timers_et_rafraichit_la_bonne_ligne(self):
+    def test_met_en_service_les_deux_timers_et_rafraichit_la_bonne_ligne(self):
         appels = []
         rafraichis = []
         self.backend._exec_helper_action_capture = (
@@ -1014,7 +1061,7 @@ class GuiTimerActionsTest(unittest.TestCase):
         self.assertEqual(rafraichis, ["verify", "backup"])
         self.assertEqual(
             [titre for titre, _ in self.alertes],
-            ["Timer installe", "Timer installe"],
+            ["Timer en service", "Timer en service"],
         )
         self.assertIn("verification", self.alertes[0][1])
         self.assertIn("sauvegarde", self.alertes[1][1])
@@ -1036,7 +1083,7 @@ class GuiTimerActionsTest(unittest.TestCase):
             self.backend._timer_worker("verify", "install-verify-timer")
 
         self.assertEqual(rafraichis, ["verify"])
-        self.assertEqual(self.alertes[0][0], "Installation impossible")
+        self.assertEqual(self.alertes[0][0], "Mise en service impossible")
         message = self.alertes[0][1]
         self.assertIn("code 2", message)
         self.assertIn(
@@ -1077,7 +1124,7 @@ class GuiTimerActionsTest(unittest.TestCase):
             self.backend._timer_worker("verify", "install-verify-timer")
 
         self.assertEqual(rafraichis, [])
-        self.assertEqual(self.alertes[0][0], "Installation impossible")
+        self.assertEqual(self.alertes[0][0], "Mise en service impossible")
         self.assertIn("connexion perdue", self.alertes[0][1])
         self.assertIn("mot de passe sudo", self.alertes[0][1])
 
@@ -1166,10 +1213,10 @@ class GuiTimerActionsTest(unittest.TestCase):
         self.assertEqual(
             [label for label, _ in lancements],
             [
-                "Installation timer verification",
-                "Installation timer sauvegarde",
-                "Desactivation timer verification",
-                "Desactivation timer sauvegarde",
+                "Mise en service du timer de verification",
+                "Mise en service du timer de sauvegarde",
+                "Desactivation du timer de verification",
+                "Desactivation du timer de sauvegarde",
             ],
         )
         self.assertEqual(
@@ -1197,8 +1244,8 @@ class GuiTimerActionsTest(unittest.TestCase):
         self.assertEqual(
             infos,
             [
-                "Installation du timer de verification",
-                "Installation du timer de sauvegarde",
+                "Mise en service du timer de verification",
+                "Mise en service du timer de sauvegarde",
                 "Desactivation du timer de verification",
                 "Desactivation du timer de sauvegarde",
             ],
@@ -1245,6 +1292,190 @@ class GuiTimerActionsTest(unittest.TestCase):
                     # La desactivation doit toujours passer par la confirmation
                     # du dispatch (data-confirm), jamais partir au premier clic.
                     self.assertIn("data-confirm=", ligne)
+
+
+class _FauxCanal:
+    """Canal Paramiko minimal : sortie, code de retour et fermeture."""
+
+    def __init__(self, code=0, sortie=b"", termine=True):
+        self.code = code
+        self._sortie = sortie
+        self._sortie_lue = False
+        self._termine = termine
+        self.ferme = False
+        self.timeout = None
+        self.commandes = []
+
+    def settimeout(self, secondes):
+        self.timeout = secondes
+
+    def exec_command(self, commande):
+        self.commandes.append(commande)
+
+    def recv_ready(self):
+        return bool(self._sortie) and not self._sortie_lue
+
+    def recv(self, taille):
+        self._sortie_lue = True
+        return self._sortie
+
+    def recv_stderr_ready(self):
+        return False
+
+    def recv_stderr(self, taille):
+        return b""
+
+    def exit_status_ready(self):
+        return self._termine
+
+    def recv_exit_status(self):
+        return self.code
+
+    def close(self):
+        self.ferme = True
+
+
+class _FauxFlux:
+    def __init__(self, contenu, canal):
+        self.contenu = contenu
+        self.channel = canal
+
+    def read(self):
+        return self.contenu
+
+
+class _FauxTransport:
+    def __init__(self, actif=True):
+        self.actif = actif
+        self.keepalive = None
+        self.canal = None
+
+    def is_active(self):
+        return self.actif
+
+    def set_keepalive(self, secondes):
+        self.keepalive = secondes
+
+    def open_session(self):
+        return self.canal
+
+
+class _FauxClient:
+    def __init__(self, transport, canal_simple=None):
+        self.transport = transport
+        self.canal_simple = canal_simple or _FauxCanal(sortie=b"/home/fablab\n")
+
+    def get_transport(self):
+        return self.transport
+
+    def close(self):
+        pass
+
+    def set_missing_host_key_policy(self, politique):
+        self.politique = politique
+
+    def connect(self, **kwargs):
+        self.kwargs = kwargs
+
+    def exec_command(self, commande, timeout=None):
+        canal = self.canal_simple
+        return (
+            _FauxFlux(b"", canal),
+            _FauxFlux(canal._sortie, canal),
+            _FauxFlux(b"", canal),
+        )
+
+
+class GuiSshSessionTest(unittest.TestCase):
+    """La session SSH ne doit pas s'epuiser ni rester faussement « connectee ».
+
+    Paramiko conserve chaque canal ouvert dans le transport : sans fermeture
+    explicite, le quota de sessions du serveur (MaxSessions) s'epuise et les
+    actions suivantes echouent jusqu'a une reconnexion manuelle.
+    """
+
+    def setUp(self):
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend._log = lambda message: None
+        self.backend._set_connection_status = lambda texte: None
+        self.backend._set_dir_rows = lambda lignes: None
+        self.backend._set_scan_info = lambda texte: None
+        self.backend._set_actions_enabled = lambda actif: None
+
+    def test_exec_remote_capture_ferme_le_canal(self):
+        transport = _FauxTransport()
+        canal = _FauxCanal(sortie=b"[verify] bilan: 1 ok\n")
+        transport.canal = canal
+        self.backend.client = _FauxClient(transport)
+
+        code, sortie = self.backend._exec_remote_capture("echo ok")
+
+        self.assertEqual((code, sortie), (0, "[verify] bilan: 1 ok\n"))
+        self.assertTrue(canal.ferme, "le canal doit etre ferme en fin de commande")
+
+    def test_exec_remote_capture_ferme_le_canal_apres_timeout(self):
+        transport = _FauxTransport()
+        canal = _FauxCanal(termine=False)
+        transport.canal = canal
+        self.backend.client = _FauxClient(transport)
+
+        with self.assertRaises(RuntimeError):
+            self.backend._exec_remote_capture("commande bloquee", timeout_sec=0)
+
+        self.assertTrue(canal.ferme, "le canal doit etre ferme meme en timeout")
+
+    def test_exec_remote_simple_ferme_le_canal(self):
+        transport = _FauxTransport()
+        canal = _FauxCanal(sortie=b"/home/fablab\n")
+        self.backend.client = _FauxClient(transport, canal_simple=canal)
+
+        sortie = self.backend._exec_remote_simple("echo $HOME")
+
+        self.assertEqual(sortie, "/home/fablab\n")
+        self.assertTrue(canal.ferme, "le canal doit etre ferme en fin de commande")
+
+    def test_session_inactive_repasse_non_connecte(self):
+        self.backend.client = _FauxClient(_FauxTransport(actif=False))
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._require_connection()
+
+        self.assertIn("Session SSH perdue", str(contexte.exception))
+        self.assertIsNone(self.backend.client)
+
+    def test_session_active_ne_deconnecte_pas(self):
+        client = _FauxClient(_FauxTransport(actif=True))
+        self.backend.client = client
+
+        self.backend._require_connection()
+
+        self.assertIs(self.backend.client, client)
+
+    def test_connect_active_le_keepalive(self):
+        self.backend.state["target"] = "fablab@hote"
+        self.backend.state["password"] = "secret"
+        self.backend._save_config = lambda: None
+        self.backend._exec_remote_simple = lambda commande: "/home/fablab\n"
+
+        transport = _FauxTransport()
+        client = _FauxClient(transport)
+        faux_paramiko = types.SimpleNamespace(
+            SSHClient=lambda: client,
+            AutoAddPolicy=lambda: "policy",
+        )
+        ancien = fabsuite_ssh_gui.paramiko
+        fabsuite_ssh_gui.paramiko = faux_paramiko
+        try:
+            self.backend._connect_worker()
+        finally:
+            fabsuite_ssh_gui.paramiko = ancien
+
+        self.assertIs(self.backend.client, client)
+        self.assertEqual(
+            transport.keepalive,
+            30,
+            "un keepalive evite la coupure d'une session silencieuse pendant un backup",
+        )
 
 
 if __name__ == "__main__":
