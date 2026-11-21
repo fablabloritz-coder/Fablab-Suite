@@ -195,8 +195,30 @@ class BackupStatesJsTest(unittest.TestCase):
             "scenario action en cours absent du pilote",
         )
         mesures = self.dialogues["action_en_cours"]
-        self.assertEqual(mesures["pendant"], "Action en cours : Sauvegarde suite")
+        self.assertEqual(
+            mesures["pendant"], "Action en cours : Sauvegarde suite (0 s)"
+        )
         self.assertEqual(mesures["apres"], "")
+
+    def test_duree_affichee_a_cote_du_libelle(self):
+        """Demarrage, avance, nouveau libelle et arret du timer."""
+        self.assertIn("duree", self.dialogues, "scenario duree absent du pilote")
+        mesures = self.dialogues["duree"]
+        self.assertEqual(mesures["depart"], "Action en cours : Sauvegarde suite (0 s)")
+        self.assertEqual(
+            mesures["apres"], "Action en cours : Sauvegarde suite (1 min 05 s)"
+        )
+        # Nouveau libelle : la duree repart de zero, sans second intervalle.
+        self.assertEqual(
+            mesures["changee"], "Action en cours : Restauration suite (0 s)"
+        )
+        self.assertEqual(
+            mesures["avancee"], "Action en cours : Restauration suite (5 s)"
+        )
+        self.assertEqual(mesures["fin"], "")
+        self.assertTrue(mesures["intervalle_arrete"])
+        self.assertEqual(mesures["demarrages"], 2)
+        self.assertEqual(mesures["arrets"], 2)
 
 
 class _HarnaisHelper:

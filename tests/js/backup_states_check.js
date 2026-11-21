@@ -94,6 +94,22 @@ const bootstrap = {
 const N_BOUTONS_SSH = 7;
 const boutonsSsh = Array.from({ length: N_BOUTONS_SSH }, () => ({ disabled: false }));
 
+// Horloge simulee : duree affichee sans attendre, avec un intervalle unique
+// capture pour avancer le temps a la main.
+// Les compteurs detectent un intervalle oublie (demarrages != arrets), pas
+// seulement le dernier intervalle enregistre.
+const horloge = { maintenant: 0, callback: null, demarrages: 0, arrets: 0 };
+const DateSimule = { now: () => horloge.maintenant };
+const setIntervalSimule = (fonction) => {
+  horloge.callback = fonction;
+  horloge.demarrages += 1;
+  return 1;
+};
+const clearIntervalSimule = () => {
+  if (horloge.callback !== null) horloge.arrets += 1;
+  horloge.callback = null;
+};
+
 // Evenements `window` (avertissement avant fermeture) captures pour le test.
 const windowHandlers = {};
 const window = {
@@ -189,6 +205,9 @@ const context = vm.createContext({
   eel,
   bootstrap,
   window,
+  Date: DateSimule,
+  setInterval: setIntervalSimule,
+  clearInterval: clearIntervalSimule,
   console,
   setTimeout,
 });
@@ -357,6 +376,35 @@ async function scenario(nom, action) {
     dialogues.action_en_cours = {
       pendant,
       apres: getElement("actionState").textContent,
+    };
+  });
+
+  // Duree ecoulee a cote du libelle : demarrage, avance chaque seconde,
+  // nouveau libelle qui repart de zero, arret en fin d'action.
+  await scenario("duree_action_en_cours", async () => {
+    horloge.maintenant = 0;
+    horloge.demarrages = 0;
+    horloge.arrets = 0;
+    context.set_action_running("Sauvegarde suite");
+    const depart = getElement("actionState").textContent;
+    horloge.maintenant = 65 * 1000;
+    horloge.callback();
+    const apres = getElement("actionState").textContent;
+    context.set_action_running("Restauration suite");
+    const changee = getElement("actionState").textContent;
+    horloge.maintenant = 70 * 1000;
+    horloge.callback();
+    const avancee = getElement("actionState").textContent;
+    context.set_action_running("");
+    dialogues.duree = {
+      depart,
+      apres,
+      changee,
+      avancee,
+      fin: getElement("actionState").textContent,
+      intervalle_arrete: horloge.callback === null,
+      demarrages: horloge.demarrages,
+      arrets: horloge.arrets,
     };
   });
 

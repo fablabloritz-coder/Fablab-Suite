@@ -22,15 +22,41 @@ let actionsEnabled = false;
 // valables que dans ce cas (mode Local ou deconnecte = etat inconnu).
 let sshConnected = false;
 // Libelle de l'action en cours, pousse par le backend (vide = aucune action) :
-// il alimente la barre d'etat et l'avertissement avant fermeture, qui doit
-// nommer l'action interrompue.
+// il alimente la barre d'etat (avec la duree ecoulee) et l'avertissement avant
+// fermeture, qui doit nommer l'action interrompue.
 let actionLabel = "";
+let actionStartedAt = 0;
+let actionTimer = null;
+
+function formatElapsed(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes
+    ? `${minutes} min ${String(seconds).padStart(2, "0")} s`
+    : `${total} s`;
+}
+
+function renderActionState() {
+  const el = document.getElementById("actionState");
+  if (!el) return;
+  el.textContent = actionLabel
+    ? `Action en cours : ${actionLabel} (${formatElapsed(Date.now() - actionStartedAt)})`
+    : "";
+}
 
 eel.expose(set_action_running);
 function set_action_running(label) {
+  // Un seul intervalle a la fois : un nouveau libelle repart de zero sans
+  // laisser tourner celui de l'action precedente.
+  clearInterval(actionTimer);
+  actionTimer = null;
   actionLabel = label || "";
-  const el = document.getElementById("actionState");
-  if (el) el.textContent = actionLabel ? "Action en cours : " + actionLabel : "";
+  if (actionLabel) {
+    actionStartedAt = Date.now();
+    actionTimer = setInterval(renderActionState, 1000);
+  }
+  renderActionState();
 }
 
 window.addEventListener("beforeunload", (e) => {

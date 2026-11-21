@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Duree de l'action en cours
+
+**Contexte** : la barre d'etat nommait l'action mais pas sa duree, utile pour un
+backup long.
+
+**Modifie (`web/js/app.js`)**
+- `actionStartedAt` et un `setInterval` d'une seconde ; `renderActionState`
+affiche « Action en cours : <libelle> (<duree>) » via `formatElapsed` (« 0 s »,
+« 2 min 05 s »).
+- Le timer est arrete et la ligne videe a la fin (`set_action_running("")`).
+
+**Revue**
+- Un seul intervalle possible : `set_action_running` arrete toujours l'ancien
+timer avant d'en demarrer un, y compris quand le libelle change (duree repartie
+de zero, sans intervalle oublie).
+
+**Verifications**
+- Pilote JS : horloge simulee, scenario `duree_action_en_cours` (0 s au depart,
+1 min 05 s apres 65 s, nouveau libelle a 0 s puis 5 s, arret a la fin) et
+compteurs demarrages/arrets egaux (2/2) pour prouver qu'aucun timer ne fuit ;
+`action_en_cours` mis a jour.
+- `python3 -m unittest discover -s tests` -> 194 tests OK ; `node --check` sur
+les deux fichiers JS ; `git diff --check` -> OK.
+
+**Limites**
+- Aucun navigateur dans la VM : la duree est verifiee sur une horloge simulee,
+pas sur le rendu reel.
+
+**Prochaine action** : lancer un backup et verifier que la duree avance dans
+l'en-tete.
+
+---
+
 ## 2026-11-21 — L'avertissement de fermeture nomme l'action
 
 **Contexte** : le message `beforeunload` restait generique (« sauvegarde,
