@@ -1512,13 +1512,133 @@ class GuiSshSessionTest(unittest.TestCase):
         self.assertEqual(sortie, "/home/fablab\n")
         self.assertTrue(canal.ferme, "le canal doit etre ferme en fin de commande")
 
+    def test_exec_remote_simple_transport_inactif_repasse_non_connecte(self):
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend._require_connection = lambda: None
+        client = _FauxClient(_FauxTransport(actif=False))
+
+        def refuser(*args, **kwargs):
+            raise AssertionError("aucune commande ne doit partir sans transport")
+
+        client.exec_command = refuser
+        self.backend.client = client
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+            self.backend._exec_remote_simple("echo ok")
+
+        self.assertIn("transport inactif", str(contexte.exception))
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+
+    def test_exec_remote_simple_socket_coupe_repasse_non_connecte(self):
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend._require_connection = lambda: None
+        canal = _FauxCanal(sortie=b"/home/fablab\n")
+
+        class _FluxCoupe(_FauxFlux):
+            def read(self):
+                raise OSError("Socket is closed")
+
+        class _ClientCoupe(_FauxClient):
+            def exec_command(self, commande, timeout=None):
+                return (
+                    _FluxCoupe(b"", canal),
+                    _FluxCoupe(b"", canal),
+                    _FluxCoupe(b"", canal),
+                )
+
+        self.backend.client = _ClientCoupe(_FauxTransport(), canal_simple=canal)
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+            self.backend._exec_remote_simple("echo ok")
+
+        self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertTrue(canal.ferme, "le canal doit etre ferme apres la coupure")
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+
+    def test_exec_remote_simple_echec_d_exec_command_repasse_non_connecte(self):
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend._require_connection = lambda: None
+        client = _FauxClient(_FauxTransport())
+
+        def echouer(*args, **kwargs):
+            raise OSError("Socket is closed")
+
+        client.exec_command = echouer
+        self.backend.client = client
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+            self.backend._exec_remote_simple("echo ok")
+
+        self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+
+    def test_coupure_a_l_ouverture_sftp_garde_l_alerte_connexion_perdue(self):
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend.remote_home = "/home/fablab"
+        # Helper absent : `_ensure_remote_helper_ready` part en upload complet.
+        self.backend._exec_remote_simple = lambda commande: "0\n"
+        client = _FauxClient(_FauxTransport())
+
+        def sftp_injoignable():
+            raise OSError("Socket is closed")
+
+        client.open_sftp = sftp_injoignable
+        self.backend.client = client
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+            self.backend._ensure_remote_helper_ready()
+
+        self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+
+    def test_coupure_pendant_l_upload_du_helper_garde_l_alerte_connexion_perdue(self):
+        statuts = []
+        self.backend._set_connection_status = statuts.append
+        self.backend.remote_home = "/home/fablab"
+        # Helper present : `_ensure_remote_helper_ready` ne resynchronise que
+        # le script, ce qui suffit a exercer le `put` en echec.
+        self.backend._exec_remote_simple = lambda commande: "1\n"
+        client = _FauxClient(_FauxTransport())
+
+        class _SftpCoupe:
+            ferme = False
+
+            def put(self, local, distant):
+                raise OSError("Socket is closed")
+
+            def close(self):
+                self.ferme = True
+
+        sftp = _SftpCoupe()
+        client.open_sftp = lambda: sftp
+        self.backend.client = client
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+            self.backend._ensure_remote_helper_ready()
+
+        self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+        self.assertTrue(sftp.ferme, "la session SFTP doit etre fermee apres coupure")
+
     def test_session_inactive_repasse_non_connecte(self):
         self.backend.client = _FauxClient(_FauxTransport(actif=False))
 
-        with self.assertRaises(RuntimeError) as contexte:
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
             self.backend._require_connection()
 
         self.assertIn("Session SSH perdue", str(contexte.exception))
+        self.assertEqual(
+            contexte.exception.detail, "session inactive, clique sur Connecter"
+        )
         self.assertIsNone(self.backend.client)
 
     def test_session_active_ne_deconnecte_pas(self):
@@ -1834,10 +1954,14 @@ class GuiSauvegardeRobustesseTest(unittest.TestCase):
 class _FauxCanalExecution:
     """Canal paramiko minimal : sorties predefinies, blocage ou fermeture."""
 
-    def __init__(self, morceaux=(), code=0, blocage=False):
+    def __init__(self, morceaux=(), code=0, blocage=False, erreur_recu=None, erreur_execution=None):
         self.morceaux = list(morceaux)
         self.code = code
         self.blocage = blocage
+        # Simule un socket coupe : `recv` leve cette erreur une fois.
+        self.erreur_recu = erreur_recu
+        # Simule une session refusee : `exec_command` leve cette erreur.
+        self.erreur_execution = erreur_execution
         self.ferme = False
         self.commande = ""
 
@@ -1846,12 +1970,20 @@ class _FauxCanalExecution:
 
     def exec_command(self, commande):
         self.commande = commande
+        if self.erreur_execution is not None:
+            raise self.erreur_execution
 
     def recv_ready(self):
-        return bool(self.morceaux)
+        return bool(self.morceaux) or self.erreur_recu is not None
 
     def recv(self, _taille):
-        return self.morceaux.pop(0) if self.morceaux else b""
+        if self.morceaux:
+            return self.morceaux.pop(0)
+        if self.erreur_recu is not None:
+            erreur = self.erreur_recu
+            self.erreur_recu = None
+            raise erreur
+        return b""
 
     def recv_stderr_ready(self):
         return False
@@ -1883,6 +2015,43 @@ class _FauxTransportExecution:
 class _FauxClientExecution:
     def __init__(self, canal):
         self.transport = _FauxTransportExecution(canal)
+
+    def get_transport(self):
+        return self.transport
+
+
+class _FauxTransportCoupure:
+    """Actif a l'ouverture du canal, puis coupe pendant la capture."""
+
+    def __init__(self, canal=None, actif_au_depart=True):
+        self.canal = canal
+        self.actif_au_depart = actif_au_depart
+        self.appels = 0
+
+    def is_active(self):
+        self.appels += 1
+        return self.actif_au_depart and self.appels == 1
+
+    def open_session(self):
+        if self.canal is None:
+            # Le controle de transport doit refuser avant toute ouverture.
+            raise AssertionError("aucune session ne doit etre ouverte")
+        return self.canal
+
+
+class _FauxClientCoupure:
+    def __init__(self, canal):
+        self.transport = _FauxTransportCoupure(canal)
+
+    def get_transport(self):
+        return self.transport
+
+
+class _FauxClientInactif:
+    """Transport deja tombe avant meme l'ouverture du canal."""
+
+    def __init__(self):
+        self.transport = _FauxTransportCoupure(actif_au_depart=False)
 
     def get_transport(self):
         return self.transport
@@ -1929,6 +2098,229 @@ class ExecRemoteCaptureTest(unittest.TestCase):
             self.backend._exec_remote_capture("backup", timeout_sec=5)
 
         self.assertIn("annulee", str(contexte.exception))
+        self.assertTrue(canal.ferme)
+
+
+class CoupureReseauCaptureTest(unittest.TestCase):
+    """Coupure reseau en pleine capture : erreur claire, canal toujours ferme."""
+
+    def setUp(self):
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend._require_connection = lambda: None
+        self.backend._log = lambda message: None
+        self.alertes = []
+        self.backend._show_alert = lambda titre, message: self.alertes.append(
+            (titre, message)
+        )
+
+    def _preparer_worker(self):
+        self.backend.state["remote_dir"] = "/opt/fabsuite"
+        self.backend.state["repo_url"] = fabsuite_ssh_gui.DEFAULT_MONOREPO_URL
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._require_helper_files = lambda remote_dir: None
+
+    def test_socket_en_erreur_pendant_la_capture_ferme_le_canal(self):
+        canal = _FauxCanalExecution(
+            [b"[backup] debut\n"], erreur_recu=OSError("Socket is closed")
+        )
+        self.backend.client = _FauxClientExecution(canal)
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._exec_remote_capture("backup", timeout_sec=5)
+
+        self.assertIn("connexion SSH perdue", str(contexte.exception))
+        self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertEqual(contexte.exception.detail, "Socket is closed")
+        self.assertTrue(canal.ferme)
+
+    def test_transport_devenu_inactif_leve_sans_attendre_le_timeout(self):
+        canal = _FauxCanalExecution(blocage=True)
+        self.backend.client = _FauxClientCoupure(canal)
+
+        with self.assertRaises(RuntimeError) as contexte:
+            # Timeout large : seule la detection du transport inactif peut
+            # faire echouer ce test rapidement.
+            self.backend._exec_remote_capture("backup", timeout_sec=30)
+
+        self.assertIn("transport inactif", str(contexte.exception))
+        self.assertTrue(canal.ferme)
+
+    def test_transport_inactif_avant_la_capture_leve_sans_ouvrir_de_canal(self):
+        client = _FauxClientInactif()
+        self.backend.client = client
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+            self.backend._exec_remote_capture("backup", timeout_sec=5)
+
+        self.assertIn("connexion SSH perdue", str(contexte.exception))
+        self.assertIn("transport inactif", str(contexte.exception))
+        self.assertEqual(client.transport.appels, 1)
+
+    def test_echec_d_ouverture_de_session_signale_la_coupure(self):
+        canal = _FauxCanalExecution(erreur_execution=OSError("Socket is closed"))
+        self.backend.client = _FauxClientExecution(canal)
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+            self.backend._exec_remote_capture("backup", timeout_sec=5)
+
+        self.assertIn("connexion SSH perdue", str(contexte.exception))
+        self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertTrue(canal.ferme)
+
+    def test_coupure_pendant_la_capture_repasse_la_session_a_non_connecte(self):
+        """L'en-tete ne reste pas sur « Connecte » apres une coupure."""
+        statuts = []
+        self.backend._set_connection_status = lambda texte: statuts.append(texte)
+        canal = _FauxCanalExecution(erreur_recu=OSError("Socket is closed"))
+        self.backend.client = _FauxClientExecution(canal)
+
+        with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue):
+            self.backend._exec_remote_capture("backup", timeout_sec=5)
+
+        self.assertEqual(statuts, ["Non connecte"])
+        self.assertIsNone(self.backend.client)
+        self.assertTrue(canal.ferme)
+
+    def test_worker_backup_signale_la_coupure_et_ferme_le_canal(self):
+        """Chaine complete : transport coupe -> capture -> alerte GUI."""
+        self._preparer_worker()
+        canal = _FauxCanalExecution(erreur_recu=OSError("Socket is closed"))
+        self.backend.client = _FauxClientCoupure(canal)
+
+        with self.assertRaises(RuntimeError):
+            self.backend._backup_worker_run()
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("canal a ete ferme", message)
+        self.assertIn("[backup]", message)
+        self.assertTrue(canal.ferme)
+        self.assertIsNone(self.backend.client)
+
+    def test_worker_verify_signale_la_coupure(self):
+        self._preparer_worker()
+        canal = _FauxCanalExecution(erreur_recu=OSError("Socket is closed"))
+        self.backend.client = _FauxClientCoupure(canal)
+
+        with self.assertRaises(RuntimeError):
+            self.backend._verify_worker_run()
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("canal a ete ferme", message)
+        self.assertIn("[verify]", message)
+        self.assertTrue(canal.ferme)
+        self.assertIsNone(self.backend.client)
+
+    def test_worker_clear_markers_signale_la_coupure(self):
+        self._preparer_worker()
+        canal = _FauxCanalExecution(erreur_recu=OSError("Socket is closed"))
+        self.backend.client = _FauxClientCoupure(canal)
+
+        with self.assertRaises(RuntimeError):
+            self.backend._clear_markers_worker()
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("canal a ete ferme", message)
+        self.assertIn("[markers]", message)
+        self.assertTrue(canal.ferme)
+        self.assertIsNone(self.backend.client)
+
+    def test_lecteurs_d_etat_gardent_le_libelle_connexion_perdue(self):
+        """Snapshots, volumes, timers, notifications, disque : libelle dedie."""
+        self._preparer_worker()
+        self.backend._is_local_mode = lambda: False
+
+        def coupure(*args, **kwargs):
+            raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        self.backend._exec_remote_simple = coupure
+        self.backend._exec_remote_capture = coupure
+
+        lecteurs = [
+            self.backend.list_snapshots(),
+            self.backend.list_volumes("/home/fablab/suite-2026-11-20"),
+            self.backend.verify_timer_status(),
+            self.backend.backup_timer_status(),
+            self.backend.notify_status(),
+            self.backend.remote_disk_space("/home/fablab"),
+        ]
+        for resultat in lecteurs:
+            self.assertIn("error", resultat)
+            self.assertEqual(
+                resultat["error"],
+                "Connexion perdue : Socket is closed",
+                f"message generique ou duplique: {resultat['error']}",
+            )
+
+    def test_lecteurs_d_etat_session_deja_perdue_gardent_le_libelle(self):
+        """Coupure detectee par `_require_connection` : meme libelle dedie."""
+        # `setUp` neutralise `_require_connection` : ici la vraie detection doit
+        # jouer, avant meme la commande du lecteur.
+        self.backend._require_connection = (
+            fabsuite_ssh_gui.FabSuiteBackend._require_connection.__get__(self.backend)
+        )
+        self.backend._is_local_mode = lambda: False
+
+        lecteurs = [
+            self.backend.list_snapshots,
+            self.backend.verify_timer_status,
+            lambda: self.backend.remote_disk_space("/home/fablab"),
+        ]
+        for lecteur in lecteurs:
+            self.backend.client = _FauxClientInactif()
+            resultat = lecteur()
+            self.assertEqual(
+                resultat["error"],
+                "Connexion perdue : session inactive, clique sur Connecter",
+            )
+            self.assertIsNone(self.backend.client)
+
+    def test_operation_via_core_signale_la_coupure(self):
+        self._preparer_worker()
+        self.backend._resolve_remote_dir = lambda: "/opt/fabsuite"
+        self.backend._core_env_prefix = lambda: ""
+
+        class _ServiceCoupe:
+            def __init__(self, executor):
+                self.executor = executor
+
+            def run(self, operation, ctx):
+                raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        ancien = fabsuite_ssh_gui.DeploymentService
+        fabsuite_ssh_gui.DeploymentService = _ServiceCoupe
+        try:
+            with self.assertRaises(RuntimeError) as contexte:
+                self.backend._run_operation_via_core(fabsuite_ssh_gui.Operation.UPDATE)
+        finally:
+            fabsuite_ssh_gui.DeploymentService = ancien
+
+        self.assertIn("operation interrompue", str(contexte.exception))
+        self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("canal a ete ferme", message)
+        self.assertIn("l'operation update", message)
+
+    def test_worker_restore_signale_la_coupure_et_ferme_le_canal(self):
+        self._preparer_worker()
+        canal = _FauxCanalExecution(blocage=True)
+        self.backend.client = _FauxClientCoupure(canal)
+
+        with self.assertRaises(RuntimeError):
+            self.backend._restore_worker("/home/fablab/suite-x", "/home/fablab/stage")
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("canal a ete ferme", message)
+        self.assertIn("[restore]", message)
         self.assertTrue(canal.ferme)
 
 

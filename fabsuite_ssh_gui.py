@@ -64,6 +64,23 @@ LOCAL_WORKSPACE_ENV = "FABSUITE_LOCAL_WORKSPACE"
 PERSIST_SSH_IDENTITY = False
 
 
+class ConnexionSSHPerdue(RuntimeError):
+    """Transport SSH tombe pendant une commande (ou juste avant).
+
+    Sous-classe de RuntimeError : les appelants qui n'attendent qu'une erreur
+    d'execution restent compatibles, mais les workers peuvent afficher une
+    alerte dediee sans relire le message. `detail` porte la cause courte, pour
+    que les lecteurs d'etat affichent « Connexion perdue : <detail> » sans
+    repeter le message complet.
+    """
+
+    def __init__(self, detail, message=None):
+        self.detail = str(detail)
+        super().__init__(
+            message or f"connexion SSH perdue pendant la commande ({self.detail})"
+        )
+
+
 class GuiRemoteCommandExecutor(CommandExecutor):
     """Command executor bridge for deploy_core -> existing GUI SSH logger."""
 
@@ -680,7 +697,13 @@ class FabSuiteBackend:
             # plutot que de laisser l'en-tete sur « Connecte » et d'echouer
             # action apres action.
             self.disconnect_ssh(silent=True)
-            raise RuntimeError("Session SSH perdue : clique sur Connecter")
+            # Meme type que pendant une commande : les workers et les lecteurs
+            # d'etat gardent leur alerte « Connexion perdue » au lieu d'un
+            # message generique.
+            raise ConnexionSSHPerdue(
+                "session inactive, clique sur Connecter",
+                "Session SSH perdue : clique sur Connecter",
+            )
 
     def _resolve_remote_dir(self):
         remote_dir = self.state.get("remote_dir", DEFAULT_REMOTE_DIR).strip() or DEFAULT_REMOTE_DIR
@@ -693,7 +716,15 @@ class FabSuiteBackend:
     def _exec_remote_simple(self, command):
         self._require_connection()
         wrapped = f"bash -lc {shlex.quote(command)}"
-        stdin, stdout, stderr = self.client.exec_command(wrapped, timeout=30)
+        # `_require_connection` a deja valide le transport ; ce controle couvre
+        # une coupure entre les deux appels.
+        transport = self.client.get_transport()
+        if transport is None or not transport.is_active():
+            raise self._connexion_perdue("transport inactif")
+        try:
+            stdin, stdout, stderr = self.client.exec_command(wrapped, timeout=30)
+        except (OSError, EOFError) as exc:
+            raise self._connexion_perdue(exc) from exc
         # Paramiko garde chaque canal ouvert dans le transport tant qu'il n'est
         # pas ferme : sans cette fermeture, le quota de sessions du serveur
         # (MaxSessions) s'epuise action apres action et la session tombe.
@@ -704,13 +735,33 @@ class FabSuiteBackend:
             out = stdout.read().decode("utf-8", errors="replace")
             err = stderr.read().decode("utf-8", errors="replace")
             code = channel.recv_exit_status()
-        except socket.timeout as exc:
+        # `socket.timeout` herite d'OSError : doit rester avant la branche
+        # ci-dessous pour garder son message dedie.
+        except (socket.timeout, TimeoutError) as exc:
             raise RuntimeError("Remote command timeout (simple).") from exc
+        except (OSError, EOFError) as exc:
+            # Socket ferme ou deconnecte : meme alerte que pendant une capture.
+            raise self._connexion_perdue(exc) from exc
         finally:
             channel.close()
         if code != 0:
             raise RuntimeError(err.strip() or out.strip() or f"command failed with code {code}")
         return out
+
+    def _connexion_perdue(self, detail):
+        """Repasse la session a « Non connecte » puis rend l'erreur dediee.
+
+        Appele pendant une capture : le worker garde son alerte, on remet
+        seulement l'en-tete et le client a zero pour ne pas laisser « Connecte »
+        sur une session morte. Best-effort : une erreur d'interface ne doit
+        jamais masquer l'erreur d'origine.
+        """
+        try:
+            self.disconnect_ssh(silent=True)
+            self._log("Session SSH perdue: etat GUI repasse a Non connecte.")
+        except Exception:
+            self._log("Session SSH perdue: mise a jour de l'etat GUI impossible.")
+        return ConnexionSSHPerdue(detail)
 
     def _exec_remote_capture(self, command, timeout_sec=180):
         """Execute une commande en journalisant sa sortie et la retourne.
@@ -721,9 +772,11 @@ class FabSuiteBackend:
         """
         self._require_connection()
         wrapped = f"bash -lc {shlex.quote(command)}"
+        # `_require_connection` a deja valide le transport ; ce controle couvre
+        # une coupure entre les deux appels, avant qu'un canal existe.
         transport = self.client.get_transport()
         if transport is None or not transport.is_active():
-            raise RuntimeError("SSH transport is not active")
+            raise self._connexion_perdue("transport inactif")
 
         channel = transport.open_session()
         # Comme `_exec_remote_simple`, le canal doit etre ferme dans tous les
@@ -731,7 +784,12 @@ class FabSuiteBackend:
         # compte les sessions ouvertes.
         try:
             channel.settimeout(1.0)
-            channel.exec_command(wrapped)
+            try:
+                channel.exec_command(wrapped)
+            except (OSError, EOFError) as exc:
+                # Session refusee ou transport tombe a l'ouverture : meme
+                # message que pendant la capture (le canal sera ferme plus bas).
+                raise self._connexion_perdue(exc) from exc
 
             start = time.time()
             morceaux = []
@@ -739,6 +797,11 @@ class FabSuiteBackend:
             while True:
                 if self._cancel_requested.is_set():
                     raise RuntimeError("action annulee par l'operateur")
+                # Le transport peut tomber pendant la commande : sans ce
+                # controle, la boucle attendrait le timeout complet (jusqu'a
+                # 900 s) au lieu de signaler la coupure tout de suite.
+                if not transport.is_active():
+                    raise self._connexion_perdue("transport inactif")
                 had_data = False
 
                 try:
@@ -755,8 +818,13 @@ class FabSuiteBackend:
                             morceaux.append(chunk)
                             self._log(chunk.rstrip())
                             had_data = True
-                except socket.timeout:
+                # `socket.timeout` herite d'OSError : doit rester avant.
+                except (socket.timeout, TimeoutError):
                     pass
+                except (OSError, EOFError) as exc:
+                    # Socket ferme ou deconnecte : message actionnable plutot
+                    # qu'un errno brut remonte par le worker.
+                    raise self._connexion_perdue(exc) from exc
 
                 if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
                     code = channel.recv_exit_status()
@@ -1092,18 +1160,25 @@ class FabSuiteBackend:
     # ─── Deploy_core integration (SSH) ───
 
     def _run_operation_via_core(self, operation, raise_on_failure=True):
-        self._ensure_remote_helper_ready()
+        try:
+            self._ensure_remote_helper_ready()
 
-        ctx = WorkflowContext(
-            mode=DeploymentMode.SSH,
-            remote_dir=self._resolve_remote_dir(),
-            helper_script="fabsuite-ubuntu.sh",
-            logs_app=(self.state.get("logs_app", "Fabtrack").strip() or "Fabtrack"),
-        )
-        ctx.extras["env_prefix"] = self._core_env_prefix()
+            ctx = WorkflowContext(
+                mode=DeploymentMode.SSH,
+                remote_dir=self._resolve_remote_dir(),
+                helper_script="fabsuite-ubuntu.sh",
+                logs_app=(self.state.get("logs_app", "Fabtrack").strip() or "Fabtrack"),
+            )
+            ctx.extras["env_prefix"] = self._core_env_prefix()
 
-        service = DeploymentService(GuiRemoteCommandExecutor(self._exec_remote_logged))
-        result = service.run(operation, ctx)
+            service = DeploymentService(GuiRemoteCommandExecutor(self._exec_remote_logged))
+            result = service.run(operation, ctx)
+        except ConnexionSSHPerdue as exc:
+            # Une coupure ne doit pas devenir « Workflow interrompu » : l'alerte
+            # et le tag de journal restent ceux des autres actions SSH.
+            libelle = f"l'operation {operation.value}"
+            self._alerter_connexion_perdue(libelle, f"de {libelle}")
+            raise RuntimeError(f"operation interrompue: {exc}") from exc
 
         if raise_on_failure and result.stopped_early and result.results:
             failed = result.results[-1]
@@ -1135,6 +1210,30 @@ class FabSuiteBackend:
 
         return candidates[-1]
 
+    def _open_sftp(self):
+        """Ouvre une session SFTP en gardant le type de coupure.
+
+        Un transport tombe fait lever `OSError`/`EOFError` a l'ouverture : on
+        les convertit comme le reste des appels SSH, sinon le worker affiche
+        « upload impossible » au lieu de « Connexion perdue ».
+        """
+        try:
+            return self.client.open_sftp()
+        except (OSError, EOFError) as exc:
+            raise self._connexion_perdue(exc) from exc
+
+    @staticmethod
+    def _close_sftp(sftp):
+        """Ferme la session SFTP sans masquer l'erreur d'origine.
+
+        Sur une connexion perdue, `close()` leve a son tour : l'erreur reelle
+        (coupure ou upload echoue) doit rester celle qui remonte.
+        """
+        try:
+            sftp.close()
+        except Exception:
+            pass
+
     def _installer_local_files(self):
         return [
             self._resolve_local_installer_file("fabsuite-ubuntu.sh"),
@@ -1150,14 +1249,16 @@ class FabSuiteBackend:
 
         self._exec_remote_simple(f"mkdir -p {shlex.quote(remote_dir)}")
 
-        sftp = self.client.open_sftp()
+        sftp = self._open_sftp()
         try:
             for f in files:
                 remote_path = f"{remote_dir}/{f.name}"
                 self._log(f"Upload {f.name} -> {remote_path}")
                 sftp.put(str(f), remote_path)
+        except (OSError, EOFError) as exc:
+            raise self._connexion_perdue(exc) from exc
         finally:
-            sftp.close()
+            self._close_sftp(sftp)
 
         normalize_cmd = "sed -i 's/\\r$//' " + " ".join(
             shlex.quote(f"{remote_dir}/{f.name}") for f in files
@@ -1172,12 +1273,14 @@ class FabSuiteBackend:
 
         self._exec_remote_simple(f"mkdir -p {shlex.quote(remote_dir)}")
         remote_path = remote_dir + "/fabsuite-ubuntu.sh"
-        sftp = self.client.open_sftp()
+        sftp = self._open_sftp()
         try:
             self._log(f"Sync helper -> {remote_path}")
             sftp.put(str(helper), remote_path)
+        except (OSError, EOFError) as exc:
+            raise self._connexion_perdue(exc) from exc
         finally:
-            sftp.close()
+            self._close_sftp(sftp)
 
         self._exec_remote_simple(f"sed -i 's/\\r$//' {shlex.quote(remote_path)}")
         self._exec_remote_simple(f"chmod +x {shlex.quote(remote_path)}")
@@ -1250,6 +1353,10 @@ fi
         )
         try:
             sortie = self._exec_remote_simple(commande)
+        except ConnexionSSHPerdue:
+            # Une coupure doit garder son type : le worker affiche l'alerte
+            # « Connexion perdue » au lieu d'un « Helper indisponible ».
+            raise
         except Exception as exc:
             raise RuntimeError(
                 f"Helper indisponible: impossible de le verifier ({exc})"
@@ -1765,6 +1872,19 @@ exit 0
             return False
         return True
 
+    def _alerter_connexion_perdue(self, action, journal):
+        """Alerte dediee : le canal est ferme, le helper peut continuer.
+
+        `action` est une formule complete (« la sauvegarde », « l'operation
+        install ») : le texte reste lisible pour les workers et les operations.
+        """
+        self._show_alert(
+            "Connexion perdue",
+            f"La connexion SSH a ete coupee pendant {action}. Le canal a "
+            "ete ferme cote GUI ; le helper peut continuer sur le serveur.\n\n"
+            f"Verifie le journal {journal} apres reconnexion avant de relancer.",
+        )
+
     def _backup_worker(self):
         try:
             self._backup_worker_run()
@@ -1776,6 +1896,9 @@ exit 0
         self._log("Sauvegarde suite: snapshot verifie en cours...")
         try:
             code, sortie = self._run_helper_action_capture("backup")
+        except ConnexionSSHPerdue as exc:
+            self._alerter_connexion_perdue("la sauvegarde", "[backup]")
+            raise RuntimeError(f"sauvegarde interrompue: {exc}") from exc
         except Exception as exc:
             if "annulee" in str(exc):
                 self._show_alert(
@@ -1878,6 +2001,9 @@ exit 0
                 self._helper_command("verify", extra_args=["--all"]),
                 timeout_sec=900,
             )
+        except ConnexionSSHPerdue as exc:
+            self._alerter_connexion_perdue("la verification", "[verify]")
+            raise RuntimeError(f"verification interrompue: {exc}") from exc
         except Exception as exc:
             self._show_alert(
                 "Verification impossible",
@@ -1968,6 +2094,9 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("clear-markers"), timeout_sec=300
             )
+        except ConnexionSSHPerdue as exc:
+            self._alerter_connexion_perdue("l'acquittement", "[markers]")
+            raise RuntimeError(f"acquittement interrompu: {exc}") from exc
         except Exception as exc:
             self._show_alert(
                 "Acquittement impossible",
@@ -2094,6 +2223,8 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("verify-timer-status"), timeout_sec=60
             )
+        except ConnexionSSHPerdue as exc:
+            return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
             return {"error": f"Impossible de lire l'etat du timer: {exc}"}
 
@@ -2114,6 +2245,8 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("backup-timer-status"), timeout_sec=60
             )
+        except ConnexionSSHPerdue as exc:
+            return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
             return {"error": f"Impossible de lire l'etat du timer: {exc}"}
 
@@ -2162,6 +2295,8 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("notify-status"), timeout_sec=60
             )
+        except ConnexionSSHPerdue as exc:
+            return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
             return {"error": f"Impossible de lire l'etat des notifications: {exc}"}
 
@@ -2292,6 +2427,9 @@ exit 0
             code, sortie = self._run_helper_action_capture(
                 "restore", extra_args=args
             )
+        except ConnexionSSHPerdue as exc:
+            self._alerter_connexion_perdue("la restauration", "[restore]")
+            raise RuntimeError(f"restauration interrompue: {exc}") from exc
         except Exception as exc:
             if "annulee" in str(exc):
                 self._show_alert(
@@ -2412,6 +2550,8 @@ exit 0
             self._require_connection()
             self._ensure_remote_helper_ready()
             sortie = self._exec_remote_simple(self._helper_command("snapshots"))
+        except ConnexionSSHPerdue as exc:
+            return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
             if "MISE A JOUR REQUISE" in str(exc):
                 return {
@@ -2459,6 +2599,8 @@ exit 0
             sortie = self._exec_remote_simple(
                 self._helper_command("volumes", extra_args=["--snapshot", snapshot])
             )
+        except ConnexionSSHPerdue as exc:
+            return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
             if "MISE A JOUR REQUISE" in str(exc):
                 return {
@@ -2514,6 +2656,8 @@ exit 0
                 'df -Pk -- "$p"'
             )
             sortie = self._exec_remote_simple(commande)
+        except ConnexionSSHPerdue as exc:
+            return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
             return {"error": f"Impossible de lire l'espace disque: {exc}"}
 

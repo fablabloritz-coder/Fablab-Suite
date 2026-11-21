@@ -24,13 +24,18 @@ droits reels et les chemins du serveur.
 | 5 | Restauration non inscriptible | destination vide en `0555`, `restore --snapshot ... --dest ...` | code 2, `[restore] ERROR: destination non inscriptible`, `[restore] ECHEC: ... (1 erreur(s))`, staging vide |
 | 6 | Restauration sur destination non vide | creer un fichier dans la destination | code 2, `destination non vide`, rien n'est ecrase |
 | 7 | Snapshot altere | tronquer une archive puis `verify --all` | snapshot invalide signale, aucun marqueur efface |
-| 8 | Reseau coupe pendant un backup | couper le lien SSH pendant la capture | alerte « Sauvegarde impossible » ou « interrompue » ; le helper peut continuer, verifier `[backup]` au retour |
+| 8 | Reseau coupe pendant un backup | couper le lien SSH pendant la capture (`sudo ifdown <iface>` ou retirer le cable) | alerte « Connexion perdue », en-tete « Non connecte », texte « sauvegarde interrompue » ; le helper peut continuer, verifier `[backup]` au retour |
 | 9 | Annulation GUI | cliquer « Annuler » pendant un backup | alerte « Sauvegarde interrompue », canal ferme ; verifier sur le serveur si le helper a fini |
 | 10 | Restauration puis controle | restaurer dans un staging, verifier l'integrite, copier vers les donnees | voir `docs/RESTAURATION_RUNBOOK.md` |
+| 11 | Coupure pendant une restauration ou une verification | couper le lien SSH pendant `restore` / `verify --all`, puis pendant `clear-markers` | alerte « Connexion perdue » avec le tag `[restore]` / `[verify]` / `[markers]`, « ... interrompu », en-tete « Non connecte » |
+| 12 | Coupure sur les lecteurs d'etat | couper le lien puis rafraichir snapshots, volumes, timers, notifications et espace disque | chaque etat affiche « Connexion perdue : <cause> » (jamais « Impossible de lire... ») et l'en-tete passe a « Non connecte » |
+| 13 | Coupure sur une operation deploy_core | couper le lien pendant install / update / migrate | alerte « Connexion perdue » avec le tag « de l'operation <nom> » et « operation interrompue: ... », pas « Workflow interrompu » |
 
 ## Apres chaque cas
 
 1. Verifier `ls -la "$FABSUITE_BACKUP_DIR"` : pas de dossier `suite-*` partiel.
+1. Verifier que l'en-tete de session affiche « Non connecte » apres une coupure, et
+   qu'une seule alerte « Connexion perdue » apparait (pas de doublon apres le worker).
 2. Verifier `[backup]` / `[restore]` dans le journal du GUI.
 3. Verifier que l'alerte contient la ligne du helper, pas seulement « code 2 ».
 4. Pour un echec attendu, relancer une operation saine et verifier qu'elle

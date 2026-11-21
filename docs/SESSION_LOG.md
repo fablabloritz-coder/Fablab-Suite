@@ -6,6 +6,275 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Matrice d'acceptation etendue aux coupures reseau
+
+**Contexte** : la revue avait identifie une limite : la VM ne peut pas couper
+un vrai lien SSH, donc les libelles « Connexion perdue » restaient non
+verifies sur serveur reel.
+
+**Modifie (`docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md`)**
+- Cas 8 (coupure pendant un backup) aligne sur le comportement livre :
+  alerte « Connexion perdue », en-tete « Non connecte », « sauvegarde
+  interrompue » (au lieu de « Sauvegarde impossible »).
+- Nouveaux cas 11 a 13 : coupure pendant restore/verify/clear-markers (tags
+  `[restore]`, `[verify]`, `[markers]`), coupure sur les six lecteurs d'etat
+  (« Connexion perdue : <cause> », jamais « Impossible de lire... »), coupure
+  sur une operation deploy_core (« de l'operation <nom> », pas « Workflow
+  interrompu »).
+- Check-list « Apres chaque cas » : en-tete « Non connecte » et une seule
+  alerte (pas de doublon apres le worker).
+
+**Tests** : aucun changement de code ni de test ; `python3 -m unittest
+  discover -s tests` -> 256 tests OK.
+
+**Prochaine action** : derouler la matrice sur un serveur Ubuntu reel, en
+commencant par `sudo ifdown <iface>` pendant un backup.
+
+---
+
+## 2026-11-21 — Revue fraiche du chantier « coupure reseau »
+
+**Contexte** : relecture de l'ensemble des changements non commites (session
+« Non connecte », `_exec_remote_simple`, upload helper, workers verify/clear-
+markers, lecteurs d'etat, `_run_operation_via_core`) : simplifier, retirer
+l'inutile, verifier la coherence des messages.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_erreur_connexion_perdue` supprimee : `ConnexionSSHPerdue` porte desormais
+  elle-meme le message et expose `detail` (cause courte). Un seul point de
+  construction du message pour toute la chaine.
+- Lecteurs d'etat : `Connexion perdue : <detail>` au lieu de
+  `Connexion perdue : connexion SSH perdue pendant la commande (...)`, qui
+  repétait la formule.
+- `_require_connection` leve `ConnexionSSHPerdue` (message inchange
+  `Session SSH perdue : clique sur Connecter`) : une session deja morte
+  declenche l'alerte et le libelle dedies des workers et des lecteurs, au lieu
+  d'un « Verification impossible » / « Impossible de lire… ».
+- `_exec_remote_simple` : `except (socket.timeout, TimeoutError)` comme la
+  capture (symetrie, ordre avant `OSError` documente aux deux endroits).
+- `_run_operation_via_core` : libelle d'operation calcule une fois.
+
+**Tests (`tests/test_ssh_gui_backup.py`)**
+- `test_lecteurs_d_etat_gardent_le_libelle_connexion_perdue` : egalite exacte
+  du message (interdit aussi la duplication) au lieu d'un simple prefixe.
+- Nouveau `test_lecteurs_d_etat_session_deja_perdue_gardent_le_libelle` :
+  coupure vue par `_require_connection` (client libere, libelle dedie).
+- `test_session_inactive_repasse_non_connecte` attend le type dedie et son
+  `detail` ; `test_socket_en_erreur_pendant_la_capture...` verifie `detail`.
+- `test_operation_via_core_signale_la_coupure` verifie aussi la cause dans
+  l'erreur remontee.
+
+**Limites** : coupures simulees, toujours pas de serveur SSH reel ni de
+navigateur dans la VM.
+
+**Prochaine action** : verifier sur serveur reel le libelle « Connexion
+perdue » dans les etats timer/notifications apres un `ifdown`.
+
+---
+
+## 2026-11-21 — Coupure reseau sur les lecteurs d'etat et `_run_operation_via_core`
+
+**Contexte** : les lecteurs d'etat (`list_snapshots`, `list_volumes`,
+`verify_timer_status`, `backup_timer_status`, `notify_status`,
+`remote_disk_space`) et `_run_operation_via_core` transformaient une coupure
+deja detectee en message generique (« Impossible de lire… », « Workflow
+interrompu »).
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- Chaque lecteur a une branche `except ConnexionSSHPerdue` avant la branche
+  generique : `{"error": "Connexion perdue : <detail>"}`, affiche tel quel
+  dans le modal ou le libelle d'etat.
+- `_run_operation_via_core` : corps dans un `try`, branche
+  `except ConnexionSSHPerdue` -> `_alerter_connexion_perdue("l'operation X",
+  "de l'operation X")` puis `RuntimeError("operation interrompue: …")`.
+- `_alerter_connexion_perdue` prend desormais une formule complete
+  (« la sauvegarde », « l'operation install ») au lieu d'un mot apres
+  « pendant la » ; les quatre appelants existants sont mis a jour, texte
+  inchange pour eux.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `CoupureReseauCaptureTest`)**
+- `test_lecteurs_d_etat_gardent_le_libelle_connexion_perdue` : les six
+  lecteurs renvoient « Connexion perdue : … » sans « Impossible de ».
+- `test_operation_via_core_signale_la_coupure` : une seule alerte
+  « Connexion perdue », tag « l'operation update », erreur explicite.
+
+**Limites** : coupures simulees, pas de serveur SSH reel dans la VM.
+
+**Prochaine action** : verifier sur un serveur reel le rendu du libelle
+« Connexion perdue » dans les etats timer/notifications apres un `ifdown`.
+
+---
+
+
+**Contexte** : `_verify_worker_run` et `_clear_markers_worker` attrapaient
+encore `Exception` en premier et affichaient « Verification impossible » /
+« Acquittement impossible » meme quand la coupure etait deja detectee par
+`_exec_remote_capture`.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- Branche `except ConnexionSSHPerdue` ajoutee avant la branche generique dans
+  les deux workers : `_alerter_connexion_perdue("verification", "[verify]")`
+  et `("acquittement", "[markers]")`, puis `RuntimeError` explicite
+  (« verification/acquittement interrompu »).
+- Les autres echecs (timeout, code non nul, annulation) gardent leur alerte
+  actuelle : la branche generique est inchangee.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `CoupureReseauCaptureTest`)**
+- `test_worker_verify_signale_la_coupure` et
+  `test_worker_clear_markers_signale_la_coupure` : chaine complete avec
+  transport coupe, une seule alerte « Connexion perdue », tag de journal
+  attendu, canal ferme et client libere.
+- `test_clear_markers_signale_l_erreur_ssh` (RuntimeError generique) conserve
+  son alerte « Acquittement impossible ».
+
+**Limites** : coupures simulees, pas de serveur SSH reel dans la VM.
+
+**Prochaine action** : meme garde pour `_run_operation_via_core` et les
+lecteurs d'etat (timer, notifications, snapshots), qui renvoient encore un
+message generique.
+
+---
+
+
+**Contexte** : `_ensure_remote_helper_ready` laissait remonter les `OSError`
+bruts de `open_sftp()`/`sftp.put()` ; le worker les enveloppait dans un
+« sauvegarde/restauration impossible » generique et l'en-tete restait sur
+« Connecte ».
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_open_sftp()` : ouverture SFTP avec conversion `OSError`/`EOFError` en
+  `ConnexionSSHPerdue` via `_connexion_perdue` (client ferme, en-tete
+  « Non connecte »).
+- `_upload_installer_files` et `_upload_helper_script_only` : un `put` en
+  echec est converti de la meme facon.
+- `_close_sftp()` : la fermeture ne masque plus l'erreur d'origine (sur une
+  connexion morte, `close()` leve a son tour).
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiSshSessionTest`)**
+- coupure a l'ouverture SFTP et coupure pendant le `put` : les deux gardent
+  `ConnexionSSHPerdue`, le statut « Non connecte » et liberent le client ;
+  la session SFTP est fermee apres l'echec d'upload.
+
+**Limites** : pas de serveur SSH reel dans la VM, coupures simulees.
+
+**Prochaine action** : meme traitement pour les alertes des workers
+`_verify_worker_run` / `_clear_markers_worker`, qui enveloppent encore une
+coupure dans « Verification impossible » / « Acquittement impossible ».
+
+---
+
+
+**Contexte** : la detection ajoutee a `_exec_remote_capture` manquait sur
+`_exec_remote_simple` (lecture de `$HOME`, scan, verification du helper) : un
+transport tombe entre `_require_connection` et la commande remontait un errno
+brut et laissait l'en-tete sur « Connecte ».
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_exec_remote_simple` : controle du transport avant la commande, conversion
+  des `OSError`/`EOFError` de `exec_command` et des lectures en
+  `ConnexionSSHPerdue` via `_connexion_perdue` (session repassee a « Non
+  connecte »). Le `socket.timeout` garde son message « Remote command
+  timeout (simple). » et le canal reste ferme dans le `finally`.
+- `_require_helper_files` relaie `ConnexionSSHPerdue` sans l'envelopper : une
+  coupure pendant la verification du helper garde l'alerte dediee.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiSshSessionTest`)**
+- transport inactif avant la commande, socket coupe pendant la lecture (canal
+  ferme verifie) et `exec_command` en echec : chacun verifie le statut
+  « Non connecte » et la liberation du client.
+
+**Limites** : toujours pas de serveur SSH reel ni de navigateur dans la VM.
+
+**Prochaine action** : revoir la revue de risque sur `_ensure_remote_helper_ready`,
+qui enveloppe encore certaines erreurs SSH dans un message generique.
+
+---
+
+
+**Contexte** : apres une coupure detectee pendant une capture, le client
+restait en place et l'en-tete affichait « Connecte » jusqu'a l'action
+suivante (`_require_connection` corrigeait alors l'etat).
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_connexion_perdue(detail)` : appele aux trois detections de coupure de
+  `_exec_remote_capture`, il ferme le client via `disconnect_ssh(silent=True)`
+  (en-tete « Non connecte », listes et etat des boutons remis a zero) puis
+  rend l'erreur `ConnexionSSHPerdue`. `silent=True` evite le refus « action en
+  cours » : le worker n'est pas interrompu et garde son alerte dediee.
+  L'appel est best-effort : une erreur d'interface n'empeche pas la levee.
+
+**Tests (`tests/test_ssh_gui_backup.py`)**
+- `test_coupure_pendant_la_capture_repasse_la_session_a_non_connecte` :
+  statut « Non connecte », client libere, canal ferme. Le test worker backup
+  verifie en plus que le client est bien libere apres l'alerte.
+
+**Limites** : toujours pas de serveur SSH reel ni de navigateur dans la VM.
+
+**Prochaine action** : couvrir de la meme facon `_exec_remote_simple` si une
+coupure y devient un cas d'usage observable.
+
+---
+
+
+**Contexte** : revue fraiche du chantier precedent. Deux trous restaient :
+une coupure entre `_require_connection` et l'ouverture du canal remontait
+« SSH transport is not active » (alerte generique), et un `exec_command` en
+echec remontait l'errno brut. L'alerte des workers dependait aussi d'un test
+de sous-chaine sur le message.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `ConnexionSSHPerdue` (sous-classe de `RuntimeError`) + `_erreur_connexion_perdue` :
+  un seul message, « connexion SSH perdue pendant la commande (...) », pour le
+  transport inactif avant capture, pendant la boucle et pour les `OSError`/
+  `EOFError` des `recv` et de `exec_command`.
+- `_backup_worker_run` et `_restore_worker` attrapent le type et non plus le
+  texte ; l'alerte est factorisee dans `_alerter_connexion_perdue(action, journal)`.
+- Canal : la fermeture reste unique (`finally`), desormais atteinte aussi quand
+  `exec_command` echoue.
+
+**Tests (`tests/test_ssh_gui_backup.py`)**
+- `test_transport_inactif_avant_la_capture_leve_sans_ouvrir_de_canal` et
+  `test_echec_d_ouverture_de_session_signale_la_coupure` (canal ferme verifie).
+  Les quatre cas existants sont inchanges.
+
+**Limites** : toujours pas de serveur SSH reel ni de navigateur dans la VM.
+
+**Prochaine action** : couvrir de la meme facon `_exec_remote_simple` si une
+coupure y devient un cas d'usage observable.
+
+---
+
+
+**Contexte** : le timeout de capture etait le seul filet en cas de coupure.
+Un transport devenu inactif faisait tourner la boucle jusqu'a 180 s (900 s
+pour `verify`) avant l'alerte, et un socket en erreur remontait un errno brut.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_exec_remote_capture` verifie `transport.is_active()` a chaque tour : une
+  coupure est signalee immediatement (`connexion SSH perdue ... transport
+  inactif`) au lieu d'attendre le timeout. Les erreurs `OSError`/`EOFError`
+  des `recv` deviennent le meme message actionnable. Le canal reste ferme
+  dans le `finally` existant.
+- `_backup_worker_run` et `_restore_worker` affichent une alerte dediee
+  « Connexion perdue » (canal ferme cote GUI, helper possiblement toujours
+  actif, journal `[backup]`/`[restore]` a verifier) au lieu du message
+  generique « Impossible de lancer ».
+
+**Tests (`tests/test_ssh_gui_backup.py`)**
+- `CoupureReseauCaptureTest` : `recv` en erreur en pleine capture, transport
+  devenu inactif (timeout large pour prouver la detection immediate), et
+  chaine complete transport -> capture -> alerte pour backup et restore.
+  Chaque cas verifie que le canal est ferme.
+
+**Limites**
+- Apres la coupure, le helper lance peut continuer sur le serveur : le GUI ne
+  peut pas le tuer, d'ou le conseil de relire `[backup]`/`[restore]`.
+
+**Prochaine action** : couvrir de la meme facon `_exec_remote_simple` si une
+coupure y devient un cas d'usage observable.
+
+---
+
 ## 2026-11-21 — Verrou commun et espace libre distant
 
 **Contexte** : deux ameliorations restaient listees apres la fiabilisation :
