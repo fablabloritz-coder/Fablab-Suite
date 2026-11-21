@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Alerte « Non connecte » pour les actions sans session
+
+**Contexte** : dernier point de l'inventaire. Sans session, `_require_connection`
+levait un `RuntimeError` generique : les workers affichaient « Sauvegarde
+impossible : ... Non connecte » et les actions `_run_async` (journaux,
+fichiers, cleanup...) restaient muettes.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- Nouvelle exception `NonConnecte(RuntimeError)` : precondition, distincte de
+  `ConnexionSSHPerdue` (rien n'est perdu, il suffit de se connecter).
+- `_require_connection` la leve quand `client is None`; message inchange
+  (« Non connecte : clique sur Connecter »).
+- `_run_async` : branche dediee -> alerte « Non connecte » (« Aucune session
+  SSH active. Clique sur Connecter, puis relance « <action> » »).
+- `_backup_worker_run`, `_verify_worker_run`, `_clear_markers_worker`,
+  `_restore_worker`, `_timer_worker` et `_require_helper_files` relancent le
+  type tel quel : plus de « ... impossible » ni « Helper indisponible », une
+  seule alerte (celle de `_run_async`).
+- Aucune alerte « Connexion perdue » pour ce cas : la session n'a jamais existe.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `NonConnecteTest`)**
+- `_run_async` sans session : une seule alerte « Non connecte » avec le
+  libelle de l'action ; `_action_running` retombe.
+- Backup et timer sans session : `NonConnecte` propage, aucune alerte
+  generique. `_require_helper_files` relance le type.
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 275 tests OK (~15 s).
+
+**Prochaine action** : verifier la matrice 8 et 11-23 sur serveur reel.
+
+---
+
 ## 2026-11-21 — Connexion initiale et erreurs `SSHException`
 
 **Contexte** : inventaire des appels SSH restants. Deux trous : un echec de

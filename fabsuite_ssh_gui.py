@@ -97,6 +97,16 @@ def _erreurs_transport():
     return erreurs
 
 
+class NonConnecte(RuntimeError):
+    """Precondition : aucune session SSH active.
+
+    Distincte de `ConnexionSSHPerdue` : rien n'a ete perdu, il suffit de se
+    connecter. `_run_async` en fait une alerte « Non connecte », et les
+    workers qui ont une alerte d'echec dediee relancent ce type pour ne pas
+    afficher « Sauvegarde impossible ».
+    """
+
+
 class GuiRemoteCommandExecutor(CommandExecutor):
     """Command executor bridge for deploy_core -> existing GUI SSH logger."""
 
@@ -593,6 +603,15 @@ class FabSuiteBackend:
             self._log(f"--- {label} ---")
             try:
                 target()
+            except NonConnecte as exc:
+                # Precondition, pas une coupure : les workers a alerte dediee
+                # relancent ce type pour eviter « ... impossible ».
+                self._show_alert(
+                    "Non connecte",
+                    "Aucune session SSH active. Clique sur Connecter, puis "
+                    f"relance « {label} ».",
+                )
+                self._log(f"Action refusee ({label}): {exc}")
             except ConnexionSSHPerdue as exc:
                 # Dernier filet pour les actions qui ne font pas d'alerte
                 # dediee (journaux, cleanup, prepare-host, repair-env,
@@ -721,7 +740,7 @@ class FabSuiteBackend:
 
     def _require_connection(self):
         if self.client is None:
-            raise RuntimeError("Non connecte : clique sur Connecter")
+            raise NonConnecte("Non connecte : clique sur Connecter")
 
         try:
             transport = self.client.get_transport()
@@ -1437,9 +1456,10 @@ fi
         )
         try:
             sortie = self._exec_remote_simple(commande)
-        except ConnexionSSHPerdue:
-            # Une coupure doit garder son type : le worker affiche l'alerte
-            # « Connexion perdue » au lieu d'un « Helper indisponible ».
+        except (ConnexionSSHPerdue, NonConnecte):
+            # Une coupure ou une session absente doit garder son type : le
+            # worker affiche l'alerte dediee au lieu d'un « Helper
+            # indisponible ».
             raise
         except Exception as exc:
             raise RuntimeError(
@@ -2006,6 +2026,9 @@ exit 0
         self._log("Sauvegarde suite: snapshot verifie en cours...")
         try:
             code, sortie = self._run_helper_action_capture("backup")
+        except NonConnecte:
+            # Precondition, pas une coupure : l'alerte vient de `_run_async`.
+            raise
         except ConnexionSSHPerdue as exc:
             self._alerter_connexion_perdue("la sauvegarde", "[backup]")
             raise RuntimeError(f"sauvegarde interrompue: {exc}") from exc
@@ -2111,6 +2134,8 @@ exit 0
                 self._helper_command("verify", extra_args=["--all"]),
                 timeout_sec=900,
             )
+        except NonConnecte:
+            raise
         except ConnexionSSHPerdue as exc:
             self._alerter_connexion_perdue("la verification", "[verify]")
             raise RuntimeError(f"verification interrompue: {exc}") from exc
@@ -2204,6 +2229,8 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("clear-markers"), timeout_sec=300
             )
+        except NonConnecte:
+            raise
         except ConnexionSSHPerdue as exc:
             self._alerter_connexion_perdue("l'acquittement", "[markers]")
             raise RuntimeError(f"acquittement interrompu: {exc}") from exc
@@ -2446,6 +2473,9 @@ exit 0
 
         try:
             code, sortie = self._exec_helper_action_capture(action)
+        except NonConnecte:
+            # Precondition : `_run_async` affiche « Non connecte ».
+            raise
         except ConnexionSSHPerdue as exc:
             # Une coupure garde l'alerte et le tag de journal des timers ; le
             # rafraichissement est inutile puisque la session est deja fermee.
@@ -2545,6 +2575,8 @@ exit 0
             code, sortie = self._run_helper_action_capture(
                 "restore", extra_args=args
             )
+        except NonConnecte:
+            raise
         except ConnexionSSHPerdue as exc:
             self._alerter_connexion_perdue("la restauration", "[restore]")
             raise RuntimeError(f"restauration interrompue: {exc}") from exc

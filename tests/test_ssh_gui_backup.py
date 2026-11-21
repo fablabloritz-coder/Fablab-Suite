@@ -2073,6 +2073,85 @@ class GuiSshSessionTest(unittest.TestCase):
         )
 
 
+class NonConnecteTest(unittest.TestCase):
+    """Actions lancees sans session : alerte « Non connecte », pas « perdue »."""
+
+    def setUp(self):
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend._log = lambda message: None
+        self.backend._set_action_running = lambda label="": None
+        self.backend._set_actions_enabled = lambda actif: None
+        self.alertes = []
+        self.backend._show_alert = lambda titre, message: self.alertes.append(
+            (titre, message)
+        )
+
+    def _lancer(self, label, cible):
+        """Execute `_run_async` de facon synchrone (thread immediat)."""
+
+        class _FauxThread:
+            def __init__(self, **kwargs):
+                self.cible = kwargs["target"]
+
+            def start(self):
+                self.cible()
+
+        ancien = fabsuite_ssh_gui.threading.Thread
+        fabsuite_ssh_gui.threading.Thread = _FauxThread
+        try:
+            self.backend._run_async(label, cible)
+        finally:
+            fabsuite_ssh_gui.threading.Thread = ancien
+
+    def test_action_sans_session_affiche_une_alerte_non_connecte(self):
+        self._lancer("Logs all", lambda: self.backend._require_connection())
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Non connecte")
+        self.assertIn("Logs all", message)
+        self.assertIn("Clique sur Connecter", message)
+        self.assertFalse(self.backend._action_running)
+
+    def test_backup_sans_session_ne_devient_pas_sauvegarde_impossible(self):
+        with self.assertRaises(fabsuite_ssh_gui.NonConnecte):
+            self.backend._backup_worker_run()
+
+        self.assertEqual(
+            self.alertes,
+            [],
+            "le worker ne doit pas afficher « Sauvegarde impossible »",
+        )
+
+    def test_timer_sans_session_relance_non_connecte(self):
+        def coupure(action, timeout_sec=180):
+            raise fabsuite_ssh_gui.NonConnecte(
+                "Non connecte : clique sur Connecter"
+            )
+
+        self.backend._exec_helper_action_capture = coupure
+
+        with self.assertRaises(fabsuite_ssh_gui.NonConnecte):
+            self.backend._timer_worker("backup", "install-backup-timer")
+
+        self.assertEqual(
+            self.alertes,
+            [],
+            "le worker ne doit pas afficher « Mise en service impossible »",
+        )
+
+    def test_require_helper_files_relance_non_connecte(self):
+        def coupure(commande):
+            raise fabsuite_ssh_gui.NonConnecte(
+                "Non connecte : clique sur Connecter"
+            )
+
+        self.backend._exec_remote_simple = coupure
+
+        with self.assertRaises(fabsuite_ssh_gui.NonConnecte):
+            self.backend._require_helper_files("/opt/fabsuite")
+
+
 class GuiSauvegardeRobustesseTest(unittest.TestCase):
     """Garde-fous destination, fraicheur et annulation de la carte Sauvegarde."""
 
