@@ -198,6 +198,18 @@ class BackupStatesJsTest(unittest.TestCase):
         self.assertTrue(mesures["dialogue_ferme"])
 
 
+    def test_restauration_affiche_l_espace_libre_distant(self):
+        """Le modal compare l'espace libre du chemin saisi au total decompresse."""
+        self.assertIn(
+            "espace_disque", self.dialogues, "scenario espace disque absent du pilote"
+        )
+        mesures = self.dialogues["espace_disque"]
+        self.assertIn("Espace libre : 5.0 Go (/", mesures["texte"])
+        self.assertIn("restauration a venir", mesures["texte"])
+        self.assertIn("decompresses", mesures["texte"])
+        self.assertEqual(mesures["className"], "text-muted small mb-0 mt-2")
+        self.assertIn("/home/fablab/staging", mesures["chemins"])
+
     def test_fermeture_de_fenetre_avertie_pendant_une_action(self):
         """Fermer le process Eel tuerait le worker : le navigateur doit demander.
 

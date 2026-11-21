@@ -577,20 +577,87 @@ async function openRestoreDialogRun() {
     option.textContent = `${s.name} — ${s.created_at}`;
     select.appendChild(option);
   });
-  document.getElementById("restoreDest").value = "";
+  const destInput = document.getElementById("restoreDest");
+  destInput.value = "";
 
   // Volumes du snapshot choisi : la liste vient du helper (`volumes`), qui
   // reutilise les controles du module, pas d'une lecture locale du manifeste.
   const volumeSelect = document.getElementById("restoreVolumes");
   const volumeHint = document.getElementById("restoreVolumesHint");
+  const diskHint = document.getElementById("restoreDiskHint");
   let volumeRequest = 0;
+  let totalVolumes = 0;
+  let dernierEspace = null;
+  let dernierMontage = "";
+  let diskRequest = 0;
+  let diskTimer = null;
 
   function formatRestoreSize(octets) {
     if (!octets) return "0 o";
     if (octets < 1024) return `${octets} o`;
     if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(1)} Ko`;
-    return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
+    if (octets < 1024 * 1024 * 1024) return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
+    return `${(octets / (1024 * 1024 * 1024)).toFixed(1)} Go`;
   }
+
+  // Espace libre distant : `null` = lecture en cours. Le total decompresse
+  // des volumes choisis est compare pour prevenir avant de lancer le helper.
+  function renderDiskHint(erreur) {
+    if (!diskHint) return;
+    if (erreur) {
+      diskHint.className = "text-muted small mb-0 mt-2";
+      diskHint.textContent = "Espace libre : indisponible (" + erreur + ")";
+      return;
+    }
+    if (dernierEspace === null) {
+      diskHint.className = "text-muted small mb-0 mt-2";
+      diskHint.textContent = "Espace libre : lecture...";
+      return;
+    }
+    const montage = dernierMontage ? ` (${dernierMontage})` : "";
+    let texte = `Espace libre : ${formatRestoreSize(dernierEspace)}${montage}`;
+    let insuffisant = false;
+    if (totalVolumes > 0) {
+      insuffisant = totalVolumes > dernierEspace;
+      texte +=
+        ` — restauration a venir : ${formatRestoreSize(totalVolumes)} decompresses` +
+        (insuffisant ? " (insuffisant)." : ".");
+    }
+    diskHint.className = insuffisant
+      ? "text-danger small mb-0 mt-2"
+      : "text-muted small mb-0 mt-2";
+    diskHint.textContent = texte;
+  }
+
+  async function loadDiskSpace() {
+    const request = ++diskRequest;
+    dernierEspace = null;
+    dernierMontage = "";
+    renderDiskHint();
+    let resultat;
+    try {
+      resultat = await eel.remote_disk_space(destInput.value || "")();
+    } catch (e) {
+      if (request === diskRequest) renderDiskHint(String(e));
+      return;
+    }
+    if (request !== diskRequest) return;
+    if (resultat.error) {
+      renderDiskHint(resultat.error);
+      return;
+    }
+    dernierEspace = resultat.free_bytes;
+    dernierMontage = resultat.mount || "";
+    renderDiskHint();
+  }
+
+  // La saisie declenche un `df` distant : attendre une pause avant de le lancer.
+  destInput.oninput = () => {
+    dernierEspace = null;
+    renderDiskHint();
+    clearTimeout(diskTimer);
+    diskTimer = setTimeout(loadDiskSpace, 350);
+  };
 
   async function loadVolumes() {
     const request = ++volumeRequest;
@@ -618,14 +685,16 @@ async function openRestoreDialogRun() {
       volumeSelect.appendChild(option);
     });
     const total = volumes.reduce((somme, v) => somme + (v.bytes || 0), 0);
+    totalVolumes = total;
     volumeHint.textContent = volumes.length
       ? `Aperçu : ${volumes.length} volume(s), ${formatRestoreSize(total)} decompresses. ` +
         "Aucune sélection = tous les volumes. Ctrl+clic pour en choisir plusieurs."
       : "Aucun volume restaurable dans ce snapshot.";
+    renderDiskHint();
   }
 
   select.onchange = loadVolumes;
-  await loadVolumes();
+  await Promise.all([loadVolumes(), loadDiskSpace()]);
 
   // Meme instance Bootstrap que les autres dialogues (getModal) : en creer une
   // nouvelle a chaque ouverture peut laisser un fond bloquant.

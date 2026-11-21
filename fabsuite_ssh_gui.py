@@ -256,6 +256,10 @@ class FabSuiteBackend:
             return self.list_volumes(snapshot)
 
         @eel.expose
+        def remote_disk_space(path=""):
+            return self.remote_disk_space(path)
+
+        @eel.expose
         def verify_timer_status():
             return self.verify_timer_status()
 
@@ -2478,6 +2482,55 @@ exit 0
                 octets = 0
             volumes.append({"path": label, "bytes": octets})
         return {"volumes": volumes}
+
+    def remote_disk_space(self, path=""):
+        """Espace libre du systeme de fichiers qui accueillera la restauration.
+
+        `df -Pk` est portable (POSIX) et ne demande aucun privilege. Le chemin
+        peut ne pas exister encore : on remonte jusqu'au premier parent existant.
+        """
+        if self._is_local_mode():
+            return {
+                "error": (
+                    "L'espace disque distant est disponible uniquement en mode "
+                    "Serveur SSH."
+                )
+            }
+        chemin = (path or "").strip() or (self.remote_home or "/")
+        if (
+            not chemin.startswith("/")
+            or any(caractere in chemin for caractere in "\n\r\x00")
+            or ".." in Path(chemin).parts
+        ):
+            return {
+                "error": "Chemin invalide pour l'espace disque (chemin absolu attendu)."
+            }
+        try:
+            self._require_connection()
+            self._ensure_remote_helper_ready()
+            commande = (
+                f"p={shlex.quote(chemin)}; "
+                'while [ ! -e "$p" ] && [ "$p" != / ]; do p=$(dirname -- "$p"); done; '
+                'df -Pk -- "$p"'
+            )
+            sortie = self._exec_remote_simple(commande)
+        except Exception as exc:
+            return {"error": f"Impossible de lire l'espace disque: {exc}"}
+
+        lignes = [ligne for ligne in sortie.splitlines() if ligne.strip()]
+        if len(lignes) < 2:
+            return {"error": "Reponse df illisible (sortie vide)."}
+        # Filesystem  1024-blocks  Used  Available  Capacity  Mounted on
+        morceaux = lignes[-1].split(None, 5)
+        if len(morceaux) != 6 or not morceaux[1].isdigit() or not morceaux[3].isdigit():
+            return {"error": "Reponse df illisible (colonnes inattendues)."}
+        return {
+            "path": chemin,
+            "device": morceaux[0],
+            "total_bytes": int(morceaux[1]) * 1024,
+            "free_bytes": int(morceaux[3]) * 1024,
+            "mount": morceaux[5],
+        }
 
 
 def main():

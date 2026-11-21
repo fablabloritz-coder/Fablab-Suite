@@ -6,6 +6,49 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Verrou commun et espace libre distant
+
+**Contexte** : deux ameliorations restaient listees apres la fiabilisation :
+une restauration pouvait lire un snapshot pendant qu'une sauvegarde l'ecrivait,
+et le modal ne montrait pas la place disponible sur le staging distant.
+
+**Modifie (`suite_backup.py`)**
+- `_verrou_commun_path` + `_sous_verrous` : sauvegardes et restaurations
+  partagent un verrou (`FABSUITE_COMMON_LOCK_FILE`, sinon
+  `$TMPDIR/.fabsuite-commun-<uid>.lock`) en plus du verrou propre a chaque
+  operation. `FABSUITE_LOCK_FILE` reste prioritaire et sert de verrou unique
+  (le verrou specifique est alors omis pour eviter un auto-blocage).
+
+**Modifie (`fabsuite_ssh_gui.py`, `web/index.html`, `web/js/app.js`)**
+- `remote_disk_space` : `df -Pk` sur le chemin saisi, remontee au premier
+  parent existant, chemin absolu sans `..`, sortie parse (libre, total,
+  montage). Expose a Eel sous le meme nom.
+- Le modal de restauration affiche l'espace libre et compare le total
+  decompresse du snapshot ; insuffisance en `text-danger`. La saisie est
+  anti-rebondie (350 ms) pour ne pas lancer un `df` par touche.
+
+**Tests**
+- Verrou commun : refus backup et restore tant qu'il est tenu, priorite de
+  `FABSUITE_LOCK_FILE` sans auto-blocage, surcharge du chemin.
+- Espace disque : parsing `df -Pk`, chemin avec espaces quote, remontee au
+  parent, chemins relatifs/`..`/retour ligne refuses sans appel, mode Local,
+  sortie illisible et echec SSH.
+- Pilote JS : le chemin saisi declenche `remote_disk_space` et le modal
+  affiche "Espace libre : 5.0 Go (/)" avec le total decompresse.
+
+**Limites**
+- `df -Pk` mesure le systeme de fichiers du parent existant le plus proche :
+  un montage cree apres la saisie n'est pas detecte avant l'extraction.
+- Champ destination vide : l'estimation porte sur le HOME distant, pas sur un
+  `FABSUITE_RESTORE_DIR` surcharge cote serveur ; saisir le staging reel
+  donne la mesure exacte.
+- Le verrou commun reste local au serveur (fichier temporaire) ; il ne
+  synchronise pas deux hotes distincts.
+
+**Prochaine action** : executer la matrice d'acceptation sur un serveur reel.
+
+---
+
 ## 2026-11-21 — Fiabilisation Sauvegarde & restauration
 
 **Contexte** : apres les tests d'integration du format des erreurs, il restait

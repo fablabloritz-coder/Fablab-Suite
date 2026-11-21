@@ -2248,5 +2248,104 @@ class HelperRestorePreflightIntegrationTest(unittest.TestCase):
             self.assertNotIn("La restauration a ete refusee ou interrompue", message)
 
 
+class GuiEspaceDisqueTest(unittest.TestCase):
+    """`remote_disk_space` : lecture `df` distante du staging de restauration."""
+
+    def setUp(self):
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend.state["remote_dir"] = "/opt/fabsuite"
+        self.backend.state["repo_url"] = fabsuite_ssh_gui.DEFAULT_MONOREPO_URL
+        self.backend.remote_home = "/home/fablab"
+        self.backend._require_connection = lambda: None
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._log = lambda message: None
+
+    _SORTIE_DF = (
+        "Filesystem     1024-blocks    Used Available Capacity Mounted on\n"
+        "/dev/sda1         10240000 4096000   6144000      40% /\n"
+    )
+
+    def test_parse_la_sortie_de_df(self):
+        self.backend._exec_remote_simple = lambda commande: self._SORTIE_DF
+
+        resultat = self.backend.remote_disk_space("/home/fablab/staging")
+
+        self.assertNotIn("error", resultat)
+        self.assertEqual(resultat["path"], "/home/fablab/staging")
+        self.assertEqual(resultat["free_bytes"], 6144000 * 1024)
+        self.assertEqual(resultat["total_bytes"], 10240000 * 1024)
+        self.assertEqual(resultat["mount"], "/")
+        self.assertEqual(resultat["device"], "/dev/sda1")
+
+    def test_chemin_absent_remonte_au_parent_existant(self):
+        commandes = []
+
+        def capturer(commande):
+            commandes.append(commande)
+            return self._SORTIE_DF
+
+        self.backend._exec_remote_simple = capturer
+
+        resultat = self.backend.remote_disk_space("/home/fablab/staging a creer")
+
+        self.assertNotIn("error", resultat)
+        self.assertEqual(len(commandes), 1)
+        commande = commandes[0]
+        self.assertIn("df -Pk", commande)
+        self.assertIn('while [ ! -e "$p" ]', commande)
+        # Le chemin est quote : l'espace reste un seul argument.
+        self.assertIn("'/home/fablab/staging a creer'", commande)
+
+    def test_chemin_relatif_ou_remontee_refuse_sans_appel(self):
+        appels = []
+        self.backend._exec_remote_simple = lambda commande: appels.append(commande)
+
+        for chemin in ("staging", "/home/fablab/../etc", "/tmp/a\nb"):
+            resultat = self.backend.remote_disk_space(chemin)
+            self.assertIn("error", resultat)
+            self.assertIn("Chemin invalide", resultat["error"])
+        self.assertEqual(appels, [])
+
+    def test_chemin_vide_utilise_le_home_distant(self):
+        commandes = []
+        self.backend._exec_remote_simple = (
+            lambda commande: commandes.append(commande) or self._SORTIE_DF
+        )
+
+        resultat = self.backend.remote_disk_space("")
+
+        self.assertEqual(resultat["path"], "/home/fablab")
+        self.assertIn("/home/fablab", commandes[0])
+
+    def test_mode_local_refuse_sans_appel(self):
+        self.backend._is_local_mode = lambda: True
+        self.backend._exec_remote_simple = lambda commande: self.fail(
+            "aucun appel distant attendu en mode Local"
+        )
+
+        resultat = self.backend.remote_disk_space("/srv/staging")
+
+        self.assertIn("mode Serveur SSH", resultat["error"])
+
+    def test_sortie_df_illisible_signale_une_erreur(self):
+        self.backend._exec_remote_simple = lambda commande: ""
+
+        resultat = self.backend.remote_disk_space("/srv/staging")
+
+        self.assertIn("error", resultat)
+        self.assertIn("df illisible", resultat["error"])
+
+    def test_echec_ssh_est_rapporte_sans_exception(self):
+        def echouer(commande):
+            raise RuntimeError("connexion perdue")
+
+        self.backend._exec_remote_simple = echouer
+
+        resultat = self.backend.remote_disk_space("/srv/staging")
+
+        self.assertIn("error", resultat)
+        self.assertIn("connexion perdue", resultat["error"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -3398,5 +3398,83 @@ class PreflightTest(unittest.TestCase):
         self.assertIn("fabtrack.db", resultat.errors[0])
 
 
+class VerrouCommunTest(unittest.TestCase):
+    """Verrou commun : restauration et sauvegarde ne se chevauchent jamais."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.source = suite_backup.Source(
+            "FabHome", "data", self.root / "donnees" / "base.db"
+        )
+        self.source.path.parent.mkdir(parents=True)
+        self.source.path.write_bytes(b"contenu" * 64)
+        self.dest = self.root / "backups"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _tenir_verrou_commun(self):
+        chemin = suite_backup._verrou_commun_path()
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        fichier = chemin.open("a+b")
+        suite_backup.fcntl.flock(
+            fichier.fileno(), suite_backup.fcntl.LOCK_EX | suite_backup.fcntl.LOCK_NB
+        )
+        return fichier
+
+    def test_sauvegarde_refusee_pendant_une_restauration(self):
+        if suite_backup.fcntl is None:
+            self.skipTest("fcntl indisponible")
+        with self._tenir_verrou_commun():
+            with self.assertRaises(suite_backup.SnapshotError) as contexte:
+                suite_backup.creer_snapshot([self.source], self.dest)
+
+        self.assertIn(
+            "operation sauvegarde/restauration deja en cours",
+            str(contexte.exception),
+        )
+        self.assertIn(str(suite_backup._verrou_commun_path()), str(contexte.exception))
+        self.assertEqual(list(self.dest.glob("suite-*")), [])
+
+    def test_restauration_refusee_pendant_une_sauvegarde(self):
+        if suite_backup.fcntl is None:
+            self.skipTest("fcntl indisponible")
+        snapshot = suite_backup.creer_snapshot([self.source], self.dest)
+        self.assertEqual(snapshot.status, "ok")
+        destination = self.root / "restauration"
+
+        with self._tenir_verrou_commun():
+            resultat = suite_backup.restaurer_snapshot(
+                snapshot.directory, destination
+            )
+
+        self.assertTrue(resultat.errors)
+        self.assertIn(
+            "operation sauvegarde/restauration deja en cours", resultat.errors[0]
+        )
+        self.assertEqual(resultat.restored, [])
+        self.assertFalse((destination / "FabHome/data/base.db").exists())
+
+    def test_verrou_force_par_env_sert_de_verrou_commun_sans_blocage(self):
+        """`FABSUITE_LOCK_FILE` remplace les deux verrous : pas d'auto-blocage."""
+        if suite_backup.fcntl is None:
+            self.skipTest("fcntl indisponible")
+        force = self.root / "verrou-unique.lock"
+
+        with mock.patch.dict(os.environ, {"FABSUITE_LOCK_FILE": str(force)}):
+            resultat = suite_backup.creer_snapshot([self.source], self.dest)
+
+        self.assertEqual(resultat.status, "ok")
+        self.assertTrue(force.is_file())
+
+    def test_verrou_commun_surchargeable(self):
+        chemin = self.root / "autre" / "commun.lock"
+        with mock.patch.dict(
+            os.environ, {"FABSUITE_COMMON_LOCK_FILE": str(chemin)}
+        ):
+            self.assertEqual(suite_backup._verrou_commun_path(), chemin)
+
+
 if __name__ == "__main__":
     unittest.main()

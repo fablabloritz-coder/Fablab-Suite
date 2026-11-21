@@ -208,6 +208,42 @@ def _verrou_path(destination: Path | str, defaut: str) -> Path:
     return Path(destination) / defaut
 
 
+def _verrou_commun_path() -> Path:
+    """Verrou partage par toutes les operations (sauvegarde et restauration).
+
+    Il empeche une restauration de lire un snapshot pendant qu'une sauvegarde
+    l'ecrit (ou l'inverse), meme quand la destination de sauvegarde et le
+    staging de restauration sont sur deux disques differents. Le dossier
+    temporaire est accessible en ecriture sans privilege ; le fichier reste
+    vide et `flock` le libere a la fin du processus.
+    """
+    force = os.environ.get("FABSUITE_COMMON_LOCK_FILE", "").strip()
+    if force:
+        return Path(force)
+    uid = getattr(os, "getuid", lambda: 0)()
+    return Path(tempfile.gettempdir()) / f".fabsuite-commun-{uid}.lock"
+
+
+@contextlib.contextmanager
+def _sous_verrous(destination: Path | str, defaut: str, action: str):
+    """Prend le verrou commun puis le verrou propre a l'operation.
+
+    `FABSUITE_LOCK_FILE` force un fichier unique : il sert alors de verrou
+    commun et le verrou specifique est omis pour ne pas se bloquer soi-meme
+    (deux `flock` sur le meme fichier depuis le meme processus echouent).
+    """
+    force = os.environ.get("FABSUITE_LOCK_FILE", "").strip()
+    if force:
+        with verrou_operations(Path(force), action):
+            yield
+        return
+    with verrou_operations(
+        _verrou_commun_path(), "operation sauvegarde/restauration"
+    ):
+        with verrou_operations(Path(destination) / defaut, action):
+            yield
+
+
 @contextlib.contextmanager
 def verrou_operations(chemin: Path | str, action: str):
     """Serialise les operations Fabsuite via un verrou consultatif POSIX.
@@ -398,7 +434,7 @@ def creer_snapshot(
     destination = verifier_destination_inscriptible(destination)
     verifier_espace_disque(destination, _taille_sources(sources))
 
-    with verrou_operations(_verrou_path(destination, ".fabsuite.lock"), "sauvegarde"):
+    with _sous_verrous(destination, ".fabsuite.lock", "sauvegarde"):
         return _ecrire_snapshot(
             sources, destination, label=label, horodatage=horodatage
         )
@@ -993,9 +1029,8 @@ def restaurer_snapshot(
         resultat.errors.append(f"destination impossible ({exc})")
         return resultat
 
-    chemin_verrou = _verrou_path(destination.parent, ".fabsuite-restore.lock")
     try:
-        with verrou_operations(chemin_verrou, "restauration"):
+        with _sous_verrous(destination.parent, ".fabsuite-restore.lock", "restauration"):
             for archive, app, role in archives:
                 avant = len(resultat.errors)
                 _extraire_archive(archive, destination, app, role, resultat.errors)

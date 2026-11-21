@@ -476,6 +476,13 @@ inscriptible (fichier sonde créé puis supprimé) et que le disque a assez de
 place : taille des sources + marge de 10 %, au moins 64 Mo. Un refus affiche
 les volumes libres et nécessaires, code de sortie 2, sans créer de snapshot.
 
+Sauvegardes et restaurations sont sérialisées par un verrou commun
+(`$TMPDIR/.fabsuite-commun-<uid>.lock`, surchargeable avec
+`FABSUITE_COMMON_LOCK_FILE`) en plus du verrou propre à chaque opération :
+une restauration ne peut pas lire un snapshot pendant qu'une sauvegarde
+l'écrit. `FABSUITE_LOCK_FILE` force un fichier unique qui sert alors de verrou
+commun.
+
 Après un snapshot valide, la rotation s'applique : `FABSUITE_BACKUP_RETENTION_COUNT`
 (défaut 7) garde les N snapshots les plus récents, ou
 `FABSUITE_BACKUP_RETENTION_DAYS` (> 0) supprime ceux plus vieux que N jours —
@@ -690,7 +697,9 @@ altérée et tout membre absolu, contenant `..`, hors `App/role` ou de type lien
 La destination doit être vide et n'être ni un fichier ni un lien symbolique.
 Un préflight vérifie ensuite qu'elle est inscriptible et que le disque peut
 accueillir les volumes décompressés (somme des tailles du manifeste + marge),
-avant toute extraction.
+avant toute extraction. Dans le GUI SSH, le modal de restauration lit l'espace
+libre distant (`df -Pk`, sans privilège) et compare le total décompressé des
+volumes du snapshot au chemin saisi, avant de lancer le helper.
 
 Par défaut, tous les volumes du snapshot sont restaurés. `--source APP|ROLE`
 (répétable ; `APP/ROLE` accepté aussi) restreint l'extraction aux volumes

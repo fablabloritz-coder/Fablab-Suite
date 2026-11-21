@@ -56,9 +56,12 @@ function getElement(id) {
       },
       declencher(type) {
         (ecouteurs[type] || []).slice().forEach((fonction) => fonction({ type }));
-        // Comme le DOM : un `onclick` est appele en plus des ecouteurs.
-        if (type === "click" && typeof this.onclick === "function") {
-          this.onclick({ type });
+        // Comme le DOM : `onclick`/`oninput` sont appeles en plus des ecouteurs.
+        if (
+          (type === "click" || type === "input") &&
+          typeof this["on" + type] === "function"
+        ) {
+          this["on" + type]({ type });
         }
       },
     });
@@ -156,6 +159,9 @@ let calls = 0;
 // qu'une lecture de snapshots, et un seul clic qu'une seule restauration.
 let snapshotListCalls = 0;
 let restoreCalls = 0;
+// Chemins transmis a `remote_disk_space` : prouve que la saisie de la
+// destination declenche bien une lecture de l'espace libre distant.
+const diskSpaceArgs = [];
 const eel = new Proxy(
   {},
   {
@@ -191,6 +197,20 @@ const eel = new Proxy(
           restoreCalls += 1;
         };
       }
+      if (prop === "remote_disk_space") {
+        return (chemin) => {
+          calls += 1;
+          diskSpaceArgs.push(chemin);
+          return () =>
+            Promise.resolve({
+              path: chemin || "/home/fablab",
+              device: "/dev/sda1",
+              total_bytes: 20 * 1024 * 1024 * 1024,
+              free_bytes: 5 * 1024 * 1024 * 1024,
+              mount: "/",
+            });
+        };
+      }
       if (prop === "backup_freshness") {
         return () => {
           calls += 1;
@@ -222,6 +242,7 @@ const context = vm.createContext({
   clearInterval: clearIntervalSimule,
   console,
   setTimeout,
+  clearTimeout,
 });
 
 vm.runInContext(appSource, context, { filename: appPath });
@@ -364,6 +385,26 @@ async function scenario(nom, action) {
       restaurations: restoreCalls,
       dialogue_ferme: !modalesOuvertes.has(modalEl),
     };
+  });
+
+  // Espace libre distant dans le modal : le chemin saisi est transmis a
+  // `remote_disk_space`, le resultat est affiche avec le total decompresse.
+  await scenario("dialogue_restauration_espace_disque", async () => {
+    await context.openRestoreDialog();
+    await tick();
+    const dest = getElement("restoreDest");
+    dest.value = "/home/fablab/staging";
+    dest.declencher("input");
+    // Attendre la fin de l'anti-rebond (350 ms) et la reponse simulee.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const hint = getElement("restoreDiskHint");
+    dialogues.espace_disque = {
+      texte: hint.textContent,
+      className: hint.className,
+      chemins: diskSpaceArgs.slice(),
+    };
+    bootstrap.Modal.getOrCreateInstance(getElement("restoreModal")).hide();
+    await tick();
   });
 
   // Fermeture de fenetre / rechargement : pendant une action, le navigateur
