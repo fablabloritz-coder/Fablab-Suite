@@ -6,6 +6,51 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Coupure reseau sur les autres cartes du GUI
+
+**Contexte** : la detection « Connexion perdue » ne couvrait que la carte
+Sauvegarde/restauration, les lecteurs d'etat et `_run_operation_via_core`.
+Les timers, les journaux, cleanup, prepare-host, repair-env, pre-check et la
+carte fichiers enveloppaient encore la coupure dans un message generique
+(« Mise en service impossible ») ou ne la journalisaient que dans le terminal.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_run_async` : branche `except ConnexionSSHPerdue` -> `_alerter_connexion_perdue`
+  avec le libelle de l'action, texte « l'action a ete interrompue » (aucun
+  helper a promettre) et journal du terminal. Filet pour toutes les actions
+  qui n'ont pas d'alerte dediee.
+- `_timer_worker` : branche dediee -> alerte « Connexion perdue » avec le tag
+  `[verify-timer]` / `[backup-timer]`, puis `RuntimeError`
+  « ... du timer de ... interrompue ». Plus de « Mise en service impossible »,
+  et plus de rafraichissement d'etat inutile sur session morte.
+- `_fix_permissions_dir_worker` / `_delete_dir_worker` : une coupure pendant le
+  rafraichissement de la liste remonte au lieu d'etre avalee par
+  « correction OK mais rafraichissement impossible ».
+- `_alerter_connexion_perdue(..., helper=True)` : le texte ne promet un helper
+  que pour les actions qui en lancent un.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `CoupureReseauCaptureTest`)**
+- `test_worker_timer_signale_la_coupure` : tag `[backup-timer]`, message
+  dedie, aucun rafraichissement.
+- `test_action_logs_signale_la_coupure` : carte journaux via `_run_async`,
+  une seule alerte, libelle « Logs all ».
+- `test_scan_dirs_signale_la_coupure` : carte fichiers.
+- `test_install_worker_signale_la_coupure` : carte deploiement, alerte unique.
+- `test_rafraichissement_apres_dossier_propage_la_coupure` : correction et
+  suppression.
+
+**Doc (`docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md`)** : cas 14 a 20
+ajoutes (timers, journaux, cleanup, prepare-host, repair-env, pre-check
+donnees, carte fichiers), meme format que 8 et 11-13.
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 261 tests OK (~14 s).
+
+**Prochaine action** : derouler les cas 8 et 11-13 de
+`docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md` sur un serveur reel.
+
+---
+
 ## 2026-11-21 — Matrice d'acceptation etendue aux coupures reseau
 
 **Contexte** : la revue avait identifie une limite : la VM ne peut pas couper

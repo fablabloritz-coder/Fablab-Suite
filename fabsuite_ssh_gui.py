@@ -577,6 +577,15 @@ class FabSuiteBackend:
             self._log(f"--- {label} ---")
             try:
                 target()
+            except ConnexionSSHPerdue as exc:
+                # Dernier filet pour les actions qui ne font pas d'alerte
+                # dediee (journaux, cleanup, prepare-host, repair-env,
+                # pre-check, upload, scan, inspection de dossiers) : sans ceci
+                # une coupure ne laisserait qu'une ligne dans le terminal.
+                self._alerter_connexion_perdue(
+                    f"« {label} »", "du terminal", helper=False
+                )
+                self._log(f"Connexion perdue ({label}): {exc.detail}")
             except Exception as exc:
                 self._log(f"ERROR: {exc}")
                 self._log(traceback.format_exc())
@@ -1570,6 +1579,10 @@ exit 0
         self._exec_remote_logged(cmd, allow_failure=False)
         try:
             self._scan_dirs_worker()
+        except ConnexionSSHPerdue:
+            # La commande a reussi, mais la session est tombee au
+            # rafraichissement : l'alerte « Connexion perdue » doit rester.
+            raise
         except Exception as exc:
             self._log(f"Avertissement: correction OK mais rafraichissement liste impossible: {exc}")
 
@@ -1662,6 +1675,10 @@ exit 0
         self._exec_remote_logged(cmd, allow_failure=False)
         try:
             self._scan_dirs_worker()
+        except ConnexionSSHPerdue:
+            # La suppression a reussi, mais la session est tombee au
+            # rafraichissement : l'alerte « Connexion perdue » doit rester.
+            raise
         except Exception as exc:
             self._log(f"Avertissement: suppression OK mais rafraichissement liste impossible: {exc}")
 
@@ -1872,16 +1889,22 @@ exit 0
             return False
         return True
 
-    def _alerter_connexion_perdue(self, action, journal):
+    def _alerter_connexion_perdue(self, action, journal, helper=True):
         """Alerte dediee : le canal est ferme, le helper peut continuer.
 
         `action` est une formule complete (« la sauvegarde », « l'operation
         install ») : le texte reste lisible pour les workers et les operations.
+        `helper=False` pour les actions qui n'appellent que des commandes
+        ponctuelles : on ne promet pas qu'un helper continue sur le serveur.
         """
+        consequence = (
+            "Le canal a ete ferme cote GUI ; le helper peut continuer sur le serveur."
+            if helper
+            else "Le canal a ete ferme cote GUI ; l'action a ete interrompue."
+        )
         self._show_alert(
             "Connexion perdue",
-            f"La connexion SSH a ete coupee pendant {action}. Le canal a "
-            "ete ferme cote GUI ; le helper peut continuer sur le serveur.\n\n"
+            f"La connexion SSH a ete coupee pendant {action}. {consequence}\n\n"
             f"Verifie le journal {journal} apres reconnexion avant de relancer.",
         )
 
@@ -2336,6 +2359,14 @@ exit 0
 
         try:
             code, sortie = self._exec_helper_action_capture(action)
+        except ConnexionSSHPerdue as exc:
+            # Une coupure garde l'alerte et le tag de journal des timers ; le
+            # rafraichissement est inutile puisque la session est deja fermee.
+            interruption = f"{verbe.lower()} du timer de {libelle}"
+            self._alerter_connexion_perdue(
+                f"la {interruption}", f"[{service}-timer]"
+            )
+            raise RuntimeError(f"{interruption} interrompue: {exc}") from exc
         except Exception as exc:
             self._show_alert(
                 f"{verbe} impossible",

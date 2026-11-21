@@ -2324,6 +2324,138 @@ class CoupureReseauCaptureTest(unittest.TestCase):
         self.assertTrue(canal.ferme)
 
 
+    def test_worker_timer_signale_la_coupure(self):
+        """Timer : alerte dediee avec le tag du timer, pas « Mise en service
+        impossible », et aucun rafraichissement sur une session morte."""
+        rafraichis = []
+
+        def coupure(action, timeout_sec=180):
+            raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        self.backend._exec_helper_action_capture = coupure
+        self.backend._request_backup_state_refresh = lambda: rafraichis.append(
+            "backup"
+        )
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._timer_worker("backup", "install-backup-timer")
+
+        self.assertIn(
+            "mise en service du timer de sauvegarde interrompue",
+            str(contexte.exception),
+        )
+        self.assertEqual(rafraichis, [])
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("canal a ete ferme", message)
+        self.assertIn("la mise en service du timer de sauvegarde", message)
+        self.assertIn("[backup-timer]", message)
+        self.assertNotIn("Mise en service impossible", titre)
+
+    def test_action_logs_signale_la_coupure(self):
+        """Carte journaux : coupure remontee en alerte dediee par `_run_async`."""
+        self._preparer_worker()
+
+        def coupure(action, app_name=None, extra_args=None, timeout_sec=None):
+            raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        self.backend._run_helper_action_capture = coupure
+
+        class _FauxThread:
+            def __init__(self, **kwargs):
+                self.cible = kwargs["target"]
+
+            def start(self):
+                self.cible()
+
+        ancien_thread = fabsuite_ssh_gui.threading.Thread
+        fabsuite_ssh_gui.threading.Thread = _FauxThread
+        try:
+            self.backend.action_logs_all()
+        finally:
+            fabsuite_ssh_gui.threading.Thread = ancien_thread
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("« Logs all »", message)
+        self.assertIn("l'action a ete interrompue", message)
+        self.assertIn("journal du terminal", message)
+        self.assertFalse(self.backend._action_running)
+
+    def test_scan_dirs_signale_la_coupure(self):
+        """Carte fichiers : scan interrompu par une coupure, alerte dediee."""
+
+        def coupure(commande):
+            raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        self.backend._exec_remote_simple = coupure
+
+        class _FauxThread:
+            def __init__(self, **kwargs):
+                self.cible = kwargs["target"]
+
+            def start(self):
+                self.cible()
+
+        ancien_thread = fabsuite_ssh_gui.threading.Thread
+        fabsuite_ssh_gui.threading.Thread = _FauxThread
+        try:
+            self.backend.action_scan_dirs()
+        finally:
+            fabsuite_ssh_gui.threading.Thread = ancien_thread
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("« Scan dossiers serveur »", message)
+        self.assertIn("l'action a ete interrompue", message)
+
+    def test_install_worker_signale_la_coupure(self):
+        """Carte deploiement : installation interrompue, alerte dediee unique."""
+        self._preparer_worker()
+        self.backend._resolve_remote_dir = lambda: "/opt/fabsuite"
+        self.backend._core_env_prefix = lambda: ""
+
+        class _ServiceCoupe:
+            def __init__(self, executor):
+                self.executor = executor
+
+            def run(self, operation, ctx):
+                raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        ancien = fabsuite_ssh_gui.DeploymentService
+        fabsuite_ssh_gui.DeploymentService = _ServiceCoupe
+        try:
+            with self.assertRaises(RuntimeError):
+                self.backend._install_worker()
+        finally:
+            fabsuite_ssh_gui.DeploymentService = ancien
+
+        self.assertEqual(len(self.alertes), 1)
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Connexion perdue")
+        self.assertIn("l'operation install", message)
+        self.assertIn("de l'operation install", message)
+
+    def test_rafraichissement_apres_dossier_propage_la_coupure(self):
+        """Correction/suppression reussie puis coupure : la coupure remonte."""
+        self.backend.remote_home = "/home/fablab"
+        self.backend._exec_remote_logged = lambda commande, allow_failure=False: None
+
+        def coupure():
+            raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        self.backend._scan_dirs_worker = coupure
+        for worker in (
+            self.backend._fix_permissions_dir_worker,
+            self.backend._delete_dir_worker,
+        ):
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue):
+                worker("/home/fablab/suite-x")
+
+
 class HelperCommandQuotingTest(unittest.TestCase):
     """`_helper_command` conserve exactement les arguments pieges."""
 
