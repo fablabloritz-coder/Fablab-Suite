@@ -21,29 +21,22 @@ let actionsEnabled = false;
 // Connexion SSH reelle : les lignes d'etat de la carte Sauvegarde ne sont
 // valables que dans ce cas (mode Local ou deconnecte = etat inconnu).
 let sshConnected = false;
-// Worker en cours, pousse par le backend : fermer la fenetre tuerait le
-// process Eel et le backup en cours, donc le navigateur doit demander
-// confirmation.
-let actionRunning = false;
+// Libelle de l'action en cours, pousse par le backend (vide = aucune action) :
+// il alimente la barre d'etat et l'avertissement avant fermeture, qui doit
+// nommer l'action interrompue.
+let actionLabel = "";
 
-// Un libelle vide signifie qu'aucune action ne tourne : la barre d'etat est
-// videe et la fermeture de fenetre redevient silencieuse. Le libelle suffit,
-// pas besoin d'un booleen separe qui pourrait diverger.
 eel.expose(set_action_running);
 function set_action_running(label) {
-  actionRunning = !!label;
+  actionLabel = label || "";
   const el = document.getElementById("actionState");
-  if (el) el.textContent = actionRunning ? "Action en cours : " + label : "";
+  if (el) el.textContent = actionLabel ? "Action en cours : " + actionLabel : "";
 }
 
 window.addEventListener("beforeunload", (e) => {
-  if (!actionRunning) return;
-  const message =
-    "Une action est en cours (sauvegarde, restauration ou verification). " +
-    "Fermer maintenant l'interromprait.";
+  if (!actionLabel) return;
   e.preventDefault();
-  e.returnValue = message;
-  return message;
+  e.returnValue = `Une action est en cours (${actionLabel}). Fermer maintenant l'interromprait.`;
 });
 
 eel.expose(set_actions_enabled);

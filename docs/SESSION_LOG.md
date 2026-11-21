@@ -6,6 +6,34 @@ action imperative.
 
 ---
 
+## 2026-11-21 — L'avertissement de fermeture nomme l'action
+
+**Contexte** : le message `beforeunload` restait generique (« sauvegarde,
+restauration ou verification ») alors que le libelle de l'action est deja connu
+du front.
+
+**Modifie (`web/js/app.js`)**
+- `actionLabel` remplace le booleen derive ; la barre d'etat et le message de
+fermeture utilisent le libelle : « Une action est en cours (Sauvegarde suite).
+Fermer maintenant l'interromprait. »
+- Revue : suppression du `const message` et du `return message` redondants ;
+seul `e.returnValue` declenche l'avertissement. `label || ""` conserve comme
+normalisation a la frontiere JS.
+
+**Verifications**
+- Pilote JS : le scenario `fermeture` verifie le libelle dans le message ;
+`action_en_cours` est inchange.
+- `python3 -m unittest discover -s tests` -> 193 tests OK ; `node --check` ;
+`git diff --check` -> OK.
+
+**Limites**
+- Aucun navigateur dans la VM : le message est verifie via le handler simule.
+
+**Prochaine action** : fermer la fenetre pendant un backup doit nommer
+« Sauvegarde suite ».
+
+---
+
 ## 2026-11-21 — Libelle de l'action en cours dans la barre d'etat
 
 **Contexte** : pendant le verrouillage des actions, le GUI ne disait pas quelle

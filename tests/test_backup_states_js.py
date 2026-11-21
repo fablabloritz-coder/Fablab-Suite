@@ -176,12 +176,14 @@ class BackupStatesJsTest(unittest.TestCase):
     def test_fermeture_de_fenetre_avertie_pendant_une_action(self):
         """Fermer le process Eel tuerait le worker : le navigateur doit demander.
 
-        Hors action, aucune confirmation ne doit etre demandee.
+        Le message doit nommer l'action en cours ; hors action, aucune
+        confirmation ne doit etre demandee.
         """
         self.assertIn("fermeture", self.dialogues, "scenario fermeture absent du pilote")
         mesures = self.dialogues["fermeture"]
         self.assertTrue(mesures["bloquee"])
-        self.assertIn("action est en cours", mesures["message"])
+        self.assertIn("Une action est en cours (Sauvegarde suite)", mesures["message"])
+        self.assertIn("Fermer maintenant l'interromprait", mesures["message"])
         self.assertTrue(mesures["libre"])
 
 
