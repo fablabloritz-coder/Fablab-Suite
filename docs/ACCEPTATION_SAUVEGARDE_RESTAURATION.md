@@ -37,6 +37,7 @@ droits reels et les chemins du serveur.
 | 18 | Coupure pendant « Reparer env monorepo » | couper le lien pendant `repair-env` | alerte « Connexion perdue » avec le libelle « Reparer env monorepo », « l'action a ete interrompue », aucune trace d'echec du helper presentee comme la cause |
 | 19 | Coupure pendant le pre-check donnees | couper le lien pendant `check-data-safety` | alerte « Connexion perdue » avec le libelle « Pre-check securite donnees », jamais « Alerte securite donnees » (le risque data n'est pas en cause) |
 | 20 | Coupure sur la carte fichiers | couper le lien pendant upload installateur, scan, inspection, correction des permissions, archivage ou suppression | alerte « Connexion perdue » avec le libelle de l'action (« Upload installer files », « Scan dossiers serveur »...), « l'action a ete interrompue », en-tete « Non connecte » ; pour correction/suppression, la coupure au rafraichissement remonte au lieu de « rafraichissement liste impossible » |
+| 21 | Coupure pendant la reinitialisation de l'anti-rebond apres un backup valide | couper le lien SSH apres un backup reussi, pendant `notify-reset --notify-service backup` (juste avant l'alerte de fin) | alerte « Connexion perdue » avec le libelle « la reinitialisation de l'anti-rebond des notifications (backup) » et le tag `[notify]`, puis « Sauvegarde terminee » ; le snapshot reste valide, seule la reinitialisation est non faite ; verifier `[notify]` apres reconnexion |
 
 ## Apres chaque cas
 

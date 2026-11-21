@@ -35,7 +35,11 @@ l'alerte regroupes en une assertion. Branche generique et best-effort
 inchanges : `test_reinitialisation_en_echec_ne_fait_pas_echouer_le_backup`
 passe toujours.
 
-**Prochaine action** : derouler les cas 8 et 11-20 sur un serveur reel.
+**Doc (`docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md`)** : cas 21 ajoute
+(coupure pendant `notify-reset` apres un backup valide : alerte « Connexion
+perdue » puis « Sauvegarde terminee »).
+
+**Prochaine action** : derouler les cas 8 et 11-21 sur un serveur reel.
 
 ---
 
