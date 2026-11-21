@@ -6,6 +6,35 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Test d'integration du format `[backup] ECHEC:`
+
+**Contexte** : les tests GUI simulaient la sortie du helper ; il manquait une
+preuve que la ligne reellement emise lors d'un refus de preflight est bien
+celle reprise dans l'alerte.
+
+**Ajoute (`tests/test_ssh_gui_backup.py`)**
+- `HelperBackupPreflightIntegrationTest` execute le vrai
+`fabsuite-ubuntu.sh backup` (module `suite_backup.py` reel) avec un `sudo`
+simule sans elevation et une destination existante en `0555`.
+- Le test asserte le code 2, l'unicite de la ligne
+`[backup] ECHEC: destination non inscriptible: … (Permission denied)`, l'absence
+de dossier `suite-*`, puis injecte la sortie reelle dans `_backup_worker_run` :
+l'alerte « Sauvegarde invalide » contient cette ligne et pas le repli generique.
+- Test ignore sous root (le bit d'ecriture POSIX y est sans effet).
+
+**Verifications**
+- `python3 -m unittest tests.test_ssh_gui_backup` puis suite complete.
+- `git diff --check`.
+
+**Limites**
+- Toujours pas de serveur SSH reel : le test couvre le format du helper et son
+passage dans l'alerte, pas le transport.
+
+**Prochaine action** : relancer la suite complete apres toute modification du
+format `[backup]`/`[restore]`.
+
+---
+
 ## 2026-11-21 — Alerte de preflight avec la ligne du helper
 
 **Contexte** : un refus de preflight (destination non inscriptible, espace
