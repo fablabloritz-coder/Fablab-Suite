@@ -94,6 +94,14 @@ const bootstrap = {
 const N_BOUTONS_SSH = 7;
 const boutonsSsh = Array.from({ length: N_BOUTONS_SSH }, () => ({ disabled: false }));
 
+// Evenements `window` (avertissement avant fermeture) captures pour le test.
+const windowHandlers = {};
+const window = {
+  addEventListener(type, fonction) {
+    windowHandlers[type] = fonction;
+  },
+};
+
 const document = {
   getElementById: getElement,
   createElement: () => ({ value: "", textContent: "" }),
@@ -176,7 +184,14 @@ const eel = new Proxy(
   },
 );
 
-const context = vm.createContext({ document, eel, bootstrap, console, setTimeout });
+const context = vm.createContext({
+  document,
+  eel,
+  bootstrap,
+  window,
+  console,
+  setTimeout,
+});
 
 vm.runInContext(appSource, context, { filename: appPath });
 
@@ -313,6 +328,24 @@ async function scenario(nom, action) {
       ouvertures_lues: snapshotListCalls,
       restaurations: restoreCalls,
       dialogue_ferme: !modalesOuvertes.has(modalEl),
+    };
+  });
+
+  // Fermeture de fenetre / rechargement : pendant une action, le navigateur
+  // doit demander confirmation (le process Eel s'arrete et tue le worker).
+  await scenario("fermeture_pendant_une_action", async () => {
+    context.set_action_running(true);
+    const bloque = { preventDefault() { this.bloque = true; }, returnValue: "" };
+    windowHandlers.beforeunload(bloque);
+
+    context.set_action_running(false);
+    const libre = { preventDefault() { this.bloque = true; }, returnValue: "" };
+    windowHandlers.beforeunload(libre);
+
+    dialogues.fermeture = {
+      bloquee: bloque.bloque === true,
+      message: bloque.returnValue,
+      libre: libre.bloque !== true,
     };
   });
 

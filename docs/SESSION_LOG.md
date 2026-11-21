@@ -6,6 +6,49 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Revue des gardes : fermeture de fenetre
+
+**Contexte** : revue des chemins qui pourraient liberer le verrou ou couper le
+worker (fermeture de fenetre, bascule Local/SSH, appels internes, double clic).
+
+**Chemins examines**
+- Fermeture de fenetre / rechargement : **contournement reel** — `on_close`
+appelle `disconnect_ssh(silent=True)` puis `sys.exit(0)` et tue le worker.
+Impossible a empecher cote backend, d'ou un avertissement navigateur.
+- Bascule Local/SSH : ne touche pas `_action_running` ;
+`refresh_actions_state` laisse les boutons desactives tant que
+`_actions_locked` est vrai.
+- Appels internes `silent=True` (session perdue, `_connect_worker`, fermeture) :
+necessaires ; une reconnexion demandee par l'operateur est deja refusee.
+- Double clic : le dialogue de restauration est garde cote front, et `_run_async`
+refuse le second worker cote backend.
+
+**Corrige**
+- `web/js/app.js` : expose `set_action_running`, plus `beforeunload` qui demande
+confirmation pendant une action (et laisse fermer sinon).
+- `fabsuite_ssh_gui.py` : `_run_async` pousse l'etat du worker au front via
+`_set_action_running`, remis a False dans son `finally`.
+- `README.md` : la carte Sauvegarde precise que fermer la fenetre ou recharger
+la page pendant une action demande confirmation, car cela interromprait le
+worker.
+
+**Verifications**
+- Pilote JS : scenario `fermeture_pendant_une_action` (confirmation demandee
+pendant l'action, aucune hors action).
+- `GuiSshSessionTest` : `_run_async` signale True puis False au front.
+- `python3 -m unittest discover -s tests` -> 192 tests OK ; `node --check` sur
+les deux fichiers JS ; `git diff --check` -> OK.
+
+**Limites**
+- `beforeunload` ne peut pas empecher une fermeture confirmee par l'operateur :
+il avertit seulement.
+- Aucun navigateur dans la VM : le handler est teste sur un `window` simule.
+
+**Prochaine action** : fermer la fenetre pendant un backup reel doit afficher
+la confirmation du navigateur.
+
+---
+
 ## 2026-11-21 — Aide de Debloquer et doc de la carte
 
 **Contexte** : le comportement du bouton « Debloquer » (interface liberee,

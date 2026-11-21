@@ -173,6 +173,18 @@ class BackupStatesJsTest(unittest.TestCase):
         self.assertTrue(mesures["dialogue_ferme"])
 
 
+    def test_fermeture_de_fenetre_avertie_pendant_une_action(self):
+        """Fermer le process Eel tuerait le worker : le navigateur doit demander.
+
+        Hors action, aucune confirmation ne doit etre demandee.
+        """
+        self.assertIn("fermeture", self.dialogues, "scenario fermeture absent du pilote")
+        mesures = self.dialogues["fermeture"]
+        self.assertTrue(mesures["bloquee"])
+        self.assertIn("action est en cours", mesures["message"])
+        self.assertTrue(mesures["libre"])
+
+
 class _HarnaisHelper:
     """HOME temporaire + copie du helper : ni reseau, ni systemd, ni root."""
 

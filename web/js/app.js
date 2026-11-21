@@ -21,6 +21,25 @@ let actionsEnabled = false;
 // Connexion SSH reelle : les lignes d'etat de la carte Sauvegarde ne sont
 // valables que dans ce cas (mode Local ou deconnecte = etat inconnu).
 let sshConnected = false;
+// Worker en cours, pousse par le backend : fermer la fenetre tuerait le
+// process Eel et le backup en cours, donc le navigateur doit demander
+// confirmation.
+let actionRunning = false;
+
+eel.expose(set_action_running);
+function set_action_running(running) {
+  actionRunning = !!running;
+}
+
+window.addEventListener("beforeunload", (e) => {
+  if (!actionRunning) return;
+  const message =
+    "Une action est en cours (sauvegarde, restauration ou verification). " +
+    "Fermer maintenant l'interromprait.";
+  e.preventDefault();
+  e.returnValue = message;
+  return message;
+});
 
 eel.expose(set_actions_enabled);
 function set_actions_enabled(enabled) {

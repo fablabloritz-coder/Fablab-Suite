@@ -1589,6 +1589,32 @@ class GuiSshSessionTest(unittest.TestCase):
         self.assertEqual(len(threads), 1)
         self.assertTrue(threads[0].demarre, "le worker doit etre lance une fois libre")
 
+    def test_run_async_signale_l_action_au_front(self):
+        appels = []
+        ancien_eel = fabsuite_ssh_gui.eel
+        fabsuite_ssh_gui.eel = types.SimpleNamespace(
+            set_action_running=lambda valeur: (lambda: appels.append(valeur)),
+            set_actions_enabled=lambda valeur: (lambda: None),
+        )
+
+        class _FauxThread:
+            def __init__(self, **kwargs):
+                self.cible = kwargs["target"]
+
+            def start(self):
+                self.cible()
+
+        ancien_thread = fabsuite_ssh_gui.threading.Thread
+        fabsuite_ssh_gui.threading.Thread = _FauxThread
+        try:
+            self.backend._run_async("Sauvegarde suite", lambda: None)
+        finally:
+            fabsuite_ssh_gui.threading.Thread = ancien_thread
+            fabsuite_ssh_gui.eel = ancien_eel
+
+        self.assertEqual(appels, [True, False])
+        self.assertFalse(self.backend._action_running)
+
     def test_connect_active_le_keepalive(self):
         self.backend.state["target"] = "fablab@hote"
         self.backend.state["password"] = "secret"

@@ -145,7 +145,9 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
   avec « Action en cours » pour ne jamais couper le worker. **⚡ Débloquer**
   (barre du terminal) libère l'interface si elle semble figée, mais
   n'interrompt jamais l'action : Connecter, Déconnecter et le lancement d'une
-  seconde action restent bloqués jusqu'à la fin du worker.
+  seconde action restent bloqués jusqu'à la fin du worker. Fermer la fenêtre
+  ou recharger la page pendant l'action demande confirmation, car cela
+  interromprait le worker.
 
 **Maintenance dossiers** : scan, inspection, correction permissions, archivage, suppression
 
