@@ -45,7 +45,11 @@ que seuls `OSError`/`EOFError` etaient convertis.
 **Verifications** : `py_compile` OK ; `git diff --check` OK ;
 `python3 -m unittest discover -s tests` -> 271 tests OK (~14 s).
 
-**Prochaine action** : derouler les cas 8 et 11-21 de la matrice sur un
+**Doc (`docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md`)** : cas 22 (coupure
+pendant un upload SFTP) et 23 (echec de connexion initiale, alerte
+« Connexion SSH impossible ») ajoutes, meme format que 14-21.
+
+**Prochaine action** : derouler les cas 8 et 11-23 de la matrice sur un
 serveur reel.
 
 ---
