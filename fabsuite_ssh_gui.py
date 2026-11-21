@@ -1864,7 +1864,8 @@ exit 0
         """Reinitialise l'anti-rebond du service via l'action `notify-reset`.
 
         Best-effort : un echec est journalise mais ne remet jamais en cause le
-        backup ou le verify qui vient d'etre valide.
+        backup ou le verify qui vient d'etre valide. Une coupure garde son
+        alerte « Connexion perdue » sans faire echouer l'action.
         """
         try:
             code, sortie = self._exec_remote_capture(
@@ -1873,6 +1874,17 @@ exit 0
                 ),
                 timeout_sec=60,
             )
+        except ConnexionSSHPerdue as exc:
+            # Le backup/verify est deja valide : on alerte sans faire echouer
+            # l'action (`_connexion_perdue` a deja remis la session a
+            # « Non connecte ») ; le reset reste simplement non fait.
+            self._alerter_connexion_perdue(
+                f"la reinitialisation de l'anti-rebond des notifications ({service})",
+                "[notify]",
+                helper=False,
+            )
+            self._log(f"[notify] reinitialisation interrompue ({service}): {exc.detail}")
+            return False
         except Exception as exc:
             self._log(f"[notify] reinitialisation impossible ({service}): {exc}")
             return False

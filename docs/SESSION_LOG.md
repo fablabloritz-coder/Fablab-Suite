@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Coupure pendant le reset de l'anti-rebond notifications
+
+**Contexte** : `_reset_notify_rebond` (appele apres un backup ou un verify
+valide) ne journalisait qu'un « reinitialisation impossible » sur coupure.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- Branche `except ConnexionSSHPerdue` : alerte « Connexion perdue » (« la
+  reinitialisation de l'anti-rebond des notifications (<service>) », journal
+  `[notify]`, texte « l'action a ete interrompue ») puis `return False`.
+  Le backup/verify deja valide n'echoue pas ; la session est deja repassee a
+  « Non connecte » par `_connexion_perdue`.
+- Journal : « reinitialisation interrompue (<service>): <cause> » au lieu de
+  « impossible » ; la branche generique reste inchangee pour les autres echecs.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiBackupRestoreTest`)**
+- `test_coupure_pendant_la_reinitialisation_garde_l_alerte_sans_echouer_le_backup` :
+  `_backup_worker()` ne leve pas, alertes « Connexion perdue » puis
+  « Sauvegarde terminee », message et log attendus, `_reset_notify_rebond`
+  renvoie `False` avec une seule alerte.
+- `test_reinitialisation_en_echec_ne_fait_pas_echouer_le_backup` (RuntimeError
+  generique) conserve son comportement.
+
+**Revue fraiche** : libelle d'alerte sur une ligne, log sur une ligne,
+commentaire et docstring resserres ; assertion de titre redondante retiree du
+test (la liste d'alertes la couvre deja), retour `False` et unicite de
+l'alerte regroupes en une assertion. Branche generique et best-effort
+inchanges : `test_reinitialisation_en_echec_ne_fait_pas_echouer_le_backup`
+passe toujours.
+
+**Prochaine action** : derouler les cas 8 et 11-20 sur un serveur reel.
+
+---
+
 ## 2026-11-21 — Coupure reseau sur les autres cartes du GUI
 
 **Contexte** : la detection « Connexion perdue » ne couvrait que la carte

@@ -706,6 +706,49 @@ class GuiBackupRestoreTest(unittest.TestCase):
             logs,
         )
 
+    def test_coupure_pendant_la_reinitialisation_garde_l_alerte_sans_echouer_le_backup(self):
+        """Coupure sur notify-reset : alerte dediee, backup deja valide conserve."""
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (0, "")
+        self.backend._request_backup_state_refresh = lambda: None
+        self.backend._request_notify_state_refresh = lambda: None
+        logs = []
+        self.backend._log = logs.append
+
+        def capturer(commande, timeout_sec=60):
+            raise fabsuite_ssh_gui.ConnexionSSHPerdue("Socket is closed")
+
+        self.backend._exec_remote_capture = capturer
+
+        # Ne doit rien lever : le snapshot est deja valide.
+        self.backend._backup_worker()
+
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Connexion perdue", "Sauvegarde terminee"],
+        )
+        message = self.alertes[0][1]
+        self.assertIn(
+            "la reinitialisation de l'anti-rebond des notifications (backup)",
+            message,
+        )
+        self.assertIn("[notify]", message)
+        self.assertIn("l'action a ete interrompue", message)
+        self.assertTrue(
+            any(
+                "reinitialisation interrompue (backup)" in ligne
+                and "Socket is closed" in ligne
+                for ligne in logs
+            ),
+            logs,
+        )
+
+        # Appel direct : retour False et une seule alerte, pas de propagation.
+        self.alertes.clear()
+        self.assertFalse(self.backend._reset_notify_rebond("backup"))
+        self.assertEqual(
+            [titre for titre, _ in self.alertes], ["Connexion perdue"]
+        )
+
     def test_reset_notify_rebond_journalise_un_refus(self):
         logs = []
         self.backend._log = logs.append
