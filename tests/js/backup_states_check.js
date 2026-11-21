@@ -191,6 +191,18 @@ const eel = new Proxy(
           restoreCalls += 1;
         };
       }
+      if (prop === "backup_freshness") {
+        return () => {
+          calls += 1;
+          return () =>
+            Promise.resolve({
+              snapshots: 1,
+              last: "suite-2026-11-19-120000",
+              created_at: "2026-11-19T12:00:00+01:00",
+              age_seconds: 3600,
+            });
+        };
+      }
       const reponse = reels[String(prop)] || STATUT;
       return () => {
         calls += 1;
@@ -247,6 +259,10 @@ async function scenario(nom, action) {
     texts,
     classes,
     labels,
+    freshness: {
+      text: getElement("backupFreshness").textContent,
+      className: getElement("backupFreshness").className,
+    },
     boutons: boutonsSsh.map((b) => b.disabled),
   };
 }

@@ -17,6 +17,7 @@
     <span class="badge bg-accent ms-3">v2.0</span>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span id="actionState" class="small text-warning me-2"></span>
+      <button type="button" id="cancelActionBtn" class="btn btn-outline-danger btn-sm d-none me-2" onclick="cancelCurrentAction()" title="Ferme le canal de capture ; le helper peut continuer sur le serveur.">Annuler</button>
       <span id="connectionText" class="header-connection-text small">Non connect&eacute;</span>
       <span id="connectionDot" class="status-dot text-danger">&#x25cf;</span>
     </div>
@@ -184,6 +185,9 @@
               <div class="col-auto"><button class="btn btn-outline-primary btn-sm action-btn ssh-btn" style="width:210px" data-action="action_install_backup_timer" data-help="Installe ou reactive le timer systemd de snapshots quotidiens. Sudo requis ; l'action met l'unite a jour.">&#x23F0; <span id="backupTimerInstallLabel">Installer timer sauvegarde</span></button></div>
               <div class="col-auto"><button class="btn btn-outline-warning btn-sm action-btn ssh-btn" style="width:210px" data-action="action_disable_backup_timer" data-confirm="Desactiver le timer de sauvegarde ? Les snapshots planifies ne seront plus lances. Les unites restent installees et le bouton Réactiver les remet en service." data-help="Desactive le timer systemd de snapshots : arret et desactivation au demarrage. Sudo requis.">&#x23F0; Désactiver timer sauvegarde</button></div>
               <div class="col"><small class="text-muted" id="backupTimerState">Sauvegarde planifiée : état inconnu (clique sur État sauvegarde).</small></div>
+            </div>
+            <div class="row g-2 align-items-center mt-1">
+              <div class="col"><small class="text-muted" id="backupFreshness">Dernier snapshot valide : état inconnu (connecte-toi en SSH).</small></div>
             </div>
             <div class="row g-2 align-items-center mt-1">
               <div class="col-auto"><button class="btn btn-outline-secondary btn-sm action-btn ssh-btn" style="width:180px" data-action="action_notify_status" data-help="Affiche les destinations de notification configurées (webhook/mail), la présence des fichiers notify-backup.state et notify-verify.state et la date de la dernière alerte envoyée, lus par le helper.">&#x1F4E3; État notifications</button></div>

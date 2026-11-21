@@ -56,7 +56,20 @@ function set_action_running(label) {
     actionStartedAt = Date.now();
     actionTimer = setInterval(renderActionState, 1000);
   }
+  const cancel = document.getElementById("cancelActionBtn");
+  if (cancel && cancel.classList) {
+    if (actionLabel) cancel.classList.remove("d-none");
+    else cancel.classList.add("d-none");
+  }
   renderActionState();
+}
+
+async function cancelCurrentAction() {
+  try {
+    await eel.cancel_current_action()();
+  } catch (e) {
+    show_alert("Annulation", "Impossible de demander l'annulation: " + e);
+  }
 }
 
 window.addEventListener("beforeunload", (e) => {
@@ -210,6 +223,7 @@ function syncField(id, key) {
 const BACKUP_STATE_TITLES = {
   verifyTimerState: "Vérification planifiée",
   backupTimerState: "Sauvegarde planifiée",
+  backupFreshness: "Dernier snapshot valide",
   notifyState: "Notifications d'échec",
 };
 
@@ -234,6 +248,55 @@ function refreshBackupCardStates() {
   refreshVerifyTimerState();
   refreshBackupTimerState();
   refreshNotificationState();
+  refreshBackupFreshness();
+}
+
+const BACKUP_FRESHNESS_LIMIT_DAYS = 7;
+
+function formatAge(secondes) {
+  if (secondes === null || secondes === undefined) return "date inconnue";
+  const jours = Math.floor(secondes / 86400);
+  if (jours >= 1) return `il y a ${jours} j`;
+  const heures = Math.floor(secondes / 3600);
+  if (heures >= 1) return `il y a ${heures} h`;
+  return "il y a moins d'une heure";
+}
+
+eel.expose(refreshBackupFreshness);
+async function refreshBackupFreshness() {
+  const el = document.getElementById("backupFreshness");
+  if (!el) return;
+  if (!backupStateAvailable(el)) return;
+  el.className = "text-muted";
+  el.textContent = "Dernier snapshot valide — lecture...";
+  let etat;
+  try {
+    etat = await eel.backup_freshness()();
+  } catch (e) {
+    el.className = "text-danger";
+    el.textContent = "Dernier snapshot valide — erreur (" + e + ")";
+    return;
+  }
+  if (etat.error) {
+    el.className = "text-danger";
+    el.textContent = etat.error;
+    return;
+  }
+  if (!etat.snapshots) {
+    el.className = "text-warning";
+    el.textContent =
+      "Dernier snapshot valide — aucun. Lance une sauvegarde des maintenant.";
+    return;
+  }
+  const perime =
+    etat.age_seconds !== null &&
+    etat.age_seconds > BACKUP_FRESHNESS_LIMIT_DAYS * 86400;
+  el.className = perime ? "text-danger" : "text-muted";
+  el.textContent =
+    `Dernier snapshot valide — ${etat.last || "inconnu"} (${formatAge(etat.age_seconds)})` +
+    (perime
+      ? ` — plus de ${BACKUP_FRESHNESS_LIMIT_DAYS} jours : verifie la sauvegarde planifiee.`
+      : "");
 }
 
 /* ─── Action dispatch ─── */
@@ -554,8 +617,10 @@ async function openRestoreDialogRun() {
       option.textContent = `${v.path} (${formatRestoreSize(v.bytes)})`;
       volumeSelect.appendChild(option);
     });
+    const total = volumes.reduce((somme, v) => somme + (v.bytes || 0), 0);
     volumeHint.textContent = volumes.length
-      ? "Aucune sélection = tous les volumes. Ctrl+clic pour en choisir plusieurs."
+      ? `Aperçu : ${volumes.length} volume(s), ${formatRestoreSize(total)} decompresses. ` +
+        "Aucune sélection = tous les volumes. Ctrl+clic pour en choisir plusieurs."
       : "Aucun volume restaurable dans ce snapshot.";
   }
 

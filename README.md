@@ -34,6 +34,8 @@ Structure principale :
 - `web/` (interface HTML/CSS/JS du GUI)
 - `INSTALL_UBUNTU.md` (guide serveur pas à pas)
 - `docs/APPLICATIONS.md` (détail métier par application)
+- `docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md` (matrice de validation serveur)
+- `docs/RESTAURATION_RUNBOOK.md` (reprise, staging et retour arrière)
 - `deploy_core/` (scaffold moteur de workflow unifié)
 
 ## Installation recommandée (méthode unique)
@@ -99,7 +101,16 @@ Déploiement et maintenance d'un serveur Ubuntu distant :
 - Redémarrer (sans pull/rebuild), Status, Logs (toutes apps ou app spécifique)
 
 **Sauvegarde & restauration**
-- **Sauvegarder** : lance `backup` via le helper (snapshot vérifié, rotation incluse)
+- **Sauvegarder** : lance `backup` via le helper (snapshot vérifié, rotation incluse).
+  Un verrou serveur refuse une seconde sauvegarde simultanée (timer + GUI) ;
+  le bouton **Annuler** ferme le canal de capture, le helper pouvant continuer.
+  La ligne « Dernier snapshot valide » affiche l'âge du dernier snapshot et
+  passe en rouge au-delà de 7 jours ou en l'absence de snapshot.
+- **Restaurer** : choisit un snapshot valide, affiche la date, les volumes et
+  la taille décompressée totale, puis refuse une destination non absolue,
+  la racine, `..` ou le HOME. La restauration écrit dans un staging vide et
+  recontrole l'intégrité SQLite après extraction. Voir
+  `docs/RESTAURATION_RUNBOOK.md` pour la bascule et le retour arrière.
 - **Vérifier les snapshots** : lance `verify --all` sur le serveur, affiche le
   bilan et la liste des snapshots dégradés (archive altérée, base corrompue,
   manifeste modifié), avec le détail des erreurs dans le journal `[verify]`.

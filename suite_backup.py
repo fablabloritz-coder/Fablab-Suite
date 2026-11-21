@@ -51,6 +51,7 @@ archive ou base SQLite), 2 si la verification ne peut pas s'executer
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -64,6 +65,11 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - la cible est Linux
+    fcntl = None
 
 FORMAT_VERSION = 1
 # Code de sortie reserve aux snapshots reellement degrades (3), pour distinguer
@@ -192,6 +198,50 @@ def verifier_destination_inscriptible(destination: Path | str) -> Path:
             f"({exc.strerror or exc})"
         ) from None
     return destination
+
+
+def _verrou_path(destination: Path | str, defaut: str) -> Path:
+    """Fichier de verrou : `FABSUITE_LOCK_FILE` sinon un fichier local."""
+    force = os.environ.get("FABSUITE_LOCK_FILE", "").strip()
+    if force:
+        return Path(force)
+    return Path(destination) / defaut
+
+
+@contextlib.contextmanager
+def verrou_operations(chemin: Path | str, action: str):
+    """Serialise les operations Fabsuite via un verrou consultatif POSIX.
+
+    Deux snapshots simultanes (timer systemd et GUI) sur le meme dossier
+    pourraient viser le meme nom horodate ou se disputer la rotation : le
+    second est refuse explicitement plutot que de produire un etat ambigu.
+    Si le verrou ne peut pas etre cree, l'operation continue : le preflight
+    d'ecriture a deja valide la destination.
+    """
+    chemin = Path(chemin)
+    descripteur = None
+    if fcntl is not None:
+        try:
+            chemin.parent.mkdir(parents=True, exist_ok=True)
+            descripteur = os.open(chemin, os.O_CREAT | os.O_RDWR, 0o600)
+        except OSError:
+            descripteur = None
+        if descripteur is not None:
+            try:
+                fcntl.flock(descripteur, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                os.close(descripteur)
+                raise SnapshotError(
+                    f"{action} deja en cours (verrou {chemin})"
+                ) from None
+    try:
+        yield
+    finally:
+        if descripteur is not None:
+            try:
+                fcntl.flock(descripteur, fcntl.LOCK_UN)
+            finally:
+                os.close(descripteur)
 
 
 def verifier_espace_disque(destination: Path | str, besoin: int) -> None:
@@ -348,6 +398,20 @@ def creer_snapshot(
     destination = verifier_destination_inscriptible(destination)
     verifier_espace_disque(destination, _taille_sources(sources))
 
+    with verrou_operations(_verrou_path(destination, ".fabsuite.lock"), "sauvegarde"):
+        return _ecrire_snapshot(
+            sources, destination, label=label, horodatage=horodatage
+        )
+
+
+def _ecrire_snapshot(
+    sources: list[Source],
+    destination: Path,
+    *,
+    label: str,
+    horodatage: str | None,
+) -> SnapshotResult:
+    """Ecrit le snapshot ; appele sous verrou, apres les preflights."""
     nom = f"suite-{horodatage or datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
     if label:
         nom = f"{nom}-{_slug(label)}"
@@ -929,12 +993,39 @@ def restaurer_snapshot(
         resultat.errors.append(f"destination impossible ({exc})")
         return resultat
 
-    for archive, app, role in archives:
-        avant = len(resultat.errors)
-        _extraire_archive(archive, destination, app, role, resultat.errors)
-        if len(resultat.errors) == avant:
-            resultat.restored.append(f"{app}/{role}")
+    chemin_verrou = _verrou_path(destination.parent, ".fabsuite-restore.lock")
+    try:
+        with verrou_operations(chemin_verrou, "restauration"):
+            for archive, app, role in archives:
+                avant = len(resultat.errors)
+                _extraire_archive(archive, destination, app, role, resultat.errors)
+                if len(resultat.errors) == avant:
+                    resultat.restored.append(f"{app}/{role}")
+    except SnapshotError as exc:
+        resultat.errors.append(str(exc))
+        return resultat
+    _verifier_sqlite_restauree(destination, resultat)
     return resultat
+
+
+def _verifier_sqlite_restauree(destination: Path, resultat: RestoreResult) -> None:
+    """Controle l'integrite des bases ecrites, apres extraction.
+
+    Les archives sont deja verifiees avant ecriture ; ce second passage
+    detecte une corruption survenue pendant l'extraction (disque, quota).
+    """
+    for chemin in sorted(destination.rglob("*")):
+        if not chemin.is_file() or chemin.suffix.lower() not in {
+            ".db",
+            ".sqlite",
+            ".sqlite3",
+        }:
+            continue
+        integrite = _integrite_sqlite(chemin)
+        if integrite != "ok":
+            resultat.errors.append(
+                f"restauration: integrite SQLite KO dans {chemin} ({integrite})"
+            )
 
 
 def _parser_source(brut: str) -> Source:

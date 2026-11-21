@@ -79,9 +79,13 @@ class BackupStatesJsTest(unittest.TestCase):
             )
 
     def assertLuDepuisLeServeur(self, nom):
-        """Les trois lignes sont relues (3 appels) et affichent les donnees serveur."""
+        """Les trois lignes et la fraicheur sont relues (4 appels)."""
         mesures = self.mesures_de(nom)
-        self.assertEqual(mesures["calls"], 3, f"{nom} : les trois etats doivent etre relus")
+        self.assertEqual(
+            mesures["calls"],
+            4,
+            f"{nom} : les trois etats et la fraicheur doivent etre relus",
+        )
         for identifiant in IDS:
             texte = mesures["texts"][identifiant]
             # Les deux libelles "inconnu" commencent par `Titre : `, jamais par
@@ -114,6 +118,15 @@ class BackupStatesJsTest(unittest.TestCase):
     def test_connexion_lit_les_trois_etats(self):
         self.assertLuDepuisLeServeur("connexion")
 
+    def test_connexion_affiche_le_dernier_snapshot_valide(self):
+        mesure = self.mesures_de("connexion")["freshness"]
+        self.assertTrue(
+            mesure["text"].startswith("Dernier snapshot valide — suite-2026-11-19-120000"),
+            mesure["text"],
+        )
+        self.assertIn("il y a 1 h", mesure["text"])
+        self.assertEqual(mesure["className"], "text-muted")
+
     def assertLibellesInstaller(self, nom):
         """Les deux boutons gardent leur libelle d'installation."""
         labels = self.mesures_de(nom)["labels"]
@@ -138,8 +151,20 @@ class BackupStatesJsTest(unittest.TestCase):
     def test_retour_onglet_ssh_connecte_relit(self):
         self.assertLuDepuisLeServeur("retour_onglet_ssh")
 
+    def test_fraicheur_remise_a_inconnu_en_local(self):
+        mesure = self.mesures_de("bascule_local")["freshness"]
+        self.assertEqual(
+            mesure["text"],
+            "Dernier snapshot valide : état inconnu (mode Local, cible serveur SSH requise).",
+        )
+
     def test_deconnexion_remet_a_inconnu_sans_appel(self):
         self.assertInconnu("deconnexion", INCONNU_DECONNECTE)
+        mesure = self.mesures_de("deconnexion")["freshness"]
+        self.assertEqual(
+            mesure["text"],
+            "Dernier snapshot valide : état inconnu (serveur SSH non connecté).",
+        )
 
     def test_rafraichissement_python_apres_deconnexion_sans_appel(self):
         self.assertInconnu("python_tardif_apres_deconnexion", INCONNU_DECONNECTE)

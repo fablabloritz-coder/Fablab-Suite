@@ -6,6 +6,48 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Fiabilisation Sauvegarde & restauration
+
+**Contexte** : apres les tests d'integration du format des erreurs, il restait
+le risque de concurrence timer/GUI, des destinations de restauration non
+controlees, l'absence de controle des bases apres extraction et l'absence de
+visibilite sur l'age du dernier snapshot.
+
+**Modifie (`suite_backup.py`)**
+- `verrou_operations` (fcntl/flock) : une sauvegarde ou une restauration
+  concurrente est refusee explicitement ; verrou apres le preflight pour
+  conserver le message de destination non inscriptible.
+- Apres extraction, `_verifier_sqlite_restauree` recontrole l'integrite des
+  bases `*.db`/`*.sqlite*` ecrites, en plus du controle des archives.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_valider_destination_restauration` : chemins absolus uniquement, refus de
+  `/`, de `..` et du HOME avant lancement du helper.
+- `backup_freshness` expose l'age du dernier snapshot valide ; le front
+  l'affiche et alerte au-dela de 7 jours ou si aucun snapshot n'existe.
+- `cancel_current_action` ferme le canal de capture en cours (le helper peut
+  continuer cote serveur) ; alerte dediee « Sauvegarde/Restauration
+  interrompue ». L'apercu de restauration affiche le total decompresse.
+
+**Tests**
+- Verrou : refus module snapshot/restauration et integration helper (verrou
+  deja tenu) ; seuil d'espace inclusif ; destination avec espaces/Unicode.
+- Capture SSH reelle (faux canal) : sortie, timeout, annulation et fermeture
+  du canal ; `_helper_command` conserve espaces/quotes/mot de passe sudo.
+- GUI : garde-fous destination, fraicheur, annulation et alertes dediees.
+
+**Docs**
+- `docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md` (matrice serveur reel).
+- `docs/RESTAURATION_RUNBOOK.md` (staging, bascule, retour arriere).
+
+**Limites**
+- L'annulation ferme le canal GUI ; le helper lance peut continuer sur le
+  serveur. Toujours verifier `[backup]`/`[restore]` avant de relancer.
+
+**Prochaine action** : executer la matrice d'acceptation sur un serveur reel.
+
+---
+
 ## 2026-11-21 — Test d'integration du format `[restore] ERROR:`
 
 **Contexte** : le pendant restauration manquait : le format `[restore] ERROR:`

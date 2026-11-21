@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 from deploy_core import DeploymentMode, DeploymentService, Operation, WorkflowContext
@@ -107,6 +108,9 @@ class FabSuiteBackend:
         # « Debloquer » remet a False, il ne doit jamais etre libere tant qu'une
         # action tourne (sinon Connecter/Deconnecter pourraient la couper).
         self._action_running = False
+        # Annulation demandee depuis le front : le worker en cours ferme son
+        # canal a la prochaine lecture. Le helper peut continuer cote serveur.
+        self._cancel_requested = threading.Event()
 
         # State dict (replaces tk.StringVar)
         self.state = {
@@ -238,6 +242,14 @@ class FabSuiteBackend:
         @eel.expose
         def list_snapshots():
             return self.list_snapshots()
+
+        @eel.expose
+        def backup_freshness():
+            return self.backup_freshness()
+
+        @eel.expose
+        def cancel_current_action():
+            return self.cancel_current_action()
 
         @eel.expose
         def list_volumes(snapshot):
@@ -534,6 +546,7 @@ class FabSuiteBackend:
             )
             self._log(f"Action refusee ({label}): action deja en cours.")
             return
+        self._cancel_requested.clear()
         self._actions_locked = True
         self._action_running = True
         self._set_action_running(label)
@@ -720,6 +733,8 @@ class FabSuiteBackend:
             morceaux = []
 
             while True:
+                if self._cancel_requested.is_set():
+                    raise RuntimeError("action annulee par l'operateur")
                 had_data = False
 
                 try:
@@ -758,6 +773,14 @@ class FabSuiteBackend:
 
         self._log(f"Exit code: {code}")
         return code, "".join(morceaux)
+
+    def cancel_current_action(self):
+        """Demande l'arret de la capture en cours (le helper continue serveur)."""
+        if not self._action_running:
+            return {"cancelled": False}
+        self._cancel_requested.set()
+        self._log("Annulation demandee: fermeture du canal en cours...")
+        return {"cancelled": True}
 
     def _exec_remote_logged(self, command, allow_failure=False, timeout_sec=180):
         code, _ = self._exec_remote_capture(command, timeout_sec=timeout_sec)
@@ -1750,6 +1773,13 @@ exit 0
         try:
             code, sortie = self._run_helper_action_capture("backup")
         except Exception as exc:
+            if "annulee" in str(exc):
+                self._show_alert(
+                    "Sauvegarde interrompue",
+                    "Action annulee cote GUI. Le helper peut continuer sur le "
+                    "serveur : verifie le journal [backup] avant de relancer.",
+                )
+                raise RuntimeError(f"sauvegarde annulee: {exc}") from exc
             # Session perdue, timeout ou helper absent : sans alerte, l'action
             # se terminerait uniquement par une trace dans le terminal.
             self._show_alert(
@@ -2259,6 +2289,13 @@ exit 0
                 "restore", extra_args=args
             )
         except Exception as exc:
+            if "annulee" in str(exc):
+                self._show_alert(
+                    "Restauration interrompue",
+                    "Action annulee cote GUI. Le helper peut continuer sur le "
+                    "serveur : verifie le journal [restore] avant de relancer.",
+                )
+                raise RuntimeError(f"restauration annulee: {exc}") from exc
             self._show_alert(
                 "Restauration impossible",
                 f"Impossible de lancer la restauration: {exc}\n\n"
@@ -2292,6 +2329,26 @@ exit 0
         )
         raise RuntimeError(f"restauration refusee (code {code})")
 
+    @staticmethod
+    def _valider_destination_restauration(destination, home=""):
+        """Refuse une destination dangereuse avant de lancer le helper."""
+        dest = (destination or "").strip()
+        if not dest:
+            return ""
+        if not dest.startswith("/"):
+            return "La destination de restauration doit etre un chemin absolu."
+        if ".." in Path(dest).parts or dest.rstrip("/") == "":
+            return (
+                "Destination de restauration refusee: ni la racine ni une "
+                "remontee de chemin ne sont acceptees."
+            )
+        if home and dest.rstrip("/") == home.rstrip("/"):
+            return (
+                "Destination de restauration refusee: choisis un sous-dossier "
+                "de staging, pas le HOME distant."
+            )
+        return ""
+
     def action_restore(self, snapshot, destination="", sources=None):
         if self._is_local_mode():
             self._show_ssh_only_info("Restauration d'un snapshot")
@@ -2302,10 +2359,45 @@ exit 0
         if not snapshot:
             self._show_alert("Restauration", "Choisis un snapshot a restaurer.")
             return
+        erreur = self._valider_destination_restauration(
+            destination, self.remote_home or ""
+        )
+        if erreur:
+            self._show_alert("Restauration refusee", erreur)
+            return
         self._run_async(
             "Restauration snapshot",
             lambda: self._restore_worker(snapshot, destination, volumes),
         )
+
+    def backup_freshness(self):
+        """Age du snapshot valide le plus recent, pour signaler une serie perimee."""
+        etat = self.list_snapshots()
+        if etat.get("error"):
+            return etat
+        snapshots = etat.get("snapshots") or []
+        if not snapshots:
+            return {
+                "snapshots": 0,
+                "last": "",
+                "created_at": "",
+                "age_seconds": None,
+            }
+        dernier = max(snapshots, key=lambda s: s.get("created_at") or "")
+        age = None
+        try:
+            cree = datetime.fromisoformat(str(dernier.get("created_at") or ""))
+            if cree.tzinfo is None:
+                cree = cree.astimezone()
+            age = max(0, int((datetime.now().astimezone() - cree).total_seconds()))
+        except (TypeError, ValueError):
+            age = None
+        return {
+            "snapshots": len(snapshots),
+            "last": dernier.get("name", ""),
+            "created_at": dernier.get("created_at", ""),
+            "age_seconds": age,
+        }
 
     def list_snapshots(self):
         if self._is_local_mode():

@@ -3315,6 +3315,88 @@ class PreflightTest(unittest.TestCase):
         self.assertIn("destination non inscriptible", resultat.errors[0])
         self.assertEqual(resultat.restored, [])
 
+    def test_snapshot_refuse_si_un_verrou_est_deja_pris(self):
+        """Timer systemd et GUI ne doivent pas produire deux snapshots a la fois."""
+        if suite_backup.fcntl is None:
+            self.skipTest("fcntl indisponible")
+        self.dest.mkdir(parents=True)
+        verrou = self.dest / ".fabsuite.lock"
+        with verrou.open("a+b") as fichier:
+            suite_backup.fcntl.flock(
+                fichier.fileno(), suite_backup.fcntl.LOCK_EX | suite_backup.fcntl.LOCK_NB
+            )
+            with self.assertRaises(suite_backup.SnapshotError) as contexte:
+                suite_backup.creer_snapshot([self.source], self.dest)
+
+        self.assertIn("sauvegarde deja en cours", str(contexte.exception))
+        self.assertEqual(list(self.dest.glob("suite-*")), [])
+
+    def test_restauration_refusee_si_un_verrou_est_deja_pris(self):
+        if suite_backup.fcntl is None:
+            self.skipTest("fcntl indisponible")
+        snapshot = self._snapshot_valide()
+        destination = self.root / "restauration"
+        verrou = destination.parent / ".fabsuite-restore.lock"
+        with verrou.open("a+b") as fichier:
+            suite_backup.fcntl.flock(
+                fichier.fileno(), suite_backup.fcntl.LOCK_EX | suite_backup.fcntl.LOCK_NB
+            )
+            resultat = suite_backup.restaurer_snapshot(
+                snapshot.directory, destination
+            )
+
+        self.assertTrue(resultat.errors)
+        self.assertIn("restauration deja en cours", resultat.errors[0])
+        self.assertEqual(resultat.restored, [])
+
+    def test_seuil_d_espace_est_inclusif(self):
+        besoin = suite_backup._taille_sources([self.source])
+        marge = max(suite_backup.ESPACE_LIBRE_MIN, besoin // 10)
+
+        with mock.patch.object(
+            suite_backup.shutil, "disk_usage", return_value=self._usage(besoin + marge)
+        ):
+            resultat = suite_backup.creer_snapshot([self.source], self.dest)
+        self.assertEqual(resultat.status, "ok")
+
+        self.dest = self.root / "juste_insuffisant"
+        with mock.patch.object(
+            suite_backup.shutil,
+            "disk_usage",
+            return_value=self._usage(besoin + marge - 1),
+        ):
+            with self.assertRaises(suite_backup.SnapshotError):
+                suite_backup.creer_snapshot([self.source], self.dest)
+
+    def test_destination_avec_espaces_et_unicode(self):
+        destination = self.root / "sauvegardes test éà" / "suite"
+
+        resultat = suite_backup.creer_snapshot([self.source], destination)
+
+        self.assertEqual(resultat.status, "ok")
+        self.assertTrue((resultat.directory / "snapshot.ok").is_file())
+
+    def test_la_restauration_reverifie_les_bases_extraites(self):
+        destination = self.root / "restauration"
+        base = destination / "Fabtrack/data/fabtrack.db"
+        base.parent.mkdir(parents=True)
+        base.write_bytes(b"SQLite format 3\x00" + b"\x00" * 64)
+        (destination / "Fabtrack/data/notes.txt").write_text("ok", encoding="utf-8")
+        resultat = suite_backup.RestoreResult(
+            snapshot=self.root / "snapshot", destination=destination
+        )
+
+        with mock.patch.object(
+            suite_backup,
+            "_integrite_sqlite",
+            return_value="database disk image is malformed",
+        ):
+            suite_backup._verifier_sqlite_restauree(destination, resultat)
+
+        self.assertTrue(resultat.errors)
+        self.assertIn("integrite SQLite KO", resultat.errors[0])
+        self.assertIn("fabtrack.db", resultat.errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

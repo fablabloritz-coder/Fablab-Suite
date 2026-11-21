@@ -1724,6 +1724,270 @@ class GuiSshSessionTest(unittest.TestCase):
         )
 
 
+class GuiSauvegardeRobustesseTest(unittest.TestCase):
+    """Garde-fous destination, fraicheur et annulation de la carte Sauvegarde."""
+
+    def setUp(self):
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend.remote_home = "/home/fablab"
+        self.alertes = []
+        self.backend._show_alert = lambda titre, message: self.alertes.append(
+            (titre, message)
+        )
+        self.backend._log = lambda message: None
+
+    def test_action_restore_refuse_une_destination_dangereuse(self):
+        lancements = []
+        self.backend._run_async = lambda label, cible: lancements.append(label)
+
+        for destination in (
+            "restauration",
+            "/",
+            "/home/fablab/../etc",
+            "/home/fablab",
+        ):
+            with self.subTest(destination=destination):
+                self.alertes.clear()
+                self.backend.action_restore("/home/fablab/suite-x", destination)
+                self.assertEqual(lancements, [])
+                self.assertEqual(self.alertes[0][0], "Restauration refusee")
+
+    def test_action_restore_accepte_un_staging_absolu(self):
+        appels = []
+        self.backend._run_async = lambda label, cible: appels.append(label)
+
+        self.backend.action_restore(
+            "/home/fablab/suite-x", "/home/fablab/restore-fabsuite/suite-x"
+        )
+
+        self.assertEqual(appels, ["Restauration snapshot"])
+        self.assertEqual(self.alertes, [])
+
+    def test_backup_freshness_donne_l_age_du_dernier_snapshot(self):
+        self.backend.list_snapshots = lambda: {
+            "snapshots": [
+                {
+                    "path": "/home/fablab/backup-fabsuite/suite-2026-11-19-120000",
+                    "name": "suite-2026-11-19-120000",
+                    "created_at": "2026-11-19T12:00:00+01:00",
+                },
+                {
+                    "path": "/home/fablab/backup-fabsuite/suite-2026-11-18-120000",
+                    "name": "suite-2026-11-18-120000",
+                    "created_at": "2026-11-18T12:00:00+01:00",
+                },
+            ]
+        }
+
+        etat = self.backend.backup_freshness()
+
+        self.assertEqual(etat["snapshots"], 2)
+        self.assertEqual(etat["last"], "suite-2026-11-19-120000")
+        self.assertIsNotNone(etat["age_seconds"])
+
+    def test_backup_freshness_signale_l_absence_de_snapshot(self):
+        self.backend.list_snapshots = lambda: {"snapshots": []}
+
+        etat = self.backend.backup_freshness()
+
+        self.assertEqual(etat["snapshots"], 0)
+        self.assertEqual(etat["last"], "")
+        self.assertIsNone(etat["age_seconds"])
+
+    def test_cancel_current_action_refuse_si_aucune_action(self):
+        self.assertFalse(self.backend._action_running)
+        self.assertEqual(
+            self.backend.cancel_current_action(), {"cancelled": False}
+        )
+
+    def test_cancel_current_action_armer_l_annulation(self):
+        self.backend._action_running = True
+
+        self.assertEqual(
+            self.backend.cancel_current_action(), {"cancelled": True}
+        )
+        self.assertTrue(self.backend._cancel_requested.is_set())
+
+    def test_worker_backup_signale_une_action_annulee(self):
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("action annulee par l'operateur")
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._backup_worker_run()
+
+        self.assertEqual(self.alertes[0][0], "Sauvegarde interrompue")
+        self.assertIn("Le helper peut continuer", self.alertes[0][1])
+
+    def test_worker_restore_signale_une_action_annulee(self):
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("action annulee par l'operateur")
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._restore_worker("/home/fablab/suite-x", "/home/fablab/stage")
+
+        self.assertEqual(self.alertes[0][0], "Restauration interrompue")
+        self.assertIn("Le helper peut continuer", self.alertes[0][1])
+
+
+class _FauxCanalExecution:
+    """Canal paramiko minimal : sorties predefinies, blocage ou fermeture."""
+
+    def __init__(self, morceaux=(), code=0, blocage=False):
+        self.morceaux = list(morceaux)
+        self.code = code
+        self.blocage = blocage
+        self.ferme = False
+        self.commande = ""
+
+    def settimeout(self, _valeur):
+        return None
+
+    def exec_command(self, commande):
+        self.commande = commande
+
+    def recv_ready(self):
+        return bool(self.morceaux)
+
+    def recv(self, _taille):
+        return self.morceaux.pop(0) if self.morceaux else b""
+
+    def recv_stderr_ready(self):
+        return False
+
+    def recv_stderr(self, _taille):
+        return b""
+
+    def exit_status_ready(self):
+        return not self.blocage and not self.morceaux
+
+    def recv_exit_status(self):
+        return self.code
+
+    def close(self):
+        self.ferme = True
+
+
+class _FauxTransportExecution:
+    def __init__(self, canal):
+        self.canal = canal
+
+    def is_active(self):
+        return True
+
+    def open_session(self):
+        return self.canal
+
+
+class _FauxClientExecution:
+    def __init__(self, canal):
+        self.transport = _FauxTransportExecution(canal)
+
+    def get_transport(self):
+        return self.transport
+
+
+class ExecRemoteCaptureTest(unittest.TestCase):
+    """Capture reelle : sortie, timeout et annulation ferment le canal."""
+
+    def setUp(self):
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend._require_connection = lambda: None
+        self.backend._log = lambda message: None
+
+    def _brancher(self, canal):
+        self.backend.client = _FauxClientExecution(canal)
+        return canal
+
+    def test_capture_concatene_stdout_et_le_code(self):
+        canal = self._brancher(
+            _FauxCanalExecution([b"[backup] destination: /srv\n", b"statut: ok\n"], 0)
+        )
+
+        code, sortie = self.backend._exec_remote_capture("backup", timeout_sec=5)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(sortie, "[backup] destination: /srv\nstatut: ok\n")
+        self.assertIn("bash -lc", canal.commande)
+        self.assertTrue(canal.ferme)
+
+    def test_capture_timeout_leve_et_ferme_le_canal(self):
+        canal = self._brancher(_FauxCanalExecution(blocage=True))
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._exec_remote_capture("backup", timeout_sec=0.2)
+
+        self.assertIn("timeout", str(contexte.exception))
+        self.assertTrue(canal.ferme)
+
+    def test_capture_annulee_leve_et_ferme_le_canal(self):
+        canal = self._brancher(_FauxCanalExecution(blocage=True))
+        self.backend._cancel_requested.set()
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._exec_remote_capture("backup", timeout_sec=5)
+
+        self.assertIn("annulee", str(contexte.exception))
+        self.assertTrue(canal.ferme)
+
+
+class HelperCommandQuotingTest(unittest.TestCase):
+    """`_helper_command` conserve exactement les arguments pieges."""
+
+    def test_restore_conserve_les_chemins_avec_espaces_et_quotes(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            remote = racine / "suite d'essai $HOME"
+            remote.mkdir()
+            journal = racine / "args.log"
+            env_journal = racine / "env.log"
+            script = remote / "fabsuite-ubuntu.sh"
+            script.write_text(
+                "#!/usr/bin/env bash\n"
+                "printf '%s\\n' \"$@\" > \"$ARGS_LOG\"\n"
+                "printf '%s\\n' \"$SUDO_PASSWORD\" > \"$ENV_LOG\"\n",
+                encoding="utf-8",
+            )
+            script.chmod(0o755)
+
+            backend = fabsuite_ssh_gui.FabSuiteBackend()
+            backend.state["remote_dir"] = str(remote)
+            backend.state["repo_url"] = fabsuite_ssh_gui.DEFAULT_MONOREPO_URL
+            backend.state["sudo_password"] = "p@ss'word $HOME"
+            backend._registration_host_for_server = lambda: ""
+            snapshot = str(racine / "snap it's" / "suite-x")
+            destination = str(racine / "staging $x")
+
+            commande = backend._helper_command(
+                "restore",
+                extra_args=["--snapshot", snapshot, "--dest", destination],
+            )
+            env = os.environ.copy()
+            env["ARGS_LOG"] = str(journal)
+            env["ENV_LOG"] = str(env_journal)
+            processus = subprocess.run(
+                ["bash", "-lc", commande],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            self.assertEqual(processus.returncode, 0, processus.stderr)
+            self.assertEqual(
+                journal.read_text(encoding="utf-8").splitlines(),
+                ["restore", "--snapshot", snapshot, "--dest", destination],
+            )
+            self.assertEqual(
+                env_journal.read_text(encoding="utf-8").rstrip("\n"),
+                "p@ss'word $HOME",
+            )
+
+
 def _exiger_support_integration():
     """Saute si le harnais POSIX ne peut pas reproduire le refus de preflight."""
     if not shutil.which("bash"):
@@ -1870,6 +2134,42 @@ class HelperBackupPreflightIntegrationTest(unittest.TestCase):
             self.assertEqual(titre, "Sauvegarde invalide")
             self.assertIn(ligne, message)
             self.assertNotIn("Le snapshot n'a pas ete valide", message)
+
+    def test_verrou_deja_pris_refuse_la_sauvegarde(self):
+        """Timer et GUI simultanes : le second helper doit echouer clairement."""
+        _exiger_support_integration()
+        if suite_backup.fcntl is None:
+            self.skipTest("fcntl indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            destination = racine / "backups"
+            destination.mkdir()
+            install, installer, env = _preparer_helper(
+                racine,
+                avec_docker=True,
+                extra_env=(f"FABSUITE_BACKUP_DIR={destination}",),
+            )
+            donnees = install / "FabHome/data"
+            donnees.mkdir(parents=True)
+            (donnees / "fabhome.db").write_bytes(b"x" * 512)
+
+            verrou = destination / ".fabsuite.lock"
+            with verrou.open("a+b") as fichier:
+                suite_backup.fcntl.flock(
+                    fichier.fileno(),
+                    suite_backup.fcntl.LOCK_EX | suite_backup.fcntl.LOCK_NB,
+                )
+                processus = _lancer_helper(
+                    env, installer, destination, "backup"
+                )
+
+            sortie = processus.stdout + processus.stderr
+            self.assertEqual(processus.returncode, 2, sortie)
+            self.assertIn(
+                "[backup] ECHEC: sauvegarde deja en cours (verrou", sortie
+            )
+            self.assertEqual(list(destination.glob("suite-*")), [], sortie)
 
 
 class HelperRestorePreflightIntegrationTest(unittest.TestCase):
