@@ -1477,6 +1477,28 @@ class GuiSshSessionTest(unittest.TestCase):
         self.assertIsNone(self.backend.client)
         self.assertEqual(fermetures, [True])
 
+    def test_reconnexion_refusee_pendant_une_action(self):
+        lancements = []
+        self.backend._run_async = lambda label, cible: lancements.append(label)
+        alertes = []
+        self.backend._show_alert = lambda titre, message: alertes.append((titre, message))
+        self.backend._actions_locked = True
+
+        self.backend.connect_ssh()
+
+        self.assertEqual(
+            lancements,
+            [],
+            "une reconnexion pendant une action couperait le worker en cours",
+        )
+        self.assertEqual(alertes[0][0], "Action en cours")
+        self.assertIn("Attends", alertes[0][1])
+
+        # Une fois l'action terminee, la reconnexion redevient possible.
+        self.backend._actions_locked = False
+        self.backend.connect_ssh()
+        self.assertEqual(lancements, ["Connect SSH"])
+
     def test_deconnexion_silencieuse_autorisee_pendant_une_action(self):
         """Les appels internes doivent pouvoir nettoyer une session perdue."""
         client = _FauxClient(_FauxTransport(actif=True))

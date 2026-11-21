@@ -495,6 +495,17 @@ class FabSuiteBackend:
     # ─── SSH connection ───
 
     def connect_ssh(self):
+        if self._actions_locked:
+            # `_connect_worker` commence par `disconnect_ssh(silent=True)` :
+            # reconnecter pendant une action couperait le worker comme le ferait
+            # le bouton Deconnecter.
+            self._show_alert(
+                "Action en cours",
+                "Une action est en cours (sauvegarde, restauration ou verification). "
+                "Attends qu'elle se termine avant de te reconnecter.",
+            )
+            self._log("Reconnexion refusee: action en cours.")
+            return
         self._run_async("Connect SSH", self._connect_worker)
 
     def _connect_worker(self):

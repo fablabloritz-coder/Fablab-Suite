@@ -6,6 +6,34 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Reconnexion refusee pendant une action
+
+**Contexte** : apres la garde du bouton Deconnecter, « Connecter » restait
+actif ; `_connect_worker` commence par `disconnect_ssh(silent=True)`, donc
+cliquer Connecter pendant un backup ou une restauration coupait encore le
+worker.
+
+**Corrige (`fabsuite_ssh_gui.py`)**
+- `connect_ssh()` refuse une reconnexion demandee par l'operateur tant que
+`_actions_locked` est vrai : alerte « Action en cours », ligne de journal,
+aucune fermeture de session. Une fois l'action finie, Connecter repart
+normalement.
+
+**Verifications**
+- `GuiSshSessionTest` : reconnexion refusee pendant une action (aucun worker
+lance, alerte) puis acceptee apres deverrouillage.
+- `python3 -m unittest discover -s tests` -> 188 tests OK ; `git diff --check`
+-> OK.
+
+**Limites**
+- Aucune cible SSH reelle dans la VM : la garde est testee avec `_run_async`
+simule.
+
+**Prochaine action** : cliquer Connecter pendant un backup reel doit afficher
+« Action en cours » sans interrompre la sauvegarde.
+
+---
+
 ## 2026-11-21 — Deconnexion refusee pendant une action
 
 **Contexte** : les boutons d'action sont verrouilles pendant un backup ou une
