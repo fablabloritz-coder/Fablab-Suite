@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import suite_backup
+
 # Stubs minimalistes : le GUI importe Eel/paramiko au chargement. Aucun de ces
 # tests ne lance l'interface ni une connexion SSH reelle.
 if "eel" not in sys.modules:
@@ -1722,6 +1724,95 @@ class GuiSshSessionTest(unittest.TestCase):
         )
 
 
+def _exiger_support_integration():
+    """Saute si le harnais POSIX ne peut pas reproduire le refus de preflight."""
+    if not shutil.which("bash"):
+        raise unittest.SkipTest("bash indisponible")
+    if os.geteuid() == 0:
+        raise unittest.SkipTest("root ignore le bit d'ecriture POSIX")
+
+
+def _preparer_helper(racine, *, avec_docker=False, extra_env=()):
+    """Installe helper/module reels, l'env file et un sudo simule sans elevation."""
+    install = racine / "suite"
+    install.mkdir()
+    shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
+    installer = racine / "installer"
+    installer.mkdir()
+    shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+    (installer / "fabsuite-ubuntu.env").write_text(
+        "\n".join(
+            (
+                "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                "GIT_BRANCH=main",
+                f"INSTALL_DIR={install}",
+                'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                "FLASK_SECRET_KEY=test-secret",
+                *extra_env,
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    faux_bin = racine / "bin"
+    faux_bin.mkdir()
+    # Present mais sans elevation : le refus vient des droits POSIX de la
+    # destination, pas d'une absence de sudo.
+    faux_sudo = faux_bin / "sudo"
+    faux_sudo.write_text("#!/usr/bin/env bash\nexec \"$@\"\n", encoding="utf-8")
+    faux_sudo.chmod(0o755)
+    if avec_docker:
+        faux_docker = faux_bin / "docker"
+        faux_docker.write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi\n'
+            "exit 1\n",
+            encoding="utf-8",
+        )
+        faux_docker.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{faux_bin}:{env['PATH']}"
+    env["HOME"] = str(racine / "home")
+    env["NON_INTERACTIVE"] = "1"
+    return install, installer, env
+
+
+def _lancer_helper(env, installer, destination, *args):
+    """Lance le helper via le faux sudo, puis rend la destination supprimable."""
+    try:
+        return subprocess.run(
+            [
+                "sudo",
+                "bash",
+                str(installer / "fabsuite-ubuntu.sh"),
+                *args,
+                "--env-file",
+                str(installer / "fabsuite-ubuntu.env"),
+            ],
+            cwd=installer,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    finally:
+        # Meme si le helper echoue ou expire, TemporaryDirectory doit pouvoir
+        # nettoyer la destination.
+        destination.chmod(0o755)
+
+
+def _backend_alimente(processus, sortie):
+    """Backend GUI dont la capture helper renvoie la sortie reelle du processus."""
+    backend = fabsuite_ssh_gui.FabSuiteBackend()
+    alertes = []
+    backend._show_alert = lambda titre, message: alertes.append((titre, message))
+    backend._log = lambda message: None
+    backend._run_helper_action_capture = (
+        lambda action, **kwargs: (processus.returncode, sortie)
+    )
+    return backend, alertes
+
+
 class HelperBackupPreflightIntegrationTest(unittest.TestCase):
     """Le helper reel emet `[backup] ECHEC:` ; l'alerte GUI reprend cette ligne.
 
@@ -1732,91 +1823,25 @@ class HelperBackupPreflightIntegrationTest(unittest.TestCase):
     """
 
     def test_destination_non_inscriptible_alimente_l_alerte(self):
-        if not shutil.which("bash"):
-            self.skipTest("bash indisponible")
-        if os.geteuid() == 0:
-            self.skipTest("root ignore le bit d'ecriture POSIX")
+        _exiger_support_integration()
 
         with tempfile.TemporaryDirectory() as tmp:
             racine = Path(tmp)
-            install = racine / "suite"
-            install.mkdir()
-            shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
-            donnees = install / "FabHome/data"
-            donnees.mkdir(parents=True)
-            (donnees / "fabhome.db").write_bytes(b"x" * 512)
-
             # Destination reelle mais non inscriptible : le preflight doit la
             # refuser avant toute archive (`destination non inscriptible`).
             destination = racine / "backups"
             destination.mkdir()
             destination.chmod(0o555)
-
-            installer = racine / "installer"
-            installer.mkdir()
-            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
-            env_file = installer / "fabsuite-ubuntu.env"
-            env_file.write_text(
-                "\n".join(
-                    (
-                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
-                        "GIT_BRANCH=main",
-                        f"INSTALL_DIR={install}",
-                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
-                        "FLASK_SECRET_KEY=test-secret",
-                        f"FABSUITE_BACKUP_DIR={destination}",
-                        "",
-                    )
-                ),
-                encoding="utf-8",
+            install, installer, env = _preparer_helper(
+                racine,
+                avec_docker=True,
+                extra_env=(f"FABSUITE_BACKUP_DIR={destination}",),
             )
+            donnees = install / "FabHome/data"
+            donnees.mkdir(parents=True)
+            (donnees / "fabhome.db").write_bytes(b"x" * 512)
 
-            faux_bin = racine / "bin"
-            faux_bin.mkdir()
-            faux_docker = faux_bin / "docker"
-            faux_docker.write_text(
-                "#!/usr/bin/env bash\n"
-                'if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi\n'
-                "exit 1\n",
-                encoding="utf-8",
-            )
-            # Sudo simule : il existe et relaie la commande sans elevation,
-            # donc le refus vient des droits POSIX de la destination, pas d'une
-            # absence de sudo. Aucune option sudo n'est passée, d'où le relais
-            # direct de `$@`.
-            faux_sudo = faux_bin / "sudo"
-            faux_sudo.write_text(
-                "#!/usr/bin/env bash\nexec \"$@\"\n",
-                encoding="utf-8",
-            )
-            faux_docker.chmod(0o755)
-            faux_sudo.chmod(0o755)
-
-            env = os.environ.copy()
-            env["PATH"] = f"{faux_bin}:{env['PATH']}"
-            env["HOME"] = str(racine / "home")
-            env["NON_INTERACTIVE"] = "1"
-            try:
-                processus = subprocess.run(
-                    [
-                        str(faux_sudo),
-                        "bash",
-                        str(installer / "fabsuite-ubuntu.sh"),
-                        "backup",
-                        "--env-file",
-                        str(env_file),
-                    ],
-                    cwd=installer,
-                    env=env,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-            finally:
-                # Rendre le dossier supprimable par TemporaryDirectory, meme
-                # si le helper a echoue ou expire.
-                destination.chmod(0o755)
-
+            processus = _lancer_helper(env, installer, destination, "backup")
             sortie = processus.stdout + processus.stderr
             self.assertEqual(processus.returncode, 2, sortie)
             lignes = [
@@ -1835,15 +1860,7 @@ class HelperBackupPreflightIntegrationTest(unittest.TestCase):
 
             # Meme sortie que celle capturee via SSH : l'alerte doit reprendre
             # la ligne reelle du helper, pas le message generique de repli.
-            backend = fabsuite_ssh_gui.FabSuiteBackend()
-            alertes = []
-            backend._show_alert = lambda titre, message: alertes.append(
-                (titre, message)
-            )
-            backend._log = lambda message: None
-            backend._run_helper_action_capture = (
-                lambda action, **kwargs: (processus.returncode, sortie)
-            )
+            backend, alertes = _backend_alimente(processus, sortie)
 
             with self.assertRaises(RuntimeError):
                 backend._backup_worker_run()
@@ -1853,6 +1870,82 @@ class HelperBackupPreflightIntegrationTest(unittest.TestCase):
             self.assertEqual(titre, "Sauvegarde invalide")
             self.assertIn(ligne, message)
             self.assertNotIn("Le snapshot n'a pas ete valide", message)
+
+
+class HelperRestorePreflightIntegrationTest(unittest.TestCase):
+    """Le helper reel emet `[restore] ERROR:` ; l'alerte GUI reprend cette ligne.
+
+    Pendant restauration du test backup : le vrai `fabsuite-ubuntu.sh restore`
+    est execute avec un module `suite_backup.py` reel, un snapshot valide et
+    une destination non inscriptible ; la sortie obtenue alimente ensuite le
+    worker restore du GUI, sans stub de format.
+    """
+
+    def test_destination_non_inscriptible_alimente_l_alerte(self):
+        _exiger_support_integration()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            install, installer, env = _preparer_helper(racine)
+
+            # Snapshot valide cree par le module reel : le helper doit aller
+            # jusqu'au preflight de destination, pas s'arreter sur le manifeste.
+            source = install / "FabHome/data"
+            source.mkdir(parents=True)
+            (source / "fabhome.db").write_bytes(b"x" * 512)
+            snapshot = suite_backup.creer_snapshot(
+                [suite_backup.Source("FabHome", "data", source)],
+                racine / "snapshots",
+            )
+            self.assertEqual(snapshot.status, "ok")
+
+            # Destination reelle, vide mais non inscriptible.
+            destination = racine / "restauration"
+            destination.mkdir()
+            destination.chmod(0o555)
+
+            processus = _lancer_helper(
+                env,
+                installer,
+                destination,
+                "restore",
+                "--snapshot",
+                str(snapshot.directory),
+                "--dest",
+                str(destination),
+            )
+            sortie = processus.stdout + processus.stderr
+            self.assertEqual(processus.returncode, 2, sortie)
+            lignes = [
+                ligne.strip()
+                for ligne in sortie.splitlines()
+                if ligne.strip().startswith("[restore] ERROR:")
+            ]
+            self.assertEqual(len(lignes), 1, sortie)
+            ligne = lignes[0]
+            self.assertIn(
+                f"[restore] ERROR: destination non inscriptible: {destination}",
+                ligne,
+            )
+            self.assertIn("Permission denied", ligne)
+            self.assertIn(
+                "[restore] ECHEC: restauration refusee ou incomplete (1 erreur(s))",
+                sortie,
+            )
+            self.assertEqual(list(destination.iterdir()), [], sortie)
+
+            # Meme sortie que celle capturee via SSH : l'alerte doit reprendre
+            # la ligne reelle du helper, pas le message generique de repli.
+            backend, alertes = _backend_alimente(processus, sortie)
+
+            with self.assertRaises(RuntimeError):
+                backend._restore_worker(str(snapshot.directory), str(destination))
+
+            self.assertEqual(len(alertes), 1)
+            titre, message = alertes[0]
+            self.assertEqual(titre, "Restauration refusee")
+            self.assertIn(ligne, message)
+            self.assertNotIn("La restauration a ete refusee ou interrompue", message)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,35 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Test d'integration du format `[restore] ERROR:`
+
+**Contexte** : le pendant restauration manquait : le format `[restore] ERROR:`
+etait seulement simule dans les tests GUI.
+
+**Ajoute (`tests/test_ssh_gui_backup.py`)**
+- `HelperRestorePreflightIntegrationTest` cree un snapshot valide avec le vrai
+module, puis execute le vrai `fabsuite-ubuntu.sh restore` (sudo simule sans
+elevation) vers une destination existante en `0555`.
+- Assertions : code 2, une seule ligne
+`[restore] ERROR: destination non inscriptible: … (Permission denied)`,
+`[restore] ECHEC: restauration refusee ou incomplete (1 erreur(s))`,
+destination restee vide.
+- La sortie reelle alimente `_restore_worker` : l'alerte « Restauration
+refusee » reprend cette ligne et pas le repli generique.
+- Test ignore sous root, comme le pendant backup.
+
+**Verifications**
+- Test cible puis suite complete ; `git diff --check`.
+
+**Limites**
+- Pas de transport SSH reel ; seuls le format du helper et son passage dans
+l'alerte sont couverts.
+
+**Prochaine action** : garder les deux tests synchronises si le format
+`[backup]`/`[restore]` change.
+
+---
+
 ## 2026-11-21 — Test d'integration du format `[backup] ECHEC:`
 
 **Contexte** : les tests GUI simulaient la sortie du helper ; il manquait une
