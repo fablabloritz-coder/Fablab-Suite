@@ -1546,6 +1546,49 @@ class GuiSshSessionTest(unittest.TestCase):
         self.assertIsNone(self.backend.client)
         self.assertEqual(fermetures, [True])
 
+    def test_nouvelle_action_refusee_pendant_une_action(self):
+        alertes = []
+        self.backend._show_alert = lambda titre, message: alertes.append((titre, message))
+        self.backend._action_running = True
+        # Etat laisse par un « Debloquer » pendant l'action.
+        self.backend._actions_locked = False
+        threads = []
+
+        class _FauxThread:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.demarre = False
+                threads.append(self)
+
+            def start(self):
+                self.demarre = True
+
+        ancien_thread = fabsuite_ssh_gui.threading.Thread
+        fabsuite_ssh_gui.threading.Thread = _FauxThread
+        try:
+            self.backend._run_async("Sauvegarde suite", lambda: None)
+        finally:
+            fabsuite_ssh_gui.threading.Thread = ancien_thread
+
+        self.assertEqual(threads, [], "aucun worker ne doit demarrer en parallele")
+        self.assertEqual(alertes[0][0], "Action en cours")
+        self.assertIn("Attends", alertes[0][1])
+        self.assertTrue(
+            self.backend._actions_locked,
+            "l'interface doit etre reverrouillee apres le refus",
+        )
+
+        # Fin de l'action : un nouveau lancement redevient possible.
+        self.backend._action_running = False
+        fabsuite_ssh_gui.threading.Thread = _FauxThread
+        try:
+            self.backend._run_async("Sauvegarde suite", lambda: None)
+        finally:
+            fabsuite_ssh_gui.threading.Thread = ancien_thread
+
+        self.assertEqual(len(threads), 1)
+        self.assertTrue(threads[0].demarre, "le worker doit etre lance une fois libre")
+
     def test_connect_active_le_keepalive(self):
         self.backend.state["target"] = "fablab@hote"
         self.backend.state["password"] = "secret"

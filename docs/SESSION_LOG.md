@@ -6,6 +6,36 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Pas de seconde action en parallele
+
+**Contexte** : apres « Debloquer » pendant un backup, les boutons d'action
+redevenaient actifs et un second backup ou une verification pouvait demarrer
+en parallele du worker en cours.
+
+**Corrige (`fabsuite_ssh_gui.py`)**
+- `_run_async` refuse de demarrer un worker quand `_action_running` est vrai :
+alerte « Action en cours », ligne de journal, et l'interface est reverrouillee.
+- A la fin du worker, `_run_async` libere les deux verrous : un nouveau
+lancement redevient possible.
+
+**Verifications**
+- `GuiSshSessionTest` : aucun `Thread` cree pendant une action (lancement
+refuse, alerte, interface reverrouillee), puis un worker demarre normalement
+apres la fin.
+- `python3 -m unittest discover -s tests` -> 190 tests OK ; `git diff --check`
+-> OK.
+
+**Limites**
+- Aucune cible SSH reelle dans la VM : le refus est verifie en simulant
+`threading.Thread`.
+- Les lectures d'etat (timers, notifications, listes de snapshots) restent
+autorisees pendant une action : ce ne sont pas des workers.
+
+**Prochaine action** : apres Debloquer pendant un backup reel, cliquer
+Sauvegarder doit afficher « Action en cours » sans lancer de second worker.
+
+---
+
 ## 2026-11-21 — Debloquer ne coupe plus une action
 
 **Contexte** : le bouton « Debloquer » remettait `_actions_locked` a False

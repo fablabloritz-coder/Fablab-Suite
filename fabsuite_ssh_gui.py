@@ -498,6 +498,20 @@ class FabSuiteBackend:
     # ─── Async worker pattern ───
 
     def _run_async(self, label, target):
+        if self._action_running:
+            # Un « Debloquer » remet l'interface a zero : sans cette garde, un
+            # second backup ou verify demarrerait en parallele du worker en
+            # cours. Reverrouille l'interface et refuse le lancement.
+            self._actions_locked = True
+            self._refresh_actions_state()
+            self._show_alert(
+                "Action en cours",
+                "Une action est deja en cours (sauvegarde, restauration ou "
+                "verification). Attends qu'elle se termine avant d'en lancer "
+                "une autre ; l'interface est reverrouillee.",
+            )
+            self._log(f"Action refusee ({label}): action deja en cours.")
+            return
         self._actions_locked = True
         self._action_running = True
         self._refresh_actions_state()
