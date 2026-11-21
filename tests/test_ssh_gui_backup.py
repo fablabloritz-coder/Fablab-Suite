@@ -1,6 +1,7 @@
 """Tests du cablage backup/restore du GUI SSH (backend uniquement)."""
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -1507,6 +1508,40 @@ class _FauxClient:
         )
 
 
+class _FauxClientConnexionEchouee(_FauxClient):
+    """Client dont `connect()` echoue : rien n'a ete etabli cote GUI."""
+
+    def __init__(self, erreur):
+        super().__init__(_FauxTransport())
+        self.erreur = erreur
+        self.ferme = False
+
+    def connect(self, **kwargs):
+        raise self.erreur
+
+    def close(self):
+        self.ferme = True
+
+
+class _ErreurSSH(Exception):
+    """Tient lieu de `paramiko.ssh_exception.SSHException` sans paramiko."""
+
+
+_PARAMIKO_INITIAL = fabsuite_ssh_gui.paramiko
+
+
+def _activer_erreur_ssh():
+    """Fait reconnaitre `_ErreurSSH` comme une erreur de transport."""
+    fabsuite_ssh_gui.paramiko = types.SimpleNamespace(
+        ssh_exception=types.SimpleNamespace(SSHException=_ErreurSSH)
+    )
+    return _ErreurSSH
+
+
+def _restaurer_paramiko():
+    fabsuite_ssh_gui.paramiko = _PARAMIKO_INITIAL
+
+
 class GuiSshSessionTest(unittest.TestCase):
     """La session SSH ne doit pas s'epuiser ni rester faussement « connectee ».
 
@@ -1860,6 +1895,63 @@ class GuiSshSessionTest(unittest.TestCase):
         )
         self.assertFalse(self.backend._action_running)
 
+    def test_connexion_initiale_impossible_affiche_une_alerte_dediee(self):
+        """Echec de `connect()` : alerte dediee, pas une simple trace."""
+        alertes = []
+        self.backend._show_alert = lambda titre, message: alertes.append(
+            (titre, message)
+        )
+        self.backend.state["target"] = "fablab@hote"
+        self.backend.state["password"] = "secret"
+        client = _FauxClientConnexionEchouee(socket.timeout("timed out"))
+        faux_paramiko = types.SimpleNamespace(
+            SSHClient=lambda: client, AutoAddPolicy=lambda: "policy"
+        )
+        ancien = fabsuite_ssh_gui.paramiko
+        fabsuite_ssh_gui.paramiko = faux_paramiko
+        try:
+            with self.assertRaises(RuntimeError) as contexte:
+                self.backend._connect_worker()
+        finally:
+            fabsuite_ssh_gui.paramiko = ancien
+
+        self.assertIn("connexion SSH impossible", str(contexte.exception))
+        self.assertEqual(len(alertes), 1)
+        titre, message = alertes[0]
+        self.assertEqual(titre, "Connexion SSH impossible")
+        self.assertIn("fablab@hote:22", message)
+        self.assertIn("Delai depasse", message)
+        self.assertIsNone(self.backend.client)
+        self.assertTrue(client.ferme, "le client en echec doit etre ferme")
+
+    def test_connexion_initiale_refusee_explique_l_authentification(self):
+        class _ErreurAuth(Exception):
+            pass
+
+        alertes = []
+        self.backend._show_alert = lambda titre, message: alertes.append(
+            (titre, message)
+        )
+        self.backend.state["target"] = "fablab@hote"
+        self.backend.state["password"] = "secret"
+        client = _FauxClientConnexionEchouee(_ErreurAuth("Authentication failed."))
+        faux_paramiko = types.SimpleNamespace(
+            SSHClient=lambda: client,
+            AutoAddPolicy=lambda: "policy",
+            AuthenticationException=_ErreurAuth,
+        )
+        ancien = fabsuite_ssh_gui.paramiko
+        fabsuite_ssh_gui.paramiko = faux_paramiko
+        try:
+            with self.assertRaises(RuntimeError):
+                self.backend._connect_worker()
+        finally:
+            fabsuite_ssh_gui.paramiko = ancien
+
+        self.assertEqual(len(alertes), 1)
+        self.assertEqual(alertes[0][0], "Connexion SSH impossible")
+        self.assertIn("Authentification refusee", alertes[0][1])
+
     def test_connect_active_le_keepalive(self):
         self.backend.state["target"] = "fablab@hote"
         self.backend.state["password"] = "secret"
@@ -2208,6 +2300,105 @@ class CoupureReseauCaptureTest(unittest.TestCase):
 
         self.assertIn("connexion SSH perdue", str(contexte.exception))
         self.assertIn("Socket is closed", str(contexte.exception))
+        self.assertTrue(canal.ferme)
+
+    def test_ssh_exception_pendant_la_capture_signale_la_coupure(self):
+        """Paramiko signale souvent une session morte par `SSHException`."""
+        classe = _activer_erreur_ssh()
+        try:
+            canal = _FauxCanalExecution(
+                erreur_recu=classe("SSH session not active")
+            )
+            self.backend.client = _FauxClientExecution(canal)
+
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+                self.backend._exec_remote_capture("backup", timeout_sec=5)
+        finally:
+            _restaurer_paramiko()
+
+        self.assertIn("SSH session not active", contexte.exception.detail)
+        self.assertTrue(canal.ferme)
+        self.assertIsNone(self.backend.client)
+
+    def test_ssh_exception_a_l_ouverture_de_session_signale_la_coupure(self):
+        classe = _activer_erreur_ssh()
+
+        class _TransportMort:
+            def is_active(self):
+                return True
+
+            def open_session(self):
+                raise classe("SSH session not active")
+
+        self.backend.client = types.SimpleNamespace(
+            get_transport=lambda: _TransportMort()
+        )
+        try:
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+                self.backend._exec_remote_capture("backup", timeout_sec=5)
+        finally:
+            _restaurer_paramiko()
+
+        self.assertIn("SSH session not active", contexte.exception.detail)
+        self.assertIsNone(self.backend.client)
+
+    def test_ssh_exception_sur_une_commande_simple_signale_la_coupure(self):
+        classe = _activer_erreur_ssh()
+
+        class _ClientMort:
+            def get_transport(self):
+                return types.SimpleNamespace(is_active=lambda: True)
+
+            def exec_command(self, commande, timeout=None):
+                raise classe("SSH session not active")
+
+        self.backend.client = _ClientMort()
+        try:
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+                self.backend._exec_remote_simple("true")
+        finally:
+            _restaurer_paramiko()
+
+        self.assertIn("SSH session not active", contexte.exception.detail)
+        self.assertIsNone(self.backend.client)
+
+    def test_ssh_exception_sur_le_code_de_sortie_signale_la_coupure(self):
+        classe = _activer_erreur_ssh()
+
+        class _CanalMort:
+            def __init__(self):
+                self.ferme = False
+
+            def settimeout(self, valeur):
+                return None
+
+            def exec_command(self, commande):
+                return None
+
+            def exit_status_ready(self):
+                return True
+
+            def recv_ready(self):
+                return False
+
+            def recv_stderr_ready(self):
+                return False
+
+            def recv_exit_status(self):
+                raise classe("SSH session not active")
+
+            def close(self):
+                self.ferme = True
+
+        canal = _CanalMort()
+        self.backend.client = _FauxClientExecution(canal)
+        try:
+            with self.assertRaises(fabsuite_ssh_gui.ConnexionSSHPerdue) as contexte:
+                self.backend._exec_remote_capture("backup", timeout_sec=5)
+        finally:
+            _restaurer_paramiko()
+
+        self.assertIn("SSH session not active", contexte.exception.detail)
         self.assertTrue(canal.ferme)
 
     def test_coupure_pendant_la_capture_repasse_la_session_a_non_connecte(self):

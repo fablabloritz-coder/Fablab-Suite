@@ -6,6 +6,44 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Connexion initiale et erreurs `SSHException`
+
+**Contexte** : inventaire des appels SSH restants. Deux trous : un echec de
+`client.connect()` ne produisait qu'une trace terminal (aucune alerte), et
+paramiko signale souvent une session morte par `ssh_exception.SSHException`,
+que seuls `OSError`/`EOFError` etaient convertis.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_erreurs_transport()` : `OSError`, `EOFError` + `paramiko.ssh_exception.
+  SSHException` quand il existe (`getattr` defensif : module absent ou stub de
+  test).
+- `_exec_remote_simple` et `_exec_remote_capture` : toutes les branches de
+  transport passent par ce tuple ; `open_session()` est desormais dans un
+  `try` (session refusee entre `is_active` et l'ouverture).
+- `_code_sortie_si_termine()` : regroupe `exit_status_ready`/`recv_ready`/
+  `recv_stderr_ready`/`recv_exit_status` et convertit une `SSHException` en
+  `ConnexionSSHPerdue` (session repassee a « Non connecte »).
+- `_connect_worker` : `client.connect()` sous `try`, client ferme puis
+  `_alerter_connexion_impossible()` — alerte « Connexion SSH impossible »
+  (distincte de « perdue ») avec cause traduite : authentification refusee,
+  cle d'hote inattendue, delai depasse, nom d'hote introuvable.
+- SFTP (`_open_sftp`, `sftp.put`) volontairement hors de cette passe.
+
+**Tests (`tests/test_ssh_gui_backup.py`)**
+- `GuiSshSessionTest` : connexion initiale en timeout (alerte unique, client
+  ferme, cause « Delai depasse ») et authentification refusee (cause dediee).
+- `CoupureReseauCaptureTest` : `SSHException` pendant `recv`, a
+  `open_session`, sur `exec_command` simple et sur `recv_exit_status` ->
+  `ConnexionSSHPerdue`, canal ferme, client libere. Faux module paramiko pour
+  rester independant de l'installation reelle.
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 268 tests OK (~14 s).
+
+**Prochaine action** : etendre la meme conversion aux uploads SFTP si besoin.
+
+---
+
 ## 2026-11-21 — Coupure pendant le reset de l'anti-rebond notifications
 
 **Contexte** : `_reset_notify_rebond` (appele apres un backup ou un verify

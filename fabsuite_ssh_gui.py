@@ -81,6 +81,22 @@ class ConnexionSSHPerdue(RuntimeError):
         )
 
 
+def _erreurs_transport():
+    """Types d'erreur qui signifient « transport SSH tombe ».
+
+    `OSError`/`EOFError` couvrent les sockets ; paramiko signale aussi une
+    session deja fermee par `ssh_exception.SSHException`, qu'il faut convertir
+    comme le reste pour ne pas retomber sur un message generique. Le module
+    peut etre absent (ou remplace par un stub de test) : les getattr evitent
+    alors toute AttributeError.
+    """
+    erreurs = (OSError, EOFError)
+    exception_ssh = getattr(getattr(paramiko, "ssh_exception", None), "SSHException", None)
+    if isinstance(exception_ssh, type) and issubclass(exception_ssh, BaseException):
+        erreurs += (exception_ssh,)
+    return erreurs
+
+
 class GuiRemoteCommandExecutor(CommandExecutor):
     """Command executor bridge for deploy_core -> existing GUI SSH logger."""
 
@@ -648,7 +664,18 @@ class FabSuiteBackend:
                 raise RuntimeError("Password is required for password auth")
             kwargs["password"] = password
 
-        client.connect(**kwargs)
+        try:
+            client.connect(**kwargs)
+        except Exception as exc:
+            # Aucune session n'a existe : alerte dediee plutot qu'une simple
+            # trace dans le terminal (le filet `_run_async` ne couvre que les
+            # coupures d'une session deja etablie).
+            try:
+                client.close()
+            except Exception:
+                pass
+            self._alerter_connexion_impossible(exc, host, user, port)
+            raise RuntimeError(f"connexion SSH impossible: {exc}") from exc
         transport = client.get_transport()
         if transport is not None:
             # Un backup ou une verification longue peut laisser la session
@@ -732,7 +759,7 @@ class FabSuiteBackend:
             raise self._connexion_perdue("transport inactif")
         try:
             stdin, stdout, stderr = self.client.exec_command(wrapped, timeout=30)
-        except (OSError, EOFError) as exc:
+        except _erreurs_transport() as exc:
             raise self._connexion_perdue(exc) from exc
         # Paramiko garde chaque canal ouvert dans le transport tant qu'il n'est
         # pas ferme : sans cette fermeture, le quota de sessions du serveur
@@ -748,7 +775,7 @@ class FabSuiteBackend:
         # ci-dessous pour garder son message dedie.
         except (socket.timeout, TimeoutError) as exc:
             raise RuntimeError("Remote command timeout (simple).") from exc
-        except (OSError, EOFError) as exc:
+        except _erreurs_transport() as exc:
             # Socket ferme ou deconnecte : meme alerte que pendant une capture.
             raise self._connexion_perdue(exc) from exc
         finally:
@@ -756,6 +783,21 @@ class FabSuiteBackend:
         if code != 0:
             raise RuntimeError(err.strip() or out.strip() or f"command failed with code {code}")
         return out
+
+    def _code_sortie_si_termine(self, channel):
+        """Code de sortie si le canal a termine, sinon `None`.
+
+        Regroupe les appels d'etat du canal : paramiko peut y lever une
+        `SSHException` de session fermee, a ne pas laisser remonter brute.
+        """
+        try:
+            if not channel.exit_status_ready():
+                return None
+            if channel.recv_ready() or channel.recv_stderr_ready():
+                return None
+            return channel.recv_exit_status()
+        except _erreurs_transport() as exc:
+            raise self._connexion_perdue(exc) from exc
 
     def _connexion_perdue(self, detail):
         """Repasse la session a « Non connecte » puis rend l'erreur dediee.
@@ -772,6 +814,34 @@ class FabSuiteBackend:
             self._log("Session SSH perdue: mise a jour de l'etat GUI impossible.")
         return ConnexionSSHPerdue(detail)
 
+    def _alerter_connexion_impossible(self, exc, host, user, port):
+        """Alerte dediee quand la connexion initiale n'aboutit pas.
+
+        Distincte de « Connexion perdue » : rien n'a ete perdu, la session n'a
+        jamais existe. La cause est traduite pour eviter un errno brut.
+        """
+        if isinstance(exc, getattr(paramiko, "AuthenticationException", ())):
+            cause = (
+                "Authentification refusee : verifie l'utilisateur, le mot de "
+                "passe ou la cle."
+            )
+        elif isinstance(exc, getattr(paramiko, "BadHostKeyException", ())):
+            cause = (
+                "Cle d'hote inattendue : verifie que le serveur est bien "
+                "celui attendu."
+            )
+        elif isinstance(exc, (socket.timeout, TimeoutError)):
+            cause = "Delai depasse : le serveur ne repond pas (hote, port ou pare-feu)."
+        elif isinstance(exc, socket.gaierror):
+            cause = "Nom d'hote introuvable : verifie l'adresse du serveur."
+        else:
+            cause = f"Detail : {exc}"
+        self._show_alert(
+            "Connexion SSH impossible",
+            f"Impossible de se connecter a {user}@{host}:{port}.\n\n{cause}\n\n"
+            "Verifie la cible, les identifiants et le reseau, puis reessaie.",
+        )
+
     def _exec_remote_capture(self, command, timeout_sec=180):
         """Execute une commande en journalisant sa sortie et la retourne.
 
@@ -787,15 +857,20 @@ class FabSuiteBackend:
         if transport is None or not transport.is_active():
             raise self._connexion_perdue("transport inactif")
 
-        channel = transport.open_session()
+        try:
+            channel = transport.open_session()
+        except _erreurs_transport() as exc:
+            # Session refusee entre le controle `is_active` et l'ouverture :
+            # meme message que pendant la capture, sans canal a fermer.
+            raise self._connexion_perdue(exc) from exc
         # Comme `_exec_remote_simple`, le canal doit etre ferme dans tous les
         # cas : le transport le reference jusqu'a sa fermeture et le serveur
         # compte les sessions ouvertes.
         try:
-            channel.settimeout(1.0)
             try:
+                channel.settimeout(1.0)
                 channel.exec_command(wrapped)
-            except (OSError, EOFError) as exc:
+            except _erreurs_transport() as exc:
                 # Session refusee ou transport tombe a l'ouverture : meme
                 # message que pendant la capture (le canal sera ferme plus bas).
                 raise self._connexion_perdue(exc) from exc
@@ -830,13 +905,13 @@ class FabSuiteBackend:
                 # `socket.timeout` herite d'OSError : doit rester avant.
                 except (socket.timeout, TimeoutError):
                     pass
-                except (OSError, EOFError) as exc:
+                except _erreurs_transport() as exc:
                     # Socket ferme ou deconnecte : message actionnable plutot
                     # qu'un errno brut remonte par le worker.
                     raise self._connexion_perdue(exc) from exc
 
-                if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
-                    code = channel.recv_exit_status()
+                code = self._code_sortie_si_termine(channel)
+                if code is not None:
                     break
 
                 if (time.time() - start) > timeout_sec:
