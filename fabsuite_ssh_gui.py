@@ -92,6 +92,10 @@ class FabSuiteBackend:
         self.remote_home = None
         self._closing = False
         self._actions_locked = False
+        # Etat reel du worker : contrairement a `_actions_locked`, que le bouton
+        # « Debloquer » remet a False, il ne doit jamais etre libere tant qu'une
+        # action tourne (sinon Connecter/Deconnecter pourraient la couper).
+        self._action_running = False
 
         # State dict (replaces tk.StringVar)
         self.state = {
@@ -158,9 +162,7 @@ class FabSuiteBackend:
 
         @eel.expose
         def manual_unlock_ui():
-            self._actions_locked = False
-            self._refresh_actions_state()
-            self._log("UI deverrouillee manuellement")
+            self.manual_unlock_ui()
 
         @eel.expose
         def action_upload_files():
@@ -340,6 +342,27 @@ class FabSuiteBackend:
     def _refresh_actions_state(self):
         self._set_actions_enabled(self._compute_actions_enabled())
 
+    def manual_unlock_ui(self):
+        """Debloque l'interface, sans jamais interrompre une action en cours.
+
+        Le bouton sert a recuperer une interface figee : il libere
+        `_actions_locked`, mais `_action_running` reste vrai tant que le worker
+        tourne, donc Connecter et Deconnecter continuent de refuser.
+        """
+        en_cours = self._action_running
+        self._actions_locked = False
+        self._refresh_actions_state()
+        if en_cours:
+            self._show_alert(
+                "Action en cours",
+                "L'interface est debloquee, mais une action tourne encore "
+                "(sauvegarde, restauration ou verification) : Connecter et "
+                "Deconnecter restent bloques jusqu'a la fin.",
+            )
+            self._log("UI deverrouillee manuellement (action en cours)")
+            return
+        self._log("UI deverrouillee manuellement")
+
     def _set_dir_rows(self, rows):
         self._dir_rows = rows
         try:
@@ -476,6 +499,7 @@ class FabSuiteBackend:
 
     def _run_async(self, label, target):
         self._actions_locked = True
+        self._action_running = True
         self._refresh_actions_state()
 
         def worker():
@@ -488,6 +512,7 @@ class FabSuiteBackend:
             finally:
                 self._log(f"--- end: {label} ---")
                 self._actions_locked = False
+                self._action_running = False
                 self._refresh_actions_state()
 
         threading.Thread(target=worker, daemon=True).start()
@@ -495,7 +520,7 @@ class FabSuiteBackend:
     # ─── SSH connection ───
 
     def connect_ssh(self):
-        if self._actions_locked:
+        if self._action_running:
             # `_connect_worker` commence par `disconnect_ssh(silent=True)` :
             # reconnecter pendant une action couperait le worker comme le ferait
             # le bouton Deconnecter.
@@ -555,7 +580,7 @@ class FabSuiteBackend:
         self._log(f"Connected to {host}:{port} as {user}")
 
     def disconnect_ssh(self, silent=False):
-        if not silent and self._actions_locked:
+        if not silent and self._action_running:
             # Couper la session pendant un backup, une restauration ou une
             # verification interrompt le worker en pleine operation (snapshot
             # partiel, staging incomplet). Seuls les appels internes (session

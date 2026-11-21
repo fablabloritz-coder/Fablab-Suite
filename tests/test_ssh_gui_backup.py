@@ -1456,7 +1456,7 @@ class GuiSshSessionTest(unittest.TestCase):
         fermetures = []
         client.close = lambda: fermetures.append(True)
         self.backend.client = client
-        self.backend._actions_locked = True
+        self.backend._action_running = True
         alertes = []
         self.backend._show_alert = lambda titre, message: alertes.append((titre, message))
 
@@ -1472,7 +1472,7 @@ class GuiSshSessionTest(unittest.TestCase):
         self.assertIn("Attends", alertes[0][1])
 
         # Une fois l'action terminee, la deconnexion redevient possible.
-        self.backend._actions_locked = False
+        self.backend._action_running = False
         self.backend.disconnect_ssh()
         self.assertIsNone(self.backend.client)
         self.assertEqual(fermetures, [True])
@@ -1482,7 +1482,7 @@ class GuiSshSessionTest(unittest.TestCase):
         self.backend._run_async = lambda label, cible: lancements.append(label)
         alertes = []
         self.backend._show_alert = lambda titre, message: alertes.append((titre, message))
-        self.backend._actions_locked = True
+        self.backend._action_running = True
 
         self.backend.connect_ssh()
 
@@ -1495,7 +1495,7 @@ class GuiSshSessionTest(unittest.TestCase):
         self.assertIn("Attends", alertes[0][1])
 
         # Une fois l'action terminee, la reconnexion redevient possible.
-        self.backend._actions_locked = False
+        self.backend._action_running = False
         self.backend.connect_ssh()
         self.assertEqual(lancements, ["Connect SSH"])
 
@@ -1505,10 +1505,44 @@ class GuiSshSessionTest(unittest.TestCase):
         fermetures = []
         client.close = lambda: fermetures.append(True)
         self.backend.client = client
-        self.backend._actions_locked = True
+        self.backend._action_running = True
 
         self.backend.disconnect_ssh(silent=True)
 
+        self.assertIsNone(self.backend.client)
+        self.assertEqual(fermetures, [True])
+
+    def test_deblocage_manuel_ne_permet_pas_de_couper_une_action(self):
+        client = _FauxClient(_FauxTransport(actif=True))
+        fermetures = []
+        client.close = lambda: fermetures.append(True)
+        self.backend.client = client
+        alertes = []
+        self.backend._show_alert = lambda titre, message: alertes.append((titre, message))
+        lancements = []
+        self.backend._run_async = lambda label, cible: lancements.append(label)
+        # Backup en cours : interface verrouillee et worker actif.
+        self.backend._actions_locked = True
+        self.backend._action_running = True
+
+        self.backend.manual_unlock_ui()
+
+        self.assertFalse(
+            self.backend._actions_locked, "Debloquer doit rendre l'interface utilisable"
+        )
+        self.assertEqual(alertes[0][0], "Action en cours")
+        self.assertIn("Connecter et Deconnecter restent bloques", alertes[0][1])
+
+        # Le deblocage ne doit pas servir de contournement pour couper le worker.
+        self.backend.disconnect_ssh()
+        self.backend.connect_ssh()
+        self.assertIs(self.backend.client, client)
+        self.assertEqual(fermetures, [])
+        self.assertEqual(lancements, [])
+
+        # Fin de l'action : les deux boutons redeviennent utilisables.
+        self.backend._action_running = False
+        self.backend.disconnect_ssh()
         self.assertIsNone(self.backend.client)
         self.assertEqual(fermetures, [True])
 

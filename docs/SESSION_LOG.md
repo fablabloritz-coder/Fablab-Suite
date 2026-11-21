@@ -6,6 +6,37 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Debloquer ne coupe plus une action
+
+**Contexte** : le bouton « Debloquer » remettait `_actions_locked` a False
+pendant un backup, ce qui reautorisait Connecter et Deconnecter et permettait
+de couper le worker en pleine operation.
+
+**Corrige (`fabsuite_ssh_gui.py`)**
+- Nouvel indicateur `_action_running`, pose par `_run_async` et libere uniquement
+dans son `finally` ; les gardes de `connect_ssh` et `disconnect_ssh` l'utilisent
+au lieu de `_actions_locked`.
+- `manual_unlock_ui()` devient une methode testable : elle libere l'interface
+mais avertit clairement quand une action tourne — Connecter et Deconnecter
+restent bloques jusqu'a la fin.
+
+**Verifications**
+- `GuiSshSessionTest` : le deblocage manuel ne permet ni deconnecter ni
+reconnecter pendant l'action (client intact, aucun worker lance), et tout
+redevient possible apres la fin.
+- `python3 -m unittest discover -s tests` -> 189 tests OK ; `git diff --check`
+-> OK.
+
+**Limites**
+- Aucune cible SSH reelle dans la VM : l'etat du worker est simule.
+- « Debloquer » libere toujours les autres boutons d'action : c'est son role
+d'issue de secours pour une interface figee.
+
+**Prochaine action** : cliquer Debloquer pendant un backup reel doit afficher
+l'avertissement sans couper la sauvegarde.
+
+---
+
 ## 2026-11-21 — Reconnexion refusee pendant une action
 
 **Contexte** : apres la garde du bouton Deconnecter, « Connecter » restait
