@@ -225,22 +225,37 @@ def _verrou_commun_path() -> Path:
 
 
 @contextlib.contextmanager
-def _sous_verrous(destination: Path | str, defaut: str, action: str):
-    """Prend le verrou commun puis le verrou propre a l'operation.
+def _verrou_commun():
+    """Verrou partage par les sauvegardes et les restaurations.
 
-    `FABSUITE_LOCK_FILE` force un fichier unique : il sert alors de verrou
-    commun et le verrou specifique est omis pour ne pas se bloquer soi-meme
-    (deux `flock` sur le meme fichier depuis le meme processus echouent).
+    `FABSUITE_LOCK_FILE` force un fichier unique : il sert alors aussi de
+    verrou commun.
     """
     force = os.environ.get("FABSUITE_LOCK_FILE", "").strip()
-    if force:
-        with verrou_operations(Path(force), action):
-            yield
+    chemin = Path(force) if force else _verrou_commun_path()
+    with verrou_operations(chemin, "operation sauvegarde/restauration"):
+        yield
+
+
+@contextlib.contextmanager
+def _verrou_specifique(destination: Path | str, defaut: str, action: str):
+    """Verrou propre a l'operation ; omis si `FABSUITE_LOCK_FILE` est force.
+
+    Dans ce cas le verrou commun est deja le fichier unique : le reprendre
+    bloquerait le processus lui-meme (deux `flock` sur le meme fichier).
+    """
+    if os.environ.get("FABSUITE_LOCK_FILE", "").strip():
+        yield
         return
-    with verrou_operations(
-        _verrou_commun_path(), "operation sauvegarde/restauration"
-    ):
-        with verrou_operations(Path(destination) / defaut, action):
+    with verrou_operations(Path(destination) / defaut, action):
+        yield
+
+
+@contextlib.contextmanager
+def _sous_verrous(destination: Path | str, defaut: str, action: str):
+    """Prend le verrou commun puis le verrou propre a l'operation."""
+    with _verrou_commun():
+        with _verrou_specifique(destination, defaut, action):
             yield
 
 
@@ -921,6 +936,11 @@ def restaurer_snapshot(
 ) -> RestoreResult:
     """Restaure un snapshot valide dans une destination vide.
 
+    Le verrou commun est pris avant toute lecture du snapshot et garde
+    jusqu'a la fin de l'extraction : une sauvegarde ne peut donc ni faire
+    tourner la rotation ni supprimer le snapshot entre la verification des
+    archives et leur extraction.
+
     Le manifeste, l'empreinte stockee dans `snapshot.ok` et chaque archive
     sont verifies avant la moindre ecriture. Le nom du dossier n'est pas
     authentifie : un snapshot intact peut etre renomme ou copie. Les chemins
@@ -931,6 +951,27 @@ def restaurer_snapshot(
     sont listes dans `skipped`. Une selection qui ne correspond a aucune source
     du manifeste refuse la restauration.
     """
+    try:
+        with _verrou_commun():
+            return _restaurer_snapshot(snapshot, destination, selection=selection)
+    except SnapshotError as exc:
+        # Verrou commun deja tenu : meme contrat que les autres refus, une
+        # RestoreResult en erreur plutot qu'une exception.
+        resultat = RestoreResult(
+            snapshot=Path(snapshot).expanduser(),
+            destination=Path(destination).expanduser(),
+        )
+        resultat.errors.append(str(exc))
+        return resultat
+
+
+def _restaurer_snapshot(
+    snapshot: Path | str,
+    destination: Path | str,
+    *,
+    selection: list[str] | None = None,
+) -> RestoreResult:
+    """Corps de `restaurer_snapshot`, execute sous le verrou commun."""
     snapshot = Path(snapshot).expanduser()
     destination = Path(destination).expanduser()
     resultat = RestoreResult(snapshot=snapshot, destination=destination)
@@ -1030,7 +1071,9 @@ def restaurer_snapshot(
         return resultat
 
     try:
-        with _sous_verrous(destination.parent, ".fabsuite-restore.lock", "restauration"):
+        with _verrou_specifique(
+            destination.parent, ".fabsuite-restore.lock", "restauration"
+        ):
             for archive, app, role in archives:
                 avant = len(resultat.errors)
                 _extraire_archive(archive, destination, app, role, resultat.errors)

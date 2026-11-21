@@ -480,8 +480,10 @@ Sauvegardes et restaurations sont sérialisées par un verrou commun
 (`$TMPDIR/.fabsuite-commun-<uid>.lock`, surchargeable avec
 `FABSUITE_COMMON_LOCK_FILE`) en plus du verrou propre à chaque opération :
 une restauration ne peut pas lire un snapshot pendant qu'une sauvegarde
-l'écrit. `FABSUITE_LOCK_FILE` force un fichier unique qui sert alors de verrou
-commun.
+l'écrit. `restore` prend ce verrou avant de vérifier le snapshot et le garde
+jusqu'à la fin de l'extraction : la rotation ne peut pas supprimer le dossier
+entre la vérification des archives et leur extraction. `FABSUITE_LOCK_FILE`
+force un fichier unique qui sert alors de verrou commun.
 
 Après un snapshot valide, la rotation s'applique : `FABSUITE_BACKUP_RETENTION_COUNT`
 (défaut 7) garde les N snapshots les plus récents, ou

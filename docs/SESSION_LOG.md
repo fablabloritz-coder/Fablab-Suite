@@ -18,6 +18,10 @@ et le modal ne montrait pas la place disponible sur le staging distant.
   `$TMPDIR/.fabsuite-commun-<uid>.lock`) en plus du verrou propre a chaque
   operation. `FABSUITE_LOCK_FILE` reste prioritaire et sert de verrou unique
   (le verrou specifique est alors omis pour eviter un auto-blocage).
+- `restaurer_snapshot` prend ce verrou commun avant la lecture du manifeste
+  et le garde jusqu'a la fin de l'extraction (`_restaurer_snapshot` en est le
+  corps) : la rotation d'une sauvegarde ne peut plus supprimer le snapshot
+  entre la verification des archives et leur extraction.
 
 **Modifie (`fabsuite_ssh_gui.py`, `web/index.html`, `web/js/app.js`)**
 - `remote_disk_space` : `df -Pk` sur le chemin saisi, remontee au premier
@@ -30,6 +34,9 @@ et le modal ne montrait pas la place disponible sur le staging distant.
 **Tests**
 - Verrou commun : refus backup et restore tant qu'il est tenu, priorite de
   `FABSUITE_LOCK_FILE` sans auto-blocage, surcharge du chemin.
+- Verification sous verrou : une sonde reprend le verrou commun depuis un
+  second descripteur pendant `_erreurs_snapshot` ; `flock` doit echouer, et
+  la restauration aboutit.
 - Espace disque : parsing `df -Pk`, chemin avec espaces quote, remontee au
   parent, chemins relatifs/`..`/retour ligne refuses sans appel, mode Local,
   sortie illisible et echec SSH.

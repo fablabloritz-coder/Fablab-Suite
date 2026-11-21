@@ -3468,6 +3468,45 @@ class VerrouCommunTest(unittest.TestCase):
         self.assertEqual(resultat.status, "ok")
         self.assertTrue(force.is_file())
 
+    def test_verification_du_snapshot_se_fait_sous_le_verrou_commun(self):
+        """Sans ce verrou, la rotation pouvait supprimer le snapshot verifie.
+
+        La sonde reprend le verrou commun depuis un second descripteur pendant
+        `_erreurs_snapshot` (debut de la verification) : `flock` doit echouer,
+        ce qui prouve que la verification est couverte par le verrou.
+        """
+        if suite_backup.fcntl is None:
+            self.skipTest("fcntl indisponible")
+        snapshot = suite_backup.creer_snapshot([self.source], self.dest)
+        self.assertEqual(snapshot.status, "ok")
+        destination = self.root / "restauration"
+        observation = {}
+        original = suite_backup._erreurs_snapshot
+
+        def sonder(snapshot_dir, manifeste):
+            chemin = suite_backup._verrou_commun_path()
+            with chemin.open("a+b") as fichier:
+                try:
+                    suite_backup.fcntl.flock(
+                        fichier.fileno(),
+                        suite_backup.fcntl.LOCK_EX | suite_backup.fcntl.LOCK_NB,
+                    )
+                except OSError:
+                    observation["verrouille"] = True
+                else:
+                    observation["verrouille"] = False
+                    suite_backup.fcntl.flock(fichier.fileno(), suite_backup.fcntl.LOCK_UN)
+            return original(snapshot_dir, manifeste)
+
+        with mock.patch.object(suite_backup, "_erreurs_snapshot", side_effect=sonder):
+            resultat = suite_backup.restaurer_snapshot(
+                snapshot.directory, destination
+            )
+
+        self.assertTrue(observation.get("verrouille"), "verification hors verrou commun")
+        self.assertEqual(resultat.errors, [])
+        self.assertEqual(resultat.restored, ["FabHome/data"])
+
     def test_verrou_commun_surchargeable(self):
         chemin = self.root / "autre" / "commun.lock"
         with mock.patch.dict(
