@@ -2360,6 +2360,8 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("verify-timer-status"), timeout_sec=60
             )
+        except NonConnecte as exc:
+            return {"error": str(exc)}
         except ConnexionSSHPerdue as exc:
             return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
@@ -2382,6 +2384,8 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("backup-timer-status"), timeout_sec=60
             )
+        except NonConnecte as exc:
+            return {"error": str(exc)}
         except ConnexionSSHPerdue as exc:
             return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
@@ -2432,6 +2436,8 @@ exit 0
             code, sortie = self._exec_remote_capture(
                 self._helper_command("notify-status"), timeout_sec=60
             )
+        except NonConnecte as exc:
+            return {"error": str(exc)}
         except ConnexionSSHPerdue as exc:
             return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
@@ -2700,6 +2706,8 @@ exit 0
             self._require_connection()
             self._ensure_remote_helper_ready()
             sortie = self._exec_remote_simple(self._helper_command("snapshots"))
+        except NonConnecte as exc:
+            return {"error": str(exc)}
         except ConnexionSSHPerdue as exc:
             return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
@@ -2749,6 +2757,8 @@ exit 0
             sortie = self._exec_remote_simple(
                 self._helper_command("volumes", extra_args=["--snapshot", snapshot])
             )
+        except NonConnecte as exc:
+            return {"error": str(exc)}
         except ConnexionSSHPerdue as exc:
             return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:
@@ -2806,6 +2816,8 @@ exit 0
                 'df -Pk -- "$p"'
             )
             sortie = self._exec_remote_simple(commande)
+        except NonConnecte as exc:
+            return {"error": str(exc)}
         except ConnexionSSHPerdue as exc:
             return {"error": f"Connexion perdue : {exc.detail}"}
         except Exception as exc:

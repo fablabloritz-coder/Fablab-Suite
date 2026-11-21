@@ -2687,6 +2687,31 @@ class CoupureReseauCaptureTest(unittest.TestCase):
             )
             self.assertIsNone(self.backend.client)
 
+    def test_lecteurs_d_etat_hors_connexion_affichent_non_connecte(self):
+        """Sans session : libelle « Non connecte », ni « perdue » ni
+        « Impossible de lire »."""
+        self.backend._require_connection = (
+            fabsuite_ssh_gui.FabSuiteBackend._require_connection.__get__(self.backend)
+        )
+        self.backend._is_local_mode = lambda: False
+
+        lecteurs = [
+            self.backend.list_snapshots,
+            lambda: self.backend.list_volumes("/home/fablab/suite-2026-11-20"),
+            self.backend.verify_timer_status,
+            self.backend.backup_timer_status,
+            self.backend.notify_status,
+            lambda: self.backend.remote_disk_space("/home/fablab"),
+        ]
+        for lecteur in lecteurs:
+            self.assertIsNone(self.backend.client)
+            resultat = lecteur()
+            self.assertEqual(
+                resultat["error"],
+                "Non connecte : clique sur Connecter",
+                f"libelle generique: {resultat['error']}",
+            )
+
     def test_operation_via_core_signale_la_coupure(self):
         self._preparer_worker()
         self.backend._resolve_remote_dir = lambda: "/opt/fabsuite"

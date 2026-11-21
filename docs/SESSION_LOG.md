@@ -6,6 +6,30 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Lecteurs d'etat hors connexion
+
+**Contexte** : dernier point cosmetique de l'inventaire. Hors connexion, les
+six lecteurs renvoyaient « Impossible de lire ... : Non connecte : clique sur
+Connecter ».
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `list_snapshots`, `list_volumes`, `verify_timer_status`,
+  `backup_timer_status`, `notify_status`, `remote_disk_space` : branche
+  `except NonConnecte` -> `{"error": "Non connecte : clique sur Connecter"}`,
+  avant les branches « Connexion perdue » et generique.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `CoupureReseauCaptureTest`)**
+- `test_lecteurs_d_etat_hors_connexion_affichent_non_connecte` : les six
+  lecteurs, client `None`, egalite exacte du libelle (interdit « Impossible de
+  lire » et « Connexion perdue »).
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 276 tests OK (~15 s).
+
+**Prochaine action** : verifier la matrice 8 et 11-23 sur serveur reel.
+
+---
+
 ## 2026-11-21 — Alerte « Non connecte » pour les actions sans session
 
 **Contexte** : dernier point de l'inventaire. Sans session, `_require_connection`
