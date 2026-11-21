@@ -45,6 +45,17 @@ except Exception:
 APP_TITLE = "FabSuite Installer"
 CONFIG_PATH = Path.home() / ".fabsuite_ssh_gui.json"
 DEFAULT_REMOTE_DIR = "~/fabsuite-installer"
+# Delais des actions du helper (secondes) : backup/install/update sont longs.
+HELPER_TIMEOUTS = {
+    "prepare-host": 900,
+    "install": 900,
+    "update": 900,
+    "backup": 900,
+    "restore": 900,
+    "repair-env": 300,
+    "check-data-safety": 300,
+}
+HELPER_TIMEOUT_DEFAUT = 180
 DEFAULT_MONOREPO_URL = "https://github.com/fablabloritz-coder/Fablab-Suite.git"
 LOCAL_WORKSPACE_ENV = "FABSUITE_LOCAL_WORKSPACE"
 
@@ -1197,32 +1208,73 @@ fi
 
         return remote_dir
 
-    def _run_helper_action(
-        self, action, app_name=None, allow_failure=False, extra_args=None
+    def _require_helper_files(self, remote_dir):
+        """Verifie que le helper et le module de sauvegarde sont utilisables.
+
+        `_ensure_remote_helper_ready` uploade les fichiers manquants ; ce
+        controle attrape le cas ou l'upload a echoue partiellement ou si le
+        script n'est pas executable, avant de lancer un backup/restore.
+        """
+        helper = f"{remote_dir}/fabsuite-ubuntu.sh"
+        module = f"{remote_dir}/suite_backup.py"
+        commande = (
+            f"if [ -x {shlex.quote(helper)} ] && [ -f {shlex.quote(module)} ]; "
+            "then echo ok; else echo missing; fi"
+        )
+        try:
+            sortie = self._exec_remote_simple(commande)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Helper indisponible: impossible de le verifier ({exc})"
+            ) from exc
+        if sortie.strip() != "ok":
+            raise RuntimeError(
+                "Helper indisponible sur le serveur: "
+                f"{helper} (executable) ou {module} manquant. "
+                "Clique sur 'Envoyer les fichiers installateur' puis relance."
+            )
+
+    def _run_helper_action_capture(
+        self, action, app_name=None, extra_args=None, timeout_sec=None
     ):
-        self._ensure_remote_helper_ready()
-        timeout_sec = 180
-        if action in ("prepare-host", "install", "update", "backup", "restore"):
-            timeout_sec = 900
-        elif action in ("repair-env", "check-data-safety"):
-            timeout_sec = 300
-        return self._exec_remote_logged(
+        """Execute une action du helper et retourne `(code, sortie)`.
+
+        La sortie permet de reprendre la ligne `[backup] ECHEC:` ou
+        `[restore] ERROR:` dans l'alerte : le code seul ne distingue pas une
+        destination non inscriptible d'un disque plein.
+        """
+        remote_dir = self._ensure_remote_helper_ready()
+        if action in ("backup", "restore"):
+            self._require_helper_files(remote_dir)
+        if timeout_sec is None:
+            timeout_sec = HELPER_TIMEOUTS.get(action, HELPER_TIMEOUT_DEFAUT)
+        return self._exec_remote_capture(
             self._helper_command(action, app_name=app_name, extra_args=extra_args),
-            allow_failure=allow_failure,
             timeout_sec=timeout_sec,
         )
 
-    def _exec_helper_action_capture(self, action, timeout_sec=180):
-        """Execute une action du helper et retourne `(code, sortie)`.
-
-        Variante de `_run_helper_action` pour les actions dont l'echec doit etre
-        explique a l'operateur : le code seul ne distingue pas un sudo manquant
-        d'une configuration systemd invalide.
-        """
-        self._ensure_remote_helper_ready()
-        return self._exec_remote_capture(
-            self._helper_command(action), timeout_sec=timeout_sec
+    def _run_helper_action(
+        self, action, app_name=None, allow_failure=False, extra_args=None
+    ):
+        code, _ = self._run_helper_action_capture(
+            action, app_name=app_name, extra_args=extra_args
         )
+        if code != 0 and not allow_failure:
+            raise RuntimeError("Remote command failed")
+        return code
+
+    @staticmethod
+    def _helper_error_detail(sortie, marqueur):
+        """Premiere ligne du helper qui explique un echec (prefixe compris)."""
+        for ligne in (sortie or "").splitlines():
+            texte = ligne.strip()
+            if texte.startswith(marqueur):
+                return texte
+        return ""
+
+    def _exec_helper_action_capture(self, action, timeout_sec=180):
+        """Alias de `_run_helper_action_capture` pour les actions de timer."""
+        return self._run_helper_action_capture(action, timeout_sec=timeout_sec)
 
     # ─── Path safety ───
 
@@ -1696,7 +1748,7 @@ exit 0
     def _backup_worker_run(self):
         self._log("Sauvegarde suite: snapshot verifie en cours...")
         try:
-            code = self._run_helper_action("backup", allow_failure=True)
+            code, sortie = self._run_helper_action_capture("backup")
         except Exception as exc:
             # Session perdue, timeout ou helper absent : sans alerte, l'action
             # se terminerait uniquement par une trace dans le terminal.
@@ -1717,10 +1769,15 @@ exit 0
                 "Le chemin du snapshot et le bilan de rotation sont dans le journal ([backup]).",
             )
             return
+        detail = self._helper_error_detail(sortie, "[backup] ECHEC:")
         self._show_alert(
             "Sauvegarde invalide",
-            f"Le snapshot n'a pas ete valide (code {code}).\n\n"
-            "Consulte le journal [backup] pour identifier la source ou la base en cause.",
+            (
+                f"{detail}\n\n"
+                if detail
+                else f"Le snapshot n'a pas ete valide (code {code}).\n\n"
+            )
+            + "Consulte le journal [backup] pour identifier la source ou la base en cause.",
         )
         raise RuntimeError(f"snapshot invalide (code {code})")
 
@@ -2198,8 +2255,8 @@ exit 0
         for volume in volumes:
             args.extend(["--source", volume])
         try:
-            code = self._run_helper_action(
-                "restore", allow_failure=True, extra_args=args
+            code, sortie = self._run_helper_action_capture(
+                "restore", extra_args=args
             )
         except Exception as exc:
             self._show_alert(
@@ -2223,10 +2280,15 @@ exit 0
                 "Arrete la suite, copie les fichiers vers les chemins de donnees, puis redemarre.",
             )
             return
+        detail = self._helper_error_detail(sortie, "[restore] ERROR:")
         self._show_alert(
             "Restauration refusee",
-            f"La restauration a ete refusee ou interrompue (code {code}).\n\n"
-            "Consulte le journal [restore]: manifeste, marqueur ou sha256 invalide.",
+            (
+                f"{detail}\n\n"
+                if detail
+                else f"La restauration a ete refusee ou interrompue (code {code}).\n\n"
+            )
+            + "Consulte le journal [restore]: manifeste, marqueur ou sha256 invalide.",
         )
         raise RuntimeError(f"restauration refusee (code {code})")
 

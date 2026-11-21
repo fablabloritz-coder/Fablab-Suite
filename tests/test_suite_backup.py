@@ -3221,5 +3221,100 @@ class HelperNotifyFailureTest(unittest.TestCase):
             self.assertEqual(corps.strip(), "Corps du message")
 
 
+class PreflightTest(unittest.TestCase):
+    """Preflight destination/espace : refus avant d'ecrire quoi que ce soit."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+        self.source = suite_backup.Source(
+            "Fabtrack", "data", self.root / "source/data"
+        )
+        self.source.path.mkdir(parents=True)
+        (self.source.path / "base.db").write_bytes(b"x" * 4096)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @staticmethod
+    def _usage(free):
+        return types.SimpleNamespace(total=free, used=0, free=free)
+
+    def test_snapshot_refuse_une_destination_non_inscriptible(self):
+        with mock.patch.object(
+            suite_backup.tempfile,
+            "mkstemp",
+            side_effect=PermissionError(13, "Permission denied"),
+        ):
+            with self.assertRaises(suite_backup.SnapshotError) as contexte:
+                suite_backup.creer_snapshot([self.source], self.dest)
+
+        self.assertIn("destination non inscriptible", str(contexte.exception))
+        self.assertIn("Permission denied", str(contexte.exception))
+        self.assertEqual(list(self.dest.glob("suite-*")), [])
+
+    def test_snapshot_refuse_un_disque_trop_plein(self):
+        with mock.patch.object(
+            suite_backup.shutil, "disk_usage", return_value=self._usage(1024)
+        ):
+            with self.assertRaises(suite_backup.SnapshotError) as contexte:
+                suite_backup.creer_snapshot([self.source], self.dest)
+
+        message = str(contexte.exception)
+        self.assertIn("espace disque insuffisant", message)
+        self.assertIn("64.0 Mo de marge", message)
+        self.assertEqual(list(self.dest.glob("suite-*")), [])
+
+    def test_snapshot_passe_si_l_espace_suffit(self):
+        with mock.patch.object(
+            suite_backup.shutil,
+            "disk_usage",
+            return_value=self._usage(10 * 1024 ** 3),
+        ):
+            resultat = suite_backup.creer_snapshot([self.source], self.dest)
+
+        self.assertEqual(resultat.status, "ok")
+        self.assertTrue((resultat.directory / "snapshot.ok").is_file())
+
+    def _snapshot_valide(self):
+        resultat = suite_backup.creer_snapshot([self.source], self.dest)
+        self.assertEqual(resultat.status, "ok")
+        return resultat
+
+    def test_restauration_refusee_si_espace_insuffisant(self):
+        snapshot = self._snapshot_valide()
+        destination = self.root / "restauration"
+
+        with mock.patch.object(
+            suite_backup.shutil, "disk_usage", return_value=self._usage(1024)
+        ):
+            resultat = suite_backup.restaurer_snapshot(
+                snapshot.directory, destination
+            )
+
+        self.assertTrue(resultat.errors)
+        self.assertIn("espace disque insuffisant", resultat.errors[0])
+        self.assertEqual(resultat.restored, [])
+        self.assertFalse((destination / "Fabtrack/data/base.db").exists())
+
+    def test_restauration_refusee_si_destination_non_inscriptible(self):
+        snapshot = self._snapshot_valide()
+        destination = self.root / "restauration"
+
+        with mock.patch.object(
+            suite_backup.tempfile,
+            "mkstemp",
+            side_effect=PermissionError(13, "Permission denied"),
+        ):
+            resultat = suite_backup.restaurer_snapshot(
+                snapshot.directory, destination
+            )
+
+        self.assertTrue(resultat.errors)
+        self.assertIn("destination non inscriptible", resultat.errors[0])
+        self.assertEqual(resultat.restored, [])
+
+
 if __name__ == "__main__":
     unittest.main()

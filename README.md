@@ -460,8 +460,10 @@ et résultat d'intégrité.
 - Un volume absent est un simple avertissement (application non installée) ; un
 snapshot sans aucune donnée est refusé.
 
-Le snapshot est pris à chaud, applicatifs démarrés : pour un arrêt parfaitement
-cohérent de toutes les écritures, arrêter la suite avant de le lancer.
+Avant d'écrire la moindre archive, un préflight vérifie que la destination est
+inscriptible (fichier sonde créé puis supprimé) et que le disque a assez de
+place : taille des sources + marge de 10 %, au moins 64 Mo. Un refus affiche
+les volumes libres et nécessaires, code de sortie 2, sans créer de snapshot.
 
 Après un snapshot valide, la rotation s'applique : `FABSUITE_BACKUP_RETENTION_COUNT`
 (défaut 7) garde les N snapshots les plus récents, ou
@@ -675,6 +677,9 @@ Avant la moindre écriture, la commande vérifie le manifeste, son empreinte
 la lisibilité de leur contenu. Elle refuse un snapshot invalide, une archive
 altérée et tout membre absolu, contenant `..`, hors `App/role` ou de type lien.
 La destination doit être vide et n'être ni un fichier ni un lien symbolique.
+Un préflight vérifie ensuite qu'elle est inscriptible et que le disque peut
+accueillir les volumes décompressés (somme des tailles du manifeste + marge),
+avant toute extraction.
 
 Par défaut, tous les volumes du snapshot sont restaurés. `--source APP|ROLE`
 (répétable ; `APP/ROLE` accepté aussi) restreint l'extraction aux volumes

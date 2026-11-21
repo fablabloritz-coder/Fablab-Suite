@@ -74,6 +74,10 @@ NOM_VALIDE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 NOM_SNAPSHOT = re.compile(r"^suite-(\d{4}-\d{2}-\d{2}-\d{6})(?:-[A-Za-z0-9._-]+)?$")
 RETENTION_COUNT_DEFAUT = 7
 RETENTION_DAYS_DEFAUT = 0
+# Marge minimale exigee en plus de la taille estimee : une archive peut grossir
+# (compression, fichiers ajoutes pendant la copie) et le disque ne doit pas
+# tomber a zero pendant l'ecriture du snapshot.
+ESPACE_LIBRE_MIN = 64 * 1024 * 1024
 
 
 class SnapshotError(Exception):
@@ -146,6 +150,67 @@ class RotationResult:
     supprimes: list[Path] = field(default_factory=list)
     conserves: int = 0
     erreurs: list[str] = field(default_factory=list)
+
+
+def _taille_lisible(octets: int) -> str:
+    """Taille lisible dans un message d'erreur (Mo/Go, sans dependance)."""
+    for unite, seuil in (("Go", 1024 ** 3), ("Mo", 1024 ** 2)):
+        if octets >= seuil:
+            return f"{octets / seuil:.1f} {unite}"
+    return f"{octets} o"
+
+
+def _taille_octets(chemin: Path) -> int:
+    """Somme des tailles de fichiers sous `chemin`, sans suivre les liens."""
+    total = 0
+    for racine, _dossiers, fichiers in os.walk(chemin):
+        for nom in fichiers:
+            try:
+                total += os.lstat(os.path.join(racine, nom)).st_size
+            except OSError:
+                continue
+    return total
+
+
+def verifier_destination_inscriptible(destination: Path | str) -> Path:
+    """Cree la destination si besoin et verifie qu'on peut y ecrire.
+
+    Un fichier sonde est cree puis supprime : `os.access` peut mentir (ACL,
+    montage en lecture seule, quota), une ecriture reelle non.
+    """
+    destination = Path(destination).expanduser()
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+        descripteur, sonde = tempfile.mkstemp(
+            prefix=".fabsuite-preflight-", dir=str(destination)
+        )
+        os.close(descripteur)
+        os.unlink(sonde)
+    except OSError as exc:
+        raise SnapshotError(
+            f"destination non inscriptible: {destination} "
+            f"({exc.strerror or exc})"
+        ) from None
+    return destination
+
+
+def verifier_espace_disque(destination: Path | str, besoin: int) -> None:
+    """Refuse si le disque n'a pas `besoin` + marge de libre."""
+    libre = shutil.disk_usage(str(destination)).free
+    marge = max(ESPACE_LIBRE_MIN, int(besoin) // 10)
+    if libre < besoin + marge:
+        raise SnapshotError(
+            f"espace disque insuffisant dans {destination}: "
+            f"{_taille_lisible(libre)} libres, "
+            f"{_taille_lisible(besoin + marge)} necessaires "
+            f"(dont {_taille_lisible(marge)} de marge)"
+        )
+
+
+def _taille_sources(sources: list["Source"]) -> int:
+    return sum(
+        _taille_octets(source.path) for source in sources if source.path.exists()
+    )
 
 
 def _slug(texte: str) -> str:
@@ -278,8 +343,10 @@ def creer_snapshot(
     if len(set(couples)) != len(couples):
         raise SnapshotError("source en double (meme application et meme role)")
 
-    destination = Path(destination).expanduser()
-    destination.mkdir(parents=True, exist_ok=True)
+    # Preflight : refuser tot une destination non inscriptible ou un disque
+    # trop plein, avant d'ecrire la moindre archive.
+    destination = verifier_destination_inscriptible(destination)
+    verifier_espace_disque(destination, _taille_sources(sources))
 
     nom = f"suite-{horodatage or datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
     if label:
@@ -798,6 +865,7 @@ def restaurer_snapshot(
         resultat.errors.append("manifeste sans sources")
 
     archives: list[tuple[Path, str, str]] = []
+    besoin = 0
     vus: set[tuple[str, str]] = set()
     for entree in sources if isinstance(sources, list) else []:
         if not isinstance(entree, dict):
@@ -830,6 +898,8 @@ def restaurer_snapshot(
             resultat.errors.append(f"{app} {role}: archive alteree ({nom_archive})")
             continue
         resultat.errors.extend(_verifier_membres(archive, app, role))
+        # Taille decompressee du manifeste : c'est ce qui sera ecrit.
+        besoin += int(entree.get("bytes") or 0)
         archives.append((archive, app, role))
 
     if demandees is not None:
@@ -841,6 +911,15 @@ def restaurer_snapshot(
     if not resultat.errors and not archives:
         resultat.errors.append("aucune archive a restaurer")
     if resultat.errors:
+        return resultat
+
+    # Preflight : la destination doit etre inscriptible et assez grande pour
+    # les volumes extraits, avant toute ecriture.
+    try:
+        verifier_destination_inscriptible(destination)
+        verifier_espace_disque(destination, besoin)
+    except SnapshotError as exc:
+        resultat.errors.append(str(exc))
         return resultat
 
     resultat.verified_archives = len(archives)

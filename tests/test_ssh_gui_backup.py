@@ -104,8 +104,37 @@ class GuiBackupRestoreTest(unittest.TestCase):
         # Le hint du modal est un <p> : le message doit rester sur une ligne.
         self.assertNotIn("\n", resultat["error"])
 
+    def test_backup_refuse_si_le_helper_est_incomplet(self):
+        """Helper non executable ou module absent : refus avant de lancer."""
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_simple = lambda commande: "missing\n"
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._run_helper_action("backup", allow_failure=True)
+
+        self.assertIn("Helper indisponible", str(contexte.exception))
+        self.assertIn("suite_backup.py", str(contexte.exception))
+
+    def test_backup_passe_quand_le_helper_est_complet(self):
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_simple = lambda commande: "ok\n"
+        self.backend._exec_remote_capture = lambda commande, **kwargs: (0, "")
+
+        code = self.backend._run_helper_action("backup")
+
+        self.assertEqual(code, 0)
+
+    def test_restore_verifie_aussi_le_helper(self):
+        self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
+        self.backend._exec_remote_simple = lambda commande: "missing\n"
+
+        with self.assertRaises(RuntimeError) as contexte:
+            self.backend._run_helper_action("restore")
+
+        self.assertIn("Helper indisponible", str(contexte.exception))
+
     def test_backup_worker_message_de_succes(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 0
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (0, "")
 
         self.backend._backup_worker()
 
@@ -113,18 +142,38 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(self.alertes[0][0], "Sauvegarde terminee")
 
     def test_backup_worker_signale_un_snapshot_invalide(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 2
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (2, "")
 
         with self.assertRaises(RuntimeError):
             self.backend._backup_worker()
 
         self.assertEqual(self.alertes[0][0], "Sauvegarde invalide")
+        # Repli : sans ligne [backup] ECHEC, le code reste affiche.
+        self.assertIn("code 2", self.alertes[0][1])
+        self.assertIn("journal [backup]", self.alertes[0][1])
+
+    def test_backup_worker_reprend_la_ligne_echec_du_helper(self):
+        """Un refus de preflight est affiche tel que le helper l'explique."""
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (
+            2,
+            "[backup] destination: /srv/sauvegardes\n"
+            "[backup] ECHEC: espace disque insuffisant dans /srv/sauvegardes: "
+            "10.0 Mo libres, 64.0 Mo necessaires\n",
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._backup_worker()
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Sauvegarde invalide")
+        self.assertIn("[backup] ECHEC: espace disque insuffisant", message)
+        self.assertNotIn("Le snapshot n'a pas ete valide", message)
 
     def test_backup_worker_signale_une_erreur_ssh(self):
         def echouer(action, **kwargs):
             raise RuntimeError("connexion perdue")
 
-        self.backend._run_helper_action = echouer
+        self.backend._run_helper_action_capture = echouer
 
         with self.assertRaises(RuntimeError) as contexte:
             self.backend._backup_worker()
@@ -137,7 +186,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         def echouer(action, **kwargs):
             raise RuntimeError("connexion perdue")
 
-        self.backend._run_helper_action = echouer
+        self.backend._run_helper_action_capture = echouer
 
         with self.assertRaises(RuntimeError) as contexte:
             self.backend._restore_worker(
@@ -150,8 +199,8 @@ class GuiBackupRestoreTest(unittest.TestCase):
 
     def test_restore_worker_transmet_snapshot_et_staging(self):
         appels = []
-        self.backend._run_helper_action = (
-            lambda action, **kwargs: appels.append((action, kwargs)) or 0
+        self.backend._run_helper_action_capture = (
+            lambda action, **kwargs: appels.append((action, kwargs)) or (0, "")
         )
 
         self.backend._restore_worker(
@@ -173,8 +222,8 @@ class GuiBackupRestoreTest(unittest.TestCase):
 
     def test_restore_worker_sans_destination_utilise_le_staging_par_defaut(self):
         appels = []
-        self.backend._run_helper_action = (
-            lambda action, **kwargs: appels.append((action, kwargs)) or 2
+        self.backend._run_helper_action_capture = (
+            lambda action, **kwargs: appels.append((action, kwargs)) or (2, "")
         )
 
         with self.assertRaises(RuntimeError):
@@ -187,6 +236,29 @@ class GuiBackupRestoreTest(unittest.TestCase):
             ["--snapshot", "/home/fablab/backup-fabsuite/suite-2026-11-19-120000"],
         )
         self.assertEqual(self.alertes[0][0], "Restauration refusee")
+        # Repli : sans ligne [restore] ERROR, le code reste affiche.
+        self.assertIn("code 2", self.alertes[0][1])
+        self.assertIn("journal [restore]", self.alertes[0][1])
+
+    def test_restore_worker_reprend_la_ligne_erreur_du_helper(self):
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (
+            2,
+            "[restore] snapshot: /home/fablab/backup-fabsuite/suite-2026-11-19-120000\n"
+            "[restore] ERROR: destination non inscriptible: /home/fablab/staging "
+            "(Permission denied)\n"
+            "[restore] ECHEC: restauration refusee ou incomplete (1 erreur(s))\n",
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.backend._restore_worker(
+                "/home/fablab/backup-fabsuite/suite-2026-11-19-120000",
+                "/home/fablab/staging",
+            )
+
+        titre, message = self.alertes[0]
+        self.assertEqual(titre, "Restauration refusee")
+        self.assertIn("[restore] ERROR: destination non inscriptible", message)
+        self.assertNotIn("La restauration a ete refusee ou interrompue", message)
 
     def test_backup_timer_status_parse_l_etat(self):
         sortie = (
@@ -276,7 +348,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertIn("connexion perdue", etat["error"])
 
     def test_backup_worker_rafraichit_l_etat_du_timer(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 0
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (0, "")
         rafraichissements = []
         self.backend._request_backup_state_refresh = (
             lambda: rafraichissements.append(True)
@@ -463,7 +535,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertIn("connexion perdue", message)
 
     def test_backup_worker_rafraichit_l_etat_des_notifications(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 0
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (0, "")
         rafraichissements = []
         self.backend._request_backup_state_refresh = lambda: None
         self.backend._request_notify_state_refresh = (
@@ -475,7 +547,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(rafraichissements, [True])
 
     def test_backup_worker_rafraichit_les_notifications_apres_echec(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 2
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (2, "")
         rafraichissements = []
         self.backend._request_backup_state_refresh = lambda: None
         self.backend._request_notify_state_refresh = (
@@ -524,7 +596,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
                 setattr(fabsuite_ssh_gui.eel, attribut, ancien)
 
     def test_backup_reussi_reinitialise_l_anti_rebond(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 0
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (0, "")
         self.backend._request_backup_state_refresh = lambda: None
         self.backend._request_notify_state_refresh = lambda: None
         commandes = []
@@ -542,7 +614,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(self.alertes[0][0], "Sauvegarde terminee")
 
     def test_backup_en_echec_ne_reinitialise_pas_l_anti_rebond(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 2
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (2, "")
         self.backend._request_backup_state_refresh = lambda: None
         self.backend._request_notify_state_refresh = lambda: None
         commandes = []
@@ -609,7 +681,7 @@ class GuiBackupRestoreTest(unittest.TestCase):
         self.assertEqual(self.alertes[0][0], "Snapshots degrades")
 
     def test_reinitialisation_en_echec_ne_fait_pas_echouer_le_backup(self):
-        self.backend._run_helper_action = lambda action, **kwargs: 0
+        self.backend._run_helper_action_capture = lambda action, **kwargs: (0, "")
         self.backend._request_backup_state_refresh = lambda: None
         self.backend._request_notify_state_refresh = lambda: None
         logs = []
@@ -975,8 +1047,8 @@ class GuiBackupRestoreTest(unittest.TestCase):
 
     def test_restore_worker_transmet_les_volumes_selectionnes(self):
         appels = []
-        self.backend._run_helper_action = (
-            lambda action, **kwargs: appels.append((action, kwargs)) or 0
+        self.backend._run_helper_action_capture = (
+            lambda action, **kwargs: appels.append((action, kwargs)) or (0, "")
         )
 
         self.backend._restore_worker(
@@ -1131,7 +1203,7 @@ class GuiTimerActionsTest(unittest.TestCase):
     def test_exec_helper_action_capture_transmet_commande_et_timeout(self):
         appels = []
         self.backend._ensure_remote_helper_ready = lambda: "/opt/fabsuite"
-        self.backend._helper_command = lambda action: f"commande {action}"
+        self.backend._helper_command = lambda action, **kwargs: f"commande {action}"
         self.backend._exec_remote_capture = (
             lambda commande, timeout_sec=180: appels.append(
                 (commande, timeout_sec)

@@ -6,6 +6,75 @@ action imperative.
 
 ---
 
+## 2026-11-21 — Alerte de preflight avec la ligne du helper
+
+**Contexte** : un refus de preflight (destination non inscriptible, espace
+insuffisant) n'affichait que « code 2 » ; la raison precise restait dans le
+journal.
+
+**Modifie (`fabsuite_ssh_gui.py`)**
+- `_run_helper_action_capture` retourne `(code, sortie)` et porte le choix du
+timeout ; `_run_helper_action` en devient un wrapper (meme comportement).
+- `_helper_error_detail` reprend la premiere ligne `[backup] ECHEC:` ou
+`[restore] ERROR:` ; les workers backup/restore l'affichent dans leur alerte,
+avec le message generique en repli si la ligne manque.
+
+**Revue**
+- Delais du helper regroupes dans `HELPER_TIMEOUTS` (plus de cascade de `if`).
+- `_exec_helper_action_capture` (actions de timer) delegue a
+`_run_helper_action_capture` au lieu de dupliquer ensure/capture.
+- `_run_helper_action` reste un wrapper pour les actions sans sortie a
+exploiter (logs, prepare-host, cleanup...).
+
+**Verifications**
+- Tests GUI : sortie simulee avec `[backup] ECHEC: espace disque insuffisant`
+et `[restore] ERROR: destination non inscriptible`, alertes assertees ; repli
+sans ligne explicite verifie (`code 2` et renvoi au journal) pour backup et
+restore ; stubs des workers migres vers `_run_helper_action_capture`.
+- Suite complete relancee -> OK ; `git diff --check` OK.
+
+**Limites**
+- Aucune execution SSH reelle : la forme exacte des lignes du helper reste a
+confirmer sur un serveur.
+
+**Prochaine action** : provoquer un refus de preflight sur un serveur et
+verifier l'alerte.
+
+---
+
+## 2026-11-21 — Preflight sauvegarde/restauration
+
+**Contexte** : une destination non inscriptible ou un disque plein n'etaient
+signales qu'apres le debut du snapshot, et un helper incomplet produisait une
+erreur SSH peu explicite.
+
+**Modifie**
+- `suite_backup.py` : `verifier_destination_inscriptible` (fichier sonde) et
+`verifier_espace_disque` (taille des sources + 10 %, minimum 64 Mo) appeles par
+`creer_snapshot` ; `restaurer_snapshot` les applique aux tailles decompressees
+du manifeste, avant extraction.
+- `fabsuite_ssh_gui.py` : `_require_helper_files` verifie que
+`fabsuite-ubuntu.sh` est executable et `suite_backup.py` present avant un
+backup/restore.
+
+**Verifications**
+- `tests/test_suite_backup.py` : classe `PreflightTest` (destination non
+inscriptible, disque trop plein, espace suffisant, restauration refusee pour
+les deux cas), `mkstemp` et `disk_usage` simules.
+- `tests/test_ssh_gui_backup.py` : helper incomplet refuse pour backup et
+restore, helper complet laisse passer.
+- `python3 -m unittest discover -s tests` -> suite complete OK ; `git diff
+--check` OK.
+
+**Limites**
+- Aucune cible SSH ni navigateur dans la VM : les chemins reels (droits,
+disque, helper distant) restent a confirmer sur un serveur.
+
+**Prochaine action** : tester un backup sur un serveur avec une destination en
+lecture seule, puis un disque presque plein.
+
+---
+
 ## 2026-11-21 — Duree de l'action en cours
 
 **Contexte** : la barre d'etat nommait l'action mais pas sa duree, utile pour un
