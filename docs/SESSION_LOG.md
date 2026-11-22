@@ -6,6 +6,28 @@ action imperative.
 
 ---
 
+## 2026-11-22 — Coupure du canal pendant une restauration reelle
+
+**Contexte** : symetrique du backup. La coupure pendant `action_restore`
+n'etait couverte qu'avec `_exec_remote_capture` mocke, jamais avec un vrai
+restore interrompu au milieu de la capture.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiHelperIntegrationTest`)**
+- `_CanalCoupure` / `_ClientCoupure` prennent un `declencheur` (la commande
+  qui provoque la coupure) : le meme faux canal sert au backup et au restore.
+- `test_coupure_pendant_la_restauration_affiche_connexion_perdue` : backup
+  sain, puis transport coupe au lancement de `restore` ; attend une seule
+  alerte « Connexion perdue » contenant `[restore]`, « la restauration » et
+  « canal a ete ferme », le client remis a `None`, puis verifie que le helper
+  a continue jusqu'a une base restauree dans le staging (code 0).
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 282 tests OK.
+
+**Prochaine action** : committer ce test avec l'entree de journal.
+
+---
+
 ## 2026-11-22 — Coupure du canal pendant un backup reel
 
 **Contexte** : les alertes de coupure pendant un backup n'etaient couvertes

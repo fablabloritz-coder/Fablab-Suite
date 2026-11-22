@@ -3431,15 +3431,16 @@ class _ClientLocal:
 
 
 class _CanalCoupure(_CanalLocal):
-    """Canal qui lance le vrai backup puis coupe le transport avant sa sortie."""
+    """Canal qui lance une vraie action du helper puis coupe le transport."""
 
-    def __init__(self, env, cwd, transport):
+    def __init__(self, env, cwd, transport, declencheur="fabsuite-ubuntu.sh backup"):
         super().__init__(env, cwd)
         self.transport = transport
+        self.declencheur = declencheur
         self.procede = None
 
     def exec_command(self, commande):
-        if "fabsuite-ubuntu.sh backup" not in commande:
+        if self.declencheur not in commande:
             super().exec_command(commande)
             return
         self.commandes.append(commande)
@@ -3456,10 +3457,16 @@ class _CanalCoupure(_CanalLocal):
 
 
 class _ClientCoupure(_ClientLocal):
-    """Client dont le transport tombe au lancement du backup."""
+    """Client dont le transport tombe au lancement d'une action du helper."""
+
+    def __init__(self, env, cwd, declencheur="fabsuite-ubuntu.sh backup"):
+        super().__init__(env, cwd)
+        self.declencheur = declencheur
 
     def nouveau_canal(self):
-        canal = _CanalCoupure(self.env, self.cwd, self.transport)
+        canal = _CanalCoupure(
+            self.env, self.cwd, self.transport, declencheur=self.declencheur
+        )
         self.canaux.append(canal)
         return canal
 
@@ -3596,6 +3603,23 @@ class GuiHelperIntegrationTest(unittest.TestCase):
             action()
         finally:
             fabsuite_ssh_gui.threading.Thread = ancien
+
+    @staticmethod
+    def _attendre_les_helpers(client):
+        """Attend les helpers lances en tache de fond avant le tearDown.
+
+        Le helper continue apres la coupure du canal : sans cette attente, il
+        pourrait ecrire pendant que le dossier temporaire est supprime.
+        """
+        for canal in client.canaux:
+            if canal.procede is not None:
+                try:
+                    canal.procede.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    # Ne pas laisser un helper bloque tourner apres le test.
+                    canal.procede.kill()
+                    canal.procede.wait()
+                    raise
 
     def test_backup_verify_restore_traversent_le_vrai_helper(self):
         # 1. Sauvegarde par le bouton du GUI : vrai helper, vrai snapshot.
@@ -3803,18 +3827,61 @@ class GuiHelperIntegrationTest(unittest.TestCase):
                 self.backend.client, "la session doit repasser a Non connecte"
             )
         finally:
-            # Le helper continue apres la coupure : l'attendre evite qu'il
-            # ecrive pendant que `tearDown` supprime le dossier temporaire.
-            for canal in client.canaux:
-                if canal.procede is not None:
-                    canal.procede.wait(timeout=60)
+            self._attendre_les_helpers(client)
 
         # Le backup etait reel et a continue jusqu'au bout.
-        canal = next(c for c in client.canaux if c.procede is not None)
+        canal = next((c for c in client.canaux if c.procede is not None), None)
+        self.assertIsNotNone(canal, "le backup doit avoir ete lance")
         self.assertEqual(canal.procede.returncode, 0)
         snapshot = next(self.backups.glob("suite-*"), None)
         self.assertIsNotNone(snapshot, "le helper doit avoir cree un snapshot")
         self.assertTrue((snapshot / "snapshot.ok").is_file())
+
+    def test_coupure_pendant_la_restauration_affiche_connexion_perdue(self):
+        # 1. Snapshot reel a restaurer : le backup ne doit pas etre coupe.
+        self._executer_sans_thread(self.backend.action_backup)
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Sauvegarde terminee"],
+            self.alertes,
+        )
+        snapshot = next(self.backups.glob("suite-*"))
+
+        # 2. Le transport tombe pendant la commande restore elle-meme.
+        client = _ClientCoupure(
+            self.backend.client.env,
+            self.backend.client.cwd,
+            declencheur="fabsuite-ubuntu.sh restore",
+        )
+        self.backend.client = client
+        staging = self.racine / "staging"
+        self.alertes.clear()
+
+        try:
+            self._executer_sans_thread(
+                lambda: self.backend.action_restore(str(snapshot), str(staging))
+            )
+
+            self.assertEqual(
+                [titre for titre, _ in self.alertes],
+                ["Connexion perdue"],
+                self.alertes,
+            )
+            message = self.alertes[0][1]
+            self.assertIn("[restore]", message)
+            self.assertIn("la restauration", message)
+            self.assertIn("canal a ete ferme", message)
+            self.assertIsNone(
+                self.backend.client, "la session doit repasser a Non connecte"
+            )
+        finally:
+            self._attendre_les_helpers(client)
+
+        # La restauration etait reelle et a continue jusqu'au bout.
+        canal = next((c for c in client.canaux if c.procede is not None), None)
+        self.assertIsNotNone(canal, "la restauration doit avoir ete lancee")
+        self.assertEqual(canal.procede.returncode, 0)
+        self.assertTrue((staging / "FabHome" / "data" / "fabhome.db").is_file())
 
 
 if __name__ == "__main__":
