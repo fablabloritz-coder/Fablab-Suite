@@ -6,6 +6,29 @@ action imperative.
 
 ---
 
+## 2026-11-22 — Coupure du canal pendant un backup reel
+
+**Contexte** : les alertes de coupure pendant un backup n'etaient couvertes
+qu'avec `_exec_remote_capture` mocke, jamais avec un vrai helper interrompu
+au milieu de la capture.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiHelperIntegrationTest`)**
+- `_CanalCoupure` / `_ClientCoupure` : le canal lance le vrai
+  `./fabsuite-ubuntu.sh backup` en tache de fond, puis coupe le transport
+  avant que le GUI ne lise la sortie.
+- `test_coupure_pendant_le_backup_affiche_connexion_perdue` : attend une
+  seule alerte « Connexion perdue » contenant `[backup]`, « la sauvegarde »
+  et « canal a ete ferme », le client remis a `None` (en-tete « Non
+  connecte »), puis verifie que le helper a continue jusqu'a un snapshot
+  valide (code 0, `snapshot.ok`).
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 281 tests OK.
+
+**Prochaine action** : committer ce test avec l'entree de journal.
+
+---
+
 ## 2026-11-22 — Restauration d'une selection de volumes, de bout en bout
 
 **Contexte** : `action_restore(sources=...)` n'etait verifie qu'avec une sortie

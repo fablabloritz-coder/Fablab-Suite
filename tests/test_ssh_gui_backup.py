@@ -3381,9 +3381,14 @@ class _TransportLocal:
     def __init__(self, client):
         self.client = client
         self.keepalive = None
+        self.actif = True
 
     def is_active(self):
-        return True
+        return self.actif
+
+    def couper(self):
+        """Simule la perte du transport (controle par `_exec_remote_capture`)."""
+        self.actif = False
 
     def set_keepalive(self, secondes):
         self.keepalive = secondes
@@ -3423,6 +3428,40 @@ class _ClientLocal:
 
     def close(self):
         pass
+
+
+class _CanalCoupure(_CanalLocal):
+    """Canal qui lance le vrai backup puis coupe le transport avant sa sortie."""
+
+    def __init__(self, env, cwd, transport):
+        super().__init__(env, cwd)
+        self.transport = transport
+        self.procede = None
+
+    def exec_command(self, commande):
+        if "fabsuite-ubuntu.sh backup" not in commande:
+            super().exec_command(commande)
+            return
+        self.commandes.append(commande)
+        self.procede = subprocess.Popen(
+            ["bash", "-c", commande],
+            cwd=self._cwd,
+            env=self._env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # La commande a demarre cote serveur : couper ici reproduit une coupure
+        # pendant la capture, avant que le GUI ne lise la sortie.
+        self.transport.couper()
+
+
+class _ClientCoupure(_ClientLocal):
+    """Client dont le transport tombe au lancement du backup."""
+
+    def nouveau_canal(self):
+        canal = _CanalCoupure(self.env, self.cwd, self.transport)
+        self.canaux.append(canal)
+        return canal
 
 
 class GuiHelperIntegrationTest(unittest.TestCase):
@@ -3741,6 +3780,41 @@ class GuiHelperIntegrationTest(unittest.TestCase):
         journaux = "\n".join(self.journaux)
         self.assertIn("ignore (volume non demande): Fabtrack/uploads", journaux)
         self.assertIn("ignore (volume non demande): FabHome/icons", journaux)
+
+    def test_coupure_pendant_le_backup_affiche_connexion_perdue(self):
+        client = _ClientCoupure(self.backend.client.env, self.backend.client.cwd)
+        self.backend.client = client
+
+        try:
+            self._executer_sans_thread(self.backend.action_backup)
+
+            # Une seule alerte, avec le tag du journal : pas de doublon apres le
+            # passage du worker.
+            self.assertEqual(
+                [titre for titre, _ in self.alertes],
+                ["Connexion perdue"],
+                self.alertes,
+            )
+            message = self.alertes[0][1]
+            self.assertIn("[backup]", message)
+            self.assertIn("la sauvegarde", message)
+            self.assertIn("canal a ete ferme", message)
+            self.assertIsNone(
+                self.backend.client, "la session doit repasser a Non connecte"
+            )
+        finally:
+            # Le helper continue apres la coupure : l'attendre evite qu'il
+            # ecrive pendant que `tearDown` supprime le dossier temporaire.
+            for canal in client.canaux:
+                if canal.procede is not None:
+                    canal.procede.wait(timeout=60)
+
+        # Le backup etait reel et a continue jusqu'au bout.
+        canal = next(c for c in client.canaux if c.procede is not None)
+        self.assertEqual(canal.procede.returncode, 0)
+        snapshot = next(self.backups.glob("suite-*"), None)
+        self.assertIsNotNone(snapshot, "le helper doit avoir cree un snapshot")
+        self.assertTrue((snapshot / "snapshot.ok").is_file())
 
 
 if __name__ == "__main__":
