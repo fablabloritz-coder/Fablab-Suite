@@ -6,6 +6,43 @@ action imperative.
 
 ---
 
+## 2026-11-22 — Test d'integration GUI -> vrai helper de sauvegarde
+
+**Contexte** : le maillon entre `action_backup` / `action_restore` et le vrai
+helper n'etait couvert que par des mocks (`_exec_remote_capture` remplace ou
+sortie du helper simulee). Une regression dans la commande construite ou dans
+le parsing de la sortie restait invisible.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiHelperIntegrationTest`)**
+- `_CanalLocal` / `_ClientLocal` / `_TransportLocal` : faux canal SSH qui
+  execute chaque commande en local (`bash -c`), avec un `put` SFTP local.
+- `_CanalLocal` est partage par `exec_command` (lectures simples) et
+  `open_session` (capture), donc l'upload du helper, `_require_helper_files`,
+  `backup`, `verify --all` et `restore` passent par la meme chaine reelle.
+- `test_backup_verify_restore_traversent_le_vrai_helper` : monte une
+  installation temporaire (`fabsuite-ubuntu.sh`, `suite_backup.py`, env file,
+  docker factice), puis deroule les boutons du GUI : snapshot valide
+  (`snapshot.ok`, manifeste `ok`), `list_snapshots` qui relit la sortie du
+  helper, `verify --all` sain, restauration dans un staging vide avec base
+  SQLite et upload restitues a l'identique, et commandes helper verifiees.
+- Revue : variables `FABSUITE_*` de la machine retirees de l'environnement du
+  faux serveur (aucun detournement de dossier ou de verrou), `HOME` cree,
+  `skipTest` si `bash` manque, et listes d'alertes comparees exactement
+  (« Sauvegarde terminee », « Snapshots valides », « Restauration terminee »)
+  pour qu'une alerte parasite fasse echouer le test.
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 277 tests OK (~30 s).
+
+**Limite** : le transport SSH et les droits reels restent hors de portee
+(cas 8 et 11 de la matrice). Le test prouve le cablage des commandes, le
+parsing des sorties et l'effet reel du helper, pas une connexion distante.
+
+**Prochaine action** : derouler les cas 8 et 11 de
+`docs/ACCEPTATION_SAUVEGARDE_RESTAURATION.md` sur un serveur Ubuntu reel.
+
+---
+
 ## 2026-11-21 — Lecteurs d'etat hors connexion
 
 **Contexte** : dernier point cosmetique de l'inventaire. Hors connexion, les

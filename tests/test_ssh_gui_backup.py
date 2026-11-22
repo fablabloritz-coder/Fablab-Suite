@@ -1,7 +1,9 @@
-"""Tests du cablage backup/restore du GUI SSH (backend uniquement)."""
+"""Tests du cablage backup/restore du GUI SSH (backend et chaine helper reelle)."""
+import json
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -3301,6 +3303,322 @@ class GuiEspaceDisqueTest(unittest.TestCase):
 
         self.assertIn("error", resultat)
         self.assertIn("connexion perdue", resultat["error"])
+
+
+class _CanalLocal:
+    """Faux canal Paramiko qui execute la commande recue en local.
+
+    Le transport SSH est simule, mais tout ce qui est en dessous (bash, le
+    helper, suite_backup.py, le systeme de fichiers) est reel : c'est la
+    chaine GUI -> helper que les autres tests mockent.
+    """
+
+    def __init__(self, env, cwd):
+        self._env = env
+        self._cwd = cwd
+        self._sortie = b""
+        self._erreur = b""
+        self.sortie_complete = b""
+        self.erreur_complete = b""
+        self.code = 0
+        self.ferme = False
+        self.timeout = None
+        self.commandes = []
+
+    def settimeout(self, secondes):
+        self.timeout = secondes
+
+    def exec_command(self, commande):
+        self.commandes.append(commande)
+        processus = subprocess.run(
+            ["bash", "-c", commande],
+            cwd=self._cwd,
+            env=self._env,
+            capture_output=True,
+            timeout=120,
+        )
+        self.sortie_complete = processus.stdout
+        self.erreur_complete = processus.stderr
+        self._sortie = processus.stdout
+        self._erreur = processus.stderr
+        self.code = processus.returncode
+
+    def recv_ready(self):
+        return bool(self._sortie)
+
+    def recv(self, taille):
+        morceau, self._sortie = self._sortie[:taille], self._sortie[taille:]
+        return morceau
+
+    def recv_stderr_ready(self):
+        return bool(self._erreur)
+
+    def recv_stderr(self, taille):
+        morceau, self._erreur = self._erreur[:taille], self._erreur[taille:]
+        return morceau
+
+    def exit_status_ready(self):
+        return True
+
+    def recv_exit_status(self):
+        return self.code
+
+    def close(self):
+        self.ferme = True
+
+
+class _SftpLocal:
+    """SFTP local : `put` copie reellement le fichier (pas de reseau)."""
+
+    def put(self, source, destination):
+        shutil.copy2(source, destination)
+
+    def close(self):
+        pass
+
+
+class _TransportLocal:
+    def __init__(self, client):
+        self.client = client
+        self.keepalive = None
+
+    def is_active(self):
+        return True
+
+    def set_keepalive(self, secondes):
+        self.keepalive = secondes
+
+    def open_session(self):
+        return self.client.nouveau_canal()
+
+
+class _ClientLocal:
+    """Client Paramiko minimal : chaque commande tourne sur la machine locale."""
+
+    def __init__(self, env, cwd):
+        self.env = env
+        self.cwd = cwd
+        self.canaux = []
+        self.transport = _TransportLocal(self)
+
+    def get_transport(self):
+        return self.transport
+
+    def nouveau_canal(self):
+        canal = _CanalLocal(self.env, self.cwd)
+        self.canaux.append(canal)
+        return canal
+
+    def exec_command(self, commande, timeout=None):
+        canal = self.nouveau_canal()
+        canal.exec_command(commande)
+        return (
+            _FauxFlux(b"", canal),
+            _FauxFlux(canal.sortie_complete, canal),
+            _FauxFlux(canal.erreur_complete, canal),
+        )
+
+    def open_sftp(self):
+        return _SftpLocal()
+
+    def close(self):
+        pass
+
+
+class GuiHelperIntegrationTest(unittest.TestCase):
+    """Chaine GUI -> helper -> suite_backup.py, sans mocker le helper.
+
+    `action_backup`, `action_verify_snapshots` et `action_restore` passent par
+    le vrai `fabsuite-ubuntu.sh` et le vrai `suite_backup.py`, executes en
+    local par un faux canal SSH : snapshots et restauration sont reels.
+    """
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+        self._dossier = tempfile.TemporaryDirectory()
+        self.racine = Path(self._dossier.name)
+        # HOME du faux serveur : le helper doit pouvoir y ecrire si besoin.
+        (self.racine / "home").mkdir()
+        self.install = self.racine / "suite"
+        self.install.mkdir()
+        shutil.copy2(ROOT / "fabsuite-ubuntu.sh", self.install / "fabsuite-ubuntu.sh")
+        shutil.copy2(ROOT / "suite_backup.py", self.install / "suite_backup.py")
+        (self.install / "fabsuite-ubuntu.sh").chmod(0o755)
+        self._creer_base(self.install / "FabHome/data/fabhome.db", "home")
+        uploads = self.install / "Fabtrack/docker-data/uploads"
+        uploads.mkdir(parents=True)
+        (uploads / "photo.bin").write_bytes(b"photo")
+
+        self.backups = self.racine / "backups"
+        self.env_file = self.install / "fabsuite-ubuntu.env"
+        self.env_file.write_text(
+            "\n".join(
+                (
+                    "GIT_REPO_URL=https://example.invalid/Fablab-Suite.git",
+                    "GIT_BRANCH=main",
+                    f"INSTALL_DIR={self.install}",
+                    'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                    "FLASK_SECRET_KEY=test-secret",
+                    "FABHOME_DATA_PATH=./data",
+                    "FABHOME_ICONS_PATH=./icons",
+                    "FABTRACK_DATA_PATH=./docker-data/data",
+                    "FABTRACK_UPLOADS_PATH=./docker-data/uploads",
+                    f"FABSUITE_BACKUP_DIR={self.backups}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        # docker factice : le pre-check data safety exige `docker compose version`.
+        faux_bin = self.racine / "bin"
+        faux_bin.mkdir()
+        faux_docker = faux_bin / "docker"
+        faux_docker.write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi\n'
+            "exit 1\n",
+            encoding="utf-8",
+        )
+        faux_docker.chmod(0o755)
+
+        # Isolation : aucune variable FABSUITE_* de la machine ne doit
+        # detourner le dossier de sauvegarde ou le verrou du test.
+        env = {
+            cle: valeur
+            for cle, valeur in os.environ.items()
+            if not cle.startswith("FABSUITE_")
+        }
+        env["PATH"] = f"{faux_bin}:{env['PATH']}"
+        env["HOME"] = str(self.racine / "home")
+
+        self.backend = fabsuite_ssh_gui.FabSuiteBackend()
+        self.backend.state["run_mode"] = "ssh"
+        self.backend.state["remote_dir"] = str(self.install)
+        self.backend.remote_home = str(self.racine / "home")
+        self.backend.client = _ClientLocal(env, self.racine)
+        self.alertes = []
+        self.journaux = []
+        self.backend._show_alert = lambda titre, message: self.alertes.append(
+            (titre, message)
+        )
+        self.backend._log = self.journaux.append
+        for nom in (
+            "_set_action_running",
+            "_refresh_actions_state",
+            "_set_connection_status",
+            "_set_actions_enabled",
+            "_request_front_refresh",
+            "_request_backup_state_refresh",
+            "_request_notify_state_refresh",
+            "_request_verify_state_refresh",
+        ):
+            setattr(self.backend, nom, lambda *args, **kwargs: None)
+
+    def tearDown(self):
+        self._dossier.cleanup()
+
+    @staticmethod
+    def _creer_base(chemin, nom):
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(chemin)
+        try:
+            conn.execute(
+                "CREATE TABLE Personnes (id INTEGER PRIMARY KEY, nom TEXT NOT NULL)"
+            )
+            conn.execute("INSERT INTO Personnes (nom) VALUES (?)", (nom,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _noms(chemin):
+        conn = sqlite3.connect(chemin)
+        try:
+            lignes = conn.execute("SELECT nom FROM Personnes ORDER BY id")
+            return [ligne[0] for ligne in lignes]
+        finally:
+            conn.close()
+
+    def _executer_sans_thread(self, action):
+        """Execute `_run_async` de facon synchrone (le worker tourne sur place)."""
+
+        class _ThreadSynchrone:
+            def __init__(self, target, **kwargs):
+                self._cible = target
+
+            def start(self):
+                self._cible()
+
+        ancien = fabsuite_ssh_gui.threading.Thread
+        fabsuite_ssh_gui.threading.Thread = _ThreadSynchrone
+        try:
+            action()
+        finally:
+            fabsuite_ssh_gui.threading.Thread = ancien
+
+    def test_backup_verify_restore_traversent_le_vrai_helper(self):
+        # 1. Sauvegarde par le bouton du GUI : vrai helper, vrai snapshot.
+        self._executer_sans_thread(self.backend.action_backup)
+
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Sauvegarde terminee"],
+            self.alertes,
+        )
+        snapshots = list(self.backups.glob("suite-*"))
+        self.assertEqual(len(snapshots), 1, self.journaux)
+        snapshot = snapshots[0]
+        self.assertTrue((snapshot / "snapshot.ok").is_file())
+        manifeste = json.loads(
+            (snapshot / "manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifeste["status"], "ok")
+        self.assertFalse(self.backend._action_running)
+
+        # 2. Le GUI relit la liste produite par le vrai `suite_backup.py list`.
+        etat = self.backend.list_snapshots()
+        self.assertNotIn("error", etat)
+        self.assertEqual([s["name"] for s in etat["snapshots"]], [snapshot.name])
+
+        # 3. Verification `verify --all` par le bouton.
+        self.alertes.clear()
+        self._executer_sans_thread(self.backend.action_verify_snapshots)
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Snapshots valides"],
+            self.alertes,
+        )
+
+        # 4. Restauration par le bouton dans un staging vide.
+        staging = self.racine / "staging"
+        self.alertes.clear()
+        self._executer_sans_thread(
+            lambda: self.backend.action_restore(str(snapshot), str(staging))
+        )
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Restauration terminee"],
+            self.alertes,
+        )
+        restauree = staging / "FabHome" / "data" / "fabhome.db"
+        self.assertTrue(restauree.is_file())
+        self.assertEqual(self._noms(restauree), ["home"])
+        self.assertEqual(
+            (staging / "Fabtrack" / "uploads" / "photo.bin").read_bytes(),
+            b"photo",
+        )
+
+        # Les commandes envoyees au canal sont bien celles du helper.
+        commandes = "\n".join(
+            commande
+            for canal in self.backend.client.canaux
+            for commande in canal.commandes
+        )
+        self.assertIn("./fabsuite-ubuntu.sh backup", commandes)
+        self.assertIn("./fabsuite-ubuntu.sh verify --all", commandes)
+        self.assertIn("./fabsuite-ubuntu.sh restore --snapshot", commandes)
 
 
 if __name__ == "__main__":
