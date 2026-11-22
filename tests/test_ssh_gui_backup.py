@@ -3697,6 +3697,51 @@ class GuiHelperIntegrationTest(unittest.TestCase):
                 "aucun fichier ne doit etre extrait",
             )
 
+    def test_restore_selectionne_un_seul_volume(self):
+        # 1. Volume non selectionne de la meme app, avec du contenu reel :
+        #    sans selection il serait extrait, son absence prouve donc le tri.
+        icons = self.install / "FabHome" / "icons"
+        icons.mkdir(parents=True)
+        (icons / "logo.png").write_bytes(b"logo")
+
+        # 2. Backup sain par le vrai chemin GUI -> helper.
+        self._executer_sans_thread(self.backend.action_backup)
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Sauvegarde terminee"],
+            self.alertes,
+        )
+        snapshot = next(self.backups.glob("suite-*"))
+
+        # 3. Restauration d'un seul volume via `sources=`.
+        staging = self.racine / "staging"
+        self.alertes.clear()
+        self._executer_sans_thread(
+            lambda: self.backend.action_restore(
+                str(snapshot), str(staging), sources=["FabHome|data"]
+            )
+        )
+
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Restauration terminee"],
+            self.alertes,
+        )
+        self.assertIn("FabHome|data", self.alertes[0][1])
+
+        # 4. Seul le volume demande est ecrit ; l'autre app et l'autre role de
+        #    la meme app restent absents.
+        restauree = staging / "FabHome" / "data" / "fabhome.db"
+        self.assertTrue(restauree.is_file())
+        self.assertEqual(self._noms(restauree), ["home"])
+        self.assertFalse((staging / "Fabtrack").exists())
+        self.assertFalse((staging / "FabHome" / "icons").exists())
+
+        # 5. Le helper signale explicitement les volumes qu'il n'extrait pas.
+        journaux = "\n".join(self.journaux)
+        self.assertIn("ignore (volume non demande): Fabtrack/uploads", journaux)
+        self.assertIn("ignore (volume non demande): FabHome/icons", journaux)
+
 
 if __name__ == "__main__":
     unittest.main()

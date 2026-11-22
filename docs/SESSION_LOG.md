@@ -6,6 +6,27 @@ action imperative.
 
 ---
 
+## 2026-11-22 — Restauration d'une selection de volumes, de bout en bout
+
+**Contexte** : `action_restore(sources=...)` n'etait verifie qu'avec une sortie
+de helper simulee. Rien ne prouvait que le helper reel n'extrait que les
+volumes demandes et ignore les autres.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiHelperIntegrationTest`)**
+- `test_restore_selectionne_un_seul_volume` : un volume `FabHome/icons` reel
+  est cree avant le backup (sans selection il serait extrait), puis
+  `action_restore(..., sources=["FabHome|data"])` vers un staging vide.
+- Attend l'alerte « Restauration terminee » mentionnant `FabHome|data`, la base
+  FabHome restauree, l'absence de `Fabtrack/` et de `FabHome/icons`, et les
+  lignes du helper `ignore (volume non demande)` pour ces deux volumes.
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 280 tests OK.
+
+**Prochaine action** : committer ce test avec l'entree de journal.
+
+---
+
 ## 2026-11-22 — Restauration refusee sur snapshot corrompu
 
 **Contexte** : le refus de restauration n'etait couvert qu'avec des sorties de
