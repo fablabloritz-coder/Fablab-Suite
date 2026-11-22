@@ -3620,6 +3620,41 @@ class GuiHelperIntegrationTest(unittest.TestCase):
         self.assertIn("./fabsuite-ubuntu.sh verify --all", commandes)
         self.assertIn("./fabsuite-ubuntu.sh restore --snapshot", commandes)
 
+    def test_verify_signale_un_snapshot_degrade_avec_son_detail(self):
+        # 1. Backup sain par le vrai chemin GUI -> helper.
+        self._executer_sans_thread(self.backend.action_backup)
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Sauvegarde terminee"],
+            self.alertes,
+        )
+        snapshots = list(self.backups.glob("suite-*"))
+        self.assertEqual(len(snapshots), 1, self.journaux)
+        snapshot = snapshots[0]
+
+        # 2. Corruption apres coup : le sha256 de l'archive ne correspond plus
+        #    au manifeste, comme une alteration sur le disque du serveur.
+        archive = snapshot / "FabHome-data.tgz"
+        self.assertTrue(archive.is_file())
+        with archive.open("ab") as flux:
+            flux.write(b"corruption")
+
+        # 3. La verification doit signaler un degrade, pas une impossibilite.
+        self.alertes.clear()
+        self._executer_sans_thread(self.backend.action_verify_snapshots)
+
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Snapshots degrades"],
+            self.alertes,
+        )
+        message = self.alertes[0][1]
+        self.assertIn(snapshot.name, message)
+        self.assertIn("archive alteree", message)
+        self.assertIn("FabHome-data.tgz", message)
+        self.assertIn("0 ok, 1 invalide", message)
+        self.assertNotIn("Verification impossible", message)
+
 
 if __name__ == "__main__":
     unittest.main()

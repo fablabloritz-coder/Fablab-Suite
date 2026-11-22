@@ -6,6 +6,28 @@ action imperative.
 
 ---
 
+## 2026-11-22 — Verification d'un snapshot degrade, de bout en bout
+
+**Contexte** : le test precedent couvrait un snapshot sain. Le cas degrade
+(code 3) n'etait verifie qu'avec une sortie de helper simulee, donc un
+changement de format de `verify --all` pouvait faire glisser le GUI vers
+« Verification impossible » sans qu'aucun test ne le voie.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiHelperIntegrationTest`)**
+- `test_verify_signale_un_snapshot_degrade_avec_son_detail` : backup reel via
+  `action_backup`, corruption de `FabHome-data.tgz` (sha256 different du
+  manifeste), puis `action_verify_snapshots` sur le vrai helper.
+- Attend exactement l'alerte « Snapshots degrades » contenant le nom du
+  snapshot, `archive alteree`, `FabHome-data.tgz` et `0 ok, 1 invalide`, et
+  interdit « Verification impossible ».
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 278 tests OK.
+
+**Prochaine action** : committer ce test avec l'entree de journal.
+
+---
+
 ## 2026-11-22 — Test d'integration GUI -> vrai helper de sauvegarde
 
 **Contexte** : le maillon entre `action_backup` / `action_restore` et le vrai
