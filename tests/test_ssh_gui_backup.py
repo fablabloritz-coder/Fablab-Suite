@@ -3655,6 +3655,48 @@ class GuiHelperIntegrationTest(unittest.TestCase):
         self.assertIn("0 ok, 1 invalide", message)
         self.assertNotIn("Verification impossible", message)
 
+    def test_restore_refuse_un_snapshot_corrompu_sans_rien_extraire(self):
+        # 1. Backup sain par le vrai chemin GUI -> helper.
+        self._executer_sans_thread(self.backend.action_backup)
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Sauvegarde terminee"],
+            self.alertes,
+        )
+        snapshot = next(self.backups.glob("suite-*"))
+
+        # 2. L'archive ne correspond plus au sha256 du manifeste.
+        archive = snapshot / "FabHome-data.tgz"
+        self.assertTrue(archive.is_file(), f"archive absente: {archive}")
+        with archive.open("ab") as flux:
+            flux.write(b"corruption")
+
+        # 3. Restauration vers un staging vide : le helper doit refuser avant
+        #    toute ecriture.
+        staging = self.racine / "staging"
+        self.alertes.clear()
+        self._executer_sans_thread(
+            lambda: self.backend.action_restore(str(snapshot), str(staging))
+        )
+
+        self.assertEqual(
+            [titre for titre, _ in self.alertes],
+            ["Restauration refusee"],
+            self.alertes,
+        )
+        message = self.alertes[0][1]
+        self.assertIn("[restore] ERROR:", message)
+        self.assertIn("archive alteree (FabHome-data.tgz)", message)
+
+        # Aucun fichier extrait : le staging est absent ou vide.
+        if staging.exists():
+            self.assertTrue(staging.is_dir(), "le staging ne doit pas etre un fichier")
+            self.assertEqual(
+                list(staging.iterdir()),
+                [],
+                "aucun fichier ne doit etre extrait",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

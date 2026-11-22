@@ -6,6 +6,28 @@ action imperative.
 
 ---
 
+## 2026-11-22 — Restauration refusee sur snapshot corrompu
+
+**Contexte** : le refus de restauration n'etait couvert qu'avec des sorties de
+helper simulees. Rien ne garantissait qu'un snapshot altere apres un backup
+reel soit refuse avant toute ecriture dans le staging.
+
+**Tests (`tests/test_ssh_gui_backup.py`, `GuiHelperIntegrationTest`)**
+- `test_restore_refuse_un_snapshot_corrompu_sans_rien_extraire` : backup reel
+  via `action_backup`, corruption de `FabHome-data.tgz` (sha256 different du
+  manifeste), puis `action_restore` vers un staging vide.
+- Attend exactement l'alerte « Restauration refusee » contenant
+  `[restore] ERROR:`, `archive alteree` et `FabHome-data.tgz`, interdit
+  « Restauration terminee », et verifie que le staging est absent ou vide
+  (aucun fichier extrait).
+
+**Verifications** : `py_compile` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 279 tests OK.
+
+**Prochaine action** : committer ce test avec l'entree de journal.
+
+---
+
 ## 2026-11-22 — Verification d'un snapshot degrade, de bout en bout
 
 **Contexte** : le test precedent couvrait un snapshot sain. Le cas degrade
