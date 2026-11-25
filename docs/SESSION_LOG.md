@@ -6,6 +6,113 @@ action imperative.
 
 ---
 
+## 2026-11-25 — FabBoard : ecran de pause en portrait
+
+**Defaut**
+- `.pause-override-*` dimensionnait titre, badge, message et padding en `vw`,
+  c.-a-d. sur la largeur PHYSIQUE du viewport. En portrait le body est tourne :
+  la largeur locale vaut la hauteur physique (810 px sur un ecran 1440x810) et le
+  titre a 86,4 px se repliait dans une boite de 695 px (~13 caracteres par ligne).
+  Mesure avant correctif : 86,4 px a 1440x810 ET a 1920x1080, 60 px a 1000x700.
+
+**Correctif**
+- `.override-overlay` devient un conteneur de requete (`container-type:
+  inline-size`) et les tailles du texte de pause passent en `cqw`, la valeur `vw`
+  restant en repli pour les navigateurs sans unites de conteneur.
+
+**Verification navigateur** (CSS servi en 3.8.2, cache des assets casse par la version)
+- Portrait 1440x810 : titre 48,6 px, une ligne, bloc 729x174 dans 810x1440, rien
+  de coupe ; 1280x720 apres redimensionnement en cours de pause : 43,2 px ;
+  1920x1080 : 64,8 px.
+- Portrait inverse : memes mesures, matrice `matrix(0,-1,1,0,0,810.4)`.
+- Echelle de texte 150 % + message long : titre 72,9 px sur deux lignes, bloc de
+  316 px de haut, toujours dans l'ecran.
+- Widget « page web » : iframe alignee sur sa cellule a 0,0-0,4 px dans les deux
+  portraits, y compris apres redimensionnement (1440 -> 1920 -> 1000).
+- Paysage 1920x1080 inchange (titre 86,4 px, `cqw` = `vw`).
+
+**Reste ouvert**
+- Les widgets eux-memes dimensionnent encore leur texte en `vw` : en portrait
+  l'horloge et le titre de slide debordent de leur cellule (chiffres coupes).
+  Piste : variable `--lw: 1vw` / `1vh` selon l'orientation, utilisee par les
+  templates de widgets a la place des `vw` (paysage alors inchange).
+
+**Tests / verification** : 54 tests FabBoard OK.
+
+**Prochaine action** : passer les tailles de texte des widgets de `vw` a
+`calc(n * var(--lw))` et rejouer le portrait.
+
+## 2026-11-25 — FabBoard : revue du widget « dependances externes »
+
+**Cas limites traites**
+- Mission sans `service_nom` mais avec le marqueur (service supprime cote
+  Fabtrack) : groupe « Service externe » en gris.
+- Payload ancien sans marqueur ni `service_id` : repli sur `service_nom`.
+- Plusieurs sources Fabtrack : le widget n'utilise QUE la source configuree ;
+  une source inconnue donne l'etat vide au lieu d'afficher silencieusement les
+  missions de la source par defaut.
+- Config partielle (`{}`), `source_id` en chaine, `missions` absent ou non
+  tableau : defauts appliques, etat vide au lieu d'une exception.
+- Mission terminee : badge « Termine » (vert) et plus d'echeance « en retard ».
+
+**Simplifications**
+- `dependDeService` : branche `depend_service_externe === true` retiree
+  (`Number(true) === 1` la couvrait deja).
+- `refresh()` : resolution de la source en 4 lignes, sans repli inter-sources.
+- Groupes : `missions: []` a la creation, suppression du `groupe.missions || []`.
+- Statut de mission centralise dans `statutDeMission()`.
+
+**Tests / verification** : 54 tests FabBoard OK, `node --check` sur le script
+JS extrait du template. Rejoue sur la fausse source (source 1 = 19 missions,
+source 2 = 3 missions) : 6 groupes, couleurs (CMIL/Rectorat/Imprimerie/CAF/
+Ville de Nancy/Service externe), `nombre_max` 3 et 40, source inconnue -> etat
+vide, config partielle -> 15 missions.
+
+**Limites** : pas d'infra de test JS dans le projet (verification navigateur
+uniquement) ; les constats precedents (filtre en correspondance exacte, en-tete
+de groupe tronque) restent ouverts.
+
+---
+
+## 2026-11-25 — FabBoard : rendu du widget « dependances externes » sur fausse source
+
+**Protocole** : fausse source FabTrack (`/tmp/fake_fabtrack.py`, port 5566)
+servant `/missions/api/list`, summary, consommations et reference ; 16 missions
+dont 13 affichables (2 sans service, 1 terminee), 4 services dont
+« Imprimerie municipale » desactive cote FabTrack et « CAF » sans couleur.
+Source 1 pointee dessus, cache `sources_cache` rempli par le vrai chemin
+`_extract_fabtrack_payload`, slide 1×1 « Dependances — demo » sur l'ecran 1,
+navigation Chromium 1920×1080, 9 configurations.
+
+**Verifie**
+- Regroupement par service dans l'ordre FabTrack ; bordure et pastille = couleur
+  du service (CAF sans couleur -> repli gris #94a3b8).
+- Filtres `CMIL` (5), `Imprimerie municipale` (2), `CMIL, CAF` (7, espaces
+  toleres apres virgule).
+- Etat vide : « Aucune mission en attente des services selectionnes » (et
+  variante sans filtre), compteur masque.
+- Limite globale `nombre_max` : 7 -> 7 missions affichees, « … et 6 autres
+  missions » ; 12 -> « … et 1 autre mission » (grammaire singulier/pluriel OK).
+- Echelle : 1 / 1.5 / 2 -> titres 11,5 / 17,3 / 23 px, badges 8,8 / 13,2 /
+  17,6 px ; pas de debordement, la liste defile quand le contenu depasse.
+- Cellule ~2×2 (946×500) : en-tete fixe, liste defilante (704 px de contenu
+  pour 411 px visibles), aucune erreur JS.
+
+**Defauts constates (non corriges)**
+- Mission terminee affichee « A faire » + « En retard (10j) » quand
+  `inclure_terminees` est actif : `missionHtml` ne distingue que `en_cours`.
+- Texte par defaut petit pour une TV : 11,5 px de titre et 8,8 px de badge en
+  1920×1080 ; l'echelle 1.5 ou 2 est necessaire.
+- Filtre en correspondance EXACTE (insensible a la casse) : « Imprimerie »
+  n'affiche rien alors que « Imprimerie municipale » fonctionne.
+- Au-dela de la limite, les groupes suivants disparaissent et l'en-tete d'un
+  groupe tronque garde son total (Rectorat 4 avec 2 missions visibles).
+
+**Limites** : source simulee (pas de vrai FabTrack), Chromium seul, donnees de
+demo laissees dans `FabBoard/data/fabboard.db` (ignore par git).
+
+---
+
 ## 2026-11-25 — FabBoard C/D : revue fraiche, simplification, robustesse
 
 **Simplifications (comportement inchange, tests identiques — 54 OK)**

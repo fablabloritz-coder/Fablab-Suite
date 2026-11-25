@@ -530,6 +530,16 @@ Navigation :
 
 <!-- changelog:start -->
 
+### v3.8.2 — 2026-11-25
+
+#### Texte de pause lisible en portrait
+
+- Écran de pause : le texte se dimensionnait sur la largeur physique du viewport (vw) alors que le body tourné a une largeur logique plus étroite ; le titre débordait et se repliait en colonne sur un écran en portrait.
+- L'overlay devient un conteneur de requête et le texte de pause se dimensionne sur sa largeur logique (cqw) : 48,6 px au lieu de 86,4 px sur un 1440×810 en portrait, paysage inchangé.
+- Vérification navigateur : pause en portrait et portrait inversé (échelle 150 %, message long, redimensionnement pendant la pause) et widget « page web » aligné sur sa cellule après rotation et resize.
+
+---
+
 ### v3.8.1 — 2026-11-25
 
 #### Portrait plein écran et cache des assets

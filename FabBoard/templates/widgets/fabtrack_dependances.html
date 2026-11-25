@@ -105,6 +105,7 @@
 }
 .widget-fabtrack-dependances .dep-badge.statut-a_faire { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
 .widget-fabtrack-dependances .dep-badge.statut-en_cours { background: rgba(249, 115, 22, 0.18); color: #fdba74; }
+.widget-fabtrack-dependances .dep-badge.statut-termine { background: rgba(74, 222, 128, 0.16); color: #86efac; }
 .widget-fabtrack-dependances .dep-badge.ech-late  { background: rgba(239, 68, 68, 0.2); color: #f87171; }
 .widget-fabtrack-dependances .dep-badge.ech-today { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 .widget-fabtrack-dependances .dep-badge.ech-soon  { background: rgba(251, 191, 36, 0.15); color: #fcd34d; }
@@ -155,14 +156,15 @@
         return /^#[0-9a-fA-F]{6}$/.test(valeur || '');
     }
 
-    // Le marqueur est derive de `missions.service_id` cote Fabtrack ; la lecture
-    // de `service_id` sert de repli si `depend_service_externe` est absent.
+    // Marqueur derive de `missions.service_id` cote Fabtrack. Un payload plus
+    // ancien, ou un service supprime, peut n'avoir que le nom du service : on
+    // retombe alors sur service_id puis sur service_nom.
     function dependDeService(mission) {
         if (!mission) return false;
-        if (mission.depend_service_externe === true) return true;
         if (Number(mission.depend_service_externe) === 1) return true;
         const serviceId = Number(mission.service_id);
-        return Number.isFinite(serviceId) && serviceId > 0;
+        if (Number.isFinite(serviceId) && serviceId > 0) return true;
+        return String(mission.service_nom || '').trim() !== '';
     }
 
     function echeanceHtml(mission) {
@@ -189,18 +191,25 @@
         return '<span class="dep-badge ' + classe + '">' + esc('\u{1F4C5} ' + libelle) + '</span>';
     }
 
+    function statutDeMission(mission) {
+        if (mission.statut === 'termine') return { texte: 'Terminé', classe: 'statut-termine' };
+        if (mission.statut === 'en_cours') return { texte: 'En cours', classe: 'statut-en_cours' };
+        return { texte: 'À faire', classe: 'statut-a_faire' };
+    }
+
     function missionHtml(mission) {
-        const statut = mission.statut === 'en_cours' ? 'En cours' : 'À faire';
-        const classesStatut = mission.statut === 'en_cours' ? 'statut-en_cours' : 'statut-a_faire';
+        const statut = statutDeMission(mission);
         const etape = afficherEtape && mission.derniere_etape_texte
             ? '<div class="dep-etape">Étape : ' + esc(mission.derniere_etape_texte) + '</div>'
             : '';
+        // Une mission terminée n'a plus d'échéance à surveiller.
+        const echeance = mission.statut === 'termine' ? '' : echeanceHtml(mission);
         return '<div class="dep-mission">'
             + '<div class="dep-titre">' + esc(mission.titre || 'Mission') + '</div>'
             + etape
             + '<div class="dep-meta">'
-            + '<span class="dep-badge ' + classesStatut + '">' + esc(statut) + '</span>'
-            + echeanceHtml(mission)
+            + '<span class="dep-badge ' + statut.classe + '">' + esc(statut.texte) + '</span>'
+            + echeance
             + '</div></div>';
     }
 
@@ -240,11 +249,10 @@
             const nom = String(mission.service_nom || '').trim() || 'Service externe';
             const cle = normaliser(nom);
             if (!groupes.has(cle)) {
-                groupes.set(cle, { nom: nom, couleur: mission.service_couleur, total: 0 });
+                groupes.set(cle, { nom: nom, couleur: mission.service_couleur, total: 0, missions: [] });
             }
             const groupe = groupes.get(cle);
             groupe.total += 1;
-            groupe.missions = groupe.missions || [];
             groupe.missions.push(mission);
         });
 
@@ -268,15 +276,12 @@
 
     function refresh() {
         const store = window.FabBoardStore;
-        let missions = [];
-
-        if (sourceId && store && store.getSource(sourceId)) {
-            missions = store.getSource(sourceId).missions || [];
-        } else if (store && store.data) {
-            missions = store.data.missions || [];
-        }
-
-        render(missions);
+        // Une source configuree est la seule utilisee : tant qu'elle n'a pas
+        // repondu, mieux vaut l'etat vide que les missions d'une autre source.
+        const donnees = sourceId
+            ? (store && store.getSource(sourceId))
+            : (store && store.data);
+        render(donnees && Array.isArray(donnees.missions) ? donnees.missions : []);
     }
 
     function onDashboardRefresh() {

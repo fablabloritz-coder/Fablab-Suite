@@ -81,6 +81,12 @@ html {
     z-index: 1000;
     overflow: hidden;
     background: #000;
+    /*
+     * Le texte de pause se dimensionne sur la largeur LOCALE (cqw) : en portrait le
+     * body est tourné, sa largeur logique vaut la hauteur physique, et des tailles en
+     * vw donnaient un titre énorme dans une boîte étroite. En paysage, cqw = vw.
+     */
+    container-type: inline-size;
 }
 
 /* Mode image/vidéo : bloc, l'enfant occupe 100% */
@@ -124,15 +130,18 @@ html {
     justify-content: center;
     text-align: center;
     padding: 4vw;
+    padding: 4cqw;
 }
 
 .pause-override-text-inner {
     max-width: min(90vw, 1400px);
+    max-width: min(90cqw, 1400px);
 }
 
 .pause-override-title {
     margin: 0 0 1rem;
     font-size: clamp(calc(2.2rem * var(--override-text-scale, 1)), calc(6vw * var(--override-text-scale, 1)), calc(5.4rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(2.2rem * var(--override-text-scale, 1)), calc(6cqw * var(--override-text-scale, 1)), calc(5.4rem * var(--override-text-scale, 1)));
     line-height: 1.08;
     font-weight: 800;
     letter-spacing: 0.02em;
@@ -144,6 +153,7 @@ html {
     padding: 0.45rem 0.85rem;
     border-radius: 999px;
     font-size: clamp(calc(0.8rem * var(--override-text-scale, 1)), calc(1.6vw * var(--override-text-scale, 1)), calc(1.1rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(0.8rem * var(--override-text-scale, 1)), calc(1.6cqw * var(--override-text-scale, 1)), calc(1.1rem * var(--override-text-scale, 1)));
     font-weight: 700;
     letter-spacing: 0.04em;
 }
@@ -167,6 +177,7 @@ html {
 .pause-override-message {
     margin: 0;
     font-size: clamp(calc(1.1rem * var(--override-text-scale, 1)), calc(2.4vw * var(--override-text-scale, 1)), calc(2rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(1.1rem * var(--override-text-scale, 1)), calc(2.4cqw * var(--override-text-scale, 1)), calc(2rem * var(--override-text-scale, 1)));
     line-height: 1.4;
     opacity: 0.95;
 }
@@ -174,6 +185,7 @@ html {
 .pause-override-resume {
     margin-top: 1.25rem;
     font-size: clamp(calc(1rem * var(--override-text-scale, 1)), calc(2.1vw * var(--override-text-scale, 1)), calc(1.7rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(1rem * var(--override-text-scale, 1)), calc(2.1cqw * var(--override-text-scale, 1)), calc(1.7rem * var(--override-text-scale, 1)));
     font-weight: 600;
     opacity: 0.9;
 }
