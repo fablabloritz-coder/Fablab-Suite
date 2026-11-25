@@ -7,6 +7,12 @@ name: Tests racine
 # regression pouvait donc atteindre `main` sans controle, et une PR n'etait
 # couverte par aucune CI. Ce workflow ne fait que relancer les suites locales,
 # sans dependance supplementaire (les application ont leurs propres jobs).
+#
+# `tests/test_release_versions.py` est volontairement exclu ici : il compare la
+# version publiee au dernier tag `<app>-vX.Y.Z`, or `Auto release` cree ce tag
+# quelques secondes apres le push. Execute sur le push, il passait au rouge a
+# chaque changement de version. Il reste execute par `Version consistency`, qui
+# est declenche a la fin de `Auto release`.
 on:
   push:
     branches: [main]
@@ -47,5 +53,10 @@ jobs:
             release_notes_gen.py \
             release_publish.py
 
-      - name: Tests racine
-        run: python3 -m unittest discover -s tests -v
+      - name: Tests racine (hors controle des tags de release)
+        # Controle des tags : voir l'entete du workflow et `Version
+        # consistency`, seul endroit ou les tags de la release existent deja.
+        run: |
+          set -euo pipefail
+          modules=$(cd tests && ls test_*.py | grep -vx 'test_release_versions.py' | sed 's/\.py$//' | sort)
+          PYTHONPATH="$PWD/tests" python3 -m unittest $modules -v
