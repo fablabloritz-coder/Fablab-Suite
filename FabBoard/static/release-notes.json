@@ -1,6 +1,37 @@
 {
   "history": [
     {
+      "version": "3.8.1",
+      "date": "2026-11-25",
+      "title": "Portrait plein écran et cache des assets",
+      "notes": [
+        "Mode portrait corrigé : le dashboard remplit tout l'écran (bande vide à gauche et bas de contenu coupé sur un écran 16:9).",
+        "CSS et JS du dashboard servis avec la version de l'application : un kiosque rechargé après mise à jour ne garde plus l'ancienne feuille en cache (max-age=3600).",
+        "Vérification navigateur de / et /ecran/2 : paysage, portrait, portrait inversé, écran de pause et alignement des widgets « page web » (écart <= 0,4 px)."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.8.1"
+    },
+    {
+      "version": "3.8.0",
+      "date": "2026-11-25",
+      "title": "Widget dépendances externes",
+      "notes": [
+        "Nouveau widget FabBoard « Dépendances externes » : missions Fabtrack marquées comme dépendant d'un autre service, regroupées par service avec échéance et dernière étape.",
+        "Liste de services à surveiller configurable par widget (vide = tous), missions terminées masquées par défaut, nombre max et échelle TV réglables.",
+        "Lecture du marqueur service_id livré en Fabtrack 2.14.0 (repli sur service_id, couleur du service), aucun nouvel appel à Fabtrack."
+      ]
+    },
+    {
+      "version": "3.7.0",
+      "date": "2026-11-25",
+      "title": "Double écran et orientation par écran",
+      "notes": [
+        "Double écran : chaque slide est affectée à l'écran 1 (/) ou à l'écran 2 (/ecran/2), chaque fenêtre garde son propre cycle de slides et ses widgets.",
+        "Orientation par écran (paysage, portrait, portrait inversé) dans Paramètres → Écrans ; la rotation inclut l'écran de pause et les widgets « page web ».",
+        "Compatibilité totale : les slides existantes restent sur l'écran 1 et / reste l'écran principal."
+      ]
+    },
+    {
       "version": "3.6.0",
       "date": "2026-11-16",
       "title": "Depassements de seuil sur la TV",

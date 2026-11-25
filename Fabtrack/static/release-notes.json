@@ -1,6 +1,17 @@
 {
   "history": [
     {
+      "version": "2.14.0",
+      "date": "2026-11-25",
+      "title": "Services externes et marqueur de dependance",
+      "notes": [
+        "Catalogue de services externes dans Missions (CMIL, rectorat…) : nom, couleur, desactivation et reactivation, liste proposee a la saisie.",
+        "Marqueur « depend d'un autre service » sur chaque mission, derive de service_id et expose en lecture (depend_service_externe, service_nom, service_couleur) pour les widgets FabBoard.",
+        "Desactiver un service conserve le marqueur et le nom sur les missions existantes, sans bloquer leur modification."
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabtrack-v2.14.0"
+    },
+    {
       "version": "2.13.1",
       "date": "2026-11-17",
       "title": "Lisibilite des depassements de seuil",

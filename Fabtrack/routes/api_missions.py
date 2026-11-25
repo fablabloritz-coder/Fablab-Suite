@@ -8,6 +8,7 @@ import re
 import csv
 import io
 import html
+import sqlite3
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify, render_template, Response
@@ -53,6 +54,41 @@ def _normalize_category_id(value):
     return cid if cid > 0 else None
 
 
+def _parse_service_id(value):
+    """Retourne (service_id, invalide) ; (None, False) = aucune dépendance.
+
+    Un identifiant fourni mais non numérique est signalé comme invalide (400)
+    au lieu d'effacer silencieusement le marqueur de la mission : une faute de
+    frappe du client ne doit pas détruire une donnée.
+    """
+    if value in (None, '', 0, '0', False):
+        return None, False
+    try:
+        sid = int(value)
+    except (TypeError, ValueError):
+        return None, True
+    if sid <= 0:
+        return None, True
+    return sid, False
+
+
+def _service_disponible(db, service_id, service_actuel=None):
+    """Vrai si le service peut être affecté à une mission.
+
+    Un service inactif reste accepté quand c'est déjà celui de la mission :
+    désactiver un service ne doit pas casser l'édition des missions existantes
+    ni effacer silencieusement leur marqueur.
+    """
+    if service_id is None:
+        return True
+    row = db.execute(
+        'SELECT id, actif FROM mission_services WHERE id = ?', (service_id,)
+    ).fetchone()
+    if not row:
+        return False
+    return bool(row['actif']) or service_id == service_actuel
+
+
 def _log_mission_event(db, mission_id, event_type, from_statut=None, to_statut=None):
     """Insère un événement de mission dans l'historique."""
     db.execute(
@@ -63,7 +99,14 @@ def _log_mission_event(db, mission_id, event_type, from_statut=None, to_statut=N
 
 
 def _timeline_select_sql():
-    """Extrait SQL réutilisable des dates de timeline d'une mission."""
+    """Extrait SQL réutilisable des dates de timeline et du service externe.
+
+    `depend_service_externe` est un marqueur DÉRIVÉ de `service_id` : aucune
+    colonne booléenne à maintenir, donc aucun état incohérent possible. Le
+    kanban, l'historique et la fiche mission l'exposent sans requête
+    supplémentaire ; les exports CSV/HTML/PDF gardent volontairement leur
+    format actuel.
+    """
     return '''
         (SELECT MIN(e.created_at)
          FROM mission_events e
@@ -80,7 +123,10 @@ def _timeline_select_sql():
              WHERE e.mission_id = m.id AND e.to_statut = 'termine'),
             m.updated_at,
             m.created_at
-        ) AS completed_at
+        ) AS completed_at,
+        CASE WHEN m.service_id IS NOT NULL THEN 1 ELSE 0 END AS depend_service_externe,
+        (SELECT ms.nom FROM mission_services ms WHERE ms.id = m.service_id) AS service_nom,
+        (SELECT ms.couleur FROM mission_services ms WHERE ms.id = m.service_id) AS service_couleur
     '''
 
 
@@ -598,6 +644,137 @@ def api_delete_category(category_id):
         db.close()
 
 
+# ── Services externes (catalogue) ──
+
+@bp.route('/api/services')
+def api_services():
+    """Liste les services externes (actifs par défaut)."""
+    include_inactive = (request.args.get('include_inactive') or '').lower() in ('1', 'true', 'yes')
+    db = get_db()
+    try:
+        where = '' if include_inactive else 'WHERE actif = 1'
+        rows = db.execute(
+            f'''
+            SELECT id, nom, couleur, ordre, actif
+            FROM mission_services
+            {where}
+            ORDER BY ordre, nom, id
+            '''
+        ).fetchall()
+        return jsonify({'success': True, 'data': [dict(r) for r in rows]})
+    finally:
+        db.close()
+
+
+@bp.route('/api/services', methods=['POST'])
+def api_create_service():
+    """Crée un service externe."""
+    data = request.get_json() or {}
+    nom = str(data.get('nom', '')).strip()
+    couleur = _parse_color(data.get('couleur'), '#6b7280')
+
+    if not nom:
+        return jsonify({'success': False, 'error': 'Le nom est requis'}), 400
+
+    db = get_db()
+    try:
+        max_ordre = db.execute(
+            'SELECT COALESCE(MAX(ordre), 0) AS max_ordre FROM mission_services'
+        ).fetchone()
+        ordre = int((max_ordre['max_ordre'] if max_ordre else 0) or 0) + 10
+        cur = db.execute(
+            '''INSERT INTO mission_services (nom, couleur, ordre)
+               VALUES (?, ?, ?)''',
+            (nom, couleur, ordre),
+        )
+        db.commit()
+        created = db.execute(
+            'SELECT id, nom, couleur, ordre, actif FROM mission_services WHERE id = ?',
+            (cur.lastrowid,),
+        ).fetchone()
+        return jsonify({'success': True, 'data': dict(created)}), 201
+    except sqlite3.IntegrityError:
+        db.rollback()
+        return jsonify({'success': False, 'error': 'Ce service existe déjà'}), 400
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        db.close()
+
+
+@bp.route('/api/services/<int:service_id>', methods=['PUT'])
+def api_update_service(service_id):
+    """Met à jour un service, y compris sa réactivation."""
+    data = request.get_json() or {}
+
+    db = get_db()
+    try:
+        existing = db.execute(
+            'SELECT id, nom, couleur, actif FROM mission_services WHERE id = ?',
+            (service_id,),
+        ).fetchone()
+        if not existing:
+            return jsonify({'success': False, 'error': 'Service non trouvé'}), 404
+
+        nom = str(data.get('nom', existing['nom'])).strip()
+        if not nom:
+            return jsonify({'success': False, 'error': 'Le nom est requis'}), 400
+        couleur = _parse_color(data.get('couleur'), existing['couleur'] or '#6b7280')
+        actif = 1 if data.get('actif', existing['actif']) in (1, True, '1', 'true', 'on') else 0
+
+        db.execute(
+            '''UPDATE mission_services
+               SET nom = ?, couleur = ?, actif = ?, updated_at = datetime('now','localtime')
+               WHERE id = ?''',
+            (nom, couleur, actif, service_id),
+        )
+        db.commit()
+        updated = db.execute(
+            'SELECT id, nom, couleur, ordre, actif FROM mission_services WHERE id = ?',
+            (service_id,),
+        ).fetchone()
+        return jsonify({'success': True, 'data': dict(updated)})
+    except sqlite3.IntegrityError:
+        db.rollback()
+        return jsonify({'success': False, 'error': 'Ce service existe déjà'}), 400
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        db.close()
+
+
+@bp.route('/api/services/<int:service_id>', methods=['DELETE'])
+def api_delete_service(service_id):
+    """Désactive un service externe.
+
+    Contrairement aux catégories, les missions ne sont PAS détachées : le
+    marqueur et le nom du service restent lisibles dans le kanban, l'historique
+    et les widgets FabBoard. Le service disparaît seulement de la liste
+    proposée à la saisie.
+    """
+    db = get_db()
+    try:
+        existing = db.execute(
+            'SELECT id FROM mission_services WHERE id = ? AND actif = 1',
+            (service_id,),
+        ).fetchone()
+        if not existing:
+            return jsonify({'success': False, 'error': 'Service non trouvé'}), 404
+
+        db.execute(
+            '''UPDATE mission_services
+               SET actif = 0, updated_at = datetime('now','localtime')
+               WHERE id = ?''',
+            (service_id,),
+        )
+        db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
 @bp.route('/api/history')
 def api_history():
     """Historique paginé des missions terminées avec timeline."""
@@ -789,12 +966,15 @@ def api_create():
     priorite = int(data.get('priorite', 0))
     ordre = int(data.get('ordre', 0))
     category_id = _normalize_category_id(data.get('category_id'))
+    service_id, service_invalide = _parse_service_id(data.get('service_id'))
     date_echeance = data.get('date_echeance') or None
 
     if statut not in STATUTS_VALIDES:
         return jsonify({'success': False, 'error': "Statut invalide"}), 400
     if priorite not in (0, 1, 2):
         return jsonify({'success': False, 'error': "Priorité invalide"}), 400
+    if service_invalide:
+        return jsonify({'success': False, 'error': 'Service invalide'}), 400
 
     db = get_db()
     try:
@@ -806,11 +986,14 @@ def api_create():
             if not cat:
                 return jsonify({'success': False, 'error': 'Catégorie invalide'}), 400
 
+        if not _service_disponible(db, service_id):
+            return jsonify({'success': False, 'error': 'Service invalide'}), 400
+
         c = db.execute(
-            '''INSERT INTO missions (titre, description, category_id, statut, priorite, ordre, date_echeance, date_creation)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+            '''INSERT INTO missions (titre, description, category_id, service_id, statut, priorite, ordre, date_echeance, date_creation)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
-                titre, description, category_id, statut, priorite, ordre, date_echeance,
+                titre, description, category_id, service_id, statut, priorite, ordre, date_echeance,
                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             )
         )
@@ -855,6 +1038,9 @@ def api_update(mission_id):
         priorite = int(data.get('priorite', existing['priorite']))
         ordre = int(data.get('ordre', existing['ordre']))
         category_id = _normalize_category_id(data.get('category_id', existing['category_id']))
+        service_id, service_invalide = _parse_service_id(
+            data.get('service_id', existing['service_id'])
+        )
         date_echeance = data.get('date_echeance', existing['date_echeance'])
         if date_echeance == '':
             date_echeance = None
@@ -863,6 +1049,8 @@ def api_update(mission_id):
             return jsonify({'success': False, 'error': "Statut invalide"}), 400
         if priorite not in (0, 1, 2):
             return jsonify({'success': False, 'error': "Priorité invalide"}), 400
+        if service_invalide:
+            return jsonify({'success': False, 'error': 'Service invalide'}), 400
 
         if category_id is not None:
             cat = db.execute(
@@ -872,14 +1060,17 @@ def api_update(mission_id):
             if not cat:
                 return jsonify({'success': False, 'error': 'Catégorie invalide'}), 400
 
+        if not _service_disponible(db, service_id, existing['service_id']):
+            return jsonify({'success': False, 'error': 'Service invalide'}), 400
+
         old_statut = existing['statut']
 
         db.execute(
             '''UPDATE missions
-               SET titre = ?, description = ?, category_id = ?, statut = ?, priorite = ?, ordre = ?,
+               SET titre = ?, description = ?, category_id = ?, service_id = ?, statut = ?, priorite = ?, ordre = ?,
                    date_echeance = ?, updated_at = datetime('now','localtime')
                WHERE id = ?''',
-            (titre, description, category_id, statut, priorite, ordre, date_echeance, mission_id)
+            (titre, description, category_id, service_id, statut, priorite, ordre, date_echeance, mission_id)
         )
 
         if old_statut != statut:

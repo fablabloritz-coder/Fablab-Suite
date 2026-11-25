@@ -11,6 +11,27 @@ import json
 
 bp = Blueprint('api_slides', __name__)
 
+ECRANS_VALIDES = (1, 2)
+
+
+def _parse_ecran(value, default=1):
+    """Retourne (ecran, invalide) ; seuls les écrans 1 et 2 existent.
+
+    Un flottant non entier est refusé plutôt que tronqué : une valeur
+    malformée ne doit pas déplacer une slide vers l'écran 1 en silence.
+    """
+    if value in (None, ''):
+        return default, False
+    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+        return default, True
+    try:
+        ecran = int(value)
+    except (TypeError, ValueError):
+        return default, True
+    if ecran not in ECRANS_VALIDES:
+        return default, True
+    return ecran, False
+
 
 @bp.route('/api/slides', methods=['GET'])
 def get_slides():
@@ -45,12 +66,16 @@ def create_slide():
         if not data.get('nom') or not data.get('layout_id'):
             return jsonify({'error': 'Nom et layout_id requis'}), 400
 
+        ecran, ecran_invalide = _parse_ecran(data.get('ecran'), 1)
+        if ecran_invalide:
+            return jsonify({'error': 'Écran invalide (1 ou 2)'}), 400
+
         max_ordre = db.execute('SELECT MAX(ordre) as max FROM slides').fetchone()['max']
         ordre = (max_ordre or 0) + 1
 
         cursor = db.execute('''
-            INSERT INTO slides (nom, layout_id, ordre, temps_affichage, actif, fond_type, fond_valeur, layout_ratio)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO slides (nom, layout_id, ordre, temps_affichage, actif, fond_type, fond_valeur, layout_ratio, ecran)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             data['nom'],
             data['layout_id'],
@@ -59,7 +84,8 @@ def create_slide():
             data.get('actif', 1),
             data.get('fond_type', 'defaut'),
             data.get('fond_valeur', ''),
-            data.get('layout_ratio', 60)
+            data.get('layout_ratio', 60),
+            ecran
         ))
 
         slide_id = cursor.lastrowid
@@ -97,10 +123,15 @@ def update_slide(id):
         if not existing:
             return jsonify({'error': 'Slide non trouvée'}), 404
 
+        ecran_courant = _parse_ecran(existing['ecran'], 1)[0]
+        ecran, ecran_invalide = _parse_ecran(data.get('ecran', ecran_courant), ecran_courant)
+        if ecran_invalide:
+            return jsonify({'error': 'Écran invalide (1 ou 2)'}), 400
+
         db.execute('''
             UPDATE slides SET
                 nom = ?, layout_id = ?, temps_affichage = ?, actif = ?,
-                fond_type = ?, fond_valeur = ?, layout_ratio = ?,
+                fond_type = ?, fond_valeur = ?, layout_ratio = ?, ecran = ?,
                 updated_at = datetime('now','localtime')
             WHERE id = ?
         ''', (
@@ -111,6 +142,7 @@ def update_slide(id):
             data.get('fond_type', existing['fond_type'] or 'defaut'),
             data.get('fond_valeur', existing['fond_valeur'] or ''),
             data.get('layout_ratio', existing['layout_ratio'] if existing['layout_ratio'] is not None else 60),
+            ecran,
             id
         ))
 

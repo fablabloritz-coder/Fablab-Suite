@@ -186,6 +186,11 @@ let sortableInstance = null;
 let isRenderingSlides = false; // Flag pour éviter les rendus concurrents
 let currentEditingWidgetConfig = null; // Contexte d'édition config avancée
 
+/** Écran d'affichage d'une slide : 1 par défaut, 2 pour le second écran. */
+function ecranDeSlide(slide) {
+    return Number(slide && slide.ecran) === 2 ? 2 : 1;
+}
+
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', () => {
     console.log('[SLIDES] DOM Content Loaded');
@@ -333,6 +338,7 @@ function renderSlidesList() {
                 const layoutNom = slide.layout_nom || 'Gabarit';
                 const temps = slide.temps_affichage || 30;
                 const ordre = slide.ordre || '';
+                const ecran = ecranDeSlide(slide);
                 
                 return `
                     <div class="slide-item ${isInactive ? 'inactive' : ''} ${isActive ? 'active' : ''}" 
@@ -347,6 +353,7 @@ function renderSlidesList() {
                             <div class="slide-item-meta">
                                 <span><i class="bi bi-grid-3x2"></i> ${layoutNom}</span>
                                 <span><i class="bi bi-clock"></i> ${temps}s</span>
+                                <span><i class="bi bi-display"></i> Écran ${ecran}</span>
                             </div>
                         </div>
                     </div>
@@ -547,7 +554,8 @@ function renderPreview() {
     
     // Mettre à jour les infos
     document.getElementById('previewLayoutName').textContent = slide.layout_nom || 'Gabarit personnalisé';
-    document.getElementById('previewDuration').textContent = `Durée : ${slide.temps_affichage}s`;
+    const ecran = ecranDeSlide(slide);
+    document.getElementById('previewDuration').textContent = `Durée : ${slide.temps_affichage}s · Écran ${ecran}`;
 }
 
 function refreshPreview() {
@@ -556,8 +564,10 @@ function refreshPreview() {
 }
 
 function openFullscreenPreview() {
-    // Ouvrir le dashboard dans un nouvel onglet
-    window.open('/', '_blank');
+    // Ouvrir le dashboard de l'écran de la slide sélectionnée
+    const slide = currentSlides.find(s => s.id === selectedSlideId);
+    const ecran = ecranDeSlide(slide);
+    window.open(ecran === 2 ? '/ecran/2' : '/', '_blank');
 }
 
 // ========== CONFIGURATION ==========
@@ -596,6 +606,10 @@ function renderConfig() {
                 </div>
                 <div class="mb-2">
                     <strong>Durée :</strong> ${slide.temps_affichage || 30} secondes
+                </div>
+                <div class="mb-2">
+                    <strong>Écran :</strong>
+                    <span class="badge bg-dark">Écran ${ecranDeSlide(slide)}</span>
                 </div>
                 <div class="mb-2">
                     <strong>Statut :</strong>
@@ -664,6 +678,8 @@ function openAddSlideModal() {
     document.getElementById('slideId').value = '';
     document.getElementById('slideName').value = '';
     document.getElementById('slideDuration').value = '30';
+    const ecranNouvelleSlide = document.getElementById('slideEcran');
+    if (ecranNouvelleSlide) ecranNouvelleSlide.value = '1';
     document.getElementById('slideActive').checked = true;
     document.getElementById('slideFondType').value = 'defaut';
     document.getElementById('slideFondCouleur').value = '#0b1120';
@@ -687,6 +703,8 @@ function editSlide(slideId) {
     document.getElementById('slideId').value = slide.id;
     document.getElementById('slideName').value = slide.nom;
     document.getElementById('slideDuration').value = slide.temps_affichage;
+    const ecranSlide = document.getElementById('slideEcran');
+    if (ecranSlide) ecranSlide.value = String(ecranDeSlide(slide));
     document.getElementById('slideActive').checked = slide.actif === 1;
 
     // Fond de slide
@@ -761,6 +779,14 @@ async function saveSlide() {
     const nom = document.getElementById('slideName').value.trim();
     const temps_affichage = parseInt(document.getElementById('slideDuration').value);
     const actif = document.getElementById('slideActive').checked ? 1 : 0;
+    // Si le selecteur d'ecran manque (HTML en cache), conserver l'affectation
+    // courante de la slide au lieu de la rapatrier en silence sur l'ecran 1.
+    const ecranField = document.getElementById('slideEcran');
+    const slideCourante = slideId ? currentSlides.find(s => s.id == slideId) : null;
+    const ecranParDefaut = ecranDeSlide(slideCourante);
+    const ecran = ecranField
+        ? (parseInt(ecranField.value, 10) === 2 ? 2 : 1)
+        : ecranParDefaut;
     
     // Fond
     const fond_type = document.getElementById('slideFondType').value;
@@ -793,7 +819,7 @@ async function saveSlide() {
     }
     
     try {
-        const data = { nom, layout_id, temps_affichage, actif, fond_type, fond_valeur, layout_ratio };
+        const data = { nom, layout_id, temps_affichage, actif, fond_type, fond_valeur, layout_ratio, ecran };
         let result;
         let newSlideId;
         
@@ -1183,6 +1209,17 @@ const WIDGET_CONFIG_DEFINITIONS = {
             { key: 'afficher_a_faire', label: 'Afficher "À faire"', type: 'checkbox', default: true },
             { key: 'afficher_en_cours', label: 'Afficher "En cours"', type: 'checkbox', default: true },
             { key: 'afficher_termine', label: 'Afficher "Terminé"', type: 'checkbox', default: false },
+            ECHELLE_FIELD
+        ]
+    },
+    fabtrack_dependances: {
+        titre: 'Dépendances externes',
+        fields: [
+            { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
+            { key: 'services', label: 'Services à surveiller (noms séparés par des virgules, vide = tous)', type: 'text', default: '', placeholder: 'Ex: CMIL, Rectorat' },
+            { key: 'nombre_max', label: 'Nombre max de missions', type: 'number', default: 12, min: 1, max: 50 },
+            { key: 'inclure_terminees', label: 'Inclure les missions terminées', type: 'checkbox', default: false },
+            { key: 'afficher_etape', label: 'Afficher la dernière étape', type: 'checkbox', default: true },
             ECHELLE_FIELD
         ]
     },

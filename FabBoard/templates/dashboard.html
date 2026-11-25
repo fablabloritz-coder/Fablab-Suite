@@ -9,12 +9,14 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+{# Version en query string : le CSS statique est servi avec max-age=3600,
+   sans quoi un kiosque rechargé garderait l'ancienne feuille après une mise à jour. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v={{ app_version }}">
 {% endblock %}
 
 {% block content %}
 <!-- Conteneur principal du dashboard (slides) -->
-<div id="dashboard-container" class="dashboard-full" data-bs-theme="dark">
+<div id="dashboard-container" class="dashboard-full" data-bs-theme="dark" data-ecran="{{ ecran|default(1) }}">
     <!-- Contenu généré dynamiquement par dashboard.js -->
     <div class="loading-state">
         <div class="spinner-border" style="width: 3rem; height: 3rem; color: #818cf8;" role="status">
@@ -42,5 +44,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ app_version }}"></script>
 {% endblock %}

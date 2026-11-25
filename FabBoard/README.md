@@ -38,6 +38,7 @@ Les applications sont **indépendantes** — chacune peut tourner seule avec son
 - Durée d'affichage individuelle par slide (5s à 5min)
 - Fond personnalisable par slide (couleur ou image)
 - Diaporama plein écran optimisé TV (1920×1080)
+- **Double écran** : chaque slide est affectée à l'écran 1 (`/`) ou à l'écran 2 (`/ecran/2`) ; chaque fenêtre garde son propre cycle de slides et ses propres widgets. L'ordre des slides reste global et les slides existantes restent sur l'écran 1.
 
 ### Widgets disponibles
 
@@ -47,6 +48,7 @@ Les applications sont **indépendantes** — chacune peut tourner seule avec son
 | **Compteurs Fabtrack** | Total interventions, filament 3D (kg), surface découpe (m²), feuilles imprimées — couleurs distinctes par métrique |
 | **Statistiques Fabtrack** | Répartition par type d'activité avec barres colorées |
 | **Activités récentes** | Dernières consommations Fabtrack avec couleur par type d'activité |
+| **Dépendances externes** | Missions Fabtrack qui dépendent d'un autre service (CMIL, rectorat…), regroupées par service avec échéance et dernière étape ; liste de services filtrable par widget |
 | **Calendrier** | Événements CalDAV/Nextcloud avec code couleur d'urgence (imminent, proche, cette semaine) |
 | **Météo** | Température, icône, description, humidité, vent (Open-Meteo, sans clé API) |
 | **Image** | Affichage d'image uploadée (contain/cover/fill) |
@@ -56,6 +58,7 @@ Les applications sont **indépendantes** — chacune peut tourner seule avec son
 - **Échelle par widget** (×1 à ×3) — adapte la taille de tous les textes
 - **Police personnalisable** parmi 8 Google Fonts (Inter, Roboto, Poppins, Montserrat, Open Sans, Source Sans, Orbitron, Rajdhani)
 - **Mode sombre** natif optimisé pour écran TV
+- **Orientation par écran** : paysage, portrait (rotation 90°) ou portrait inversé (-90°), réglable dans *Paramètres → Écrans*. La rotation est faite par FabBoard, l'écran reste en paysage côté système ; elle s'applique aussi à l'écran de pause et aux widgets « page web ». Le changement prend effet au rechargement de l'écran.
 - Les emplacements non assignés sont automatiquement transparents
 
 ### Sources de données
@@ -526,6 +529,36 @@ Navigation :
 ## 📜 Changelog
 
 <!-- changelog:start -->
+
+### v3.8.1 — 2026-11-25
+
+#### Portrait plein écran et cache des assets
+
+- Mode portrait corrigé : le dashboard remplit tout l'écran (bande vide à gauche et bas de contenu coupé sur un écran 16:9).
+- CSS et JS du dashboard servis avec la version de l'application : un kiosque rechargé après mise à jour ne garde plus l'ancienne feuille en cache (max-age=3600).
+- Vérification navigateur de / et /ecran/2 : paysage, portrait, portrait inversé, écran de pause et alignement des widgets « page web » (écart <= 0,4 px).
+
+---
+
+### v3.8.0 — 2026-11-25
+
+#### Widget dépendances externes
+
+- Nouveau widget FabBoard « Dépendances externes » : missions Fabtrack marquées comme dépendant d'un autre service, regroupées par service avec échéance et dernière étape.
+- Liste de services à surveiller configurable par widget (vide = tous), missions terminées masquées par défaut, nombre max et échelle TV réglables.
+- Lecture du marqueur service_id livré en Fabtrack 2.14.0 (repli sur service_id, couleur du service), aucun nouvel appel à Fabtrack.
+
+---
+
+### v3.7.0 — 2026-11-25
+
+#### Double écran et orientation par écran
+
+- Double écran : chaque slide est affectée à l'écran 1 (/) ou à l'écran 2 (/ecran/2), chaque fenêtre garde son propre cycle de slides et ses widgets.
+- Orientation par écran (paysage, portrait, portrait inversé) dans Paramètres → Écrans ; la rotation inclut l'écran de pause et les widgets « page web ».
+- Compatibilité totale : les slides existantes restent sur l'écran 1 et / reste l'écran principal.
+
+---
 
 ### v3.6.0 — 2026-11-16
 

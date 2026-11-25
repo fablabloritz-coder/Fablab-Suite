@@ -27,6 +27,48 @@
     background: #0b1120;
 }
 
+/* ========== ORIENTATION PAR ÉCRAN ========== */
+/*
+ * Rotation logicielle : le matériel reste en paysage côté OS (TV/moniteur
+ * monté en portrait), FabBoard tourne tout son contenu. La rotation est portée
+ * par le <body> pour que les éléments `position: fixed` (overlay pause, calque
+ * des iframes « page web ») tournent avec le reste au lieu de rester droits.
+ * Les dimensions sont échangées en coordonnées locales : 100vh × 100vw.
+ */
+html {
+    overflow: hidden;
+}
+
+/* `.dashboard-tv` porte déjà `overflow: hidden`. */
+.dashboard-tv.screen-portrait,
+.dashboard-tv.screen-portrait-inverse {
+    width: 100vh;
+    height: 100vw;
+    transform-origin: top left;
+}
+
+/* Rotation horaire : le haut du contenu part à droite. */
+.dashboard-tv.screen-portrait {
+    transform: rotate(90deg) translateY(-100%);
+}
+
+/* Rotation antihoraire : le haut du contenu part à gauche. */
+.dashboard-tv.screen-portrait-inverse {
+    transform: rotate(-90deg) translateX(-100%);
+}
+
+/*
+ * Le conteneur doit suivre la taille LOCALE du <body> (dimensions échangées).
+ * Les unités de viewport du mode paysage (100vw × 100vh) débordent en portrait :
+ * sur un écran 1440×810, le contenu faisait 810 px de large tourné dans un
+ * viewport de 1440 px, avec une bande vide et du contenu coupé.
+ */
+.dashboard-tv.screen-portrait .dashboard-full,
+.dashboard-tv.screen-portrait-inverse .dashboard-full {
+    width: 100%;
+    height: 100%;
+}
+
 /* ========== OVERLAY OVERRIDE PERSISTANT ========== */
 /*
  * L'overlay est un élément FIXED qui vit en dehors du container de slides.

@@ -17,6 +17,9 @@ function _isVideoUrl(url) {
 let sourceTypes = [];
 let sources = [];
 let sourceModal = null;
+// Dernieres orientations chargees : evite de reecrire « paysage » quand un
+// selecteur est absent du DOM (HTML en cache) lors d'un enregistrement.
+const ecranOrientations = { 1: 'paysage', 2: 'paysage' };
 
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
@@ -156,6 +159,11 @@ function setupEventListeners() {
     if (manualScale) {
         manualScale.addEventListener('input', updateTextScaleBadges);
     }
+
+    const saveEcransButton = document.getElementById('btn-save-ecrans');
+    if (saveEcransButton) {
+        saveEcransButton.addEventListener('click', saveParametres);
+    }
 }
 
 function updateTextScaleBadges() {
@@ -271,6 +279,21 @@ async function loadParametres() {
             manualScaleEl.value = params.manual_unavailable_text_scale || '100';
         }
 
+        // Écrans : orientation de chaque écran + URL à ouvrir sur chaque écran.
+        const orientationsValides = ['paysage', 'portrait', 'portrait_inverse'];
+        for (const n of [1, 2]) {
+            const select = document.getElementById(`param-ecran-${n}-orientation`);
+            if (!select) continue;
+            const valeur = params[`ecran_${n}_orientation`];
+            select.value = orientationsValides.includes(valeur) ? valeur : 'paysage';
+            ecranOrientations[n] = select.value;
+        }
+        const baseUrl = window.location.origin;
+        const urlEcran1 = document.getElementById('param-ecran-1-url');
+        if (urlEcran1) urlEcran1.textContent = `${baseUrl}/`;
+        const urlEcran2 = document.getElementById('param-ecran-2-url');
+        if (urlEcran2) urlEcran2.textContent = `${baseUrl}/ecran/2`;
+
         toggleDisplayOverrideMode();
         togglePauseMode();
         toggleManualReturnField();
@@ -315,6 +338,8 @@ async function saveParametres() {
         manual_unavailable_bg_color: document.getElementById('param-display-override-bg-color')?.value || '#0b1120',
         manual_unavailable_text_color: document.getElementById('param-display-override-text-color')?.value || '#f8fafc',
         manual_unavailable_text_scale: (document.getElementById('param-manual-text-scale')?.value || '100'),
+        ecran_1_orientation: (document.getElementById('param-ecran-1-orientation')?.value || ecranOrientations[1]),
+        ecran_2_orientation: (document.getElementById('param-ecran-2-orientation')?.value || ecranOrientations[2]),
     };
 
     if (!params.manual_unavailable_title) {
@@ -416,6 +441,14 @@ async function saveParametres() {
             apiCall('/api/parametres/manual_unavailable_text_scale', {
                 method: 'PUT',
                 body: JSON.stringify({ valeur: params.manual_unavailable_text_scale }),
+            }),
+            apiCall('/api/parametres/ecran_1_orientation', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.ecran_1_orientation }),
+            }),
+            apiCall('/api/parametres/ecran_2_orientation', {
+                method: 'PUT',
+                body: JSON.stringify({ valeur: params.ecran_2_orientation }),
             }),
         ]);
 

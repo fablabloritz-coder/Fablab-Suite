@@ -3,7 +3,7 @@ FabBoard — Routes pages (blueprints)
 Pages HTML : dashboard, slides, paramètres, médias, test-api
 """
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, abort
 
 bp = Blueprint('pages', __name__)
 
@@ -12,6 +12,18 @@ bp = Blueprint('pages', __name__)
 def dashboard():
     """Page principale : dashboard TV plein écran."""
     return render_template('dashboard.html', page='dashboard')
+
+
+@bp.route('/ecran/<int:ecran>')
+def dashboard_ecran(ecran):
+    """Dashboard dédié à un écran : chaque écran ouvre sa propre URL.
+
+    `/` reste l'écran 1 (compatibilité totale avec les installations existantes) ;
+    l'écran 2 s'ouvre sur `/ecran/2`. Chaque fenêtre a son propre cycle de slides.
+    """
+    if ecran not in (1, 2):
+        abort(404)
+    return render_template('dashboard.html', page='dashboard', ecran=ecran)
 
 
 @bp.route('/slides')

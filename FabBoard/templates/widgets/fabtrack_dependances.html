@@ -1,0 +1,293 @@
+<div class="widget widget-fabtrack-dependances" id="widget-fabtrack-dependances-{{ widget_id }}" data-widget-code="fabtrack_dependances">
+    <h3>
+        <i class="bi bi-diagram-3"></i> Dépendances externes
+        <span class="dep-count js-dep-count"></span>
+    </h3>
+    <div class="js-dependances-liste">
+        <div class="dep-vide">Chargement…</div>
+    </div>
+</div>
+
+<style>
+.widget-fabtrack-dependances {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.4rem;
+}
+.widget-fabtrack-dependances h3 {
+    flex-shrink: 0;
+    margin-bottom: 0.4rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+}
+.widget-fabtrack-dependances .dep-count {
+    font-size: 0.7em;
+    font-weight: 700;
+    background: rgba(56, 189, 248, 0.18);
+    color: #7dd3fc;
+    border-radius: 9999px;
+    padding: 0 0.5em;
+}
+.widget-fabtrack-dependances .js-dependances-liste {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+.widget-fabtrack-dependances .dep-groupe {
+    background: rgba(148, 163, 184, 0.06);
+    border-radius: 8px;
+    padding: 0.35em 0.45em 0.4em;
+    border-left: 4px solid #38bdf8;
+}
+.widget-fabtrack-dependances .dep-groupe-titre {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: calc(0.68rem * var(--ws, 1));
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #cbd5e1;
+    margin-bottom: 0.25em;
+}
+.widget-fabtrack-dependances .dep-groupe-dot {
+    width: 0.6em;
+    height: 0.6em;
+    border-radius: 50%;
+    flex: 0 0 0.6em;
+    background: #94a3b8;
+}
+.widget-fabtrack-dependances .dep-groupe-count {
+    margin-left: auto;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 9999px;
+    padding: 0 0.45em;
+    font-size: 0.85em;
+}
+.widget-fabtrack-dependances .dep-mission {
+    padding: 0.2em 0.1em;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+.widget-fabtrack-dependances .dep-mission:first-child {
+    border-top: none;
+}
+.widget-fabtrack-dependances .dep-titre {
+    font-size: calc(0.72rem * var(--ws, 1));
+    font-weight: 600;
+    color: #e2e8f0;
+    line-height: 1.25;
+}
+.widget-fabtrack-dependances .dep-etape {
+    font-size: calc(0.6rem * var(--ws, 1));
+    color: #94a3b8;
+    margin-top: 0.1em;
+    line-height: 1.25;
+}
+.widget-fabtrack-dependances .dep-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35em;
+    margin-top: 0.12em;
+}
+.widget-fabtrack-dependances .dep-badge {
+    font-size: calc(0.55rem * var(--ws, 1));
+    font-weight: 600;
+    padding: 0.08em 0.45em;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+.widget-fabtrack-dependances .dep-badge.statut-a_faire { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
+.widget-fabtrack-dependances .dep-badge.statut-en_cours { background: rgba(249, 115, 22, 0.18); color: #fdba74; }
+.widget-fabtrack-dependances .dep-badge.ech-late  { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.widget-fabtrack-dependances .dep-badge.ech-today { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.widget-fabtrack-dependances .dep-badge.ech-soon  { background: rgba(251, 191, 36, 0.15); color: #fcd34d; }
+.widget-fabtrack-dependances .dep-badge.ech-ok    { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+.widget-fabtrack-dependances .dep-vide {
+    color: #4ade80;
+    text-align: center;
+    padding: 1.5rem 0.5rem;
+    font-size: calc(0.95rem * var(--ws, 1));
+}
+.widget-fabtrack-dependances .dep-plus {
+    color: #64748b;
+    font-size: calc(0.62rem * var(--ws, 1));
+    text-align: center;
+    padding-top: 0.1rem;
+}
+</style>
+
+<script>
+(function () {
+    const root = document.getElementById('widget-fabtrack-dependances-{{ widget_id }}');
+    if (!root) return;
+
+    const liste = root.querySelector('.js-dependances-liste');
+    const compteur = root.querySelector('.js-dep-count');
+    const config = {{ config | tojson | safe }};
+
+    const maxItems = Math.max(1, parseInt(config.nombre_max, 10) || 12);
+    const inclureTerminees = config.inclure_terminees === true;
+    const afficherEtape = config.afficher_etape !== false;
+    const sourceId = config.source_id || null;
+    const servicesFiltre = String(config.services || '')
+        .split(',')
+        .map(function (nom) { return nom.trim().toLowerCase(); })
+        .filter(Boolean);
+
+    function esc(valeur) {
+        const d = document.createElement('div');
+        d.textContent = valeur == null ? '' : String(valeur);
+        return d.innerHTML;
+    }
+
+    function normaliser(valeur) {
+        return String(valeur == null ? '' : valeur).trim().toLowerCase();
+    }
+
+    function isHexColor(valeur) {
+        return /^#[0-9a-fA-F]{6}$/.test(valeur || '');
+    }
+
+    // Le marqueur est derive de `missions.service_id` cote Fabtrack ; la lecture
+    // de `service_id` sert de repli si `depend_service_externe` est absent.
+    function dependDeService(mission) {
+        if (!mission) return false;
+        if (mission.depend_service_externe === true) return true;
+        if (Number(mission.depend_service_externe) === 1) return true;
+        const serviceId = Number(mission.service_id);
+        return Number.isFinite(serviceId) && serviceId > 0;
+    }
+
+    function echeanceHtml(mission) {
+        if (!mission.date_echeance) return '';
+        const date = new Date(String(mission.date_echeance).slice(0, 10));
+        if (isNaN(date.getTime())) return '';
+        const aujourdhui = new Date();
+        aujourdhui.setHours(0, 0, 0, 0);
+        const jours = Math.round((date - aujourdhui) / 86400000);
+        let classe = 'ech-ok';
+        let libelle = '';
+        if (jours < 0) {
+            classe = 'ech-late';
+            libelle = 'En retard (' + Math.abs(jours) + 'j)';
+        } else if (jours === 0) {
+            classe = 'ech-today';
+            libelle = "Aujourd'hui";
+        } else if (jours <= 3) {
+            classe = 'ech-soon';
+            libelle = 'Dans ' + jours + 'j';
+        } else {
+            libelle = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+        }
+        return '<span class="dep-badge ' + classe + '">' + esc('\u{1F4C5} ' + libelle) + '</span>';
+    }
+
+    function missionHtml(mission) {
+        const statut = mission.statut === 'en_cours' ? 'En cours' : 'À faire';
+        const classesStatut = mission.statut === 'en_cours' ? 'statut-en_cours' : 'statut-a_faire';
+        const etape = afficherEtape && mission.derniere_etape_texte
+            ? '<div class="dep-etape">Étape : ' + esc(mission.derniere_etape_texte) + '</div>'
+            : '';
+        return '<div class="dep-mission">'
+            + '<div class="dep-titre">' + esc(mission.titre || 'Mission') + '</div>'
+            + etape
+            + '<div class="dep-meta">'
+            + '<span class="dep-badge ' + classesStatut + '">' + esc(statut) + '</span>'
+            + echeanceHtml(mission)
+            + '</div></div>';
+    }
+
+    function groupeHtml(groupe, missions) {
+        const couleur = isHexColor(groupe.couleur) ? groupe.couleur : '#94a3b8';
+        return '<div class="dep-groupe" style="border-left-color:' + couleur + '">'
+            + '<div class="dep-groupe-titre">'
+            + '<span class="dep-groupe-dot" style="background:' + couleur + '"></span>'
+            + esc(groupe.nom)
+            + '<span class="dep-groupe-count">' + groupe.total + '</span>'
+            + '</div>'
+            + missions.map(missionHtml).join('')
+            + '</div>';
+    }
+
+    function render(missions) {
+        const retenues = (missions || []).filter(function (mission) {
+            if (!dependDeService(mission)) return false;
+            if (!inclureTerminees && mission.statut === 'termine') return false;
+            if (servicesFiltre.length && servicesFiltre.indexOf(normaliser(mission.service_nom)) === -1) return false;
+            return true;
+        });
+
+        if (compteur) compteur.textContent = retenues.length ? String(retenues.length) : '';
+
+        if (!retenues.length) {
+            const message = servicesFiltre.length
+                ? 'Aucune mission en attente des services sélectionnés'
+                : 'Aucune mission en attente d\u2019un service externe';
+            liste.innerHTML = '<div class="dep-vide"><i class="bi bi-check2-circle"></i> ' + esc(message) + '</div>';
+            return;
+        }
+
+        // Regroupement par service, dans l'ordre de la liste Fabtrack.
+        const groupes = new Map();
+        retenues.forEach(function (mission) {
+            const nom = String(mission.service_nom || '').trim() || 'Service externe';
+            const cle = normaliser(nom);
+            if (!groupes.has(cle)) {
+                groupes.set(cle, { nom: nom, couleur: mission.service_couleur, total: 0 });
+            }
+            const groupe = groupes.get(cle);
+            groupe.total += 1;
+            groupe.missions = groupe.missions || [];
+            groupe.missions.push(mission);
+        });
+
+        let restant = maxItems;
+        let affichees = 0;
+        const blocs = [];
+        groupes.forEach(function (groupe) {
+            if (restant <= 0) return;
+            const visibles = groupe.missions.slice(0, restant);
+            restant -= visibles.length;
+            affichees += visibles.length;
+            blocs.push(groupeHtml(groupe, visibles));
+        });
+
+        const reste = retenues.length - affichees;
+        liste.innerHTML = blocs.join('')
+            + (reste > 0
+                ? '<div class="dep-plus">… et ' + reste + ' autre' + (reste > 1 ? 's' : '') + ' mission' + (reste > 1 ? 's' : '') + '</div>'
+                : '');
+    }
+
+    function refresh() {
+        const store = window.FabBoardStore;
+        let missions = [];
+
+        if (sourceId && store && store.getSource(sourceId)) {
+            missions = store.getSource(sourceId).missions || [];
+        } else if (store && store.data) {
+            missions = store.data.missions || [];
+        }
+
+        render(missions);
+    }
+
+    function onDashboardRefresh() {
+        if (!root.isConnected) {
+            document.removeEventListener('fabboard:refresh', onDashboardRefresh);
+            return;
+        }
+        refresh();
+    }
+
+    document.addEventListener('fabboard:refresh', onDashboardRefresh);
+    refresh();
+})();
+</script>

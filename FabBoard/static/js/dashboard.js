@@ -12,6 +12,10 @@ let serverTimeOffset = 0;  // ms: serverTime - clientTime
 let isOverrideActive = false;
 let overrideState = null;
 let overridePollTimer = null;
+let currentEcran = 1;  // 1 = /, 2 = /ecran/2
+
+/** Normalise une valeur d'écran (chaîne, nombre, absente) en 1 ou 2. */
+const ecranDe = (valeur) => (Number(valeur) === 2 ? 2 : 1);
 
 // ========== SHARED DATA STORE ==========
 const FabBoardStore = {
@@ -128,6 +132,10 @@ window.FabBoardStore = FabBoardStore;
 
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', async () => {
+    // Écran de cette fenêtre : `/` = écran 1, `/ecran/2` = second écran.
+    const containerEl = document.getElementById('dashboard-container');
+    currentEcran = ecranDe(containerEl?.dataset.ecran);
+
     // Démarrer l'horloge globale
     startClockTimer();
 
@@ -222,17 +230,40 @@ async function loadThemeSettings() {
         const fontValue = FONT_MAP[police] || FONT_MAP.inter;
         document.documentElement.style.setProperty('--app-font-family', fontValue);
         document.body.style.fontFamily = fontValue;
+
+        applyScreenOrientation(params[`ecran_${currentEcran}_orientation`] || 'paysage');
     } catch (e) { /* default Inter */ }
+}
+
+// ========== ORIENTATION ==========
+/**
+ * Applique l'orientation réglée pour cet écran.
+ *
+ * La rotation est faite dans FabBoard (l'écran reste en paysage côté OS) et
+ * s'applique au <body> : l'overlay pause et le calque des iframes suivent.
+ * Les valeurs viennent de `/api/parametres` (`ecran_1_orientation`, etc.).
+ */
+function applyScreenOrientation(orientation) {
+    document.body.classList.remove('screen-portrait', 'screen-portrait-inverse');
+    if (orientation === 'portrait') {
+        document.body.classList.add('screen-portrait');
+    } else if (orientation === 'portrait_inverse') {
+        document.body.classList.add('screen-portrait-inverse');
+    }
 }
 
 // ========== SLIDES ==========
 async function loadSlides() {
     try {
         const response = await apiCall('/api/slides');
-        slides = response.data.filter(s => s.actif === 1);
+        // Chaque écran ne charge que ses propres slides : cycle, sources et
+        // widgets sont indépendants d'une fenêtre à l'autre.
+        slides = response.data.filter(
+            s => s.actif === 1 && ecranDe(s.ecran) === currentEcran
+        );
         
         if (slides.length === 0) {
-            console.warn('Aucune slide active trouvée');
+            console.warn('Aucune slide active pour l\'écran ' + currentEcran);
         }
     } catch (error) {
         console.error('Erreur chargement slides:', error);
@@ -242,11 +273,17 @@ async function loadSlides() {
 
 function showEmptyState() {
     const container = document.getElementById('dashboard-container');
+    const autreEcran = currentEcran === 1 ? 2 : 1;
+    const autreUrl = autreEcran === 1 ? '/' : '/ecran/' + autreEcran;
     container.innerHTML = `
         <div class="empty-state">
             <i class="bi bi-tv" style="font-size: 4rem; color: var(--primary-color);"></i>
-            <h2>Aucune slide configurée</h2>
-            <p>Rendez-vous dans <a href="/slides">Configuration → Slides</a> pour créer votre première slide</p>
+            <h2>Aucune slide affectée à l'écran ${currentEcran}</h2>
+            <p>
+                Affectez des slides à cet écran dans
+                <a href="/slides">Configuration → Slides</a>,
+                ou ouvrez <a href="${autreUrl}">l'écran ${autreEcran}</a>.
+            </p>
         </div>
     `;
 }
@@ -450,14 +487,34 @@ function getWebpageLayer() {
     return layer;
 }
 
+/**
+ * Position d'un élément dans le repère local de <body>.
+ *
+ * `getBoundingClientRect()` renvoie des coordonnées visuelles : en mode portrait
+ * le body est tourné, ces coordonnées ne sont donc plus celles du calque des
+ * iframes (fixé dans le body). La chaîne `offsetParent` reste en coordonnées
+ * locales, identiques en paysage et en portrait.
+ */
+function localOffset(el) {
+    let x = 0;
+    let y = 0;
+    let node = el;
+    while (node && node !== document.body) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+        node = node.offsetParent;
+    }
+    return { x, y, width: el.offsetWidth, height: el.offsetHeight };
+}
+
 function placeWebpageFrame(entry) {
     if (!entry.cell || !entry.cell.isConnected) return;
-    const r = entry.cell.getBoundingClientRect();
+    const box = localOffset(entry.cell);
     const s = entry.iframe.style;
-    s.left = r.left + 'px';
-    s.top = r.top + 'px';
-    s.width = r.width + 'px';
-    s.height = r.height + 'px';
+    s.left = box.x + 'px';
+    s.top = box.y + 'px';
+    s.width = box.width + 'px';
+    s.height = box.height + 'px';
     s.visibility = 'visible';
 }
 

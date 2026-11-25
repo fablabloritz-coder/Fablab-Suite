@@ -28,7 +28,7 @@ Default host ports:
 - FabHome: 3001 (container 3000)
 - Fabtrack: 5555
 - PretGo: 5000
-- FabBoard: 5580
+- FabBoard: 5580 (ecran 1 sur `/`, ecran 2 sur `/ecran/2`)
 - FabInventory: 5590
 
 Important URL rules:
@@ -172,9 +172,15 @@ Server maintenance:
 
 ## 15) Current baseline snapshot
 App versions:
-- Fabtrack 2.13.1 | FabBoard 3.6.0 | PretGo 1.11.2 | FabHome 1.7.4 | FabInventory 2.1.4
+- Fabtrack 2.14.0 | FabBoard 3.8.1 | PretGo 1.11.2 | FabHome 1.7.4 | FabInventory 2.1.4
 
 Recent commits (latest first):
+- FabBoard 3.8.1 : mode portrait plein ecran (conteneur en 100%), CSS/JS du
+  dashboard versionnes en query string pour eviter le cache d'un kiosque
+- FabBoard 3.8.0 : widget « dependances externes » (missions Fabtrack liees a un
+  autre service, groupees par service, filtrables, echeance + etape)
+- FabBoard 3.7.0 : double ecran (`/ecran/2`, affectation des slides par ecran)
+  et orientation par ecran (paysage / portrait / portrait inverse)
 - PretGo 1.11.2 : reprise douce qui supprime les lignes de blocage
   redondantes d'un meme episode au demarrage (une seule conservee)
 - PretGo 1.11.1 : historique des rappels lisible (rangs X/limite, lignes

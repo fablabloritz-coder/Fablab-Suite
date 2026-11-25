@@ -583,6 +583,34 @@ Depuis la page **Export** :
 
 <!-- changelog:start -->
 
+### v2.14.0 — 2026-11-25
+
+#### Missions — catalogue de services externes et marqueur de dépendance
+
+**Nouvelles fonctionnalités :**
+
+- **Services externes** (bouton *Services* dans Missions) : catalogue paramétrable (CMIL, rectorat, collectivité…) avec nom, couleur et ordre. Un service peut être désactivé puis réactivé ; le désactiver ne retire jamais le marqueur des missions déjà liées.
+- **Marqueur « dépend d'un autre service »** : une case à cocher dans la fiche mission révèle la liste des services actifs ; le service choisi s'affiche en badge ambré sur la carte kanban et dans l'historique.
+- **Lecture pour les widgets** : chaque mission expose `depend_service_externe` (0/1, dérivé de `service_id`), `service_nom` et `service_couleur`. Aucune colonne booléenne à maintenir, donc aucun état incohérent possible.
+- Les exports CSV/HTML/PDF gardent leur format actuel (le service n'y est pas ajouté).
+
+**Endpoints ajoutés :**
+
+| Méthode | Endpoint | Description |
+|---------|----------|-------------|
+| `GET` | `/missions/api/services` | Services actifs (`?include_inactive=true` pour la gestion) |
+| `POST` | `/missions/api/services` | Création (`nom`, `couleur`) |
+| `PUT` | `/missions/api/services/<id>` | Modification et réactivation (`actif: 1`) |
+| `DELETE` | `/missions/api/services/<id>` | Désactivation, sans détacher les missions |
+| `PUT` | `/missions/api/<id>` | Accepte `service_id` (`null` = aucune dépendance) |
+
+**Migration de base de données :**
+- Table `mission_services` et colonne `missions.service_id` (migration automatique idempotente, aucune donnée existante modifiée).
+
+<!-- manuel -->
+
+---
+
 ### v2.13.1 — 2026-11-17
 
 #### Lisibilite des depassements de seuil

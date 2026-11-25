@@ -118,6 +118,17 @@
                         </label>
                         <input type="number" class="form-control" id="slideDuration" min="5" max="300" value="30">
                     </div>
+
+                    <div class="mb-3">
+                        <label for="slideEcran" class="form-label">Écran d'affichage</label>
+                        <select class="form-select" id="slideEcran">
+                            <option value="1">Écran 1 (principal)</option>
+                            <option value="2">Écran 2 (secondaire)</option>
+                        </select>
+                        <div class="form-text">
+                            Chaque écran ouvre sa propre URL : <code>/</code> et <code>/ecran/2</code>.
+                        </div>
+                    </div>
                     
                     <div class="mb-3">
                         <div class="form-check form-switch">

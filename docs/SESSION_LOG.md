@@ -6,6 +6,257 @@ action imperative.
 
 ---
 
+## 2026-11-25 — FabBoard C/D : revue fraiche, simplification, robustesse
+
+**Simplifications (comportement inchange, tests identiques — 54 OK)**
+- `slides.js` : normalisation de l'ecran centralisee dans `ecranDeSlide()` ; les six
+  copies de `Number(slide.ecran) === 2 ? 2 : 1` disparaissent.
+- `dashboard.js` : `ecranDe()` sert au filtre des slides et a `data-ecran` ;
+  `|| 0` inutiles retires de `localOffset` (`offsetLeft/Top` sont toujours
+  numeriques sur un element).
+- `parametres.js` : boucle d'initialisation des orientations aplatie (`continue`
+  au lieu d'un ternaire de repli).
+- `api_slides.py` : `_parse_ecran` resserre a verdict identique (None/''/bool/
+  `1.5` refuse, `2.0` et `'2'` acceptes, `3` refuse) ; la mise a jour reutilise le
+  parseur pour normaliser l'ecran courant au lieu de dupliquer la validite.
+- CSS : `overflow: hidden` retire du bloc portrait, deja porte par `.dashboard-tv`
+  (dashboard.css n'est charge que par dashboard.html, donc `html{overflow:hidden}`
+  reste sans effet ailleurs).
+
+**Robustesse verifiee au navigateur** (JS/CSS frais, cache HTTP contourne)
+- 5 viewports (1920×1080, 1440×810, 1024×600, 800×480, 600×900) × 3 orientations :
+  conteneur a (0,0) et a la taille exacte du viewport, iframe « page web » alignee
+  sur sa cellule (ecart <= 0,4 px), aucun widget en debordement, une seule iframe
+  visible.
+- Redimensionnement 1440×810 -> 1000×700 sans rechargement, en portrait :
+  conteneur 1000×700, iframe toujours alignee.
+- Cycle de slides en portrait : l'iframe persistante est masquee avec sa slide et
+  replacee sur la cellule de la slide suivante (ecart <= 0,4 px), puis replacee au
+  retour ; jamais deux iframes visibles.
+- Editeur : badges « Écran 1/2 » corrects dans la liste, selecteur pre-rempli a 2
+  pour la slide de l'ecran 2, page Parametres initialisee (3 orientations, URLs).
+
+**Limites** : viewport simule, Chromium uniquement (non rejoue sous Safari/Firefox).
+
+---
+
+## 2026-11-25 — FabBoard : verification navigateur du double ecran et des orientations
+
+**Contexte** : validation reelle demandee dans un navigateur sur `/` et
+`/ecran/2` (paysage, portrait, portrait inverse, ecran de pause, widgets
+« page web »). Viewport de test : 1440×810 (16:9).
+
+**Defauts trouves et corriges**
+- Mode portrait : `.dashboard-full` restait en `100vw × 100vh`. Sur un ecran
+  1440×810, le contenu tourne ne faisait que 810 px de large : bande vide de
+  630 px a gauche et bas du contenu coupe (jusqu'a y=1440). Corrige avec
+  `.screen-portrait .dashboard-full { width:100%; height:100% }` — le body porte
+  deja les dimensions echangees (100vh × 100vw). Meme correction pour le
+  portrait inverse.
+- Cache des assets : Flask sert `/static` avec `Cache-Control: max-age=3600`,
+  donc un kiosque recharge apres mise a jour gardait l'ancien CSS (et l'ancien
+  JS qui applique l'orientation). `dashboard.css` et `dashboard.js` sont
+  maintenant appeles avec `?v={{ app_version }}`.
+
+**Verifications (navigateur cloud)**
+- Paysage : body et conteneur = 1440×810, aucun scroll, iframe « page web »
+  alignee sur sa cellule (ecart <= 0,4 px).
+- Portrait et portrait inverse : conteneur visuel = viewport entier, iframe dans
+  sa cellule (ecart <= 0,4 px), pastilles de slide sur le bord logique bas,
+  aucun debordement de widget (`scrollWidth/Height == clientWidth/Height`).
+- Redimensionnement 1280×720 sans rechargement : iframes toujours alignees.
+- `/ecran/2` en portrait pendant que `/` reste en paysage : contenus et
+  orientations independants (widgets « ECRAN 1 » / « ECRAN 2 » distincts).
+- Ecran de pause (indisponibilite manuelle) en portrait : overlay = 1440×810,
+  texte tourne et centre, rien de coupe.
+
+**Non couvert** : pause en mode image/video, ecran physique reel (viewport
+simule), Safari/Firefox. Le 403 sur `/static/manifest.json` vient du proxy de
+preview (200 en direct sur l'app), sans lien avec FabBoard.
+
+**Prochaine action** : taguer `fabboard-v3.8.1` au push.
+
+---
+
+## 2026-11-25 — FabBoard : widget « dependances externes » (chantier B)
+
+**Contexte** : le marqueur `missions.service_id` livre en Fabtrack 2.14.0
+(chantier A) n'etait visible que dans Fabtrack. Le dashboard TV doit afficher
+les missions qui attendent un autre service (CMIL, rectorat…) sans dupliquer la
+logique de dependance.
+
+**Widget (`FabBoard/templates/widgets/fabtrack_dependances.html`)**
+- Code `fabtrack_dependances`, cree par `migrate_db` (idempotent, categorie
+  `fabtrack`, icone 🔗) : il apparait donc dans le selecteur de widgets existant
+  et se configure comme les autres.
+- Regroupe les missions par service (nom + couleur), affiche titre, statut,
+  echeance coloree (retard / aujourd'hui / proche) et derniere etape ; les
+  missions terminees sont masquees par defaut.
+- Config par widget : source Fabtrack, `services` (noms separes par des
+  virgules, vide = tous), `nombre_max`, `inclure_terminees`, `afficher_etape`,
+  echelle d'affichage TV.
+- Donnees lues dans le store du dashboard (`missions` du sync worker, deja
+  alimente par `/missions/api/list`), qui expose `depend_service_externe`,
+  `service_nom` et `service_couleur` ; repli sur `service_id` si le marqueur
+  manque. Tous les textes sont echappes, la couleur n'est reprise que si elle
+  est un hex valide.
+- Config injectee avec `tojson` : un `</script>` dans un nom de service est
+  echappe (test dedie).
+
+**`FabBoard/static/js/slides.js`** : definition de configuration
+`fabtrack_dependances` (source, services, nombre max, terminees, etape, echelle).
+
+**Tests** : `FabBoard/tests/test_dependances_widget.py` (7 tests : seed,
+idempotence, presence dans `/api/widgets`, rendu HTML + config, rendu sans
+config, echappement de la config, 404 widget inconnu). Suite FabBoard 54 tests
+OK ; `node --check` de `slides.js` et du script du widget rendu.
+
+**Risques acceptes** : filtrage cote navigateur (pas de test DOM) ; sources
+Fabtrack injoignable = « aucune mission », comme les autres widgets ; la liste
+des services n'est pas chargee depuis Fabtrack (saisie libre des noms, insensible
+a la casse) ; un service desactive reste affiche tant que des missions y sont
+rattachees ; les deux ecrans partagent les memes donnees de source.
+
+**Prochaine action** : verifier le widget sur l'ecran 2 en conditions reelles,
+puis taguer `fabboard-v3.8.0` au push.
+
+---
+
+## 2026-11-25 — FabBoard : double ecran et orientation par ecran
+
+**Contexte** : FabBoard n'affichait qu'un seul diaporama. Besoin de deux
+fenetres independantes sur la meme instance (deux ecrans physiques) et d'un
+affichage portrait sans dependre de la rotation du systeme.
+
+**Modele (`FabBoard/models.py`)**
+- Colonne `slides.ecran INTEGER NOT NULL DEFAULT 1` (1 = principal, 2 =
+  secondaire) ; migration idempotente dans `migrate_db`,
+  `FABBOARD_SCHEMA_VERSION` -> `2026112501`. Les slides existantes restent sur
+  l'ecran 1 et `/` reste l'ecran 1 : aucune reconfiguration.
+
+**API et pages**
+- `POST/PUT /api/slides` acceptent `ecran` ; seuls 1 et 2 sont acceptes (400
+  sinon, y compris `true` ou `"abc"`). Un PUT sans `ecran` conserve la valeur.
+- Route `/ecran/<n>` (404 hors 1/2) qui rend le meme dashboard avec
+  `data-ecran`. Le dashboard filtre cote client les slides de son ecran, avec
+  un message dedie quand l'ecran 2 est vide.
+- L'ordre des slides reste global : chaque ecran suit cet ordre pour ses
+  propres slides (documente dans le README).
+
+**Interface**
+- Selecteur « Ecran d'affichage » dans la modale de slide, badge ecran dans la
+  liste et la configuration, aperçu plein ecran qui ouvre l'ecran de la slide.
+- Carte « Ecrans » dans Parametres : URL de chaque ecran (`/`, `/ecran/2`) et
+  orientation (`paysage`, `portrait`, `portrait_inverse`) stockee dans
+  `ecran_1_orientation` / `ecran_2_orientation`.
+
+**Orientation (`dashboard.css` / `dashboard.js`)**
+- Rotation portee par le `<body>` (`rotate(90deg) translateY(-100%)` et
+  `rotate(-90deg) translateX(-100%)`, largeur/hauteur echangees) pour que
+  l'overlay pause et le calque des iframes tournent avec le contenu.
+- `placeWebpageFrame` n'utilise plus `getBoundingClientRect()` (coordonnees
+  visuelles, fausses sous rotation) mais la chaine `offsetParent`.
+
+**Tests** : `FabBoard/tests/test_ecrans_slides.py` (10 tests : defaut 1,
+migration d'une base sans colonne, creation/modification/refus d'ecran, pages
+`/`, `/ecran/1`, `/ecran/2`, `/ecran/3` -> 404, selecteur de la modale, carte
+Parametres, parametres d'orientation). Suite FabBoard 47 tests OK ;
+`node --check` des trois scripts ; smoke FabBoard OK ; `changelog_gen` /
+`release_notes_gen --check` OK.
+
+**Revue de code (auto-revue)** : trois defauts corriges avant validation.
+- `_parse_ecran` tronquait un flottant non entier (`1.5` -> ecran 1) : desormais
+  refuse (400) ; `2.0` reste accepte.
+- `saveSlide` renvoyait `ecran: 1` si le selecteur manquait (HTML en cache),
+  deplacant une slide de l'ecran 2 en silence : il conserve desormais
+  l'affectation courante.
+- `saveParametres` reecrivait `ecran_*_orientation = paysage` quand les selects
+  etaient absents du DOM : les valeurs chargees servent de repli.
+
+**Risques acceptes** : filtre des slides cote navigateur (pas de test DOM) ;
+rotation non verifiee visuellement dans un navigateur ; le changement
+d'orientation demande un rechargement de l'ecran ; les deux ecrans partagent
+l'overlay pause (parametres globaux) ; `init_db()` seul (sans `migrate_db()`)
+estampille la nouvelle version sans ajouter la colonne sur une base ancienne
+(meme limite preexistante pour `fond_type` / `layout_ratio` ; l'app appelle
+ toujours les deux).
+
+**Prochaine action** : ouvrir `/ecran/2` et regler l'orientation depuis
+Parametres -> Ecrans sur l'installation reelle, puis taguer `fabboard-v3.7.0`.
+
+---
+
+## 2026-11-25 — Missions : catalogue de services externes et marqueur de dependance
+
+**Contexte** : le futur widget FabBoard « missions dependant d'un autre service »
+(CMIL, rectorat…) a besoin d'un marqueur fiable cote Fabtrack. Un simple booleen
+ne dit pas de quel service il s'agit et peut contredire le service choisi.
+
+**Modele (`Fabtrack/models.py`)**
+- Table `mission_services` (nom unique, couleur, ordre, actif) et colonne
+  `missions.service_id` (NULL = aucune dependance) ; migration idempotente
+  `_ensure_mission_services_schema`, `FABTRACK_SCHEMA_VERSION` -> `2026112501`.
+- Aucune colonne booleenne : `depend_service_externe` est calcule par les
+  lectures SQL (`_timeline_select_sql`), donc kanban, historique, exports et
+  fiche mission l'exposent sans requete supplementaire (budget SQL inchange).
+
+**API (`Fabtrack/routes/api_missions.py`)**
+- CRUD `/missions/api/services` : GET (`include_inactive`), POST, PUT (avec
+  reactivation), DELETE = desactivation **sans detachement** des missions.
+- `api_create` / `api_update` acceptent `service_id` ; un service inactif n'est
+  accepte que s'il est deja celui de la mission, pour ne pas bloquer l'edition
+  ni effacer un marqueur existant. Un PUT partiel (`{"statut": ...}`, cas du
+  bouton d'avancement) conserve le service.
+
+**Interface (`Fabtrack/templates/missions/index.html`)**
+- Bouton *Services* + modale de gestion (couleur, desactivation, reactivation).
+- Case « Depend d'un autre service » dans la fiche mission, select des services
+  actifs, badge ambre sur les cartes kanban et dans l'historique.
+
+**Revue de code (auto-revue)** : deux defauts corriges avant validation.
+- `service_id: "abc"` effacait silencieusement le marqueur (200, flag 0) :
+  `_parse_service_id` renvoie desormais 400 sur un identifiant fourni mais non
+  numerique, sans toucher la mission.
+- Renommer un service desactive le reactivait (`saveService` envoyait
+  `actif: 1`) : l'ecran conserve l'etat courant, la reactivation reste sur le
+  bouton dedie.
+- Docstring de `_timeline_select_sql` corrigee (les exports ne rendent pas le
+  service) et titre de note de version explicite.
+- Mesure : +1 ms sur 2000 missions pour les deux sous-requetes du marqueur
+  (6,4 -> 7,4 ms), un LEFT JOIN n'est pas necessaire.
+
+**Tests** : `Fabtrack/tests/test_mission_services.py` (14) : marqueur derive,
+PUT partiel, decochement, service inconnu/inactif/malforme refuse, conservation
+apres desactivation, renommage sans reactivation, reactivation, unicite du nom,
+rendu de la page, migration idempotente et migration d'une base anterieure a
+2.14.0.
+
+**Defaut trouve par le smoke test** : sur une base existante, l'index
+`idx_missions_service` place dans le script d'init echouait (`no such column`)
+avant que `_migrate_db` n'ajoute `service_id`. L'index est desormais cree par
+`_ensure_mission_services_schema`, apres l'ALTER, et un test le couvre.
+
+**Verifications** : `py_compile` OK ; `node --check` sur le script de la page
+OK ; suite Fabtrack -> 102 tests OK ; `smoke_test_apps.py --only Fabtrack` OK
+(accueil + manifeste) ; `changelog_gen.py --check` OK ;
+`release_notes_gen.py --check` OK ; `git diff --check` OK.
+
+**Suite racine** : 309 tests, 2 echecs attendus de `test_release_versions.py`
+tant que le tag `fabtrack-v2.14.0` n'existe pas (il est cree par le workflow
+`Auto release` au push). Verification faite avec un tag temporaire : 5/5 OK,
+tag supprime ensuite. A noter : le workflow `tests.yml` ajoute au chantier
+precedent lance la suite racine sur push, donc avant la creation du tag ; il
+audra etre commite apres, ou exclure `test_release_versions.py`.
+
+**Limite** : l'interface n'a pas ete ouverte dans un navigateur (pas de
+navigateur dans cet environnement) ; seuls les contrats API et le rendu du
+template sont couverts par les tests.
+
+**Prochaine action** : valider ce chantier, puis widget FabBoard
+`fabtrack_missions_externes` et bandeau des jours de rappel.
+
+---
+
 ## 2026-11-22 — Coupure du canal pendant une restauration reelle
 
 **Contexte** : symetrique du backup. La coupure pendant `action_restore`

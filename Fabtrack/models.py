@@ -16,7 +16,7 @@ from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DATA_DIR, 'fabtrack.db')
-FABTRACK_SCHEMA_VERSION = 2026111401
+FABTRACK_SCHEMA_VERSION = 2026112501
 
 ANNEE_SCOLAIRE_DEBUT_KEY = 'annee_scolaire_debut'
 ANNEE_SCOLAIRE_FIN_KEY = 'annee_scolaire_fin'
@@ -964,11 +964,23 @@ def init_db():
 
     -- ── Module Missions ──
 
+    -- Services externes dont peut dependre une mission (CMIL, rectorat, etc.).
+    CREATE TABLE IF NOT EXISTS mission_services (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom TEXT NOT NULL UNIQUE,
+        couleur TEXT NOT NULL DEFAULT '#6b7280',
+        ordre INTEGER DEFAULT 0,
+        actif INTEGER NOT NULL DEFAULT 1 CHECK(actif IN (0,1)),
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS missions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         titre TEXT NOT NULL,
         description TEXT DEFAULT '',
         category_id INTEGER,
+        service_id INTEGER,
         statut TEXT NOT NULL DEFAULT 'a_faire' CHECK(statut IN ('a_faire','en_cours','termine')),
         priorite INTEGER DEFAULT 0 CHECK(priorite IN (0,1,2)),
         ordre INTEGER DEFAULT 0,
@@ -976,7 +988,8 @@ def init_db():
         date_creation TEXT DEFAULT NULL,
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (category_id) REFERENCES mission_categories(id)
+        FOREIGN KEY (category_id) REFERENCES mission_categories(id),
+        FOREIGN KEY (service_id) REFERENCES mission_services(id)
     );
 
     CREATE TABLE IF NOT EXISTS mission_categories (
@@ -995,6 +1008,10 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_missions_priorite ON missions(priorite);
     CREATE INDEX IF NOT EXISTS idx_mission_categories_actif ON mission_categories(actif);
     CREATE INDEX IF NOT EXISTS idx_mission_categories_ordre ON mission_categories(ordre);
+    CREATE INDEX IF NOT EXISTS idx_mission_services_actif ON mission_services(actif);
+    CREATE INDEX IF NOT EXISTS idx_mission_services_ordre ON mission_services(ordre);
+    -- `idx_missions_service` est cree par _ensure_mission_services_schema :
+    -- sur une base existante, la colonne service_id n'existe pas encore ici.
 
     CREATE TABLE IF NOT EXISTS mission_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1162,6 +1179,7 @@ def _migrate_db(c):
     c.execute('CREATE INDEX IF NOT EXISTS idx_stock_fourn_mats_materiau ON stock_fournisseur_materiaux(materiau_id)')
 
     _ensure_mission_categories_schema(c)
+    _ensure_mission_services_schema(c)
     _ensure_mission_events_schema(c)
     _ensure_mission_steps_schema(c)
     _backfill_mission_events(c)
@@ -1225,6 +1243,35 @@ def _insert_mission_categories_seed(c):
             'INSERT OR IGNORE INTO mission_categories (nom, couleur, ordre) VALUES (?,?,?)',
             (nom, couleur, ordre),
         )
+
+
+def _ensure_mission_services_schema(c):
+    """Crée/complète le schéma des services externes liés aux missions.
+
+    Idempotent : utilisé par init_db (bases neuves) et par _migrate_db (bases
+    existantes). Le marqueur « dépend d'un autre service » est dérivé de
+    `missions.service_id` (NULL = aucune dépendance), sans colonne booléenne
+    redondante à maintenir.
+    """
+    c.executescript('''
+        CREATE TABLE IF NOT EXISTS mission_services (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL UNIQUE,
+            couleur TEXT NOT NULL DEFAULT '#6b7280',
+            ordre INTEGER DEFAULT 0,
+            actif INTEGER NOT NULL DEFAULT 1 CHECK(actif IN (0,1)),
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mission_services_actif ON mission_services(actif);
+        CREATE INDEX IF NOT EXISTS idx_mission_services_ordre ON mission_services(ordre);
+    ''')
+
+    mcols = [r[1] for r in c.execute("PRAGMA table_info(missions)").fetchall()]
+    if 'service_id' not in mcols:
+        c.execute("ALTER TABLE missions ADD COLUMN service_id INTEGER")
+    c.execute('CREATE INDEX IF NOT EXISTS idx_missions_service ON missions(service_id)')
 
 
 def _ensure_mission_events_schema(c):

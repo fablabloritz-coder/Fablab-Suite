@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'fabboard.db')
-FABBOARD_SCHEMA_VERSION = 2026042801
+FABBOARD_SCHEMA_VERSION = 2026112501
 
 
 def _is_running_in_docker():
@@ -121,6 +121,7 @@ def init_db():
         ordre INTEGER NOT NULL,             -- Ordre d'affichage
         temps_affichage INTEGER DEFAULT 30, -- Durée en secondes
         actif INTEGER DEFAULT 1,
+        ecran INTEGER NOT NULL DEFAULT 1,   -- 1 = écran principal, 2 = second écran
         fond_type TEXT DEFAULT 'defaut',
         fond_valeur TEXT DEFAULT '',
         layout_ratio INTEGER DEFAULT 60,    -- Ratio hauteur grand bloc pour layouts large_top_* (en %)
@@ -352,6 +353,12 @@ def migrate_db():
         c.execute("ALTER TABLE slides ADD COLUMN layout_ratio INTEGER DEFAULT 60")
         print('[FabBoard] Migration : colonne layout_ratio ajoutée à slides')
 
+    # Migration : affectation de la slide à un écran (1 principal, 2 secondaire).
+    # Les slides existantes restent sur l'écran 1 : aucun changement visible.
+    if 'ecran' not in columns:
+        c.execute("ALTER TABLE slides ADD COLUMN ecran INTEGER NOT NULL DEFAULT 1")
+        print('[FabBoard] Migration : colonne ecran ajoutée à slides')
+
     # Migration : ajouter le widget 'video' s'il n'existe pas
     if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'video'").fetchone()[0] == 0:
         c.execute(
@@ -395,6 +402,16 @@ def migrate_db():
             ('webpage', 'Page web', 'Affiche une page web en plein écran', '🌐', 'general')
         )
         print('[FabBoard] Migration : widget webpage ajouté')
+
+    # Migration : widget des missions Fabtrack qui dépendent d'un service externe.
+    # Le marqueur vient de `missions.service_id` (chantier Fabtrack 2.14.0).
+    if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'fabtrack_dependances'").fetchone()[0] == 0:
+        c.execute(
+            "INSERT INTO widgets_disponibles (code, nom, description, icone, categorie) VALUES (?, ?, ?, ?, ?)",
+            ('fabtrack_dependances', 'Dépendances externes',
+             "Missions Fabtrack en attente d'un autre service (CMIL, rectorat…)", '🔗', 'fabtrack')
+        )
+        print('[FabBoard] Migration : widget fabtrack_dependances ajouté')
 
     # Migration : ajouter le widget fabtrack_conso s'il n'existe pas
     if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'fabtrack_conso'").fetchone()[0] == 0:

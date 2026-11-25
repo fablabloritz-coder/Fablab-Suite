@@ -74,6 +74,51 @@
             </div>
         </div>
 
+        <!-- Écrans : double affichage et orientation -->
+        <div class="col-12 mb-4">
+            <div class="card border-primary-subtle">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-display"></i> Écrans</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Chaque écran ouvre sa propre URL dans une fenêtre ou un kiosque : les slides sont affectées
+                        à l'écran 1 ou 2 dans <a href="/slides">Configuration → Slides</a>, avec leur propre cycle
+                        et leur propre orientation. Une modification d'orientation prend effet au rechargement de l'écran.
+                    </p>
+
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <h6><i class="bi bi-display"></i> Écran 1 (principal)</h6>
+                            <p class="mb-3"><code id="param-ecran-1-url">/</code></p>
+                            <label for="param-ecran-1-orientation" class="form-label">Orientation</label>
+                            <select class="form-select" id="param-ecran-1-orientation">
+                                <option value="paysage">Paysage (par défaut)</option>
+                                <option value="portrait">Portrait (rotation 90°)</option>
+                                <option value="portrait_inverse">Portrait inversé (rotation -90°)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><i class="bi bi-display-fill"></i> Écran 2 (secondaire)</h6>
+                            <p class="mb-3"><code id="param-ecran-2-url">/ecran/2</code></p>
+                            <label for="param-ecran-2-orientation" class="form-label">Orientation</label>
+                            <select class="form-select" id="param-ecran-2-orientation">
+                                <option value="paysage">Paysage (par défaut)</option>
+                                <option value="portrait">Portrait (rotation 90°)</option>
+                                <option value="portrait_inverse">Portrait inversé (rotation -90°)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end mt-3">
+                        <button type="button" class="btn btn-primary" id="btn-save-ecrans">
+                            <i class="bi bi-check-circle"></i> Enregistrer les écrans
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Écran indisponibilité prioritaire -->
         <div class="col-12 mb-4">
             <div class="card border-danger-subtle">

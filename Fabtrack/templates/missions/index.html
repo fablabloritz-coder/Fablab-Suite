@@ -115,6 +115,26 @@
     border-radius: 50%;
     flex: 0 0 0.55rem;
 }
+/* Marqueur « dépend d'un autre service » (CMIL, rectorat…) */
+.mission-service {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--bs-body-color);
+    border: 1px dashed #f59e0b;
+    border-radius: 9999px;
+    padding: 0.08rem 0.45rem;
+    background: rgba(245, 158, 11, 0.12);
+}
+.mission-service-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    flex: 0 0 0.55rem;
+}
+.service-item-inactive { opacity: 0.65; }
 .mission-desc {
     font-size: 0.78rem;
     color: var(--bs-secondary);
@@ -426,6 +446,9 @@
         <button class="btn btn-outline-secondary" onclick="openCategoriesModal()">
             <i class="bi bi-tags me-1"></i>Catégories
         </button>
+        <button class="btn btn-outline-secondary" onclick="openServicesModal()">
+            <i class="bi bi-buildings me-1"></i>Services
+        </button>
         <button class="btn btn-success" onclick="openCreateModal()">
             <i class="bi bi-plus-lg me-1"></i>Nouvelle mission
         </button>
@@ -561,6 +584,20 @@
                         <input type="date" class="form-control" id="missionEcheance">
                     </div>
                 </div>
+                <div class="mt-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="missionDependService"
+                               onchange="toggleMissionService()">
+                        <label class="form-check-label fw-semibold" for="missionDependService">
+                            Dépend d'un autre service (CMIL, rectorat…)
+                        </label>
+                    </div>
+                    <div class="mt-2" id="missionServiceFields" style="display:none;">
+                        <label class="form-label" for="missionService">Service concerné</label>
+                        <select class="form-select" id="missionService"></select>
+                        <div class="form-text">Liste gérée dans « Services ». Le FabBoard pourra afficher ces missions à part.</div>
+                    </div>
+                </div>
                 <div class="row g-3 mt-1" id="missionCreationRow" style="display:none;">
                     <div class="col-sm-6">
                         <label class="form-label fw-semibold"><i class="bi bi-calendar-plus me-1"></i>Date de création</label>
@@ -636,12 +673,54 @@
     </div>
 </div>
 
+<!-- Modal Services externes -->
+<div class="modal fade" id="modalServices" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-buildings me-2"></i>Services externes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">
+                    Services dont une mission peut dépendre (CMIL, rectorat, collectivité…).
+                    Désactiver un service ne retire pas le marqueur des missions déjà liées.
+                </p>
+                <input type="hidden" id="serviceId">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-7">
+                        <label class="form-label fw-semibold">Nom du service</label>
+                        <input type="text" class="form-control" id="serviceName" maxlength="80" placeholder="Ex: CMIL">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Couleur</label>
+                        <input type="color" class="form-control form-control-color w-100" id="serviceColor" value="#6b7280">
+                    </div>
+                    <div class="col-md-3 d-grid">
+                        <button class="btn btn-primary" onclick="saveService()">
+                            <i class="bi bi-check-lg me-1"></i>Enregistrer
+                        </button>
+                    </div>
+                </div>
+                <div class="category-list" id="serviceList"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="resetServiceForm()">Nouveau service</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const API = '/missions/api';
 let missions = [];
 let missionCategories = [];
+let missionServices = [];     // services actifs proposés à la saisie
+let missionServicesAll = [];  // tous les services, désactivés compris (gestion)
 let modal;
 let categoriesModal;
+let servicesModal;
 const HISTORY_PAGE_SIZE = 10;
 let historyPage = 1;
 let historyPagination = { page: 1, page_size: HISTORY_PAGE_SIZE, total: 0, total_pages: 1 };
@@ -649,7 +728,8 @@ let historyPagination = { page: 1, page_size: HISTORY_PAGE_SIZE, total: 0, total
 document.addEventListener('DOMContentLoaded', () => {
     modal = new bootstrap.Modal(document.getElementById('modalMission'));
     categoriesModal = new bootstrap.Modal(document.getElementById('modalCategories'));
-    loadCategories().then(() => loadMissions());
+    servicesModal = new bootstrap.Modal(document.getElementById('modalServices'));
+    Promise.all([loadCategories(), loadServices()]).then(() => loadMissions());
 });
 
 async function loadCategories() {
@@ -778,6 +858,166 @@ async function deleteCategory(id) {
     }
 }
 
+// ── Services externes ──
+
+async function loadServices() {
+    try {
+        const r = await fetch(`${API}/services?include_inactive=true`);
+        const j = await r.json();
+        if (!j.success) return;
+        missionServicesAll = Array.isArray(j.data) ? j.data : [];
+        missionServices = missionServicesAll.filter((s) => Number(s.actif) === 1);
+        renderServiceSelect();
+        renderServiceList();
+    } catch (e) {
+        console.error('Erreur chargement services externes:', e);
+    }
+}
+
+function renderServiceSelect(selectedId = null, selectedNom = null) {
+    const select = document.getElementById('missionService');
+    if (!select) return;
+    const options = ['<option value="">Sélectionner un service…</option>'];
+    let found = false;
+    for (const s of missionServices) {
+        const selectedAttr = selectedId && Number(selectedId) === Number(s.id) ? ' selected' : '';
+        if (selectedAttr) found = true;
+        options.push(`<option value="${s.id}"${selectedAttr}>${escapeHtml(s.nom)}</option>`);
+    }
+    // Service désactivé : la mission garde sa référence, on l'affiche quand même.
+    if (selectedId && !found) {
+        options.push(`<option value="${selectedId}" selected>${escapeHtml(selectedNom || ('Service #' + selectedId))} (désactivé)</option>`);
+    }
+    select.innerHTML = options.join('');
+}
+
+function renderServiceList() {
+    const list = document.getElementById('serviceList');
+    if (!list) return;
+    if (!missionServicesAll.length) {
+        list.innerHTML = '<div class="text-muted text-center py-3">Aucun service. Ajoutez par exemple « CMIL » ou « Rectorat ».</div>';
+        return;
+    }
+    list.innerHTML = missionServicesAll.map((s) => {
+        const inactif = Number(s.actif) !== 1;
+        const action = inactif
+            ? `<button class="btn btn-sm btn-outline-success" onclick="reactivateService(${s.id})" title="Réactiver"><i class="bi bi-arrow-counterclockwise"></i></button>`
+            : `<button class="btn btn-sm btn-outline-danger" onclick="deleteService(${s.id})" title="Désactiver"><i class="bi bi-slash-circle"></i></button>`;
+        return `
+        <div class="category-item ${inactif ? 'service-item-inactive' : ''}">
+            <span class="category-color-swatch" style="background:${s.couleur};"></span>
+            <div class="flex-grow-1">
+                <div class="fw-semibold">${escapeHtml(s.nom)} ${inactif ? '<span class="badge text-bg-secondary ms-1">désactivé</span>' : ''}</div>
+                <div class="category-desc">${inactif ? 'Conservé sur les missions déjà marquées.' : 'Proposé à la saisie des missions.'}</div>
+            </div>
+            <div class="category-item-actions">
+                <button class="btn btn-sm btn-outline-secondary" onclick="editService(${s.id})" title="Modifier">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                ${action}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function openServicesModal() {
+    resetServiceForm();
+    renderServiceList();
+    servicesModal.show();
+}
+
+function resetServiceForm() {
+    document.getElementById('serviceId').value = '';
+    document.getElementById('serviceName').value = '';
+    document.getElementById('serviceColor').value = '#6b7280';
+}
+
+function editService(id) {
+    const s = missionServicesAll.find((x) => Number(x.id) === Number(id));
+    if (!s) return;
+    document.getElementById('serviceId').value = s.id;
+    document.getElementById('serviceName').value = s.nom;
+    document.getElementById('serviceColor').value = s.couleur || '#6b7280';
+    document.getElementById('serviceName').focus();
+}
+
+async function saveService() {
+    const id = document.getElementById('serviceId').value;
+    const nom = document.getElementById('serviceName').value.trim();
+    const couleur = document.getElementById('serviceColor').value;
+    if (!nom) {
+        showToast('Le nom du service est requis', 'warning');
+        return;
+    }
+
+    // Renommer/recolorer un service désactivé ne doit pas le réactiver à son
+    // insu : la réactivation passe par le bouton dédié de la liste.
+    const existant = id ? missionServicesAll.find((x) => Number(x.id) === Number(id)) : null;
+    const payload = { nom, couleur, actif: existant ? Number(existant.actif) : 1 };
+    const url = id ? `${API}/services/${id}` : `${API}/services`;
+    const method = id ? 'PUT' : 'POST';
+
+    try {
+        const r = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const j = await r.json();
+        if (!j.success) {
+            showToast(j.error || 'Erreur service', 'danger');
+            return;
+        }
+        showToast(id ? 'Service modifié' : 'Service ajouté', 'success');
+        resetServiceForm();
+        await loadServices();
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+async function reactivateService(id) {
+    const s = missionServicesAll.find((x) => Number(x.id) === Number(id));
+    if (!s) return;
+    try {
+        const r = await fetch(`${API}/services/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nom: s.nom, couleur: s.couleur, actif: 1 }),
+        });
+        const j = await r.json();
+        if (!j.success) {
+            showToast(j.error || 'Erreur réactivation', 'danger');
+            return;
+        }
+        showToast('Service réactivé', 'success');
+        await loadServices();
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
+async function deleteService(id) {
+    const s = missionServicesAll.find((x) => Number(x.id) === Number(id));
+    if (!s) return;
+    if (!confirm(`Désactiver le service "${s.nom}" ? Les missions déjà marquées restent liées à ce service.`)) return;
+    try {
+        const r = await fetch(`${API}/services/${id}`, { method: 'DELETE' });
+        const j = await r.json();
+        if (!j.success) {
+            showToast(j.error || 'Erreur désactivation', 'danger');
+            return;
+        }
+        showToast('Service désactivé', 'success');
+        await loadServices();
+        loadMissions();
+    } catch (e) {
+        showToast('Erreur réseau', 'danger');
+    }
+}
+
 async function loadMissions() {
     try {
         const r = await fetch(`${API}/list`);
@@ -890,10 +1130,13 @@ function renderHistory(rows) {
         const categoryBadge = m.categorie_nom
             ? `<span class="mission-category"><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
             : '';
+        const serviceBadge = m.service_nom
+            ? `<span class="mission-service"><span class="mission-service-dot" style="background:${m.service_couleur || '#6b7280'};"></span>${escapeHtml(m.service_nom)}</span>`
+            : '';
 
         return `
             <div class="history-item">
-                <div class="history-title d-flex align-items-center gap-2">${escapeHtml(m.titre)} ${categoryBadge}</div>
+                <div class="history-title d-flex align-items-center gap-2">${escapeHtml(m.titre)} ${categoryBadge} ${serviceBadge}</div>
                 ${desc}
                 <div class="history-timeline">
                     <span class="history-timeline-item"><i class="bi bi-plus-circle"></i>Créée le ${createdAt}</span>
@@ -939,13 +1182,16 @@ function cardHtml(m) {
     const category = m.categorie_nom
         ? `<span class="mission-category" ${m.categorie_couleur ? '' : ''} ${getCategoryTitle(m.categorie_nom)}><span class="mission-category-dot" style="background:${m.categorie_couleur || '#6b7280'};"></span>${escapeHtml(m.categorie_nom)}</span>`
         : '';
+    const service = Number(m.depend_service_externe) === 1 && m.service_nom
+        ? `<span class="mission-service" title="Dépend d'un autre service"><span class="mission-service-dot" style="background:${m.service_couleur || '#6b7280'};"></span>${escapeHtml(m.service_nom)}</span>`
+        : '';
     const footer = footerBadges ? `<div class="mission-footer">${footerBadges}${actions}</div>` : `<div class="mission-footer">${actions}</div>`;
     const cardStyle = m.categorie_couleur && isHexColor(m.categorie_couleur)
         ? ` style="--mission-card-bg:${hexToRgba(m.categorie_couleur, 0.10)};"`
         : '';
 
     return `<div class="mission-card ${prioClass} ${overdueClass}" onclick="openEditModal(${m.id})" data-id="${m.id}"${cardStyle}>
-        <div class="mission-meta">${category}</div>
+        <div class="mission-meta">${category}${service}</div>
         <div class="mission-titre">${escapeHtml(m.titre)}</div>
         ${desc}
         ${lastStep}
@@ -1026,6 +1272,9 @@ function openCreateModal() {
     document.getElementById('missionEcheance').value = '';
     document.getElementById('missionCreationDate').value = '';
     document.getElementById('missionCreationRow').style.display = 'none';
+    document.getElementById('missionDependService').checked = false;
+    renderServiceSelect(null);
+    toggleMissionService();
     renderCategorySelect(null);
     document.getElementById('modalMissionTitle').textContent = 'Nouvelle mission';
     setStepsLayout(false);
@@ -1052,12 +1301,21 @@ function openEditModal(id) {
         creationRow.style.display = 'none';
     }
     renderCategorySelect(m.category_id || null);
+    const dependService = Number(m.depend_service_externe) === 1;
+    document.getElementById('missionDependService').checked = dependService;
+    renderServiceSelect(dependService ? m.service_id : null, m.service_nom);
+    toggleMissionService();
     document.getElementById('modalMissionTitle').textContent = 'Modifier la mission';
     setStepsLayout(true);
     document.getElementById('stepNewText').value = '';
     loadSteps(m.id);
     modal.show();
     document.getElementById('modalMission').addEventListener('shown.bs.modal', autosizeSteps, { once: true });
+}
+
+function toggleMissionService() {
+    const checked = document.getElementById('missionDependService').checked;
+    document.getElementById('missionServiceFields').style.display = checked ? '' : 'none';
 }
 
 // ── Étapes ──
@@ -1161,10 +1419,18 @@ async function saveMission() {
     const titre = document.getElementById('missionTitre').value.trim();
     if (!titre) { showToast('Le titre est requis', 'warning'); return; }
 
+    const dependService = document.getElementById('missionDependService').checked;
+    const serviceId = document.getElementById('missionService').value;
+    if (dependService && !serviceId) {
+        showToast('Sélectionnez le service concerné', 'warning');
+        return;
+    }
+
     const payload = {
         titre,
         description: document.getElementById('missionDesc').value.trim(),
         category_id: document.getElementById('missionCategory').value || null,
+        service_id: dependService ? serviceId : null,
         statut: document.getElementById('missionStatut').value,
         priorite: parseInt(document.getElementById('missionPriorite').value),
         date_echeance: document.getElementById('missionEcheance').value || null,
