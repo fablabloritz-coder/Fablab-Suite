@@ -6,6 +6,374 @@ action imperative.
 
 ---
 
+## 2026-11-25 — FabBoard : audit des versions 3.8.3 a 3.8.12
+
+**Perimetre**
+- Tout le travail non commite depuis `fabboard-v3.8.2` : `--lw` en portrait,
+  missions terminees (statuts et date civile), lisibilite du widget
+  dependances, defilement automatique et sa conservation au refresh, cache de
+  `slides.js`, filtre de services, ecran de pause sans `container-type`.
+
+**Revue risque**
+- [MOYEN] `.github/workflows/tests.yml` etait modifie localement pour ne plus
+  tourner qu'apres `Auto release` : les push et pull request n'etaient plus
+  couverts, alors que le workflow commite (2026-11-22) les couvre en excluant
+  `test_release_versions.py` du push. Fichier restaure a HEAD ; la suite racine
+  hors tags repasse (304 tests).
+- Aucun defaut applicatif trouve : geometrie, cache, filtre, missions
+  terminees et defilement se comportent comme documente.
+
+**Verification navigateur** (1920x1080 et 1440x810, portrait/paysage, ecran 2)
+- Widgets : aucun debordement horizontal/vertical ; horloge 120/86,4 px,
+  texte 76,8/60,48 px, dependances 18,24/14 px (planchers en portrait) ;
+  `--lw` = 19,2/10,8 px.
+- Pause texte : overlay fixed 1920x1080, centre, `container-type: normal`,
+  padding 76,8/43,2 px, titre 129,6/97,2 px ; mode image : overlay block,
+  image 100 % `object-fit: cover`, texte masque.
+- Missions terminees : 16 missions avec l'option, « Historique 2025 » badge
+  « Termine », date neutre 15 nov., aucun « En retard ».
+- Filtre : `Imprimerie` -> 2 missions ; `Zorglub` -> message court ; config
+  restauree (15 missions, groupes CMIL 5 / Rectorat 4).
+- Defilement : 510/457 px, 0 -> 53 px, refresh a 53 -> 53, puis 0 -> 53 ;
+  barre masquee. `slides.js?v=3.8.12` et option `inclure_terminees` presentes.
+
+**Tests / verification** : 79 tests FabBoard OK, 23 widget, 304 racine hors
+  tags, `smoke_test_apps.py --only FabBoard` OK, `node --check`, `py_compile`,
+  `git diff --check`, `changelog_gen --check`, `release_notes_gen --check`.
+
+**Limites** : meteo et timer absents de la slide de test (conversion CSS
+  verifiee au code) ; mode video de la pause non joue faute de fichier video ;
+  `utils.js` et le CSS de base restent sans cache-busting (risque latent, hors
+  perimetre de 3.8.7) ; le 403 de `/static/manifest.json` ne concerne que le
+  proxy de preview (200 en local). La CI GitHub n'est pas executable ici.
+
+**Prochaine action** : ajouter `FabBoard/tests/js/` et
+  `test_dependances_widget_js.py` au commit, puis taguer `fabboard-v3.8.12`.
+
+## 2026-11-25 — FabBoard : defilement conserve a travers les refresh
+
+**Probleme**
+- `FabBoardStore.fetchAll()` dispatche `fabboard:refresh` a chaque cycle (30 s
+  par defaut, 300 s sur cette instance). Le widget dependances reecrivait la
+  liste puis appelait `demarrerDefilement()`, qui remettait `scrollTop = 0` et
+  relancait le minuteur : la page 2 etait ramenee en page 1 a chaque refresh.
+
+**Correctif**
+- `render()` compare le HTML produit au precedent et ne touche au DOM que s'il
+  change (`appliquerListe`) ; `refresh()` ne relance le minuteur que si le
+  contenu a change ou si le minuteur s'etait arrete. Meme contenu = page
+  courante et phase du minuteur conservees ; contenu different = page 1.
+
+**Verification**
+- Slide 1920x1080 paysage : page 2 a 52,8 px, refresh manuel -> 0 avant le
+  correctif, 52,8 apres. Deux cycles reels de refresh (intervalle 10 s) et deux
+  tours de defilement : 53 -> 53 -> 0 -> 53, toutes les pages atteintes.
+- Pilote Node : 700/500 px, pages [0, 200] ; refresh a 200 -> 200 sans
+  reecriture ni minuteur recree ; changement de contenu -> 0, une reecriture,
+  minuteur relance.
+
+**Tests** : 23 tests dependances OK, suite FabBoard OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.12` au push.
+
+## 2026-11-25 — FabBoard : ecran de pause sans container-type
+
+**Revue**
+- `container-type: inline-size` sur `.override-overlay` n'a casse ni le
+  `position: fixed`, ni le centrage flex, ni les modes image/video (geometrie
+  identique), mais il ajoutait un containment layout/style/inline-size, un
+  containing block pour d'eventuels descendants fixed et un contexte
+  d'empilement, pour seulement fournir `cqw`.
+- Le repli `vw` (double declaration) ne servait qu'aux navigateurs sans `cqw` ;
+  or FabBoard repose deja sur les variables CSS : `var(--lw, 1vw)` couvre ce
+  cas, et `--lw` vaut deja 1vh en portrait.
+
+**Correctif**
+- `.override-overlay` n'est plus un conteneur de requete. Le texte de pause
+  utilise `calc(n * var(--lw, 1vw))` comme les widgets (padding 4, inner 90,
+  titre 6, badge 1,6, message 2,4, reprise 2,1). Les 7 doubles declarations
+  vw/cqw sont supprimees.
+
+**Verification navigateur**
+- Avant/apres identiques : portrait 1920x1080 (padding 43,2 px, titre 97,2 px,
+  badge 25,92, message 38,88, reprise 34,02, inner 972 px), paysage (76,8 /
+  129,6 / 26,4 / 48 / 40,8 / 1400), portrait inverse et 1440x810 portrait.
+- Overlay : `position: fixed`, 1080x1920 locaux (1920x1080 a l'ecran), z-index
+  1000, texte centre dans les deux axes. Modes image et video : 1920x1080,
+  `object-fit: cover`, texte masque. Captures portrait et paysage.
+
+**Tests / verification** : 77 tests FabBoard OK, `changelog_gen --check` et
+`release_notes_gen --check` OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.11` au push.
+
+## 2026-11-25 — FabBoard : filtre de services simplifie (widget dependances)
+
+**Revue**
+- Le filtre partiel fonctionnait, mais la normalisation etait dupliquee :
+  `sansAccents` (services) a cote de `normaliser` (statuts, groupes), plus un
+  remplacement `é/è` ad hoc dans `estTerminee`.
+- Le message sans resultat listait jusqu'a 8 services connus : long sur une TV
+  en portrait, pour une information deja portee par le panneau Slides
+  (« saisie partielle acceptee »).
+
+**Correctif**
+- Un seul `normaliser` (NFD sans diacritiques, trim, minuscules) sert aux
+  services, aux statuts et aux regroupements ; `sansAccents` et le remplacement
+  `é/è` disparaissent. `serviceRetenu` reste une comparaison de sous-chaine
+  normalisee.
+- Le message sans resultat est de nouveau court : « Aucune mission en attente
+  des services selectionnes ». `servicesConnus` est supprime.
+
+**Tests**
+- 6 scenarios de filtre ramenes a 3, avec une fixture de missions partagee :
+  partiel + plusieurs services + accents oublies (une passe), noms complets
+  (rendu identique), aucun resultat (etat vide).
+- `services_vide` et son test sont supprimes : le filtre vide est deja exerce
+  par les scenarios sans config `services` (missions terminees, retard).
+- Suite FabBoard : 77 tests OK.
+
+**Tests / verification** : 77 tests OK, `changelog_gen --check` et
+`release_notes_gen --check` OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.10` au push.
+
+## 2026-11-25 — FabBoard : echeances du widget dependances sans decalage de fuseau
+
+**Defaut**
+- `echeanceHtml` construisait la date avec
+  `new Date(String(mission.date_echeance).slice(0, 10))` : « 2026-11-15 » etait
+  lue a minuit UTC, soit le 14 novembre a 19 h a New York. Le badge affichait
+  donc « 14 nov. » a l'ouest de Greenwich, et le decompte « En retard (Nj) »
+  pouvait glisser d'un jour.
+
+**Correctif**
+- `dateLocale(valeur)` : une date `YYYY-MM-DD` est une date civile, construite
+  avec `new Date(annee, mois - 1, jour)` dans le fuseau du navigateur. Les
+  composantes sont verifiees (une date invalide reste invalide au lieu d'etre
+  normalisee), et un format inattendu garde l'ancien repli `new Date(texte)`.
+- `echeanceHtml` utilise cette date pour le badge et pour le calcul des jours.
+
+**Tests**
+- 2 scenarios a date fixe dans le pilote Node : `2026-11-15` terminee et
+  `2099-11-15` active.
+- 2 tests unittest rejouent le pilote avec `TZ=America/New_York` et exigent
+  « 15 nov. » (et non « 14 nov. »). Verifie sur l'ancienne lecture UTC : les
+  deux rendus donnent « 14 nov. », les tests echouent donc sans le correctif.
+- Suite FabBoard : 80 tests OK.
+
+**Tests / verification** : 80 tests OK, `changelog_gen --check` et
+`release_notes_gen --check` OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.9` au push.
+
+## 2026-11-25 — FabBoard : filtre de services partiel (widget dependances)
+
+**Defaut**
+- Le filtre `services` du widget « Dependances externes » comparait le nom
+  exact : `servicesFiltre.indexOf(normaliser(mission.service_nom))`. Une saisie
+  « Imprimerie » ne trouvait donc pas « Imprimerie municipale » et la liste
+  restait vide, sans explication.
+
+**Correctif**
+- `serviceRetenu(nom)` : comparaison en sous-chaine sur le nom sans accents ni
+  casse (`sansAccents` + `toLowerCase`). Un nom complet reste un sous-chaine de
+  lui-meme, donc le comportement des noms complets ne change pas ; plusieurs
+  saisies separees par des virgules se cumulent ; un filtre vide affiche tout.
+- Quand le filtre ne correspond a rien, le message d'attente ajoute
+  « — services disponibles : … » (max 8 noms, deduits des missions chargees).
+- Libelle du champ dans `slides.js` : « … vide = tous ; saisie partielle
+  acceptee ».
+
+**Tests**
+- 6 scenarios ajoutes au pilote Node : partiel, nom complet (rendu identique au
+  partiel), multi partiel, accents oublies, filtre vide, filtre inconnu (les
+  services connus sont listes). Suite du widget : 22 tests OK.
+
+**Verification navigateur** (payload reel, source 1)
+- `services: 'Imprimerie'` -> 2 missions, groupe « Imprimerie municipale » (0
+  avant le correctif) ; `'Imprimerie municipale'` -> rendu identique.
+- `'cmi, ville'` -> 6 missions (CMIL 5, Ville de Nancy 1).
+- `'Zorglub'` -> message « Aucune mission en attente des services selectionnes
+  — services disponibles : CMIL, Rectorat, Imprimerie municipale, CAF, Ville
+  de Nancy ».
+
+**Tests / verification** : 78 tests FabBoard OK (dont 22 sur le widget),
+`changelog_gen --check` et `release_notes_gen --check` OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.8` au push.
+
+## 2026-11-25 — FabBoard : reglage « missions terminees » invisible dans Slides
+
+**Defaut**
+- Le widget « Dependances externes » offert dans le panneau de configuration
+  n'affichait pas le reglage « Inclure les missions terminees » (impossible de
+  demander le masquage des missions finies, contrairement au widget
+  « Missions »).
+- Cause : `templates/slides.html` chargeait `slides.js` avec un numero de cache
+  fige (`?v=20260308-no-tenor`), anterieur a l'ajout du reglage. Un navigateur
+  ayant deja ouvert la page Slides gardait son ancien script, donc l'ancien
+  panneau. `dashboard.html` utilisait deja `?v={{ app_version }}`.
+
+**Correctif**
+- `slides.html` : `?v={{ app_version }}`, comme le dashboard. Chaque version
+  invalide le cache du script et des options du panneau.
+- Aucun changement de comportement du widget : `inclure_terminees` etait deja
+  lu (booleen, `1`, `"1"`), decoche par defaut, missions terminees masquees.
+
+**Tests**
+- `test_page_slides_charge_le_script_avec_la_version` : tous les scripts
+  `js/*.js` de `/` et `/slides` portent `?v=<APP_VERSION>`.
+- `test_panneau_dependances_propose_de_masquer_les_terminees` : le bloc
+  `fabtrack_dependances` de `slides.js` contient la case `inclure_terminees`
+  avec `default: false`.
+
+**Verification navigateur**
+- Panneau ouvert sur la slide « Ecran 1 — test » : case decochee ; cochee +
+  sauvegarde -> le dashboard affiche « Historique 2025 » (16 missions) ;
+  decochee + sauvegarde -> mission masquee (15 missions), config finale
+  `{nombre_max: 6}` inchangee.
+
+**Tests / verification** : 72 tests FabBoard OK, `changelog_gen --check` et
+`release_notes_gen --check` OK, page `/slides` sert bien `slides.js?v=3.8.7`.
+
+**Prochaine action** : taguer `fabboard-v3.8.7` au push.
+
+## 2026-11-25 — FabBoard : defilement automatique du widget « dependances »
+
+**Defaut**
+- En cellule 2x2, la liste depassait la cellule et defilait en interne
+  (`overflow-y: auto`), mais rien ne fait defiler une TV : les groupes situes
+  sous la ligne de flottaison n'etaient jamais vus, et la derniere mission
+  restait coupee en bas.
+
+**Correctif**
+- Defilement automatique par pages : `pagesDeDefilement(contenu, visible,
+  bornes)` place chaque page sur le haut d'un element (groupe, mission, ligne
+  « et N autres »), avance d'une page toutes les 10 s, puis revient en haut.
+  Aucun minuteur ne demarre quand le contenu tient dans la cellule.
+- Le calcul est refait a chaque tick : un changement de donnees ou de taille
+  de cellule ne laisse pas de pages obsoletes ; le minuteur s'arrete si le
+  widget est detache du DOM.
+- `refresh()` redemarre le defilement (donc pas de minuteur en double) ; la
+  barre de defilement est masquee (`scrollbar-width: none` + `::-webkit-scrollbar`).
+
+**Tests**
+- `pagesDeDefilement` exposee sur `window.FabBoardDependances` pour le pilote
+  Node ; 8 tests ajoutes (contenu qui tient, hauteur visible nulle, sans borne,
+  alignement sur les elements, bornes desordonnees, progression et bas
+  atteint, cas reel 510/457 px). Suite du widget : 15 tests OK.
+
+**Verification navigateur** (slide 2x2, paysage 1920x1080, 6 missions)
+- Pages calculees [0, 53] avec un contenu de 510 px pour 457 px visibles ;
+  `scrollTop` releve toutes les 2 s : 0 pendant 10 s, 53 pendant 10 s, puis
+  retour vers 0. La 6e mission, coupee jusqu'ici, est entierement visible sur
+  la page 2. `scrollbar-width` calcule a `none`.
+- Une borne a moins de 20 % de la hauteur visible ne cree plus de page quasi
+  identique (releve intermediaire a 25 px avant la regle).
+
+**Tests / verification** : 70 tests FabBoard OK (dont 16 sur le widget),
+`changelog_gen --check` et `release_notes_gen --check` OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.6` au push.
+
+## 2026-11-25 — FabBoard : lisibilite du widget « dependances » sur TV
+
+**Defaut**
+- A l'echelle 1 (aucune classe `widget-scale-*`, donc `--ws = 1`) sur une TV
+  1920x1080, le widget heritait de tailles en `rem` pensees pour un ecran de
+  bureau : titre de mission 11,5 px (0,72rem), badge 8,8 px (0,55rem), etape
+  9,6 px. Illisible a distance, il fallait passer l'echelle du widget a 1,5.
+
+**Correctif**
+- Les six tailles de texte du widget passent sur la largeur logique de l'ecran
+  avec des bornes : `clamp(14px, calc(0.95 * var(--lw, 1vw) * var(--ws, 1)), 40px)`
+  pour le titre, 0,78 pour l'etape, 0,68 pour les badges, 0,7 pour le titre de
+  groupe et 0,72 pour la ligne « ... et N autres ».
+- A 1920x1080 en echelle 1 : titre ~18,2 px, etape ~15 px, badges ~13,1 px.
+  Les echelles 1,25 a 4 restent multiplicatives via `--ws`.
+
+**Verification navigateur** (CSS/JS servis en 3.8.5)
+- Vraie slide 2x2 (widget en position 3, `nombre_max: 6`), paysage 1920x1080,
+  echelle 1 : titre 18,2 px, etape 15 px, badges 13,1 px, titre de groupe
+  13,4 px, `scrollWidth == clientWidth` (aucun debordement horizontal).
+- Echelles verifiees dans la slide : 1,5 x titre 27,4 px / badge 19,6 px ;
+  2 x titre 36,5 px / badge 26,1 px. Le produit `--lw * --ws` est bien
+  multiplicatif.
+- 1440x810 : planchers appliques (titre 14 px, etape 12 px, badges 11 px),
+  toujours aucun debordement horizontal.
+- Contrepartie assumee : la liste defile (510 px de contenu pour 457 px
+  disponibles) et la 6e mission configuree est partiellement visible.
+
+**Tests / verification** : 61 tests FabBoard OK, `changelog_gen --check` et
+`release_notes_gen --check` OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.5` au push.
+
+## 2026-11-25 — FabBoard : missions terminees du widget « dependances »
+
+**Defaut**
+- Avec « Inclure les missions terminees », une mission terminee s'affichait
+  « A faire » avec une echeance « En retard (10j) ». Reproduit dans le pilote :
+  des que le statut n'est pas exactement `'termine'` (`'Termine'`, `'termine'`
+  accentue, ou payload anterieur sans `statut` mais avec `completed_at`), le
+  widget retombait sur « A faire » et calculait l'echeance comme une mission
+  active.
+- Meme avec le statut exact, l'echeance etait purement masquee au lieu d'etre
+  affichee en neutre.
+
+**Correctif**
+- `estTerminee()` : statut normalise (casse, accents, `done`/`completed`) et
+  repli sur `completed_at` quand le statut est absent ; utilise par le filtre,
+  le badge et l'echeance.
+- `echeanceHtml(mission, terminee)` : pour une mission terminee, date affichee
+  en style `ech-ok`, sans « En retard » ni « Aujourd'hui ».
+- `inclure_terminees` accepte `true`, `1` et `"1"` (configs editees a la main).
+
+**Tests**
+- Nouveau pilote `FabBoard/tests/js/dependances_widget_check.js` (DOM minimal
+  + faux `FabBoardStore`, execute sous Node) et
+  `FabBoard/tests/test_dependances_widget_js.py` : 7 tests (badge « Termine »,
+  echeance neutre, absence d'echeance, option inactive, statut capitalise +
+  option `"1"`, payload sans statut, non-regression mission active en retard).
+- Verifie que ces tests echouent sur l'ancien template : `terminee_capitalisee`
+  et `terminee_sans_statut` y donnaient « A faire » + « En retard ».
+
+**Tests / verification** : 61 tests FabBoard OK, `node --check` du pilote OK.
+
+**Prochaine action** : taguer `fabboard-v3.8.4` au push.
+
+## 2026-11-25 — FabBoard : texte des widgets en portrait
+
+**Defaut**
+- Les tailles de texte des widgets (horloge, meteo, texte libre, timer) etaient
+  en `vw`, donc sur la largeur PHYSIQUE du viewport. En portrait le body est
+  tourne : la largeur locale vaut la hauteur physique (810 px sur un 1440x810),
+  l'horloge sortait a 115,2 px dans une cellule de 386 px et debordait
+  (438 px de contenu pour 384 px de place).
+
+**Correctif**
+- Variable `--lw` sur `.dashboard-tv` : `1vw` en paysage, `1vh` en portrait et
+  portrait inverse (largeur logique du body tourne). Les widgets ecrivent
+  `calc(n * var(--lw, 1vw))` : le paysage est inchange au pixel, le portrait
+  suit la largeur reelle de l'ecran.
+- 12 tailles dans les templates (horloge 4, meteo 6, texte libre 2) et 10 dans
+  les regles `widget-scale-*` et timer de `dashboard.css`.
+
+**Verification navigateur** (CSS/JS servis en 3.8.3)
+- Paysage : horloge 115,2 px a 1440x810 et 120 px a 1920x1080, date 20 px,
+  info 14 px, titre 76,8 px — valeurs identiques a l'avant-correctif, aucun
+  debordement.
+- Portrait et portrait inverse 1440x810 : horloge 64,8 px, titre 45,4 px,
+  `scrollWidth == clientWidth` sur les deux widgets, plus de chiffres coupes.
+- Portrait 1920x1080 : horloge 86,4 px, titre 60,5 px, aucun debordement.
+
+**Tests / verification** : 54 tests FabBoard OK, `changelog_gen --check` et
+`release_notes_gen --check` OK. Widgets meteo et timer non presents sur la
+slide de test : conversion verifiee au code, pas au navigateur.
+
+**Prochaine action** : taguer `fabboard-v3.8.3` au push.
+
 ## 2026-11-25 — FabBoard : ecran de pause en portrait
 
 **Defaut**

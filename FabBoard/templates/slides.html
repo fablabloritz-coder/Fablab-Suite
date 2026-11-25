@@ -204,5 +204,5 @@ if (typeof Sortable === 'undefined') {
     console.warn('[TEMPLATE] SortableJS n\'a pas pu être chargé depuis le CDN');
 }
 </script>
-<script src="{{ url_for('static', filename='js/slides.js') }}?v=20260308-no-tenor"></script>
+<script src="{{ url_for('static', filename='js/slides.js') }}?v={{ app_version }}"></script>
 {% endblock %}

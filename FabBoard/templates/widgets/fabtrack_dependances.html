@@ -35,9 +35,15 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    /* Une TV ne se fait pas defiler : la vue avance seule (voir le script).
+       La barre de defilement n'aurait donc plus de sens. */
+    scrollbar-width: none;
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
+}
+.widget-fabtrack-dependances .js-dependances-liste::-webkit-scrollbar {
+    display: none;
 }
 .widget-fabtrack-dependances .dep-groupe {
     background: rgba(148, 163, 184, 0.06);
@@ -49,7 +55,7 @@
     display: flex;
     align-items: center;
     gap: 0.4em;
-    font-size: calc(0.68rem * var(--ws, 1));
+    font-size: clamp(11px, calc(0.7 * var(--lw, 1vw) * var(--ws, 1)), 26px);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -78,13 +84,13 @@
     border-top: none;
 }
 .widget-fabtrack-dependances .dep-titre {
-    font-size: calc(0.72rem * var(--ws, 1));
+    font-size: clamp(14px, calc(0.95 * var(--lw, 1vw) * var(--ws, 1)), 40px);
     font-weight: 600;
     color: #e2e8f0;
     line-height: 1.25;
 }
 .widget-fabtrack-dependances .dep-etape {
-    font-size: calc(0.6rem * var(--ws, 1));
+    font-size: clamp(12px, calc(0.78 * var(--lw, 1vw) * var(--ws, 1)), 32px);
     color: #94a3b8;
     margin-top: 0.1em;
     line-height: 1.25;
@@ -97,7 +103,7 @@
     margin-top: 0.12em;
 }
 .widget-fabtrack-dependances .dep-badge {
-    font-size: calc(0.55rem * var(--ws, 1));
+    font-size: clamp(11px, calc(0.68 * var(--lw, 1vw) * var(--ws, 1)), 28px);
     font-weight: 600;
     padding: 0.08em 0.45em;
     border-radius: 4px;
@@ -114,11 +120,11 @@
     color: #4ade80;
     text-align: center;
     padding: 1.5rem 0.5rem;
-    font-size: calc(0.95rem * var(--ws, 1));
+    font-size: clamp(14px, calc(0.95 * var(--lw, 1vw) * var(--ws, 1)), 40px);
 }
 .widget-fabtrack-dependances .dep-plus {
     color: #64748b;
-    font-size: calc(0.62rem * var(--ws, 1));
+    font-size: clamp(11px, calc(0.72 * var(--lw, 1vw) * var(--ws, 1)), 26px);
     text-align: center;
     padding-top: 0.1rem;
 }
@@ -134,22 +140,45 @@
     const config = {{ config | tojson | safe }};
 
     const maxItems = Math.max(1, parseInt(config.nombre_max, 10) || 12);
-    const inclureTerminees = config.inclure_terminees === true;
+    // La case a cocher enregistre un booleen, mais une config ancienne ou
+    // editee a la main peut porter 1 ou "1" : sans ca, l'option semblait
+    // inactive et les missions terminees restaient masquees.
+    const inclureTerminees = config.inclure_terminees === true
+        || config.inclure_terminees === 1
+        || config.inclure_terminees === '1';
     const afficherEtape = config.afficher_etape !== false;
     const sourceId = config.source_id || null;
+
+    // Normalisation commune (services, statuts, regroupements) : sans accents
+    // ni casse. « periscolaire » trouve « Périscolaire », « terminée » se
+    // compare a « terminee ».
+    function normaliser(valeur) {
+        return String(valeur == null ? '' : valeur)
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toLowerCase();
+    }
+
+    // Le filtre accepte une saisie partielle (« Imprimerie » pour « Imprimerie
+    // municipale ») et plusieurs saisies separees par des virgules.
     const servicesFiltre = String(config.services || '')
         .split(',')
-        .map(function (nom) { return nom.trim().toLowerCase(); })
+        .map(normaliser)
         .filter(Boolean);
+
+    function serviceRetenu(nom) {
+        if (!servicesFiltre.length) return true;
+        const cible = normaliser(nom);
+        return servicesFiltre.some(function (filtre) {
+            return cible.includes(filtre);
+        });
+    }
 
     function esc(valeur) {
         const d = document.createElement('div');
         d.textContent = valeur == null ? '' : String(valeur);
         return d.innerHTML;
-    }
-
-    function normaliser(valeur) {
-        return String(valeur == null ? '' : valeur).trim().toLowerCase();
     }
 
     function isHexColor(valeur) {
@@ -167,10 +196,38 @@
         return String(mission.service_nom || '').trim() !== '';
     }
 
-    function echeanceHtml(mission) {
+    // Une echeance Fabtrack est une date civile (`YYYY-MM-DD`), pas un instant :
+    // `new Date('2026-11-15')` la lit a minuit UTC, soit le 14 novembre a 19 h
+    // a New York, et le badge affichait la veille a l'ouest de Greenwich. On
+    // construit donc la date dans le fuseau local du navigateur.
+    function dateLocale(valeur) {
+        const texte = String(valeur == null ? '' : valeur).trim().slice(0, 10);
+        const morceaux = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texte);
+        // Format inattendu (ISO complet, etc.) : on garde le comportement d'origine.
+        if (!morceaux) return new Date(texte);
+        const annee = Number(morceaux[1]);
+        const mois = Number(morceaux[2]) - 1;
+        const jour = Number(morceaux[3]);
+        const date = new Date(annee, mois, jour);
+        // `new Date(2026, 12, 40)` normalise au lieu d'echouer : on rejette les
+        // composantes qui ne correspondent pas a la date saisie.
+        const valide = date.getFullYear() === annee
+            && date.getMonth() === mois
+            && date.getDate() === jour;
+        return valide ? date : new Date(NaN);
+    }
+
+    function echeanceHtml(mission, terminee) {
         if (!mission.date_echeance) return '';
-        const date = new Date(String(mission.date_echeance).slice(0, 10));
+        const date = dateLocale(mission.date_echeance);
         if (isNaN(date.getTime())) return '';
+        // Mission terminee : l'echeance n'est plus surveillee. On garde la date
+        // pour situer la mission, en style neutre, sans "En retard" ni
+        // "Aujourd'hui" qui n'ont plus de sens.
+        if (terminee) {
+            const jour = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+            return '<span class="dep-badge ech-ok">' + esc('\u{1F4C5} ' + jour) + '</span>';
+        }
         const aujourdhui = new Date();
         aujourdhui.setHours(0, 0, 0, 0);
         const jours = Math.round((date - aujourdhui) / 86400000);
@@ -191,19 +248,30 @@
         return '<span class="dep-badge ' + classe + '">' + esc('\u{1F4C5} ' + libelle) + '</span>';
     }
 
+    // Fabtrack envoie 'termine', mais le champ peut arriver capitalise ou
+    // accentue ('Termine', 'terminé') et les payloads anterieurs au marqueur
+    // n'ont pas toujours `statut` : `completed_at` sert alors de repli.
+    function estTerminee(mission) {
+        const statut = normaliser(mission.statut);
+        if (statut === 'termine' || statut === 'terminee' || statut === 'done' || statut === 'completed') {
+            return true;
+        }
+        return statut === '' && Boolean(mission.completed_at);
+    }
+
     function statutDeMission(mission) {
-        if (mission.statut === 'termine') return { texte: 'Terminé', classe: 'statut-termine' };
-        if (mission.statut === 'en_cours') return { texte: 'En cours', classe: 'statut-en_cours' };
+        if (estTerminee(mission)) return { texte: 'Terminé', classe: 'statut-termine' };
+        if (normaliser(mission.statut) === 'en_cours') return { texte: 'En cours', classe: 'statut-en_cours' };
         return { texte: 'À faire', classe: 'statut-a_faire' };
     }
 
     function missionHtml(mission) {
+        const terminee = estTerminee(mission);
         const statut = statutDeMission(mission);
         const etape = afficherEtape && mission.derniere_etape_texte
             ? '<div class="dep-etape">Étape : ' + esc(mission.derniere_etape_texte) + '</div>'
             : '';
-        // Une mission terminée n'a plus d'échéance à surveiller.
-        const echeance = mission.statut === 'termine' ? '' : echeanceHtml(mission);
+        const echeance = echeanceHtml(mission, terminee);
         return '<div class="dep-mission">'
             + '<div class="dep-titre">' + esc(mission.titre || 'Mission') + '</div>'
             + etape
@@ -225,11 +293,24 @@
             + '</div>';
     }
 
+    // Le DOM n'est reecrit que si le rendu change : le store peut rafraichir
+    // les donnees toutes les 30 s sans que rien n'ait bouge. Reecrire la liste
+    // a l'identique relancerait le defilement en page 1 et les pages suivantes
+    // ne resteraient jamais affichees assez longtemps.
+    let dernierHtml = null;
+
+    function appliquerListe(html) {
+        if (html === dernierHtml) return false;
+        dernierHtml = html;
+        liste.innerHTML = html;
+        return true;
+    }
+
     function render(missions) {
         const retenues = (missions || []).filter(function (mission) {
             if (!dependDeService(mission)) return false;
-            if (!inclureTerminees && mission.statut === 'termine') return false;
-            if (servicesFiltre.length && servicesFiltre.indexOf(normaliser(mission.service_nom)) === -1) return false;
+            if (!inclureTerminees && estTerminee(mission)) return false;
+            if (!serviceRetenu(mission.service_nom)) return false;
             return true;
         });
 
@@ -239,8 +320,7 @@
             const message = servicesFiltre.length
                 ? 'Aucune mission en attente des services sélectionnés'
                 : 'Aucune mission en attente d\u2019un service externe';
-            liste.innerHTML = '<div class="dep-vide"><i class="bi bi-check2-circle"></i> ' + esc(message) + '</div>';
-            return;
+            return appliquerListe('<div class="dep-vide"><i class="bi bi-check2-circle"></i> ' + esc(message) + '</div>');
         }
 
         // Regroupement par service, dans l'ordre de la liste Fabtrack.
@@ -268,11 +348,105 @@
         });
 
         const reste = retenues.length - affichees;
-        liste.innerHTML = blocs.join('')
+        return appliquerListe(blocs.join('')
             + (reste > 0
                 ? '<div class="dep-plus">… et ' + reste + ' autre' + (reste > 1 ? 's' : '') + ' mission' + (reste > 1 ? 's' : '') + '</div>'
-                : '');
+                : ''));
     }
+
+    // Une TV ne se fait pas defiler a la main : quand la liste depasse la
+    // cellule, la vue avance seule d'une page a la fois, chaque page demarrant
+    // sur une mission entiere, puis revient en haut. Sans ca, les groupes
+    // au-dela du visible restaient inaccessibles.
+    const INTERVALLE_DEFILEMENT_MS = 10000;
+
+    // Positions de defilement (px) qui montrent tout le contenu : 0 puis, tant
+    // que la fin n'est pas atteinte, le dernier element dont le haut tient dans
+    // la page. `bornes` = hauts des elements (groupes, missions, ligne « et N
+    // autres ») en px depuis le debut du contenu.
+    function pagesDeDefilement(hauteurContenu, hauteurVisible, bornes) {
+        const maximum = Math.max(0, Math.round((hauteurContenu || 0) - (hauteurVisible || 0)));
+        if (!(hauteurVisible > 0) || maximum < 2) return [0];
+        const departs = (bornes || [])
+            .map(Number)
+            .filter(function (valeur) {
+                return Number.isFinite(valeur) && valeur > 0 && valeur <= maximum;
+            })
+            .sort(function (a, b) { return a - b; });
+        // Une page doit avancer d'au moins 20 % de la hauteur visible : sinon un
+        // element colle au debut creerait une page presque identique a la
+        // precedente. En dessous, on avance d'une page pleine.
+        const progression = Math.max(24, Math.round(hauteurVisible * 0.2));
+        const pages = [0];
+        let courant = 0;
+        while (courant < maximum - 1 && pages.length < 100) {
+            const limite = courant + hauteurVisible;
+            let suivant = 0;
+            departs.forEach(function (valeur) {
+                if (valeur > courant + 1 && valeur <= limite) suivant = valeur;
+            });
+            courant = suivant > courant + progression
+                ? suivant
+                : Math.min(maximum, Math.round(limite));
+            pages.push(courant);
+        }
+        return pages;
+    }
+
+    function bornesDePages() {
+        const base = liste.getBoundingClientRect ? liste.getBoundingClientRect().top : 0;
+        const defilement = liste.scrollTop || 0;
+        const elements = liste.querySelectorAll('.dep-groupe, .dep-mission, .dep-plus');
+        const bornes = [];
+        Array.prototype.forEach.call(elements, function (element) {
+            if (!element.getBoundingClientRect) return;
+            bornes.push(Math.round(element.getBoundingClientRect().top - base + defilement));
+        });
+        return bornes;
+    }
+
+    let minuteurDefilement = null;
+    let indexDefilement = 0;
+
+    function arreterDefilement() {
+        if (minuteurDefilement !== null) {
+            clearInterval(minuteurDefilement);
+            minuteurDefilement = null;
+        }
+        indexDefilement = 0;
+    }
+
+    function pagesCourantes() {
+        return pagesDeDefilement(liste.scrollHeight || 0, liste.clientHeight || 0, bornesDePages());
+    }
+
+    function demarrerDefilement() {
+        arreterDefilement();
+        liste.scrollTop = 0;
+        if (pagesCourantes().length < 2) return;
+        minuteurDefilement = setInterval(function () {
+            if (!root.isConnected || !liste.isConnected) {
+                arreterDefilement();
+                return;
+            }
+            const pages = pagesCourantes();
+            if (pages.length < 2) {
+                arreterDefilement();
+                liste.scrollTop = 0;
+                return;
+            }
+            indexDefilement = (indexDefilement + 1) % pages.length;
+            if (liste.scrollTo) {
+                liste.scrollTo({ top: pages[indexDefilement], behavior: 'smooth' });
+            } else {
+                liste.scrollTop = pages[indexDefilement];
+            }
+        }, INTERVALLE_DEFILEMENT_MS);
+    }
+
+    // Expose pour les tests Node (FabBoard/tests/js/dependances_widget_check.js) :
+    // le calcul des pages est pur, la geometrie reelle est verifiee en slide.
+    window.FabBoardDependances = { pagesDeDefilement: pagesDeDefilement };
 
     function refresh() {
         const store = window.FabBoardStore;
@@ -281,7 +455,14 @@
         const donnees = sourceId
             ? (store && store.getSource(sourceId))
             : (store && store.data);
-        render(donnees && Array.isArray(donnees.missions) ? donnees.missions : []);
+        const contenuChange = render(donnees && Array.isArray(donnees.missions) ? donnees.missions : []);
+        // Un rafraichissement sans changement ne doit ni reecrire la liste, ni
+        // relancer le minuteur, ni revenir en page 1 : la page courante est
+        // conservee. On (re)demarre au premier rendu, apres un changement de
+        // contenu, ou si le minuteur s'etait arrete.
+        if (contenuChange || minuteurDefilement === null) {
+            demarrerDefilement();
+        }
     }
 
     function onDashboardRefresh() {

@@ -1216,7 +1216,7 @@ const WIDGET_CONFIG_DEFINITIONS = {
         titre: 'Dépendances externes',
         fields: [
             { key: 'source_id', label: 'Source Fabtrack', type: 'source_select', source_type: 'fabtrack', default: '' },
-            { key: 'services', label: 'Services à surveiller (noms séparés par des virgules, vide = tous)', type: 'text', default: '', placeholder: 'Ex: CMIL, Rectorat' },
+            { key: 'services', label: 'Services à surveiller (noms séparés par des virgules, vide = tous ; saisie partielle acceptée)', type: 'text', default: '', placeholder: 'Ex: CMIL, Rectorat' },
             { key: 'nombre_max', label: 'Nombre max de missions', type: 'number', default: 12, min: 1, max: 50 },
             { key: 'inclure_terminees', label: 'Inclure les missions terminées', type: 'checkbox', default: false },
             { key: 'afficher_etape', label: 'Afficher la dernière étape', type: 'checkbox', default: true },

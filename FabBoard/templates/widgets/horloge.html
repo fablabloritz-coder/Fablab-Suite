@@ -88,7 +88,7 @@
     border: 1px solid rgba(148, 163, 184, 0.28);
     border-radius: 999px;
     padding: 0.2rem 0.75rem;
-    font-size: clamp(10px, 0.95vw, 13px);
+    font-size: clamp(10px, calc(0.95 * var(--lw, 1vw)), 13px);
     letter-spacing: 0.06em;
     color: #cbd5e1;
     background: rgba(15, 23, 42, 0.36);
@@ -96,7 +96,7 @@
 }
 
 .horloge-date {
-    font-size: clamp(13px, 1.4vw, 20px);
+    font-size: clamp(13px, calc(1.4 * var(--lw, 1vw)), 20px);
     font-weight: 500;
     color: #94a3b8;
     text-transform: capitalize;
@@ -104,7 +104,7 @@
 }
 
 .horloge-heure {
-    font-size: clamp(48px, 8vw, 120px);
+    font-size: clamp(48px, calc(8 * var(--lw, 1vw)), 120px);
     font-weight: 300;
     line-height: 1;
     letter-spacing: -0.02em;
@@ -128,7 +128,7 @@
 }
 
 .horloge-info {
-    font-size: clamp(10px, 1vw, 14px);
+    font-size: clamp(10px, calc(1 * var(--lw, 1vw)), 14px);
     font-weight: 600;
     color: #475569;
     letter-spacing: 0.1em;

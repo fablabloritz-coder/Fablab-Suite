@@ -69,6 +69,23 @@ html {
     height: 100%;
 }
 
+/*
+ * Largeur LOGIQUE du dashboard, pour les tailles de texte des widgets.
+ * Paysage : --lw vaut 1vw. En portrait le <body> est tourné, donc sa largeur
+ * locale vaut la hauteur physique : la largeur logique se lit avec 1vh.
+ * Les widgets écrivent calc(n * var(--lw, 1vw)) : le rendu paysage reste
+ * identique au pixel, et le portrait se dimensionne sur la largeur réelle de
+ * l'écran au lieu de la largeur physique du viewport.
+ */
+.dashboard-tv {
+    --lw: 1vw;
+}
+
+.dashboard-tv.screen-portrait,
+.dashboard-tv.screen-portrait-inverse {
+    --lw: 1vh;
+}
+
 /* ========== OVERLAY OVERRIDE PERSISTANT ========== */
 /*
  * L'overlay est un élément FIXED qui vit en dehors du container de slides.
@@ -81,13 +98,14 @@ html {
     z-index: 1000;
     overflow: hidden;
     background: #000;
-    /*
-     * Le texte de pause se dimensionne sur la largeur LOCALE (cqw) : en portrait le
-     * body est tourné, sa largeur logique vaut la hauteur physique, et des tailles en
-     * vw donnaient un titre énorme dans une boîte étroite. En paysage, cqw = vw.
-     */
-    container-type: inline-size;
 }
+
+/*
+ * Le texte de pause se dimensionne sur la largeur LOGIQUE de l'écran (`--lw`),
+ * comme les widgets : 1vw en paysage, 1vh en portrait, où le body tourné a une
+ * largeur locale plus étroite. `--lw` est hérité du body : plus besoin de
+ * container-type sur l'overlay ni d'un repli cqw.
+ */
 
 /* Mode image/vidéo : bloc, l'enfant occupe 100% */
 .override-overlay.active {
@@ -129,19 +147,16 @@ html {
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 4vw;
-    padding: 4cqw;
+    padding: calc(4 * var(--lw, 1vw));
 }
 
 .pause-override-text-inner {
-    max-width: min(90vw, 1400px);
-    max-width: min(90cqw, 1400px);
+    max-width: min(calc(90 * var(--lw, 1vw)), 1400px);
 }
 
 .pause-override-title {
     margin: 0 0 1rem;
-    font-size: clamp(calc(2.2rem * var(--override-text-scale, 1)), calc(6vw * var(--override-text-scale, 1)), calc(5.4rem * var(--override-text-scale, 1)));
-    font-size: clamp(calc(2.2rem * var(--override-text-scale, 1)), calc(6cqw * var(--override-text-scale, 1)), calc(5.4rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(2.2rem * var(--override-text-scale, 1)), calc(6 * var(--lw, 1vw) * var(--override-text-scale, 1)), calc(5.4rem * var(--override-text-scale, 1)));
     line-height: 1.08;
     font-weight: 800;
     letter-spacing: 0.02em;
@@ -152,8 +167,7 @@ html {
     margin-bottom: 1rem;
     padding: 0.45rem 0.85rem;
     border-radius: 999px;
-    font-size: clamp(calc(0.8rem * var(--override-text-scale, 1)), calc(1.6vw * var(--override-text-scale, 1)), calc(1.1rem * var(--override-text-scale, 1)));
-    font-size: clamp(calc(0.8rem * var(--override-text-scale, 1)), calc(1.6cqw * var(--override-text-scale, 1)), calc(1.1rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(0.8rem * var(--override-text-scale, 1)), calc(1.6 * var(--lw, 1vw) * var(--override-text-scale, 1)), calc(1.1rem * var(--override-text-scale, 1)));
     font-weight: 700;
     letter-spacing: 0.04em;
 }
@@ -176,16 +190,14 @@ html {
 
 .pause-override-message {
     margin: 0;
-    font-size: clamp(calc(1.1rem * var(--override-text-scale, 1)), calc(2.4vw * var(--override-text-scale, 1)), calc(2rem * var(--override-text-scale, 1)));
-    font-size: clamp(calc(1.1rem * var(--override-text-scale, 1)), calc(2.4cqw * var(--override-text-scale, 1)), calc(2rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(1.1rem * var(--override-text-scale, 1)), calc(2.4 * var(--lw, 1vw) * var(--override-text-scale, 1)), calc(2rem * var(--override-text-scale, 1)));
     line-height: 1.4;
     opacity: 0.95;
 }
 
 .pause-override-resume {
     margin-top: 1.25rem;
-    font-size: clamp(calc(1rem * var(--override-text-scale, 1)), calc(2.1vw * var(--override-text-scale, 1)), calc(1.7rem * var(--override-text-scale, 1)));
-    font-size: clamp(calc(1rem * var(--override-text-scale, 1)), calc(2.1cqw * var(--override-text-scale, 1)), calc(1.7rem * var(--override-text-scale, 1)));
+    font-size: clamp(calc(1rem * var(--override-text-scale, 1)), calc(2.1 * var(--lw, 1vw) * var(--override-text-scale, 1)), calc(1.7rem * var(--override-text-scale, 1)));
     font-weight: 600;
     opacity: 0.9;
 }
@@ -757,30 +769,30 @@ html {
 
 /* --- Horloge : multiplier les clamp() --- */
 .dashboard-widget[class*="widget-scale-"] .horloge-heure {
-    font-size: clamp(calc(48px * var(--ws)), calc(8vw * var(--ws)), calc(120px * var(--ws))) !important;
+    font-size: clamp(calc(48px * var(--ws)), calc(8 * var(--lw, 1vw) * var(--ws)), calc(120px * var(--ws))) !important;
 }
 .dashboard-widget[class*="widget-scale-"] .horloge-date {
-    font-size: clamp(calc(13px * var(--ws)), calc(1.4vw * var(--ws)), calc(20px * var(--ws))) !important;
+    font-size: clamp(calc(13px * var(--ws)), calc(1.4 * var(--lw, 1vw) * var(--ws)), calc(20px * var(--ws))) !important;
 }
 .dashboard-widget[class*="widget-scale-"] .horloge-info {
-    font-size: clamp(calc(10px * var(--ws)), calc(1vw * var(--ws)), calc(14px * var(--ws))) !important;
+    font-size: clamp(calc(10px * var(--ws)), calc(1 * var(--lw, 1vw) * var(--ws)), calc(14px * var(--ws))) !important;
 }
 
 /* --- Météo : multiplier les clamp() --- */
 .dashboard-widget[class*="widget-scale-"] .meteo-icon {
-    font-size: clamp(calc(40px * var(--ws)), calc(5vw * var(--ws)), calc(64px * var(--ws))) !important;
+    font-size: clamp(calc(40px * var(--ws)), calc(5 * var(--lw, 1vw) * var(--ws)), calc(64px * var(--ws))) !important;
 }
 .dashboard-widget[class*="widget-scale-"] .meteo-temp {
-    font-size: clamp(calc(32px * var(--ws)), calc(5vw * var(--ws)), calc(60px * var(--ws))) !important;
+    font-size: clamp(calc(32px * var(--ws)), calc(5 * var(--lw, 1vw) * var(--ws)), calc(60px * var(--ws))) !important;
 }
 .dashboard-widget[class*="widget-scale-"] .meteo-description {
-    font-size: clamp(calc(14px * var(--ws)), calc(2vw * var(--ws)), calc(22px * var(--ws))) !important;
+    font-size: clamp(calc(14px * var(--ws)), calc(2 * var(--lw, 1vw) * var(--ws)), calc(22px * var(--ws))) !important;
 }
 .dashboard-widget[class*="widget-scale-"] .meteo-ville {
-    font-size: clamp(calc(12px * var(--ws)), calc(1.6vw * var(--ws)), calc(16px * var(--ws))) !important;
+    font-size: clamp(calc(12px * var(--ws)), calc(1.6 * var(--lw, 1vw) * var(--ws)), calc(16px * var(--ws))) !important;
 }
 .dashboard-widget[class*="widget-scale-"] .meteo-details {
-    font-size: clamp(calc(11px * var(--ws)), calc(1.5vw * var(--ws)), calc(15px * var(--ws))) !important;
+    font-size: clamp(calc(11px * var(--ws)), calc(1.5 * var(--lw, 1vw) * var(--ws)), calc(15px * var(--ws))) !important;
 }
 
 /* ========== ANIMATIONS MÉTÉO ========== */
@@ -1022,7 +1034,7 @@ html {
     align-items: center;
 }
 .timer-value {
-    font-size: clamp(calc(28px * var(--ws, 1)), calc(4vw * var(--ws, 1)), calc(64px * var(--ws, 1)));
+    font-size: clamp(calc(28px * var(--ws, 1)), calc(4 * var(--lw, 1vw) * var(--ws, 1)), calc(64px * var(--ws, 1)));
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     line-height: 1.1;
@@ -1036,7 +1048,7 @@ html {
     margin-top: 0.15em;
 }
 .timer-sep {
-    font-size: clamp(calc(20px * var(--ws, 1)), calc(3vw * var(--ws, 1)), calc(48px * var(--ws, 1)));
+    font-size: clamp(calc(20px * var(--ws, 1)), calc(3 * var(--lw, 1vw) * var(--ws, 1)), calc(48px * var(--ws, 1)));
     font-weight: 700;
     color: #475569;
     padding-bottom: 1em;

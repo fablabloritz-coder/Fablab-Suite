@@ -190,6 +190,46 @@ class EcransSlidesTests(unittest.TestCase):
         self.assertIn('id="slideEcran"', html)
         self.assertIn('value="2"', html)
 
+    # ---------- Cache du script de configuration ----------
+
+    def test_page_slides_charge_le_script_avec_la_version(self):
+        """`slides.js` change avec les versions : il doit être cache-busté.
+
+        Sans numéro de version, un navigateur qui a déjà chargé le script garde
+        son ancienne copie et n'affiche pas les nouvelles options du panneau de
+        configuration (cas du réglage « missions terminées »).
+        """
+        import re
+        from routes import APP_VERSION
+
+        for url in ('/slides', '/'):
+            html = self.client.get(url).get_data(as_text=True)
+            scripts = re.findall(r'(js/[a-z_]+\.js)\?v=([^"\'&]+)', html)
+            self.assertTrue(scripts, f'aucun script versionné sur {url}')
+            for fichier, version in scripts:
+                self.assertEqual(
+                    version, APP_VERSION,
+                    f'{fichier} chargé avec ?v={version} au lieu de {APP_VERSION}',
+                )
+
+    def test_panneau_dependances_propose_de_masquer_les_terminees(self):
+        """Le réglage doit rester offert, désactivé par défaut.
+
+        Même possibilité que le widget « Missions » : ne pas afficher les
+        missions terminées.
+        """
+        chemin = os.path.join(_APP_DIR, 'static', 'js', 'slides.js')
+        with open(chemin, encoding='utf-8') as fichier:
+            source = fichier.read()
+
+        debut = source.index('fabtrack_dependances:')
+        fin = source.index('imprimantes:', debut)
+        bloc = source[debut:fin]
+
+        self.assertIn('inclure_terminees', bloc)
+        self.assertIn("type: 'checkbox'", bloc)
+        self.assertIn('default: false', bloc)
+
     def test_page_parametres_propose_les_ecrans(self):
         response = self.client.get('/parametres')
         self.assertEqual(response.status_code, 200)

@@ -30,7 +30,7 @@
 .texte-titre {
     font-size: clamp(
         calc(20px * var(--ws, 1) * var(--text-scale, 1)),
-        calc(3.5vw * var(--ws, 1) * var(--text-scale, 1)),
+        calc(3.5 * var(--lw, 1vw) * var(--ws, 1) * var(--text-scale, 1)),
         calc(48px * var(--ws, 1) * var(--text-scale, 1))
     );
     font-weight: 700;
@@ -42,7 +42,7 @@
 .texte-contenu {
     font-size: clamp(
         calc(14px * var(--ws, 1) * var(--text-scale, 1)),
-        calc(2vw * var(--ws, 1) * var(--text-scale, 1)),
+        calc(2 * var(--lw, 1vw) * var(--ws, 1) * var(--text-scale, 1)),
         calc(28px * var(--ws, 1) * var(--text-scale, 1))
     );
     font-weight: 400;

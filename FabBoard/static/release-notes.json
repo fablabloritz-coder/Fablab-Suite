@@ -1,6 +1,109 @@
 {
   "history": [
     {
+      "version": "3.8.12",
+      "date": "2026-11-25",
+      "title": "Défilement automatique : la page courante survit aux rafraîchissements",
+      "notes": [
+        "Widget « Dépendances externes » : chaque rafraîchissement du store (30 s par défaut) réécrivait la liste et relançait le défilement en page 1. La page 2, à 53 px, ne restait affichée que quelques instants.",
+        "Le rendu n'est réécrit que si le HTML change : à contenu identique, la liste, la position de défilement et le minuteur sont conservés. Un vrai changement de contenu repart en page 1, et le minuteur est relancé s'il s'était arrêté.",
+        "Couverture : le pilote Node simule deux pages et deux tours (0 → 200 → 0 → 200) avec un refresh entre chaque ; la page 2 reste à 200 px sans réécriture ni minuteur recréé, et un changement de contenu réécrit une fois puis repart à 0. Vérifié aussi dans la slide sur deux cycles de rafraîchissement réels (intervalle 10 s)."
+      ]
+    },
+    {
+      "version": "3.8.11",
+      "date": "2026-11-25",
+      "title": "Écran de pause : largeur logique sans container-type",
+      "notes": [
+        "Écran de pause : le texte se dimensionne désormais avec `--lw`, la même largeur logique que les widgets (1vw en paysage, 1vh en portrait), au lieu d'unités de conteneur (cqw).",
+        "`container-type` est retiré de l'overlay : plus de containment (layout/style/inline-size) ni de containing block implicite pour d'éventuels descendants fixed, et plus de doublons de déclarations vw/cqw.",
+        "Vérification navigateur : géométrie, centrage, padding et tailles de texte identiques au pixel en paysage, portrait et portrait inversé (1920×1080 et 1440×810) ; modes image et vidéo toujours en 1920×1080, `object-fit: cover`."
+      ]
+    },
+    {
+      "version": "3.8.10",
+      "date": "2026-11-25",
+      "title": "Filtre de services simplifié, message d'attente raccourci",
+      "notes": [
+        "Widget « Dépendances externes » : une seule normalisation (sans accents ni casse) sert désormais au filtre de services, aux statuts et aux regroupements ; le helper `sansAccents` et le remplacement ad hoc de `estTerminee` disparaissent.",
+        "Quand aucun service ne correspond au filtre, le message ne liste plus jusqu'à 8 noms de services (plusieurs lignes sur une TV en portrait) : il reste « Aucune mission en attente des services sélectionnés ».",
+        "Couverture : les six scénarios de filtre du pilote Node sont ramenés à trois — saisie partielle + plusieurs services + accents oubliés, noms complets, aucun résultat — avec une fixture de missions partagée ; le filtre vide reste couvert par les scénarios sans config `services`."
+      ]
+    },
+    {
+      "version": "3.8.9",
+      "date": "2026-11-25",
+      "title": "Échéances du widget Dépendances externes : plus de décalage d'un jour",
+      "notes": [
+        "Widget « Dépendances externes » : une échéance `YYYY-MM-DD` était lue à minuit UTC puis affichée en heure locale. À l'ouest de Greenwich, « 2026-11-15 » s'affichait « 14 nov. » et le décompte « En retard » pouvait glisser d'un jour.",
+        "La date est désormais construite dans le fuseau du navigateur (date civile), sans changer le format ni les seuils des badges.",
+        "Couverture : le pilote Node est rejoué avec `TZ=America/New_York` ; deux scénarios à date fixe vérifient qu'une échéance terminée et une échéance active restent au 15 novembre (échec avec l'ancienne lecture UTC)."
+      ]
+    },
+    {
+      "version": "3.8.8",
+      "date": "2026-11-25",
+      "title": "Filtre de services : la saisie partielle suffit",
+      "notes": [
+        "Widget « Dépendances externes » : le filtre de services exigeait le nom exact — « Imprimerie » n'affichait rien alors que « Imprimerie municipale » fonctionnait.",
+        "La comparaison accepte désormais une saisie partielle, sans tenir compte de la casse ni des accents (« periscolaire » trouve « Périscolaire »). Un nom complet continue de ne sélectionner que lui, et plusieurs saisies séparées par des virgules se cumulent.",
+        "Quand le filtre ne correspond à rien, le message d'attente indique les services connus des missions, pour repérer une faute de frappe.",
+        "Couverture : six scénarios de filtre dans le pilote Node (partiel, nom complet, multi, accents, filtre vide, inconnu)."
+      ]
+    },
+    {
+      "version": "3.8.7",
+      "date": "2026-11-25",
+      "title": "Réglage des missions terminées à nouveau visible",
+      "notes": [
+        "Widget « Dépendances externes » : le réglage « Inclure les missions terminées » n'apparaissait pas dans le panneau de configuration d'un navigateur ayant déjà ouvert la page Slides — `slides.js` était chargé avec un numéro de cache figé (`?v=20260308-no-tenor`). Il suit désormais la version de l'application, comme `dashboard.js`.",
+        "Le widget garde donc, comme le widget « Missions » avec « Afficher Terminé », la possibilité de ne pas afficher les missions terminées : case décochée par défaut, elles sont masquées.",
+        "Couverture : test des pages (tous les scripts doivent être versionnés par `app_version`) et test du panneau de configuration du widget (case `inclure_terminees`, décochée par défaut)."
+      ]
+    },
+    {
+      "version": "3.8.6",
+      "date": "2026-11-25",
+      "title": "Dépendances externes : défilement automatique",
+      "notes": [
+        "Widget « Dépendances externes » : dans une cellule 2×2, la liste dépassait la cellule et défilait en interne, mais personne ne fait défiler une TV — les groupes au-delà du visible restaient inaccessibles.",
+        "La vue avance désormais seule : une page toutes les 10 s, chaque page démarrant sur une mission entière, puis retour en haut après la dernière. Rien ne bouge quand tout tient dans la cellule.",
+        "La barre de défilement est masquée, elle n'avait plus d'utilité.",
+        "Couverture : calcul des pages testé sous Node (contenu qui tient, alignement sur le haut des missions, bornes désordonnées, cas réel de la slide) ; cadence et remise en haut vérifiées dans une slide 2×2 à 1920×1080."
+      ]
+    },
+    {
+      "version": "3.8.5",
+      "date": "2026-11-25",
+      "title": "Dépendances externes lisible à distance",
+      "notes": [
+        "Widget « Dépendances externes » : à l'échelle 1 sur une TV 1920×1080, les titres de mission tombaient à 11,5 px et les badges à 8,8 px, illisibles à distance.",
+        "Les tailles de texte suivent désormais la largeur logique de l'écran (`--lw`) avec des bornes basses et hautes : à 1920×1080 en échelle 1, titre de mission ~18 px, étape ~15 px, badges ~13 px. Les échelles 1,25 à 4 restent multiplicatives.",
+        "Vérification navigateur dans une vraie slide 2×2 à 1920×1080 (paysage, échelle 1) : tailles relevées, aucun débordement horizontal, liste défilante conservée."
+      ]
+    },
+    {
+      "version": "3.8.4",
+      "date": "2026-11-25",
+      "title": "Missions terminées lisibles dans les dépendances",
+      "notes": [
+        "Widget « Dépendances externes » : une mission terminée pouvait s'afficher « À faire » avec une échéance « En retard (10j) ». Le badge « Terminé » s'appuie désormais sur un statut normalisé (casse, accents) et, à défaut de statut, sur `completed_at` des payloads antérieurs au marqueur.",
+        "L'échéance d'une mission terminée reste affichée pour situer la mission, en style neutre : plus de « En retard » ni d'« Aujourd'hui ».",
+        "L'option « Inclure les missions terminées » accepte aussi 1 et \"1\", pour les configurations éditées à la main qui la laissaient sans effet.",
+        "Couverture : pilote Node `FabBoard/tests/js/dependances_widget_check.js` et 7 tests unittest sur le rendu (statut, échéance neutre, option, non-régression d'une mission active en retard)."
+      ]
+    },
+    {
+      "version": "3.8.3",
+      "date": "2026-11-25",
+      "title": "Texte des widgets à l'échelle de la largeur logique",
+      "notes": [
+        "Les tailles de texte des widgets (horloge, météo, texte libre, timer) étaient en vw, c'est-à-dire sur la largeur physique du viewport : en portrait le body est tourné, sa largeur logique est plus étroite, et l'horloge débordait de sa cellule (438 px de contenu pour 384 px de place).",
+        "Nouvelle variable --lw (1vw en paysage, 1vh en portrait et portrait inversé) utilisée par les widgets : le rendu paysage reste identique au pixel, le portrait se dimensionne sur la largeur réelle de l'écran.",
+        "Vérification navigateur : horloge et widget texte mesurés en paysage, portrait et portrait inversé, débordement de cellule contrôlé dans les deux portraits."
+      ]
+    },
+    {
       "version": "3.8.2",
       "date": "2026-11-25",
       "title": "Texte de pause lisible en portrait",

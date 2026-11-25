@@ -44,12 +44,12 @@
 }
 
 .meteo-icon {
-    font-size: clamp(40px, 5vw, 64px);
+    font-size: clamp(40px, calc(5 * var(--lw, 1vw)), 64px);
     margin-bottom: 8px;
 }
 
 .meteo-temp {
-    font-size: clamp(32px, 5vw, 60px);
+    font-size: clamp(32px, calc(5 * var(--lw, 1vw)), 60px);
     font-weight: 700;
     line-height: 1;
     margin-bottom: 8px;
@@ -57,7 +57,7 @@
 }
 
 .meteo-description {
-    font-size: clamp(14px, 2vw, 22px);
+    font-size: clamp(14px, calc(2 * var(--lw, 1vw)), 22px);
     font-weight: 500;
     margin-bottom: 6px;
     text-transform: capitalize;
@@ -65,7 +65,7 @@
 }
 
 .meteo-ville {
-    font-size: clamp(12px, 1.6vw, 16px);
+    font-size: clamp(12px, calc(1.6 * var(--lw, 1vw)), 16px);
     color: #64748b;
     margin-bottom: 12px;
 }
@@ -74,7 +74,7 @@
     display: flex;
     justify-content: center;
     gap: 16px;
-    font-size: clamp(11px, 1.5vw, 15px);
+    font-size: clamp(11px, calc(1.5 * var(--lw, 1vw)), 15px);
     color: #64748b;
 }
 
@@ -83,7 +83,7 @@
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    font-size: clamp(13px, 1.8vw, 18px);
+    font-size: clamp(13px, calc(1.8 * var(--lw, 1vw)), 18px);
     color: #475569;
 }
 
