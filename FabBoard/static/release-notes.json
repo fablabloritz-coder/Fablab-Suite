@@ -8,7 +8,8 @@
         "Widget « Dépendances externes » : chaque rafraîchissement du store (30 s par défaut) réécrivait la liste et relançait le défilement en page 1. La page 2, à 53 px, ne restait affichée que quelques instants.",
         "Le rendu n'est réécrit que si le HTML change : à contenu identique, la liste, la position de défilement et le minuteur sont conservés. Un vrai changement de contenu repart en page 1, et le minuteur est relancé s'il s'était arrêté.",
         "Couverture : le pilote Node simule deux pages et deux tours (0 → 200 → 0 → 200) avec un refresh entre chaque ; la page 2 reste à 200 px sans réécriture ni minuteur recréé, et un changement de contenu réécrit une fois puis repart à 0. Vérifié aussi dans la slide sur deux cycles de rafraîchissement réels (intervalle 10 s)."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.8.12"
     },
     {
       "version": "3.8.11",
