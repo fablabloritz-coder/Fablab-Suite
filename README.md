@@ -513,6 +513,63 @@ Codes de sortie : `0` snapshots sains, `3` au moins un snapshot dégradé,
 Cette distinction permet aux automatisations de ne signaler que les vraies
 dégradations.
 
+### Copier les sauvegardes hors-site
+
+```bash
+# copie le dernier snapshot valide vers un disque externe ou un NAS monté
+./fabsuite-ubuntu.sh copy-offsite --dest /media/sauvegardes
+./fabsuite-ubuntu.sh copy-offsite --snapshot ~/backup-fabsuite/suite-2026-11-22-033000 --dest /media/sauvegardes
+```
+
+- La source est vérifiée avant toute écriture : un snapshot dégradé n'est
+  jamais propagé (code 3, rien n'est copié).
+- Chaque fichier est recopié puis revalidé dans un dossier temporaire qui ne
+  prend le nom du snapshot qu'après vérification : une copie interrompue ne
+  laisse pas de faux snapshot sur la cible.
+- Une copie déjà présente et identique est signalée `deja a jour` sans être
+  refaite ; une copie différente n'est jamais écrasée (message explicite).
+- La rotation de la cible suit `FABSUITE_BACKUP_RETENTION_COUNT` /
+  `FABSUITE_BACKUP_RETENTION_DAYS` ; la copie qui vient d'être écrite et la
+  dernière copie valide sont toujours conservées.
+- `FABSUITE_BACKUP_COPY_DIR=/media/sauvegardes` lance la copie automatiquement
+  après chaque `backup` réussi. Un échec de la copie (disque absent, plein)
+  n'invalide pas le snapshot local : il est signalé par `[copy] ATTENTION` et
+  le code de sortie de `backup` reste 0.
+
+### Répéter une restauration (drill)
+
+```bash
+./fabsuite-ubuntu.sh drill                     # dernier snapshot valide
+./fabsuite-ubuntu.sh drill --snapshot ~/backup-fabsuite/suite-2026-11-22-033000 --dest /srv/tmp
+```
+
+`drill` restaure le snapshot dans un staging temporaire, contrôle l'intégrité
+SQLite des fichiers extraits, puis supprime le staging : c'est la répétition
+réelle d'une reprise, sans toucher aux données en service. Le dossier d'essai
+n'est jamais conservé, même en cas d'échec. Sortie : `0` restauration d'essai
+réussie, `3` snapshot dégradé ou extraction refusée, `2` aucun snapshot valide.
+À planifier (une fois par mois par exemple) pour vérifier que les sauvegardes
+restent réellement restaurables.
+
+### Rapport et sauvegarde périmée
+
+```bash
+./fabsuite-ubuntu.sh report --target /media/sauvegardes
+./fabsuite-ubuntu.sh stale --max-age-days 7
+```
+
+`report` résume la racine sans rien modifier : nombre de snapshots valides et
+invalides, dernier snapshot valide et son âge, volume total, état de la copie
+hors-site (`a jour`, `absente`, `different de la source`).
+
+`stale` pose le marqueur `~/backup-fabsuite/backup-stale` quand le dernier
+snapshot valide dépasse `FABSUITE_BACKUP_MAX_AGE_DAYS` jours (défaut 7, même
+seuil que la ligne « Dernier snapshot valide » du GUI) et le retire dès qu'un
+snapshot frais existe. Codes de sortie : `0` frais, `4` périmé, `2` contrôle
+impossible. Le marqueur n'est pas traité par `clear-markers` (qui ne gère que
+`backup-failed` et `verify-degrade`) : acquitter une alerte n'est pas une
+preuve de sauvegarde récente.
+
 ### Timers planifiés (sauvegarde et vérification)
 
 Deux timers systemd indépendants planifient les opérations récurrentes :

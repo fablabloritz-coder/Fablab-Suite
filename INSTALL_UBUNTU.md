@@ -80,6 +80,16 @@ Ce que fait la commande:
 ./fabsuite-ubuntu.sh verify --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
 ./fabsuite-ubuntu.sh verify --all
 
+# Copier le dernier snapshot valide vers un disque externe / NAS monté
+./fabsuite-ubuntu.sh copy-offsite --dest /media/sauvegardes
+
+# Répéter une restauration (staging temporaire vérifié puis supprimé)
+./fabsuite-ubuntu.sh drill
+
+# Rapport (dernier snapshot, âge, copie hors-site) et sauvegarde périmée
+./fabsuite-ubuntu.sh report --target /media/sauvegardes
+./fabsuite-ubuntu.sh stale --max-age-days 7
+
 # Acquitter les marqueurs (verify-degrade : après un verify --all sain ;
 # backup-failed : après un snapshot valide postérieur à l'échec)
 ./fabsuite-ubuntu.sh clear-markers

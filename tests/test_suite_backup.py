@@ -75,6 +75,40 @@ def extraire(archive, destination):
         tar.extractall(destination)
 
 
+def creer_snapshot_simple(root, dest, horodatage=None):
+    """Snapshot minimal (une base + un upload) reutilise par les tests de service."""
+    data = suite_backup.Source("Fabtrack", "data", root / "source/data")
+    if not (data.path / "fabtrack.db").is_file():
+        creer_base(data.path / "fabtrack.db")
+    uploads = suite_backup.Source("Fabtrack", "uploads", root / "source/uploads")
+    uploads.path.mkdir(parents=True, exist_ok=True)
+    (uploads.path / "photo.bin").write_bytes(b"photo-service")
+    return suite_backup.creer_snapshot([data, uploads], dest, horodatage=horodatage)
+
+
+def vieillir_snapshot(dossier, jours):
+    """Deplace `created_at` dans le passe et re-signe le marqueur du snapshot."""
+    manifeste = dossier / "manifest.json"
+    donnees = json.loads(manifeste.read_text(encoding="utf-8"))
+    donnees["created_at"] = (
+        datetime.now().astimezone() - timedelta(days=jours)
+    ).isoformat(timespec="seconds")
+    manifeste.write_text(
+        json.dumps(donnees, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    (dossier / "snapshot.ok").write_text(
+        "\n".join(
+            (
+                f"snapshot={dossier.name}",
+                f"created_at={donnees['created_at']}",
+                f"manifest_sha256={suite_backup._sha256(manifeste)}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+
 class SnapshotTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -3513,6 +3547,598 @@ class VerrouCommunTest(unittest.TestCase):
             os.environ, {"FABSUITE_COMMON_LOCK_FILE": str(chemin)}
         ):
             self.assertEqual(suite_backup._verrou_commun_path(), chemin)
+
+
+class CopyOffsiteTest(unittest.TestCase):
+    """Copie d'un snapshot verifie vers une cible hors-site."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+        self.cible = self.root / "hors-site"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _snapshot(self, horodatage=None):
+        resultat = creer_snapshot_simple(self.root, self.dest, horodatage)
+        self.assertEqual(resultat.status, "ok", resultat.errors)
+        return resultat.directory
+
+    def test_copie_le_snapshot_et_le_revalide(self):
+        snapshot = self._snapshot()
+
+        resultat = suite_backup.copier_snapshot(snapshot, self.cible)
+
+        self.assertEqual(resultat.errors, [])
+        self.assertTrue(resultat.copied)
+        self.assertEqual(resultat.destination, self.cible / snapshot.name)
+        verification = suite_backup.verifier_snapshot(resultat.destination)
+        self.assertTrue(verification.ok, verification.errors)
+        self.assertEqual(verification.verified_archives, 2)
+        # Aucun dossier temporaire ne survit a la copie.
+        self.assertEqual(
+            [entree.name for entree in self.cible.iterdir()], [snapshot.name]
+        )
+
+    def test_deuxieme_copie_est_signalee_a_jour(self):
+        snapshot = self._snapshot()
+        suite_backup.copier_snapshot(snapshot, self.cible)
+
+        resultat = suite_backup.copier_snapshot(snapshot, self.cible)
+
+        self.assertEqual(resultat.errors, [])
+        self.assertTrue(resultat.up_to_date)
+        self.assertFalse(resultat.copied)
+
+    def test_refuse_une_copie_existante_differente(self):
+        snapshot = self._snapshot()
+        suite_backup.copier_snapshot(snapshot, self.cible)
+        archive = self.cible / snapshot.name / "Fabtrack-data.tgz"
+        archive.write_bytes(b"altere")
+
+        resultat = suite_backup.copier_snapshot(snapshot, self.cible)
+
+        self.assertTrue(
+            any("copie existante differente" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+        # La copie alteree n'est ni reparee ni remplacee silencieusement.
+        self.assertEqual(archive.read_bytes(), b"altere")
+
+    def test_refuse_un_snapshot_degrade(self):
+        snapshot = self._snapshot()
+        (snapshot / "Fabtrack-data.tgz").write_bytes(b"corrompu")
+
+        resultat = suite_backup.copier_snapshot(snapshot, self.cible)
+
+        self.assertTrue(resultat.degraded)
+        self.assertTrue(
+            any("archive alteree" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+        self.assertFalse((self.cible / snapshot.name).exists())
+
+    def test_refuse_une_cible_en_lien_symbolique(self):
+        snapshot = self._snapshot()
+        self.cible.symlink_to(self.root / "ailleurs")
+
+        resultat = suite_backup.copier_snapshot(snapshot, self.cible)
+
+        self.assertTrue(
+            any("lien symbolique" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+
+    def test_refuse_le_dossier_source_comme_cible(self):
+        snapshot = self._snapshot()
+
+        resultat = suite_backup.copier_snapshot(snapshot, self.dest)
+
+        self.assertTrue(
+            any("identique au dossier source" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+
+    def test_applique_la_retention_sur_la_cible(self):
+        premier = self._snapshot("2026-11-19-120000")
+        deuxieme = self._snapshot("2026-11-20-120000")
+        troisieme = self._snapshot("2026-11-21-120000")
+
+        for snapshot in (premier, deuxieme, troisieme):
+            resultat = suite_backup.copier_snapshot(
+                snapshot, self.cible, retention_count=2
+            )
+            self.assertEqual(resultat.errors, [], resultat.errors)
+
+        restants = sorted(entree.name for entree in self.cible.iterdir())
+        self.assertEqual(restants, sorted([deuxieme.name, troisieme.name]))
+
+    def test_cli_copie_affiche_le_statut(self):
+        snapshot = self._snapshot()
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "copy",
+                "--dest",
+                str(self.dest),
+                "--target",
+                str(self.cible),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        sortie = processus.stdout + processus.stderr
+        self.assertEqual(processus.returncode, 0, sortie)
+        self.assertIn("[copy] statut: ok", sortie)
+        self.assertIn(snapshot.name, sortie)
+        self.assertTrue((self.cible / snapshot.name / "snapshot.ok").is_file())
+
+    def test_cli_copie_sans_snapshot_valide(self):
+        vide = self.root / "vide"
+        vide.mkdir()
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "copy",
+                "--dest",
+                str(vide),
+                "--target",
+                str(self.cible),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        self.assertEqual(processus.returncode, 2, processus.stderr)
+        self.assertIn("aucun snapshot valide", processus.stderr)
+
+    def test_cli_copie_snapshot_degrade_code_3(self):
+        snapshot = self._snapshot()
+        (snapshot / "Fabtrack-data.tgz").write_bytes(b"corrompu")
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "copy",
+                "--dest",
+                str(self.dest),
+                "--target",
+                str(self.cible),
+                "--snapshot",
+                str(snapshot),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        self.assertEqual(processus.returncode, 3, processus.stderr)
+        self.assertIn("[copy] ECHEC", processus.stderr)
+        self.assertFalse((self.cible / snapshot.name).exists())
+
+
+class DrillTest(unittest.TestCase):
+    """Restauration d'essai (drill) dans un staging temporaire supprime apres."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _snapshot(self, horodatage=None):
+        resultat = creer_snapshot_simple(self.root, self.dest, horodatage)
+        self.assertEqual(resultat.status, "ok", resultat.errors)
+        return resultat.directory
+
+    def test_restaure_puis_supprime_le_staging(self):
+        snapshot = self._snapshot()
+
+        resultat = suite_backup.drill_snapshot(snapshot)
+
+        self.assertTrue(resultat.ok, resultat.errors)
+        self.assertIn("Fabtrack/data", resultat.restored)
+        self.assertGreater(resultat.fichiers, 0)
+        self.assertGreaterEqual(resultat.duration_seconds, 0)
+        self.assertFalse(resultat.destination.exists())
+
+    def test_refuse_un_snapshot_degrade_sans_laisser_de_staging(self):
+        snapshot = self._snapshot()
+        (snapshot / "Fabtrack-data.tgz").write_bytes(b"corrompu")
+
+        resultat = suite_backup.drill_snapshot(snapshot)
+
+        self.assertFalse(resultat.ok)
+        self.assertTrue(
+            any("archive alteree" in erreur for erreur in resultat.errors),
+            resultat.errors,
+        )
+        self.assertFalse(resultat.destination.exists())
+
+    def test_cli_choisit_le_dernier_snapshot_valide(self):
+        valide = self._snapshot("2026-11-19-120000")
+        casse = self._snapshot("2026-11-20-120000")
+        vieillir_snapshot(valide, 2)
+        # Manifeste illisible : le snapshot le plus recent n'est plus valide.
+        (casse / "manifest.json").write_text("{}\n", encoding="utf-8")
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "drill",
+                "--dest",
+                str(self.dest),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        sortie = processus.stdout + processus.stderr
+        self.assertEqual(processus.returncode, 0, sortie)
+        self.assertIn(f"[drill] snapshot: {valide}", sortie)
+        self.assertIn("[drill] statut: ok", sortie)
+        self.assertNotIn(casse.name, sortie)
+
+    def test_cli_sans_snapshot_valide(self):
+        vide = self.root / "vide"
+        vide.mkdir()
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "drill",
+                "--dest",
+                str(vide),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        self.assertEqual(processus.returncode, 2, processus.stderr)
+        self.assertIn("aucun snapshot valide", processus.stderr)
+
+    def test_cli_signale_un_snapshot_degrade(self):
+        snapshot = self._snapshot()
+        (snapshot / "Fabtrack-data.tgz").write_bytes(b"corrompu")
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "drill",
+                "--snapshot",
+                str(snapshot),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        self.assertEqual(processus.returncode, 3, processus.stderr)
+        self.assertIn("[drill] ERROR:", processus.stderr)
+        self.assertIn("[drill] ECHEC", processus.stderr)
+
+
+class ReportTest(unittest.TestCase):
+    """Rapport lecture seule du dossier de snapshots."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+        self.cible = self.root / "hors-site"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _snapshot(self, horodatage=None):
+        resultat = creer_snapshot_simple(self.root, self.dest, horodatage)
+        self.assertEqual(resultat.status, "ok", resultat.errors)
+        return resultat.directory
+
+    def test_resume_les_snapshots_et_l_age(self):
+        snapshot = self._snapshot()
+        vieillir_snapshot(snapshot, 2)
+
+        rapport = suite_backup.rapport_sauvegardes(self.dest, max_age_days=7)
+
+        self.assertEqual(rapport.total, 1)
+        self.assertEqual(rapport.valides, 1)
+        self.assertEqual(rapport.invalides, [])
+        self.assertEqual(rapport.dernier, snapshot)
+        self.assertAlmostEqual(rapport.age_jours, 2.0, delta=0.1)
+        self.assertFalse(rapport.perime)
+        self.assertGreater(rapport.octets, 0)
+
+    def test_signale_un_snapshot_invalide(self):
+        snapshot = self._snapshot()
+        (snapshot / "manifest.json").write_text("{}\n", encoding="utf-8")
+
+        rapport = suite_backup.rapport_sauvegardes(self.dest)
+
+        self.assertEqual(rapport.total, 1)
+        self.assertEqual(rapport.valides, 0)
+        self.assertEqual(rapport.invalides, [snapshot.name])
+        self.assertIsNone(rapport.dernier)
+        self.assertTrue(rapport.perime)
+
+    def test_compare_la_copie_hors_site(self):
+        snapshot = self._snapshot()
+
+        rapport = suite_backup.rapport_sauvegardes(self.dest, target=self.cible)
+        self.assertIsNone(rapport.copy_dernier)
+        self.assertFalse(rapport.copy_a_jour)
+
+        suite_backup.copier_snapshot(snapshot, self.cible)
+        rapport = suite_backup.rapport_sauvegardes(self.dest, target=self.cible)
+        self.assertTrue(rapport.copy_a_jour)
+
+        (self.cible / snapshot.name / "Fabtrack-uploads.tgz").write_bytes(b"x")
+        rapport = suite_backup.rapport_sauvegardes(self.dest, target=self.cible)
+        self.assertFalse(rapport.copy_a_jour)
+
+    def test_cli_affiche_le_rapport(self):
+        self._snapshot()
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "report",
+                "--dest",
+                str(self.dest),
+                "--target",
+                str(self.cible),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        sortie = processus.stdout + processus.stderr
+        self.assertEqual(processus.returncode, 0, sortie)
+        self.assertIn(
+            "[report] snapshots: 1 (1 valide(s), 0 invalide(s))", sortie
+        )
+        self.assertIn("[report] copie hors-site", sortie)
+        self.assertIn("(absente)", sortie)
+        self.assertIn("[report] perime: 0", sortie)
+        self.assertIn("[report] statut: ok", sortie)
+
+
+class StaleMarkerTest(unittest.TestCase):
+    """Marqueur `backup-stale` pose quand la sauvegarde est trop ancienne."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.dest = self.root / "sauvegardes"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _snapshot(self, horodatage=None):
+        resultat = creer_snapshot_simple(self.root, self.dest, horodatage)
+        self.assertEqual(resultat.status, "ok", resultat.errors)
+        return resultat.directory
+
+    def test_pose_le_marqueur_quand_la_sauvegarde_est_perimee(self):
+        snapshot = self._snapshot()
+        vieillir_snapshot(snapshot, 10)
+
+        etat = suite_backup.marqueur_sauvegarde_perimee(self.dest, max_age_days=7)
+
+        self.assertTrue(etat.stale)
+        self.assertEqual(etat.errors, [])
+        self.assertTrue(etat.marker.is_file())
+        contenu = etat.marker.read_text(encoding="utf-8")
+        self.assertIn("PERIME", contenu)
+        self.assertIn(snapshot.name, contenu)
+
+    def test_retire_le_marqueur_des_qu_un_snapshot_est_frais(self):
+        snapshot = self._snapshot()
+        vieillir_snapshot(snapshot, 10)
+        suite_backup.marqueur_sauvegarde_perimee(self.dest, max_age_days=7)
+        vieillir_snapshot(snapshot, 0)
+
+        etat = suite_backup.marqueur_sauvegarde_perimee(self.dest, max_age_days=7)
+
+        self.assertFalse(etat.stale)
+        self.assertFalse(etat.marker.exists())
+
+    def test_sans_snapshot_le_marqueur_est_pose(self):
+        self.dest.mkdir()
+
+        etat = suite_backup.marqueur_sauvegarde_perimee(self.dest)
+
+        self.assertTrue(etat.stale)
+        self.assertIsNone(etat.dernier)
+        self.assertIn("aucun snapshot valide", etat.marker.read_text(encoding="utf-8"))
+
+    def test_refuse_un_marqueur_en_lien_symbolique(self):
+        snapshot = self._snapshot()
+        vieillir_snapshot(snapshot, 10)
+        ailleurs = self.root / "ailleurs.txt"
+        ailleurs.write_text("intact\n", encoding="utf-8")
+        (self.dest / "backup-stale").symlink_to(ailleurs)
+
+        etat = suite_backup.marqueur_sauvegarde_perimee(self.dest, max_age_days=7)
+
+        self.assertTrue(
+            any("lien symbolique" in erreur for erreur in etat.errors),
+            etat.errors,
+        )
+        self.assertEqual(ailleurs.read_text(encoding="utf-8"), "intact\n")
+
+    def test_cli_code_4_quand_la_sauvegarde_est_perimee(self):
+        snapshot = self._snapshot()
+        vieillir_snapshot(snapshot, 10)
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "stale",
+                "--dest",
+                str(self.dest),
+                "--max-age-days",
+                "7",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        sortie = processus.stdout + processus.stderr
+        self.assertEqual(processus.returncode, 4, sortie)
+        self.assertIn("[stale] etat: perime", sortie)
+        self.assertTrue((self.dest / "backup-stale").is_file())
+
+    def test_cli_code_0_quand_un_snapshot_est_frais(self):
+        self._snapshot()
+
+        processus = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "suite_backup.py"),
+                "stale",
+                "--dest",
+                str(self.dest),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        sortie = processus.stdout + processus.stderr
+        self.assertEqual(processus.returncode, 0, sortie)
+        self.assertIn("[stale] etat: frais", sortie)
+        self.assertFalse((self.dest / "backup-stale").exists())
+
+
+class HelperOffsiteIntegrationTest(unittest.TestCase):
+    """Actions de service du helper : copie hors-site, drill, rapport, stale."""
+
+    def test_l_action_backup_copie_aussi_hors_site(self):
+        if not shutil.which("bash"):
+            self.skipTest("bash indisponible")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            install = racine / "suite"
+            install.mkdir()
+            shutil.copy2(ROOT / "suite_backup.py", install / "suite_backup.py")
+            creer_base(install / "FabHome/data/fabhome.db")
+
+            installer = racine / "installer"
+            installer.mkdir()
+            shutil.copy2(ROOT / "fabsuite-ubuntu.sh", installer / "fabsuite-ubuntu.sh")
+            backups = racine / "backups"
+            cible = racine / "hors-site"
+            env_file = installer / "fabsuite-ubuntu.env"
+            env_file.write_text(
+                "\n".join(
+                    (
+                        "GIT_REPO_URL=https://github.com/fablabloritz-coder/Fablab-Suite.git",
+                        "GIT_BRANCH=main",
+                        f"INSTALL_DIR={install}",
+                        'APPS="FabHome Fabtrack PretGo FabBoard FabInventory"',
+                        "FLASK_SECRET_KEY=test-secret",
+                        "FABHOME_DATA_PATH=./data",
+                        "FABHOME_ICONS_PATH=./icons",
+                        f"FABSUITE_BACKUP_DIR={backups}",
+                        f"FABSUITE_BACKUP_COPY_DIR={cible}",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            faux_bin = racine / "bin"
+            faux_bin.mkdir()
+            faux_docker = faux_bin / "docker"
+            faux_docker.write_text(
+                "#!/usr/bin/env bash\n"
+                'if [[ "$1" == "compose" && "$2" == "version" ]]; then exit 0; fi\n'
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            faux_docker.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{faux_bin}:{env['PATH']}"
+            env["HOME"] = str(racine / "home")
+            env["NON_INTERACTIVE"] = "1"
+            env.pop("FABSUITE_BACKUP_COPY_DIR", None)
+            processus = subprocess.run(
+                [
+                    "bash",
+                    str(installer / "fabsuite-ubuntu.sh"),
+                    "backup",
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=installer,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+            sortie = processus.stdout + processus.stderr
+            self.assertEqual(processus.returncode, 0, sortie)
+            self.assertIn("[copy] statut: ok", sortie)
+            snapshots = list(backups.glob("suite-*"))
+            self.assertEqual(len(snapshots), 1, sortie)
+            copie = cible / snapshots[0].name
+            self.assertTrue((copie / "snapshot.ok").is_file(), sortie)
+            self.assertTrue((copie / "FabHome-data.tgz").is_file(), sortie)
+
+    def test_le_helper_expose_les_actions_de_service(self):
+        script = (ROOT / "fabsuite-ubuntu.sh").read_text(encoding="utf-8")
+
+        for action, fonction in (
+            ("copy-offsite", "run_suite_copy_offsite"),
+            ("drill", "run_suite_drill"),
+            ("report", "run_suite_report"),
+            ("stale", "run_suite_stale"),
+        ):
+            self.assertIn(f"{action})", script)
+            self.assertIn(f"{fonction}()", script)
+        self.assertIn("FABSUITE_BACKUP_COPY_DIR", script)
+        self.assertIn("--max-age-days", script)
+        self.assertIn("2026-11-22-suite-backup-v20", script)
+
+        module = (ROOT / "suite_backup.py").read_text(encoding="utf-8")
+        for nom in (
+            "def copier_snapshot",
+            "def drill_snapshot",
+            "def rapport_sauvegardes",
+            "def marqueur_sauvegarde_perimee",
+            "FABSUITE_BACKUP_MAX_AGE_DAYS",
+        ):
+            self.assertIn(nom, module)
+
+        if shutil.which("bash"):
+            subprocess.run(
+                ["bash", "-n", str(ROOT / "fabsuite-ubuntu.sh")], check=True
+            )
 
 
 if __name__ == "__main__":

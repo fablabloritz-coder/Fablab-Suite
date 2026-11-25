@@ -22,6 +22,10 @@ Usage direct :
     python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide>
     python3 suite_backup.py restore --snapshot <dossier> --dest <dossier vide> \
         --source Fabtrack/data --source Fabtrack/uploads
+    python3 suite_backup.py copy --dest ~/backup-fabsuite --target /media/sauvegardes
+    python3 suite_backup.py drill --dest ~/backup-fabsuite
+    python3 suite_backup.py report --dest ~/backup-fabsuite [--target /media/sauvegardes]
+    python3 suite_backup.py stale --dest ~/backup-fabsuite
 
 Apres un snapshot valide, la retention supprime les snapshots hors quota
 (nombre via `FABSUITE_BACKUP_RETENTION_COUNT`, ou age via
@@ -37,6 +41,24 @@ contenu de chaque archive (chemins, lisibilite, integrite SQLite). `--all`
 controle tous les snapshots dates du dossier `--dest` et sort en 2 si l'un
 d'entre eux est invalide, pour detecter une degradation avant un restore.
 
+`copy` recopie le dernier snapshot valide (ou `--snapshot`) vers un dossier
+cible hors-site (disque externe, NAS monte). La source est verifiee avant la
+copie, chaque fichier est recopie puis revalide (sha256, marqueur, archives)
+dans un dossier temporaire renomme seulement a la fin : une copie partielle
+ne porte jamais le nom du snapshot. Une copie deja presente et identique est
+signalee sans etre refaite ; la retention s'applique ensuite sur la cible.
+
+`drill` restaure le snapshot dans un staging temporaire, verifie les bases
+extraites puis supprime le staging : c'est la repetition reelle d'une
+restauration, sans toucher aux donnees en service.
+
+`report` resume le dossier (nombre de snapshots, dernier valide et son age,
+volume, etat de la copie hors-site) sans rien modifier. `stale` pose le
+marqueur `backup-stale` quand le dernier snapshot valide depasse
+`FABSUITE_BACKUP_MAX_AGE_DAYS` jours (defaut 7), et le retire des qu'un
+snapshot frais existe.
+
+
 Par defaut tous les volumes du snapshot sont restaures. `--source APP|ROLE`
 (repetable) restreint la restauration aux volumes demandes (ou `APP/ROLE`) :
 les controles du snapshot restent identiques, chaque archive retenue est
@@ -45,8 +67,9 @@ refuse toute la restauration.
 
 Sortie : 0 si les snapshots verifies sont valides (ou la restauration
 reussie), 3 si un snapshot existant est degrade (manifeste, marqueur, sha256,
-archive ou base SQLite), 2 si la verification ne peut pas s'executer
-(arguments, dossier sans snapshot, module ancien).
+archive ou base SQLite), 4 si la sauvegarde est perimee (`stale`), 2 si
+l'operation ne peut pas s'executer (arguments, dossier sans snapshot, module
+ancien).
 """
 from __future__ import annotations
 
@@ -62,6 +85,7 @@ import sqlite3
 import sys
 import tarfile
 import tempfile
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -75,6 +99,12 @@ FORMAT_VERSION = 1
 # Code de sortie reserve aux snapshots reellement degrades (3), pour distinguer
 # une verification impossible (2 : arguments, dossier vide, module ancien).
 EXIT_SNAPSHOT_DEGRADE = 3
+# Sauvegarde perimee (4) : aucun snapshot valide assez recent, distinct d'un
+# snapshot degrade et d'une verification impossible.
+EXIT_SAUVEGARDE_PERIMEE = 4
+# Age au-dela duquel `stale` signale la sauvegarde comme perimee. Meme seuil
+# que la ligne « Dernier snapshot valide » du GUI.
+AGE_MAX_DEFAUT_JOURS = 7
 SQLITE_MAGIC = b"SQLite format 3\x00"
 NOM_VALIDE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 NOM_SNAPSHOT = re.compile(r"^suite-(\d{4}-\d{2}-\d{2}-\d{6})(?:-[A-Za-z0-9._-]+)?$")
@@ -764,6 +794,365 @@ def verifier_snapshot(snapshot: Path | str) -> VerifyResult:
     return resultat
 
 
+@dataclass
+class CopyResult:
+    """Copie d'un snapshot vers une cible hors-site (disque externe, NAS)."""
+
+    snapshot: Path | None
+    root: Path
+    destination: Path | None = None
+    copied: bool = False
+    up_to_date: bool = False
+    degraded: bool = False
+    fichiers: int = 0
+    octets: int = 0
+    supprimes: list[Path] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DrillResult:
+    """Restauration d'essai dans un staging temporaire puis supprime."""
+
+    snapshot: Path | None
+    destination: Path | None = None
+    ok: bool = False
+    restored: list[str] = field(default_factory=list)
+    fichiers: int = 0
+    duration_seconds: float = 0.0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ReportResult:
+    """Synthese d'un dossier de snapshots (lecture seule)."""
+
+    destination: Path
+    total: int = 0
+    valides: int = 0
+    invalides: list[str] = field(default_factory=list)
+    dernier: Path | None = None
+    age_jours: float | None = None
+    octets: int = 0
+    copy_root: Path | None = None
+    copy_dernier: Path | None = None
+    copy_a_jour: bool = False
+    perime: bool = False
+    max_age_days: int = AGE_MAX_DEFAUT_JOURS
+
+
+@dataclass
+class StaleState:
+    """Etat du marqueur `backup-stale` apres mise a jour."""
+
+    destination: Path
+    marker: Path
+    stale: bool = False
+    dernier: Path | None = None
+    age_jours: float | None = None
+    max_age_days: int = AGE_MAX_DEFAUT_JOURS
+    errors: list[str] = field(default_factory=list)
+
+
+def _age_max_depuis_env(brut: int | None = None) -> int:
+    """Seuil de peremption : argument, puis `FABSUITE_BACKUP_MAX_AGE_DAYS`."""
+    if brut is not None:
+        return int(brut)
+    valeur = os.environ.get("FABSUITE_BACKUP_MAX_AGE_DAYS", "").strip()
+    if not valeur:
+        return AGE_MAX_DEFAUT_JOURS
+    try:
+        return int(valeur)
+    except ValueError:
+        raise SnapshotError(
+            f"FABSUITE_BACKUP_MAX_AGE_DAYS invalide (entier attendu): {valeur!r}"
+        ) from None
+
+
+def _age_jours(dossier: Path) -> float:
+    return (datetime.now().astimezone() - _date_snapshot(dossier)).total_seconds() / 86400
+
+
+def _signature_snapshot(dossier: Path) -> tuple[dict[str, int], str]:
+    """Signature legere : taille de chaque fichier plus sha256 du manifeste.
+
+    Sert a reconnaitre une copie deja faite (cible a jour) sans relire toutes
+    les archives ; la copie elle-meme est ensuite validee par
+    `verifier_snapshot`.
+    """
+    tailles: dict[str, int] = {}
+    for racine, _dossiers, fichiers in os.walk(dossier):
+        for nom in fichiers:
+            chemin = Path(racine) / nom
+            try:
+                tailles[str(chemin.relative_to(dossier))] = chemin.stat().st_size
+            except OSError:
+                tailles[str(chemin.relative_to(dossier))] = -1
+    return tailles, _sha256(dossier / "manifest.json")
+
+
+def dernier_snapshot_valide(destination: Path | str) -> Path | None:
+    """Snapshot valide le plus recent du dossier, ou None."""
+    for entree in lister_snapshots(destination):
+        if entree["status"] == "ok":
+            return Path(entree["path"])
+    return None
+
+
+def copier_snapshot(
+    snapshot: Path | str,
+    root: Path | str,
+    *,
+    retention_count: int = RETENTION_COUNT_DEFAUT,
+    retention_days: int = RETENTION_DAYS_DEFAUT,
+) -> CopyResult:
+    """Recopie un snapshot valide vers `root` et verifie la copie.
+
+    La source est verifiee (manifeste, marqueur, sha256, archives) avant toute
+    ecriture : un snapshot degrade n'est jamais propage. La copie se fait dans
+    un dossier temporaire qui ne prend le nom du snapshot qu'apres sa propre
+    verification, donc un disque plein ou un lien casse laisse une cible
+    inchangee. La retention s'applique ensuite sur la cible, sans jamais
+    supprimer la copie qui vient d'etre ecrite.
+    """
+    snapshot = Path(snapshot).expanduser()
+    root = Path(root).expanduser()
+    resultat = CopyResult(snapshot=snapshot, root=root)
+
+    if root.is_symlink():
+        resultat.errors.append(f"cible refusee (lien symbolique): {root}")
+        return resultat
+    try:
+        root = verifier_destination_inscriptible(root)
+    except SnapshotError as exc:
+        resultat.errors.append(str(exc))
+        return resultat
+    resultat.root = root
+
+    try:
+        racine_cible = root.resolve()
+        racine_source = snapshot.resolve()
+        parent_source = snapshot.parent.resolve()
+    except OSError as exc:
+        resultat.errors.append(f"chemin illisible ({exc})")
+        return resultat
+    if racine_cible == parent_source:
+        resultat.errors.append(f"cible identique au dossier source: {root}")
+        return resultat
+    if racine_cible == racine_source or racine_source in racine_cible.parents:
+        resultat.errors.append(f"cible dans le snapshot source: {root}")
+        return resultat
+
+    if not snapshot.is_dir():
+        resultat.errors.append(f"snapshot introuvable: {snapshot}")
+        return resultat
+    verification = verifier_snapshot(snapshot)
+    if not verification.ok:
+        resultat.degraded = True
+        resultat.errors.extend(
+            f"snapshot source invalide: {erreur}" for erreur in verification.errors
+        )
+        return resultat
+
+    cible = root / snapshot.name
+    source_signature = _signature_snapshot(snapshot)
+    if cible.exists():
+        if (
+            cible.is_dir()
+            and not cible.is_symlink()
+            and _signature_snapshot(cible) == source_signature
+            # La cible est relue : une copie abimee de meme taille n'est pas
+            # presentee comme a jour.
+            and verifier_snapshot(cible).ok
+        ):
+            resultat.destination = cible
+            resultat.up_to_date = True
+            resultat.fichiers = len(source_signature[0])
+            resultat.octets = sum(source_signature[0].values())
+            return resultat
+        resultat.errors.append(
+            f"copie existante differente: {cible} "
+            "(supprimer ou renommer la cible pour recopier)"
+        )
+        return resultat
+
+    octets = sum(source_signature[0].values())
+    try:
+        verifier_espace_disque(root, octets)
+    except SnapshotError as exc:
+        resultat.errors.append(str(exc))
+        return resultat
+
+    temporaire = root / f".{snapshot.name}.copie-{os.getpid()}"
+    try:
+        shutil.rmtree(temporaire, ignore_errors=True)
+        temporaire.mkdir()
+        for nom in source_signature[0]:
+            destination = temporaire / nom
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(snapshot / nom, destination)
+        copie = verifier_snapshot(temporaire)
+        if not copie.ok:
+            resultat.errors.extend(
+                f"copie non valide: {erreur}" for erreur in copie.errors
+            )
+            shutil.rmtree(temporaire, ignore_errors=True)
+            return resultat
+        temporaire.rename(cible)
+    except (OSError, SnapshotError) as exc:
+        shutil.rmtree(temporaire, ignore_errors=True)
+        resultat.errors.append(f"copie impossible: {exc}")
+        return resultat
+
+    resultat.destination = cible
+    resultat.copied = True
+    resultat.fichiers = len(source_signature[0])
+    resultat.octets = octets
+
+    rotation = rotation_snapshots(
+        root,
+        retention_count=retention_count,
+        retention_days=retention_days,
+        conserver=cible,
+    )
+    resultat.supprimes = rotation.supprimes
+    # Une rotation qui echoue sur la cible ne remet pas en cause la copie.
+    resultat.warnings.extend(f"rotation: {erreur}" for erreur in rotation.erreurs)
+    return resultat
+
+
+def drill_snapshot(
+    snapshot: Path | str, *, workdir: Path | str | None = None
+) -> DrillResult:
+    """Restaure un snapshot dans un staging temporaire, verifie puis supprime.
+
+    Reproduit une vraie restauration (verification, extraction, integrite
+    SQLite) sans toucher aux donnees en service. Le staging est toujours
+    supprime, meme en cas d'echec.
+    """
+    snapshot = Path(snapshot).expanduser()
+    resultat = DrillResult(snapshot=snapshot)
+    parent = Path(workdir).expanduser() if workdir is not None else None
+    try:
+        if parent is not None:
+            parent.mkdir(parents=True, exist_ok=True)
+        temporaire = Path(
+            tempfile.mkdtemp(
+                prefix="fabsuite-drill-", dir=str(parent) if parent else None
+            )
+        )
+    except OSError as exc:
+        resultat.errors.append(f"staging d'essai impossible: {exc}")
+        return resultat
+    resultat.destination = temporaire / snapshot.name
+    debut = time.monotonic()
+    try:
+        restauration = restaurer_snapshot(snapshot, resultat.destination)
+        resultat.errors.extend(restauration.errors)
+        resultat.restored = restauration.restored
+        if not restauration.errors:
+            resultat.fichiers = sum(
+                1
+                for chemin in resultat.destination.rglob("*")
+                if chemin.is_file()
+            )
+    except OSError as exc:
+        resultat.errors.append(f"restauration d'essai interrompue: {exc}")
+    finally:
+        resultat.duration_seconds = round(time.monotonic() - debut, 3)
+        shutil.rmtree(temporaire, ignore_errors=True)
+    resultat.ok = not resultat.errors
+    return resultat
+
+
+def rapport_sauvegardes(
+    destination: Path | str,
+    *,
+    target: Path | str | None = None,
+    max_age_days: int = AGE_MAX_DEFAUT_JOURS,
+) -> ReportResult:
+    """Synthese lecture seule : volumes, age du dernier snapshot, copie."""
+    destination = Path(destination).expanduser()
+    resultat = ReportResult(destination=destination, max_age_days=int(max_age_days))
+    for entree in lister_snapshots(destination):
+        dossier = Path(entree["path"])
+        resultat.total += 1
+        resultat.octets += _taille_octets(dossier)
+        if entree["status"] != "ok":
+            resultat.invalides.append(dossier.name)
+            continue
+        resultat.valides += 1
+        if resultat.dernier is None:
+            resultat.dernier = dossier
+    if resultat.dernier is not None:
+        resultat.age_jours = round(_age_jours(resultat.dernier), 2)
+    resultat.perime = (
+        resultat.age_jours is None or resultat.age_jours > resultat.max_age_days
+    )
+    if target is not None:
+        resultat.copy_root = Path(target).expanduser()
+        if resultat.dernier is not None:
+            copie = resultat.copy_root / resultat.dernier.name
+            if copie.is_dir() and not copie.is_symlink():
+                resultat.copy_dernier = copie
+                try:
+                    resultat.copy_a_jour = _signature_snapshot(copie) == _signature_snapshot(
+                        resultat.dernier
+                    )
+                except OSError:
+                    resultat.copy_a_jour = False
+    return resultat
+
+
+def marqueur_sauvegarde_perimee(
+    destination: Path | str,
+    *,
+    max_age_days: int = AGE_MAX_DEFAUT_JOURS,
+    marqueur: Path | str | None = None,
+) -> StaleState:
+    """Pose `<dest>/backup-stale` si la sauvegarde est perimee, sinon le retire.
+
+    Le marqueur est un fichier texte simple (comme `backup-failed`), jamais un
+    lien symbolique : un marqueur detourne est refuse plutot que remplace.
+    """
+    destination = Path(destination).expanduser()
+    chemin = (
+        Path(marqueur).expanduser()
+        if marqueur is not None
+        else destination / "backup-stale"
+    )
+    etat = StaleState(
+        destination=destination,
+        marker=chemin,
+        max_age_days=int(max_age_days),
+    )
+    etat.dernier = dernier_snapshot_valide(destination)
+    if etat.dernier is not None:
+        etat.age_jours = round(_age_jours(etat.dernier), 2)
+    etat.stale = etat.age_jours is None or etat.age_jours > etat.max_age_days
+
+    if chemin.is_symlink():
+        etat.errors.append(f"marqueur refuse (lien symbolique): {chemin}")
+        return etat
+    try:
+        if not etat.stale:
+            if chemin.exists():
+                chemin.unlink()
+            return etat
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        detail = etat.dernier.name if etat.dernier is not None else "aucun snapshot valide"
+        chemin.write_text(
+            "PERIME "
+            f"{datetime.now().astimezone().isoformat(timespec='seconds')} "
+            f"- {detail} (seuil {etat.max_age_days} jour(s))\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        etat.errors.append(f"marqueur impossible ({exc})")
+    return etat
+
+
 def _retention_depuis_env() -> tuple[int, int]:
     def lire(nom: str, defaut: int) -> int:
         brut = os.environ.get(nom, "").strip()
@@ -1114,12 +1503,178 @@ def _parser_source(brut: str) -> Source:
     return Source(app, role, Path(chemin))
 
 
+def _snapshot_demande(args, parseur) -> Path | None:
+    """Snapshot explicite, sinon dernier snapshot valide du dossier --dest."""
+    if args.snapshot.strip():
+        return Path(args.snapshot).expanduser()
+    if not args.dest.strip():
+        parseur.error("--snapshot ou --dest requis pour cette commande")
+    return dernier_snapshot_valide(args.dest)
+
+
+def _commande_depuis_sauvegardes(args, parseur) -> int:
+    """Commandes de service : copy, drill, report et stale."""
+    try:
+        seuil = _age_max_depuis_env(args.max_age_days)
+    except SnapshotError as exc:
+        print(f"[{args.command}] ECHEC: {exc}", file=sys.stderr)
+        return 2
+
+    if args.command == "copy":
+        if not args.target.strip():
+            print(
+                "[copy] ECHEC: --target requis (dossier cible hors-site)",
+                file=sys.stderr,
+            )
+            return 2
+        snapshot = _snapshot_demande(args, parseur)
+        if snapshot is None:
+            print(
+                f"[copy] ECHEC: aucun snapshot valide dans {args.dest}",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            count, days = _retention_depuis_env()
+        except SnapshotError as exc:
+            print(f"[copy] ATTENTION: rotation ignoree ({exc})")
+            count, days = RETENTION_COUNT_DEFAUT, RETENTION_DAYS_DEFAUT
+        if args.retention_count is not None:
+            count = args.retention_count
+        if args.retention_days is not None:
+            days = args.retention_days
+
+        resultat = copier_snapshot(
+            snapshot, args.target, retention_count=count, retention_days=days
+        )
+        for avertissement in resultat.warnings:
+            print(f"[copy] ATTENTION: {avertissement}")
+        for erreur in resultat.errors:
+            print(f"[copy] ERROR: {erreur}", file=sys.stderr)
+        print(f"[copy] source: {resultat.snapshot}")
+        print(f"[copy] cible: {resultat.root}")
+        if resultat.errors:
+            print(
+                f"[copy] ECHEC: copie hors-site refusee "
+                f"({len(resultat.errors)} erreur(s))",
+                file=sys.stderr,
+            )
+            return EXIT_SNAPSHOT_DEGRADE if resultat.degraded else 2
+        print(f"[copy] copie: {resultat.destination}")
+        print(
+            f"[copy] verifie: {resultat.fichiers} fichier(s), "
+            f"{_taille_lisible(resultat.octets)}"
+        )
+        if resultat.up_to_date:
+            print("[copy] etat: deja a jour (aucune recopie)")
+        else:
+            print(
+                f"[copy] rotation: {len(resultat.supprimes)} supprime(s) "
+                "sur la cible"
+            )
+        print("[copy] statut: ok")
+        return 0
+
+    if args.command == "drill":
+        snapshot = _snapshot_demande(args, parseur)
+        if snapshot is None:
+            print(
+                f"[drill] ECHEC: aucun snapshot valide dans {args.dest}",
+                file=sys.stderr,
+            )
+            return 2
+        resultat = drill_snapshot(snapshot, workdir=args.workdir.strip() or None)
+        for erreur in resultat.errors:
+            print(f"[drill] ERROR: {erreur}", file=sys.stderr)
+        print(f"[drill] snapshot: {resultat.snapshot}")
+        print(f"[drill] duree: {resultat.duration_seconds:.2f} s")
+        print(f"[drill] staging: supprime ({resultat.destination})")
+        if not resultat.ok:
+            print(
+                f"[drill] ECHEC: restauration d'essai refusee "
+                f"({len(resultat.errors)} erreur(s))",
+                file=sys.stderr,
+            )
+            return EXIT_SNAPSHOT_DEGRADE
+        print(
+            f"[drill] restaure: {len(resultat.restored)} volume(s), "
+            f"{resultat.fichiers} fichier(s)"
+        )
+        print("[drill] statut: ok")
+        return 0
+
+    if args.command == "report":
+        resultat = rapport_sauvegardes(
+            args.dest,
+            target=args.target.strip() or None,
+            max_age_days=seuil,
+        )
+        print(f"[report] racine: {resultat.destination}")
+        print(
+            f"[report] snapshots: {resultat.total} "
+            f"({resultat.valides} valide(s), {len(resultat.invalides)} invalide(s))"
+        )
+        for nom in resultat.invalides:
+            print(f"[report] invalide: {nom}")
+        if resultat.dernier is None:
+            print("[report] dernier valide: aucun")
+        else:
+            print(f"[report] dernier valide: {resultat.dernier}")
+            print(f"[report] age: {resultat.age_jours:.2f} jour(s)")
+        print(f"[report] volume: {_taille_lisible(resultat.octets)}")
+        if resultat.copy_root is None:
+            print("[report] copie hors-site: non configuree")
+        elif resultat.copy_dernier is None:
+            print(f"[report] copie hors-site: {resultat.copy_root} (absente)")
+        else:
+            etat = "a jour" if resultat.copy_a_jour else "different de la source"
+            print(f"[report] copie hors-site: {resultat.copy_root} ({etat})")
+        print(
+            f"[report] perime: {1 if resultat.perime else 0} "
+            f"(seuil {resultat.max_age_days} jour(s))"
+        )
+        sain = resultat.valides > 0 and not resultat.invalides and not resultat.perime
+        print(f"[report] statut: {'ok' if sain else 'ATTENTION'}")
+        return 0
+
+    # stale
+    etat = marqueur_sauvegarde_perimee(args.dest, max_age_days=seuil)
+    for erreur in etat.errors:
+        print(f"[stale] ERROR: {erreur}", file=sys.stderr)
+    if etat.errors:
+        print(
+            f"[stale] ECHEC: marqueur impossible ({len(etat.errors)} erreur(s))",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"[stale] racine: {etat.destination}")
+    print(f"[stale] marqueur: {etat.marker}")
+    if etat.dernier is None:
+        print("[stale] dernier valide: aucun")
+    else:
+        print(f"[stale] dernier valide: {etat.dernier} ({etat.age_jours:.2f} jour(s))")
+    print(f"[stale] perime={1 if etat.stale else 0} seuil={etat.max_age_days} jour(s)")
+    print(f"[stale] etat: {'perime' if etat.stale else 'frais'}")
+    return EXIT_SAUVEGARDE_PERIMEE if etat.stale else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parseur = argparse.ArgumentParser(
         description="Snapshot horodate et verifie des donnees de la FabLab Suite."
     )
     parseur.add_argument(
-        "command", choices=["snapshot", "restore", "list", "volumes", "verify"]
+        "command",
+        choices=[
+            "snapshot",
+            "restore",
+            "list",
+            "volumes",
+            "verify",
+            "copy",
+            "drill",
+            "report",
+            "stale",
+        ],
     )
     parseur.add_argument(
         "--dest",
@@ -1151,6 +1706,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     parseur.add_argument("--label", default="", help="suffixe lisible du snapshot")
     parseur.add_argument(
+        "--target",
+        default="",
+        help="cible de la copie hors-site (copy) ou dossier de copie compare (report)",
+    )
+    parseur.add_argument(
+        "--workdir",
+        default="",
+        help="dossier parent du staging temporaire de `drill` (defaut: temporaire systeme)",
+    )
+    parseur.add_argument(
+        "--max-age-days",
+        type=int,
+        default=None,
+        help=(
+            "seuil de peremption en jours (report, stale) ; defaut: env "
+            f"FABSUITE_BACKUP_MAX_AGE_DAYS ou {AGE_MAX_DEFAUT_JOURS}"
+        ),
+    )
+    parseur.add_argument(
         "--retention-count",
         type=int,
         default=None,
@@ -1164,7 +1738,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parseur.parse_args(argv)
 
-    if args.command in ("snapshot", "list", "restore") and not args.dest.strip():
+    if (
+        args.command in ("snapshot", "list", "restore", "report", "stale")
+        and not args.dest.strip()
+    ):
         parseur.error("--dest requis pour cette commande")
 
     if args.command == "verify":
@@ -1227,6 +1804,9 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_SNAPSHOT_DEGRADE
         print("[verify] statut: ok")
         return 0
+
+    if args.command in ("copy", "drill", "report", "stale"):
+        return _commande_depuis_sauvegardes(args, parseur)
 
     if args.command == "volumes":
         if not args.snapshot.strip():

@@ -257,6 +257,120 @@ template sont couverts par les tests.
 
 ---
 
+## 2026-11-22 — Rapport de sauvegardes et marqueur `backup-stale`
+
+**Contexte** : l'age du dernier snapshot n'etait lisible que dans le GUI, et
+rien ne signalait une sauvegarde trop ancienne aux automatisations : seuls
+`backup-failed` et `verify-degrade` existaient, tous deux lies a un echec.
+
+**Module (`suite_backup.py`)**
+- `report --dest [--target] [--max-age-days]` : nombre de snapshots, valides et
+  invalides, dernier valide et son age, volume, etat de la copie hors-site
+  (`a jour`, `absente`, `different de la source`). Aucune ecriture.
+- `stale --dest [--max-age-days]` : pose `<dest>/backup-stale` au-dela de
+  `FABSUITE_BACKUP_MAX_AGE_DAYS` jours (defaut 7, meme seuil que la ligne
+  « Dernier snapshot valide » du GUI) et le retire des qu'un snapshot frais
+  existe. Un marqueur en lien symbolique est refuse. Code 4 si perime.
+- Helper : actions `report` et `stale` (`run_suite_report`, `run_suite_stale`),
+  garde `MISE A JOUR REQUISE` sur un module ancien, `HELPER_VERSION` ->
+  `2026-11-22-suite-backup-v20`.
+
+**Tests** : `ReportTest` (4) et `StaleMarkerTest` (6) ; README, `.env.example`
+et cas 28 de la matrice d'acceptation completes.
+
+**Verifications** : `py_compile` OK ; `bash -n` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 309 tests OK.
+
+**Prochaine action** : committer ce chantier avec l'entree de journal.
+
+---
+
+## 2026-11-22 — Drill de restauration (`drill`)
+
+**Contexte** : `verify` relit les archives mais n'extrait rien. Une sauvegarde
+pouvait donc etre declaree saine sans qu'on ait jamais verifie qu'elle se
+restaure reellement.
+
+**Module (`suite_backup.py`)**
+- `drill [--snapshot] [--dest] [--workdir]` : restauration reelle du dernier
+  snapshot valide (ou du snapshot demande) dans un staging temporaire, avec
+  les controles de `restaurer_snapshot` (sha256, chemins, integrite SQLite),
+  puis suppression du staging meme en cas d'echec.
+- Sortie : `0` essai reussi (`[drill] statut: ok`), `3` snapshot degrade ou
+  extraction refusee, `2` aucun snapshot valide.
+- Helper : action `drill` (`run_suite_drill`), `--dest` y designe le dossier
+  parent du staging d'essai, jamais un dossier de donnees.
+
+**Tests** : `DrillTest` (5) : restauration puis staging absent, snapshot
+altere refuse sans staging residuel, choix du dernier snapshot valide en CLI,
+absence de snapshot, code 3 sur snapshot degrade.
+
+**Verifications** : `py_compile` OK ; `bash -n` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 309 tests OK.
+
+**Prochaine action** : committer ce chantier avec l'entree de journal.
+
+---
+
+## 2026-11-22 — Copie hors-site (`copy` / `copy-offsite`)
+
+**Contexte** : tous les snapshots vivaient sur le meme disque que la suite. Un
+sinistre du serveur emportait la sauvegarde avec les donnees.
+
+**Module (`suite_backup.py`)**
+- `copier_snapshot(snapshot, root)` : verifie la source (`verifier_snapshot`)
+  avant toute ecriture, recopie fichier par fichier dans un dossier temporaire,
+  revalide la copie, puis la renomme au nom du snapshot. Une copie
+  interrompue ne laisse donc jamais de faux snapshot.
+- Refus explicites : cible en lien symbolique, cible egale au dossier source ou
+  situee dans le snapshot, copie existante differente (jamais ecrasee).
+- Cible deja a jour : `up_to_date`, aucune recopie. Rotation appliquee sur la
+  cible avec `FABSUITE_BACKUP_RETENTION_COUNT` / `_DAYS`, sans jamais supprimer
+  la copie ecrite ni la derniere copie valide.
+- CLI `copy --dest --target [--snapshot]` : `0` ok ou deja a jour, `3` source
+  degradee, `2` argument ou snapshot valide absent.
+
+**Helper (`fabsuite-ubuntu.sh`)**
+- Action `copy-offsite` (cible `--dest` ou `FABSUITE_BACKUP_COPY_DIR`).
+- `backup` copie automatiquement apres un snapshot valide quand
+  `FABSUITE_BACKUP_COPY_DIR` est configure ; un echec de copie est signale par
+  `[copy] ATTENTION` sans invalider le snapshot local (code 0 conserve).
+
+**Tests** : `CopyOffsiteTest` (9) et un test d'integration du vrai helper qui
+enchaine `backup` puis copie dans une cible separee.
+
+**Verifications** : `py_compile` OK ; `bash -n` OK ; `git diff --check` OK ;
+`python3 -m unittest discover -s tests` -> 309 tests OK.
+
+**Prochaine action** : committer ce chantier avec l'entree de journal.
+
+---
+
+## 2026-11-22 — CI : tests racine sur chaque push et pull request
+
+**Contexte** : les suites de la racine (`suite_backup`, GUI SSH, contrats,
+notes de version) n'etaient lancees que par `Version consistency`, declenche
+apres `Auto release`. Une regression pouvait donc atteindre `main` sans
+controle, et aucune PR n'etait couverte.
+
+**CI (`.github/workflows/tests.yml`)**
+- Workflow `Tests racine` sur `push` vers `main`, `pull_request` et
+  `workflow_dispatch`, `concurrency` par ref, permissions `contents: read`.
+- `fetch-depth: 0` : `tests/test_release_versions.py` compare les manifestes au
+  dernier tag, un clone superficiel les omettrait.
+- `py_compile` des modules racine, puis `python3 -m unittest discover -s tests
+  -v` ; aucune dependance a installer (les suites applicatives restent dans
+  leurs jobs Flask).
+
+**Verifications** : les commandes du workflow sont celles deja executees
+localement (`py_compile` OK, `discover -s tests` -> 309 tests OK) ;
+`git diff --check` OK. Execution GitHub non verifiable depuis cet
+environnement.
+
+**Prochaine action** : committer ce chantier avec l'entree de journal.
+
+---
+
 ## 2026-11-22 — Coupure du canal pendant une restauration reelle
 
 **Contexte** : symetrique du backup. La coupure pendant `action_restore`

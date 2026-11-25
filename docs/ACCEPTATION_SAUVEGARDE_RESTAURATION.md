@@ -41,6 +41,13 @@ droits reels et les chemins du serveur.
 | 22 | Coupure pendant un upload SFTP | couper le lien pendant « Envoyer les fichiers installateur », ou pendant l'upload automatique du helper avant un backup / restore / verify | alerte « Connexion perdue » (libelle de l'action ou « sauvegarde interrompue »), session SFTP fermee, en-tete « Non connecte » ; verifier le dossier distant avant de relancer pour ne pas reutiliser un fichier partiel |
 | 23 | Echec de la connexion initiale | mauvais mot de passe, hote injoignable, port ferme ou nom DNS invalide, puis cliquer sur Connecter | alerte « Connexion SSH impossible » (et non « perdue ») avec la cible `utilisateur@hote:port` et la cause traduite (authentification refusee / cle d'hote inattendue / delai depasse / nom d'hote introuvable) ; l'en-tete reste « Non connecte » |
 
+| 24 | Copie hors-site vers disque absent ou en lecture seule | `FABSUITE_BACKUP_COPY_DIR=/media/absent ./fabsuite-ubuntu.sh backup`, puis `copy-offsite --dest /media/absent` | backup code 0 avec `[copy] ERROR: destination non inscriptible` et `[copy] ATTENTION: snapshot local valide, copie hors-site en echec` ; `copy-offsite` code 2 et aucune copie partielle sur la cible |
+| 25 | Copie d'un snapshot altere | alterer une archive puis `copy-offsite --snapshot <dossier>` | code 3, `[copy] ERROR: snapshot source invalide`, aucune copie creee sur la cible |
+| 26 | Copie repetee puis retention sur la cible | deux `copy-offsite` identiques, puis un troisieme apres un nouveau backup avec `FABSUITE_BACKUP_RETENTION_COUNT=2` | deuxieme appel `[copy] etat: deja a jour` sans recopie ; la cible ne garde que les deux copies les plus recentes |
+| 27 | Drill de restauration | `drill`, puis `drill --snapshot <snapshot altere>` | code 0, `[drill] statut: ok`, staging `fabsuite-drill-*` absent ; puis code 3, `[drill] ERROR:` et aucun staging conserve |
+| 28 | Sauvegarde perimee | `FABSUITE_BACKUP_DIR=/tmp/vide ./fabsuite-ubuntu.sh stale`, puis `stale` apres un backup frais | code 4, `[stale] etat: perime`, marqueur `backup-stale` present avec la mention `aucun snapshot valide` ; apres un backup, code 0, `etat: frais`, marqueur absent |
+| 29 | CI des tests racine | ouvrir une PR puis pousser sur `main` | le workflow `Tests racine` s'execute sur les deux evenements, avec tags complets (`fetch-depth: 0`) et sans installation de dependance |
+
 ## Apres chaque cas
 
 1. Verifier `ls -la "$FABSUITE_BACKUP_DIR"` : pas de dossier `suite-*` partiel.

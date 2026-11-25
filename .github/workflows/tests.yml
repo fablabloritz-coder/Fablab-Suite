@@ -1,0 +1,51 @@
+name: Tests racine
+
+# Suites de la racine du monorepo (module de sauvegarde, GUI SSH, contrats,
+# notes de version) sur chaque push et pull request.
+#
+# `Version consistency` ne lance ces tests qu'apres `Auto release` : une
+# regression pouvait donc atteindre `main` sans controle, et une PR n'etait
+# couverte par aucune CI. Ce workflow ne fait que relancer les suites locales,
+# sans dependance supplementaire (les application ont leurs propres jobs).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Deux pushes rapproches enchainent deux executions : seule la derniere compte.
+concurrency:
+  group: tests-racine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests-racine:
+    name: unittest (racine)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (historique et tags complets)
+        uses: actions/checkout@v7
+        with:
+          # test_release_versions.py compare les manifestes au dernier tag
+          # <app>-vX.Y.Z : un clone superficiel omet les tags.
+          fetch-depth: 0
+
+      - name: Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Compilation des modules racine
+        run: |
+          python3 -m py_compile \
+            suite_backup.py \
+            fabsuite_ssh_gui.py \
+            changelog_gen.py \
+            release_notes_gen.py \
+            release_publish.py
+
+      - name: Tests racine
+        run: python3 -m unittest discover -s tests -v

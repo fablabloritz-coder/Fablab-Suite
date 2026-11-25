@@ -14,11 +14,13 @@ LOG_APP=""
 RESTORE_SNAPSHOT=""
 RESTORE_DEST=""
 RESTORE_SOURCES=()
+COPY_TARGET=""
+MAX_AGE_DAYS=""
 VERIFY_ALL=""
 NOTIFY_SERVICE=""
 NOTIFY_CODE=""
 DEFAULT_MONOREPO_URL="https://github.com/fablabloritz-coder/Fablab-Suite.git"
-HELPER_VERSION="2026-11-20-suite-backup-v19"
+HELPER_VERSION="2026-11-22-suite-backup-v20"
 
 usage() {
   cat <<'EOF'
@@ -36,6 +38,10 @@ Usage:
   ./fabsuite-ubuntu.sh volumes --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
   ./fabsuite-ubuntu.sh verify --snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS
   ./fabsuite-ubuntu.sh verify --all [--dest /path/to/backups]
+  ./fabsuite-ubuntu.sh copy-offsite [--snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS] [--dest /media/sauvegardes]
+  ./fabsuite-ubuntu.sh drill [--snapshot /path/to/suite-AAAA-MM-JJ-HHMMSS] [--dest /chemin/temporaire]
+  ./fabsuite-ubuntu.sh report [--dest /path/to/backups] [--target /media/sauvegardes]
+  ./fabsuite-ubuntu.sh stale [--dest /path/to/backups] [--max-age-days N]
   ./fabsuite-ubuntu.sh install-verify-timer [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh verify-timer-status [--env-file /path/to/fabsuite-ubuntu.env]
   ./fabsuite-ubuntu.sh disable-verify-timer [--env-file /path/to/fabsuite-ubuntu.env]
@@ -64,6 +70,9 @@ Examples:
   ./fabsuite-ubuntu.sh backup
   ./fabsuite-ubuntu.sh restore --snapshot ~/backup-fabsuite/suite-2026-11-19-120000
   ./fabsuite-ubuntu.sh restore --snapshot <dossier> --source Fabtrack/data
+  ./fabsuite-ubuntu.sh copy-offsite --dest /media/sauvegardes
+  ./fabsuite-ubuntu.sh drill
+  ./fabsuite-ubuntu.sh report --target /media/sauvegardes
   ./fabsuite-ubuntu.sh install
   ./fabsuite-ubuntu.sh status
   ./fabsuite-ubuntu.sh logs Fabtrack
@@ -72,7 +81,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|install-verify-timer|verify-timer-status|disable-verify-timer|install-backup-timer|backup-timer-status|disable-backup-timer|clear-markers|notify-failure|notify-reset|notify-status|install|bootstrap|update|start|stop|restart|status|logs|help)
+    prepare-host|audit|cleanup-safe|repair-env|check-data-safety|backup|restore|snapshots|volumes|verify|copy-offsite|drill|report|stale|install-verify-timer|verify-timer-status|disable-verify-timer|install-backup-timer|backup-timer-status|disable-backup-timer|clear-markers|notify-failure|notify-reset|notify-status|install|bootstrap|update|start|stop|restart|status|logs|help)
       ACTION="$1"
       shift
       ;;
@@ -111,6 +120,22 @@ while [[ $# -gt 0 ]]; do
     --all)
       VERIFY_ALL="1"
       shift
+      ;;
+    --target)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --target requires a value"
+        exit 1
+      fi
+      COPY_TARGET="$2"
+      shift 2
+      ;;
+    --max-age-days)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --max-age-days requires a value"
+        exit 1
+      fi
+      MAX_AGE_DAYS="$2"
+      shift 2
       ;;
     --notify-service)
       if [[ $# -lt 2 ]]; then
@@ -1306,7 +1331,21 @@ run_suite_backup() {
   done
 
   echo "[backup] destination: ${backup_root}"
-  python3 "$backup_module" snapshot --dest "$backup_root" "${args[@]}"
+  local code=0
+  python3 "$backup_module" snapshot --dest "$backup_root" "${args[@]}" || code=$?
+  if [[ "$code" -ne 0 ]]; then
+    return "$code"
+  fi
+
+  # Copie hors-site facultative : le snapshot local est deja valide, un echec
+  # de la copie (disque absent, plein) est signale sans invalider le backup.
+  if [[ -n "${FABSUITE_BACKUP_COPY_DIR:-}" ]]; then
+    echo "[copy] copie hors-site vers ${FABSUITE_BACKUP_COPY_DIR}"
+    if ! run_suite_copy_offsite; then
+      echo "[copy] ATTENTION: snapshot local valide, copie hors-site en echec."
+    fi
+  fi
+  return 0
 }
 
 run_suite_restore() {
@@ -1431,6 +1470,136 @@ run_suite_verify() {
   fi
 
   python3 "$backup_module" verify "${args[@]}"
+}
+
+run_suite_copy_offsite() {
+  require_cmd python3
+
+  echo "===== Suite copy offsite ====="
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[copy] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})." >&2
+    return 2
+  fi
+
+  # Un module installe avant cette commande doit inviter a mettre a jour plutot
+  # que laisser argparse echouer avec un message technique.
+  if ! grep -q '^def copier_snapshot' "$backup_module"; then
+    echo "[copy] MISE A JOUR REQUISE: ${backup_module} ne connait pas la commande copy (version ancienne)." >&2
+    echo "[copy] Lance './fabsuite-ubuntu.sh update' puis relance la copie." >&2
+    return 2
+  fi
+
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local target="${RESTORE_DEST:-${FABSUITE_BACKUP_COPY_DIR:-}}"
+  if [[ -z "$target" ]]; then
+    echo "[copy] ERROR: aucune cible hors-site (--dest ou FABSUITE_BACKUP_COPY_DIR)." >&2
+    echo "[copy] Exemple: ./fabsuite-ubuntu.sh copy-offsite --dest /media/sauvegardes" >&2
+    return 2
+  fi
+
+  local -a args=(--dest "$backup_root" --target "$target")
+  if [[ -n "$RESTORE_SNAPSHOT" ]]; then
+    args+=(--snapshot "$RESTORE_SNAPSHOT")
+  fi
+
+  echo "[copy] source: ${backup_root}"
+  echo "[copy] cible: ${target}"
+  python3 "$backup_module" copy "${args[@]}"
+}
+
+run_suite_drill() {
+  require_cmd python3
+
+  echo "===== Suite restore drill ====="
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[drill] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})." >&2
+    return 2
+  fi
+
+  if ! grep -q '^def drill_snapshot' "$backup_module"; then
+    echo "[drill] MISE A JOUR REQUISE: ${backup_module} ne connait pas la commande drill (version ancienne)." >&2
+    echo "[drill] Lance './fabsuite-ubuntu.sh update' puis relance l'exercice." >&2
+    return 2
+  fi
+
+  local backup_root="${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}"
+  local -a args=(--dest "$backup_root")
+  if [[ -n "$RESTORE_SNAPSHOT" ]]; then
+    args+=(--snapshot "$RESTORE_SNAPSHOT")
+  fi
+  # --dest designe ici le dossier parent du staging d'essai (jamais un
+  # dossier de donnees : le staging est cree puis supprime).
+  if [[ -n "$RESTORE_DEST" ]]; then
+    args+=(--workdir "$RESTORE_DEST")
+  fi
+
+  echo "[drill] racine: ${backup_root}"
+  python3 "$backup_module" drill "${args[@]}"
+}
+
+run_suite_report() {
+  require_cmd python3
+
+  echo "===== Suite backup report ====="
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[report] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})." >&2
+    return 2
+  fi
+
+  if ! grep -q '^def rapport_sauvegardes' "$backup_module"; then
+    echo "[report] MISE A JOUR REQUISE: ${backup_module} ne connait pas la commande report (version ancienne)." >&2
+    echo "[report] Lance './fabsuite-ubuntu.sh update' puis relance le rapport." >&2
+    return 2
+  fi
+
+  local backup_root="${RESTORE_DEST:-${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}}"
+  local target="${COPY_TARGET:-${FABSUITE_BACKUP_COPY_DIR:-}}"
+  local -a args=(--dest "$backup_root")
+  if [[ -n "$target" ]]; then
+    args+=(--target "$target")
+  fi
+  if [[ -n "$MAX_AGE_DAYS" ]]; then
+    args+=(--max-age-days "$MAX_AGE_DAYS")
+  fi
+
+  echo "[report] racine: ${backup_root}"
+  python3 "$backup_module" report "${args[@]}"
+}
+
+run_suite_stale() {
+  require_cmd python3
+
+  echo "===== Suite backup staleness ====="
+
+  local backup_module
+  backup_module="$(resolve_suite_backup_module)"
+  if [[ -z "$backup_module" ]]; then
+    echo "[stale] ERROR: suite_backup.py introuvable (${INSTALL_DIR} ou ${SCRIPT_DIR})." >&2
+    return 2
+  fi
+
+  if ! grep -q '^def marqueur_sauvegarde_perimee' "$backup_module"; then
+    echo "[stale] MISE A JOUR REQUISE: ${backup_module} ne connait pas la commande stale (version ancienne)." >&2
+    echo "[stale] Lance './fabsuite-ubuntu.sh update' puis relance le controle." >&2
+    return 2
+  fi
+
+  local backup_root="${RESTORE_DEST:-${FABSUITE_BACKUP_DIR:-$HOME/backup-fabsuite}}"
+  local -a args=(--dest "$backup_root")
+  if [[ -n "$MAX_AGE_DAYS" ]]; then
+    args+=(--max-age-days "$MAX_AGE_DAYS")
+  fi
+
+  python3 "$backup_module" stale "${args[@]}"
 }
 
 systemd_unit_dir() {
@@ -2539,6 +2708,18 @@ case "$ACTION" in
     ;;
   verify)
     run_suite_verify
+    ;;
+  copy-offsite)
+    run_suite_copy_offsite
+    ;;
+  drill)
+    run_suite_drill
+    ;;
+  report)
+    run_suite_report
+    ;;
+  stale)
+    run_suite_stale
     ;;
   install-verify-timer)
     run_install_verify_timer
