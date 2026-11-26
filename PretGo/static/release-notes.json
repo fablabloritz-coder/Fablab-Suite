@@ -7,7 +7,8 @@
       "notes": [
         "La purge des lignes de blocage redondantes ne supprime plus l'historique sans trace : chaque ligne retirée est archivée dans `rappels_email_log_archive` avec ses colonnes d'origine, la date d'archivage et le motif, ce qui permet une restauration SQL.",
         "La table d'archive est créée dès `init_db()` et remplie en un seul `INSERT ... SELECT` avant le `DELETE` ; les tests vérifient le contenu colonne par colonne et la restauration complète de l'historique."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.11.3"
     },
     {
       "version": "1.11.2",

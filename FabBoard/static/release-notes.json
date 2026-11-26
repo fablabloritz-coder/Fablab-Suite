@@ -8,7 +8,8 @@
         "Sept nouveaux gabarits (grand gauche + 3 droite, grand droite + 2 gauche, grilles 4×1, 4×2 et 3×3, grand haut + 4 bas, barre gauche + grille 2×2) sont proposés en plus des dix existants.",
         "Chaque slide peut désormais ajuster à la souris la largeur de ses colonnes et la hauteur de ses lignes : l'outil « Ajuster » affiche des séparateurs dans l'aperçu, le glisser est sauvegardé automatiquement, et un bouton réinitialise la disposition.",
         "La personnalisation est stockée par slide dans une colonne optionnelle ; sans réglage, les gabarits gardent exactement leurs pistes égales et le ratio de hauteur historique. La migration est idempotente et ne modifie aucun layout existant."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/fabboard-v3.9.0"
     },
     {
       "version": "3.8.13",
