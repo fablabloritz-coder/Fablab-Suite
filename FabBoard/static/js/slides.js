@@ -718,22 +718,8 @@ async function finishLayoutResize() {
     const index = currentSlides.findIndex(s => s.id === slide.id);
     if (index < 0) return;
 
-    const arrondir = valeur => Math.round(valeur * 10000) / 10000;
     const configAvant = getLayoutConfig(slide);
-    const config = {};
-    if (state.axis === 'cols') {
-        config.cols = state.currentTracks.map(arrondir);
-    } else {
-        config.rows = state.currentTracks.map(arrondir);
-    }
-
-    // Ne pas figer l'autre axe : une colonne ajustée ne doit pas remplacer
-    // le ratio historique des lignes, et inversement.
-    const autreAxe = state.axis === 'cols' ? 'rows' : 'cols';
-    const autreNombre = autreAxe === 'cols' ? slide.colonnes : slide.lignes;
-    if (layoutAxisPersonnalise(slide, autreAxe, autreNombre)) {
-        config[autreAxe] = configAvant[autreAxe].map(arrondir);
-    }
+    const config = construireLayoutConfig(slide, state.axis, state.currentTracks);
 
     slide.layout_config = config;
     renderPreview();

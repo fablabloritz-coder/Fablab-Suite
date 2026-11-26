@@ -166,6 +166,16 @@ class LayoutsPersonnalisesTests(unittest.TestCase):
             'une configuration refusée ne doit rien modifier',
         )
 
+    def test_api_conserve_une_configuration_partielle(self):
+        slide = self._creer_slide('grid_3x2', {'cols': [2, 1, 1]})
+        response = self.client.put(
+            f"/api/slides/{slide['id']}",
+            json={'layout_config': {'cols': [1, 2, 1]}},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        data = response.get_json()['data']
+        self.assertEqual(data['layout_config'], {'cols': [0.25, 0.5, 0.25]})
+
     def test_changement_de_layout_reinitialise_la_personnalisation(self):
         slide = self._creer_slide(
             'grid_3x2',

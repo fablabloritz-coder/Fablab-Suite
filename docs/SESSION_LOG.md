@@ -44,9 +44,10 @@ action imperative.
   idempotente et ne modifie aucun layout existant.
 
 **Verification**
-- 86 tests FabBoard OK, dont 7 tests dedies (migration d'une base ancienne,
-  normalisation API, refus des valeurs invalides, reset au changement de
-  gabarit, geometrie des nouveaux layouts).
+- 88 tests FabBoard OK, dont 8 tests dedies aux layouts (migration d'une
+  base ancienne, normalisation API, configuration partielle, refus des
+  valeurs invalides, reset au changement de gabarit, geometrie des nouveaux
+  layouts) et 1 test JS permanent du ratio/des axes personnalises.
 - Navigateur : 17 gabarits dans le selecteur ; glisser d'une colonne de
   0.5 a 0.6138 sauvegarde cote API ; reset a `{}` ; dashboard applique
   `0.6fr 0.2fr 0.2fr` et `0.7fr 0.3fr` sans erreur visible.

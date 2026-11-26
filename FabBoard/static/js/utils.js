@@ -66,6 +66,25 @@ function getLayoutTracksAffichees(slide, axis, count) {
     return tracks;
 }
 
+/**
+ * Construit la configuration à sauvegarder après un glisser.
+ * L'axe déplacé est toujours enregistré ; l'autre axe n'est conservé que s'il
+ * avait déjà une personnalisation valide, afin de ne pas figer le ratio
+ * historique des lignes lors d'un simple ajustement de colonnes.
+ */
+function construireLayoutConfig(slide, axis, tracks) {
+    const arrondir = valeur => Math.round(valeur * 10000) / 10000;
+    const config = {};
+    config[axis] = tracks.map(arrondir);
+
+    const autreAxe = axis === 'cols' ? 'rows' : 'cols';
+    const autreNombre = autreAxe === 'cols' ? slide.colonnes : slide.lignes;
+    if (layoutAxisPersonnalise(slide, autreAxe, autreNombre)) {
+        config[autreAxe] = getLayoutConfig(slide)[autreAxe].map(arrondir);
+    }
+    return config;
+}
+
 /** Construit la valeur CSS grid-template-* à partir de fractions. */
 function layoutTracksToGrid(tracks) {
     return tracks.map(track => `${Number(track).toFixed(4)}fr`).join(' ');
