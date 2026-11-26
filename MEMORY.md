@@ -244,6 +244,7 @@ Start here:
 4. Read `fabsuite-ubuntu.sh` and `fabsuite_ssh_gui.py`
 5. Run `git log --oneline -n 10`
 6. Read the newest entry of `docs/SESSION_LOG.md`
+7. Lire `docs/PISTES_FABBOARD_PRETGO.md` : pistes FabBoard/PretGo classées après la 3.9.1, constats vérifiés dans le code ; ne rien implémenter sans reconfirmation
 
 Then act with this assumption:
 - One monorepo, one update path, one clean orchestrated workflow.
