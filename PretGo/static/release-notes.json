@@ -8,7 +8,8 @@
         "Au retour, l'état du matériel peut être constaté : disponible, en réparation ou hors service, avec un motif facultatif — sur le retour complet comme sur le retour objet par objet.",
         "Un matériel en réparation ou hors service n'est plus proposé aux réservations ; le scan et la fiche affichent ces états, et le motif reste consultable dans l'historique. Les anciens libellés « en panne » et « réformé » sont convertis automatiquement.",
         "Sans choix explicite, le retour remet le matériel disponible comme avant ; le retour en masse reste inchangé."
-      ]
+      ],
+      "url": "https://github.com/fablabloritz-coder/Fablab-Suite/releases/tag/pretgo-v1.11.4"
     },
     {
       "version": "1.11.3",
