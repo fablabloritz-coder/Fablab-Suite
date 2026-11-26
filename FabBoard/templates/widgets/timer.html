@@ -149,7 +149,36 @@
     background: rgba(15, 23, 42, 0.55);
     border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 10px;
-    min-width: 72px;
-    padding: 0.35rem 0.4rem;
+    /* En portrait 2x2 sur un écran 1280/1366, quatre unités de 72 px
+       débordent de la cellule. La largeur minimale suit la largeur logique
+       de la cellule, sans jamais dépasser 72 px sur les grands écrans. */
+    min-width: min(72px, 18%);
+    padding: 0.35rem;
+}
+
+/* En cellules étroites (3 ou 4 colonnes en portrait), les quatre unités et
+   leurs séparateurs ne tiennent pas sur une ligne. Sous 300 px, passer en 2x2
+   sans séparateurs, tout en gardant les libellés lisibles. */
+.widget-timer {
+    container-type: inline-size;
+    container-name: timer;
+}
+
+@container timer (max-width: 300px) {
+    .widget-timer .timer-display {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.35rem;
+        width: 100%;
+    }
+
+    .widget-timer .timer-sep {
+        display: none;
+    }
+
+    .widget-timer .timer-unit {
+        min-width: 0;
+        padding: 0.3rem 0.2rem;
+    }
 }
 </style>

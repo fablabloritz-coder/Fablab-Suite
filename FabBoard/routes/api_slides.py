@@ -5,7 +5,10 @@ CRUD slides, layouts, widgets render
 
 from flask import Blueprint, request, jsonify, render_template
 from jinja2 import TemplateNotFound
-from models import get_db, get_all_slides, get_slide_by_id, get_all_layouts, get_all_widgets_disponibles
+from models import (
+    get_db, get_all_slides, get_slide_by_id, get_all_layouts,
+    get_all_widgets_disponibles, normaliser_layout_config
+)
 from datetime import datetime
 import json
 
@@ -66,6 +69,20 @@ def create_slide():
         if not data.get('nom') or not data.get('layout_id'):
             return jsonify({'error': 'Nom et layout_id requis'}), 400
 
+        layout = db.execute(
+            'SELECT colonnes, lignes FROM layouts WHERE id = ?',
+            (data['layout_id'],)
+        ).fetchone()
+        if not layout:
+            return jsonify({'error': 'layout_id invalide'}), 400
+
+        try:
+            layout_config_json = json.dumps(normaliser_layout_config(
+                data.get('layout_config'), layout['colonnes'], layout['lignes']
+            )) if 'layout_config' in data else '{}'
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
         ecran, ecran_invalide = _parse_ecran(data.get('ecran'), 1)
         if ecran_invalide:
             return jsonify({'error': 'Écran invalide (1 ou 2)'}), 400
@@ -74,8 +91,8 @@ def create_slide():
         ordre = (max_ordre or 0) + 1
 
         cursor = db.execute('''
-            INSERT INTO slides (nom, layout_id, ordre, temps_affichage, actif, fond_type, fond_valeur, layout_ratio, ecran)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO slides (nom, layout_id, ordre, temps_affichage, actif, fond_type, fond_valeur, layout_ratio, layout_config_json, ecran)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             data['nom'],
             data['layout_id'],
@@ -85,6 +102,7 @@ def create_slide():
             data.get('fond_type', 'defaut'),
             data.get('fond_valeur', ''),
             data.get('layout_ratio', 60),
+            layout_config_json,
             ecran
         ))
 
@@ -128,28 +146,50 @@ def update_slide(id):
         if ecran_invalide:
             return jsonify({'error': 'Écran invalide (1 ou 2)'}), 400
 
+        layout_id = data.get('layout_id', existing['layout_id'])
+        layout = db.execute(
+            'SELECT colonnes, lignes, grille_json FROM layouts WHERE id = ?',
+            (layout_id,)
+        ).fetchone()
+        if not layout:
+            return jsonify({'error': 'layout_id invalide'}), 400
+
+        if 'layout_config' in data:
+            try:
+                layout_config_json = json.dumps(normaliser_layout_config(
+                    data['layout_config'], layout['colonnes'], layout['lignes']
+                ))
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+        elif layout_id != existing['layout_id']:
+            # Un nouveau gabarit a ses propres dimensions : ne pas reporter
+            # les proportions de l'ancien layout sur la slide.
+            layout_config_json = '{}'
+        else:
+            layout_config_json = existing['layout_config_json'] or '{}'
+
         db.execute('''
             UPDATE slides SET
                 nom = ?, layout_id = ?, temps_affichage = ?, actif = ?,
-                fond_type = ?, fond_valeur = ?, layout_ratio = ?, ecran = ?,
+                fond_type = ?, fond_valeur = ?, layout_ratio = ?,
+                layout_config_json = ?, ecran = ?,
                 updated_at = datetime('now','localtime')
             WHERE id = ?
         ''', (
             data.get('nom', existing['nom']),
-            data.get('layout_id', existing['layout_id']),
+            layout_id,
             data.get('temps_affichage', existing['temps_affichage']),
             data.get('actif', existing['actif']),
             data.get('fond_type', existing['fond_type'] or 'defaut'),
             data.get('fond_valeur', existing['fond_valeur'] or ''),
             data.get('layout_ratio', existing['layout_ratio'] if existing['layout_ratio'] is not None else 60),
+            layout_config_json,
             ecran,
             id
         ))
 
         if 'widgets' in data and isinstance(data['widgets'], list):
-            layout = db.execute('SELECT grille_json FROM layouts WHERE id = ?',
-                                (data.get('layout_id', existing['layout_id']),)).fetchone()
-            max_positions = len(json.loads(layout['grille_json'])) if layout else 999
+            max_positions = len(json.loads(layout['grille_json']))
 
             seen_positions = {}
             for widget_data in data['widgets']:

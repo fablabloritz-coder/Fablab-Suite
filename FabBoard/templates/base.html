@@ -6,15 +6,15 @@
     <title>{% block title %}FabBoard — Dashboard Fablab{% endblock %}</title>
     
     <!-- Bootstrap 5.3 (local — pas de dépendance CDN) -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}?v={{ app_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}?v={{ app_version }}">
     
     <!-- Google Fonts — chargement NON bloquant (pour Raspberry Pi sans internet) -->
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Poppins:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Poppins:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_version }}">
     {% block extra_css %}{% endblock %}
     
     <!-- PWA Manifest -->
@@ -81,10 +81,10 @@
     <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container"></div>
     
     <!-- Bootstrap JS (local) -->
-    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}?v={{ app_version }}"></script>
     
     <!-- Custom JS -->
-    <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/utils.js') }}?v={{ app_version }}"></script>
     {% block extra_js %}{% endblock %}
     
     <!-- Horloge navbar -->

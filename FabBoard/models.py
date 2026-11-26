@@ -3,13 +3,125 @@ FabBoard — Modèles de base de données SQLite
 Schéma : activités, sources externes, événements calendrier, paramètres
 """
 
-import sqlite3
+import json
+import math
 import os
+import sqlite3
 from datetime import datetime, timedelta
 from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'fabboard.db')
-FABBOARD_SCHEMA_VERSION = 2026112501
+FABBOARD_SCHEMA_VERSION = 2026112601
+
+# Gabarits ajoutés après la première version du système de slides. Ils sont
+# insérés par migrate_db() sur les bases existantes, sans toucher aux gabarits
+# déjà présents ni aux slides qui les utilisent.
+LAYOUTS_VARIES = [
+    ('large_left_3right', 'Large gauche + 3 droite', '1 grand + 3 petits', 2, 3,
+     json.dumps([
+         {"x": 0, "y": 0, "w": 1, "h": 3},
+         {"x": 1, "y": 0, "w": 1, "h": 1},
+         {"x": 1, "y": 1, "w": 1, "h": 1},
+         {"x": 1, "y": 2, "w": 1, "h": 1}
+     ])),
+    ('large_right_2left', 'Large droite + 2 gauche', '1 grand + 2 petits', 2, 2,
+     json.dumps([
+         {"x": 1, "y": 0, "w": 1, "h": 2},
+         {"x": 0, "y": 0, "w": 1, "h": 1},
+         {"x": 0, "y": 1, "w": 1, "h": 1}
+     ])),
+    ('grid_4x1', 'Grille (4×1)', '4 widgets horizontaux', 4, 1,
+     json.dumps([
+         {"x": 0, "y": 0, "w": 1, "h": 1},
+         {"x": 1, "y": 0, "w": 1, "h": 1},
+         {"x": 2, "y": 0, "w": 1, "h": 1},
+         {"x": 3, "y": 0, "w": 1, "h": 1}
+     ])),
+    ('grid_4x2', 'Grille (4×2)', '8 widgets égaux', 4, 2,
+     json.dumps([
+         {"x": 0, "y": 0, "w": 1, "h": 1}, {"x": 1, "y": 0, "w": 1, "h": 1},
+         {"x": 2, "y": 0, "w": 1, "h": 1}, {"x": 3, "y": 0, "w": 1, "h": 1},
+         {"x": 0, "y": 1, "w": 1, "h": 1}, {"x": 1, "y": 1, "w": 1, "h": 1},
+         {"x": 2, "y": 1, "w": 1, "h": 1}, {"x": 3, "y": 1, "w": 1, "h": 1}
+     ])),
+    ('grid_3x3', 'Grille (3×3)', '9 widgets égaux', 3, 3,
+     json.dumps([
+         {"x": 0, "y": 0, "w": 1, "h": 1}, {"x": 1, "y": 0, "w": 1, "h": 1}, {"x": 2, "y": 0, "w": 1, "h": 1},
+         {"x": 0, "y": 1, "w": 1, "h": 1}, {"x": 1, "y": 1, "w": 1, "h": 1}, {"x": 2, "y": 1, "w": 1, "h": 1},
+         {"x": 0, "y": 2, "w": 1, "h": 1}, {"x": 1, "y": 2, "w": 1, "h": 1}, {"x": 2, "y": 2, "w": 1, "h": 1}
+     ])),
+    ('large_top_4bottom', 'Large haut + 4 bas', '1 grand + 4 petits', 4, 2,
+     json.dumps([
+         {"x": 0, "y": 0, "w": 4, "h": 1},
+         {"x": 0, "y": 1, "w": 1, "h": 1}, {"x": 1, "y": 1, "w": 1, "h": 1},
+         {"x": 2, "y": 1, "w": 1, "h": 1}, {"x": 3, "y": 1, "w": 1, "h": 1}
+     ])),
+    ('sidebar_left_4grid', 'Barre gauche + grille 2×2', '1 grand + 4 widgets', 3, 2,
+     json.dumps([
+         {"x": 0, "y": 0, "w": 1, "h": 2},
+         {"x": 1, "y": 0, "w": 1, "h": 1}, {"x": 2, "y": 0, "w": 1, "h": 1},
+         {"x": 1, "y": 1, "w": 1, "h": 1}, {"x": 2, "y": 1, "w": 1, "h": 1}
+     ])),
+]
+
+
+def normaliser_layout_config(config, colonnes, lignes):
+    """Valide une personnalisation de colonnes/lignes pour une slide.
+
+    Le format stocké est ``{"cols": [0.5, 0.5], "rows": [0.6, 0.4]}`` :
+    des fractions normalisées dont la somme vaut 1. Une configuration vide
+    conserve le rendu égalitaire historique des gabarits.
+    """
+    if config is None or config == '':
+        return {}
+    if isinstance(config, str):
+        try:
+            config = json.loads(config)
+        except (TypeError, ValueError):
+            raise ValueError('layout_config doit être un objet JSON')
+    if not isinstance(config, dict):
+        raise ValueError('layout_config doit être un objet')
+
+    resultat = {}
+    for axe, nombre in (('cols', colonnes), ('rows', lignes)):
+        valeurs = config.get(axe)
+        if valeurs is None:
+            continue
+        if not isinstance(nombre, int) or not 1 <= nombre <= 8:
+            raise ValueError('dimensions de layout invalides')
+        if not isinstance(valeurs, list) or len(valeurs) != nombre:
+            raise ValueError(f'{axe} doit contenir {nombre} valeurs')
+
+        propres = []
+        for valeur in valeurs:
+            if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+                raise ValueError(f'{axe} doit contenir des nombres')
+            valeur = float(valeur)
+            if not math.isfinite(valeur) or valeur <= 0:
+                raise ValueError(f'{axe} doit contenir des nombres positifs')
+            propres.append(valeur)
+
+        total = sum(propres)
+        normalisees = [valeur / total for valeur in propres]
+        if min(normalisees) < 0.05:
+            raise ValueError(f'chaque valeur de {axe} doit représenter au moins 5 %')
+        normalisees = [round(valeur, 4) for valeur in normalisees]
+        normalisees[-1] = round(1.0 - sum(normalisees[:-1]), 4)
+        if normalisees[-1] <= 0:
+            raise ValueError(f'{axe} invalide')
+        resultat[axe] = normalisees
+
+    return resultat
+
+
+def lire_layout_config(raw, colonnes, lignes):
+    """Décode la configuration stockée ; une valeur invalide retombe sur {}."""
+    if not raw:
+        return {}
+    try:
+        return normaliser_layout_config(raw, colonnes, lignes)
+    except (TypeError, ValueError):
+        return {}
 
 
 def _is_running_in_docker():
@@ -125,6 +237,7 @@ def init_db():
         fond_type TEXT DEFAULT 'defaut',
         fond_valeur TEXT DEFAULT '',
         layout_ratio INTEGER DEFAULT 60,    -- Ratio hauteur grand bloc pour layouts large_top_* (en %)
+        layout_config_json TEXT DEFAULT '{}', -- Fractions colonnes/lignes personnalisées par slide
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime')),
         FOREIGN KEY(layout_id) REFERENCES layouts(id) ON DELETE RESTRICT
@@ -186,7 +299,6 @@ def init_db():
 
     # ========== Initialiser les layouts (inspirés Windows 11) ==========
     if c.execute('SELECT COUNT(*) FROM layouts').fetchone()[0] == 0:
-        import json
         layouts_defaults = [
             # Petit (1×1) - 1 widget
             ('small', 'Petit (1×1)', '1 widget plein écran', 1, 1, 
@@ -253,6 +365,7 @@ def init_db():
                  {"x": 2, "y": 1, "w": 1, "h": 1}   # Petit 3
              ])),
         ]
+        layouts_defaults.extend(LAYOUTS_VARIES)
         
         c.executemany(
             'INSERT INTO layouts (code, nom, description, colonnes, lignes, grille_json) VALUES (?, ?, ?, ?, ?, ?)',
@@ -359,6 +472,12 @@ def migrate_db():
         c.execute("ALTER TABLE slides ADD COLUMN ecran INTEGER NOT NULL DEFAULT 1")
         print('[FabBoard] Migration : colonne ecran ajoutée à slides')
 
+    # Migration : personnalisation des largeurs de colonnes et hauteurs de lignes.
+    # La valeur par défaut {} conserve le rendu historique des gabarits.
+    if 'layout_config_json' not in columns:
+        c.execute("ALTER TABLE slides ADD COLUMN layout_config_json TEXT DEFAULT '{}'")
+        print('[FabBoard] Migration : colonne layout_config_json ajoutée à slides')
+
     # Migration : ajouter le widget 'video' s'il n'existe pas
     if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'video'").fetchone()[0] == 0:
         c.execute(
@@ -377,7 +496,6 @@ def migrate_db():
 
     # Migration : ajouter le layout 'grid_3x1' s'il n'existe pas
     if c.execute("SELECT COUNT(*) FROM layouts WHERE code = 'grid_3x1'").fetchone()[0] == 0:
-        import json
         c.execute(
             'INSERT INTO layouts (code, nom, description, colonnes, lignes, grille_json) VALUES (?, ?, ?, ?, ?, ?)',
             ('grid_3x1', 'Grille (3×1)', '3 widgets horizontaux', 3, 1,
@@ -386,6 +504,16 @@ def migrate_db():
              ]))
         )
         print('[FabBoard] Migration : layout grid_3x1 ajouté')
+
+    # Migration : ajouter les gabarits variés (idempotent, sans écraser un
+    # gabarit existant ni déplacer les slides qui l'utilisent).
+    for layout in LAYOUTS_VARIES:
+        if c.execute('SELECT COUNT(*) FROM layouts WHERE code = ?', (layout[0],)).fetchone()[0] == 0:
+            c.execute(
+                'INSERT INTO layouts (code, nom, description, colonnes, lignes, grille_json) VALUES (?, ?, ?, ?, ?, ?)',
+                layout
+            )
+            print(f'[FabBoard] Migration : layout {layout[0]} ajouté')
 
     # Migration : ajouter le widget 'gif' s'il n'existe pas
     if c.execute("SELECT COUNT(*) FROM widgets_disponibles WHERE code = 'gif'").fetchone()[0] == 0:
@@ -506,6 +634,10 @@ def get_all_slides(include_inactive=False):
         return []
 
     slides = [dict(row) for row in slides_rows]
+    for slide in slides:
+        slide['layout_config'] = lire_layout_config(
+            slide.get('layout_config_json'), slide.get('colonnes'), slide.get('lignes')
+        )
     slide_ids = [s['id'] for s in slides]
 
     # Charger TOUS les widgets en une seule requête
@@ -550,6 +682,9 @@ def get_slide_by_id(slide_id):
         return None
     
     slide = dict(slide)
+    slide['layout_config'] = lire_layout_config(
+        slide.get('layout_config_json'), slide.get('colonnes'), slide.get('lignes')
+    )
     
     # Charger les widgets
     widgets_query = '''

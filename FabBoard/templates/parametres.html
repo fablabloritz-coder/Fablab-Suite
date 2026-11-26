@@ -452,5 +452,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/parametres.js') }}"></script>
+<script src="{{ url_for('static', filename='js/parametres.js') }}?v={{ app_version }}"></script>
 {% endblock %}

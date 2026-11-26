@@ -1,6 +1,26 @@
 {
   "history": [
     {
+      "version": "3.9.0",
+      "date": "2026-11-26",
+      "title": "Layouts variés et tailles personnalisables",
+      "notes": [
+        "Sept nouveaux gabarits (grand gauche + 3 droite, grand droite + 2 gauche, grilles 4×1, 4×2 et 3×3, grand haut + 4 bas, barre gauche + grille 2×2) sont proposés en plus des dix existants.",
+        "Chaque slide peut désormais ajuster à la souris la largeur de ses colonnes et la hauteur de ses lignes : l'outil « Ajuster » affiche des séparateurs dans l'aperçu, le glisser est sauvegardé automatiquement, et un bouton réinitialise la disposition.",
+        "La personnalisation est stockée par slide dans une colonne optionnelle ; sans réglage, les gabarits gardent exactement leurs pistes égales et le ratio de hauteur historique. La migration est idempotente et ne modifie aucun layout existant."
+      ]
+    },
+    {
+      "version": "3.8.13",
+      "date": "2026-11-26",
+      "title": "Cache des assets et widgets lisibles en cellules étroites",
+      "notes": [
+        "Tous les CSS/JS locaux (style.css, utils.js, slides.css, parametres.js et Bootstrap) suivent désormais la version de l'application : un changement de version invalide leur cache au lieu de laisser d'anciens fichiers.",
+        "Le timer passe en grille 2×2 sans séparateurs dans les cellules de moins de 300 px, et garde une seule ligne au-delà : plus de débordement à 1280/1366/1440, avec des unités lisibles dans les cellules étroites.",
+        "La météo contient son chiffre principal dans sa boîte de ligne (line-height 1.2), sans débordement vertical."
+      ]
+    },
+    {
       "version": "3.8.12",
       "date": "2026-11-25",
       "title": "Défilement automatique : la page courante survit aux rafraîchissements",

@@ -23,6 +23,11 @@ Les prompts complets sont dans le dossier `agents/`.
 3. Apres chaque implementation: tests + review risque.
 4. Commit/push seulement apres validation.
 5. Clore la session avec Release Logger.
+6. **Tags non rétroactifs** : ne jamais créer de tag ou de release pour une
+   version intermédiaire. Seules les versions effectivement publiées reçoivent
+   `<app>-vX.Y.Z`, et le tag est posé sur la version courante (`APP_VERSION`).
+   Une entrée sans tag ne porte pas de clé `url`. Voir la section « Versions
+   intermédiaires et tags rétroactifs » du `README.md` racine.
 
 ## Definition of Done (DoD)
 

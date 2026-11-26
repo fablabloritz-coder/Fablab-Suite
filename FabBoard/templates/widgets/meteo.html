@@ -51,7 +51,9 @@
 .meteo-temp {
     font-size: clamp(32px, calc(5 * var(--lw, 1vw)), 60px);
     font-weight: 700;
-    line-height: 1;
+    /* line-height: 1 laissait la boîte de ligne plus courte que le glyphe
+       (scrollHeight > clientHeight) ; 1.2 contient le chiffre et son unité. */
+    line-height: 1.2;
     margin-bottom: 8px;
     color: #e2e8f0;
 }

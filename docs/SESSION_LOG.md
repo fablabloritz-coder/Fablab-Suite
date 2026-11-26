@@ -6,6 +6,137 @@ action imperative.
 
 ---
 
+## 2026-11-26 — PretGo : préparation de 1.11.3
+
+**Notes**
+- Purge des rappels réversible : les lignes de blocage retirées sont
+  archivées dans `rappels_email_log_archive` avec leurs colonnes d'origine,
+  la date d'archivage et le motif, pour une restauration SQL.
+- L'archive est créée par `init_db()` et remplie par un `INSERT ... SELECT`
+  avant le `DELETE` ; les tests vérifient les colonnes et la restauration
+  complète. Notes couvrant 70f4c92 et c5e6674.
+
+**Contrôles**
+- `APP_VERSION = "1.11.3"` et tête des notes `1.11.3` ; README/changelog
+  régénéré (25 versions).
+- `release_notes_gen --check` OK (`pretgo-v1.11.2`),
+  `changelog_gen --check` OK et `release_publish --check` OK.
+- 63 tests PretGo OK (`python3 -m unittest discover -s tests`), plus 4 tests
+  de métadonnées OK (version/notes, liens, semver, unicité). Le contrôle
+  « dernier tag vs version » reste rouge avant le tag, attendu.
+
+**Prochaine action** : lors de la publication, créer le tag
+  `pretgo-v1.11.3` via Auto release, puis vérifier la release et le lien
+  de notes. Aucun tag ni push effectué pour l'instant.
+
+## 2026-11-26 — FabBoard : layouts variés et tailles personnalisables
+
+**Fonctionnalite**
+- Sept nouveaux gabarits : grand gauche + 3 droite, grand droite + 2
+  gauche, grilles 4x1, 4x2 et 3x3, grand haut + 4 bas, barre gauche +
+  grille 2x2. Les dix gabarits existants sont inchanges.
+- Outil « Ajuster » dans l'apercu : des separateurs permettent de modifier
+  a la souris la largeur des colonnes et la hauteur des lignes. Sauvegarde
+  automatique par slide et bouton de reinitialisation.
+- Stockage optionnel dans `slides.layout_config_json` (defaut `{}`). Sans
+  reglage, les pistes restent egales et le ratio `layout_ratio` historique
+  des layouts `large_top_*` continue de s'appliquer. La migration est
+  idempotente et ne modifie aucun layout existant.
+
+**Verification**
+- 86 tests FabBoard OK, dont 7 tests dedies (migration d'une base ancienne,
+  normalisation API, refus des valeurs invalides, reset au changement de
+  gabarit, geometrie des nouveaux layouts).
+- Navigateur : 17 gabarits dans le selecteur ; glisser d'une colonne de
+  0.5 a 0.6138 sauvegarde cote API ; reset a `{}` ; dashboard applique
+  `0.6fr 0.2fr 0.2fr` et `0.7fr 0.3fr` sans erreur visible.
+
+**Version** : 3.9.0 ; la 3.8.13 préparée juste avant reste une version
+  intermediaire du meme lot, sans tag ni release.
+- Revue : ajuster une colonne ne fige plus les hauteurs de lignes ; le ratio
+  `layout_ratio` des gabarits `large_top_*` reste applique tant que les lignes
+  ne sont pas ajustees.
+
+**Prochaine action** : committer le lot et taguer `fabboard-v3.9.0` ;
+  conserver les gabarits existants et tester les prochains ajouts avec une
+  base migree, pas seulement une base neuve.
+
+## 2026-11-26 — FabBoard : pas de tags retroactifs pour 3.8.3 a 3.8.11
+
+**Decision**
+- Ne pas creer les tags/releases 3.8.3 a 3.8.11 : ces versions sont des
+  etapes internes du lot publie sous `fabboard-v3.8.12` le 2026-11-25.
+- Regle : seules les versions effectivement publiees recoivent un tag et une
+  release ; une entree sans tag reste dans l'historique sans lien `url`.
+- 3.8.13, préparée après ce lot, reste elle aussi intermédiaire et sera
+  livree avec 3.9.0.
+
+**Verification**
+- GitHub : tags/releases `fabboard-v3.8.1`, `v3.8.2` et `v3.8.12` ; aucune
+  3.8.3 a 3.8.11. `origin/main` (f44f1b3) porte le lien de 3.8.12.
+- Les entrees 3.8.3 a 3.8.11 de `release-notes.json` n'ont aucun `url`.
+- Tag `fabboard-v3.8.12` recupere localement depuis le depot distant.
+
+**Prochaine action** : conserver cette regle pour les prochains lots, sans
+  taguer retroactivement les versions intermediaires.
+
+## 2026-11-26 — FabBoard : timer lisible dans une cellule 3 colonnes
+
+**Probleme**
+- Grille `grid_3x2` (cellule de 1/3 de largeur) : en portrait et portrait
+  inverse, le timer debordait de 1 a 2 px a 1440/1366/1280, et les libelles
+  des unites etaient comprimes (`scrollWidth > clientWidth`).
+
+**Correctif**
+- `timer.html` : sous 300 px de largeur de widget, `.timer-display` passe en
+  grille 2x2 sans separateurs, avec des unites sans `min-width` et un padding
+  reduit. `container-type: inline-size` sur `.widget-timer` ; au-dela de
+  300 px, le rendu sur une ligne reste inchange.
+
+**Verification navigateur**
+- 3x2 : 1920/1440/1366/1280 en portrait et portrait inverse, aucun
+  debordement. Mode 2x2 actif a 253/239/223 px ; une ligne a 343 px.
+- Regression 2x2 : 1280/1366/1440 portrait et 1920 paysage, aucun
+  debordement, mode une ligne conserve.
+- Meteo : aucun debordement dans les memes cellules.
+- 79 tests FabBoard OK ; slide de test supprimee, ordre [2,3] et orientation
+  portrait restaures.
+
+**Prochaine action** : integrer ce correctif au lot 3.9.0 ; la 3.8.13 reste
+  intermediaire et n'est pas taguée.
+
+## 2026-11-26 — FabBoard : cache-busting de tous les assets locaux
+
+**Perimetre**
+- `style.css`, `utils.js`, `slides.css`, `parametres.js` et les copies locales
+  de Bootstrap n'avaient aucun parametre de version ; seul `slides.js` avait
+  ete corrige en 3.8.7.
+
+**Correctif**
+- Tous les CSS/JS locaux references par les templates portent
+  `?v={{ app_version }}` : base, dashboard, slides, parametres et Bootstrap.
+- Le test `test_assets_locaux_charges_avec_la_version` remplace le test limite
+  a `slides.js`. Il parcourt `/`, `/ecran/2`, `/slides`, `/parametres` et
+  `/medias`, verifie chaque balise `<script src>` et `<link rel="stylesheet">`
+  servie par `/static`, puis rejoue le rendu avec `app_version=9.9.9-test`
+  pour prouver que toutes les URL changent.
+
+**Revue risque**
+- [FAIBLE] Les assets Bootstrap sont desormais versionnes avec l'application :
+  leur cache est invalide a chaque version, sans impact fonctionnel.
+- [FAIBLE] Le test fige la liste des CSS/JS attendus : ajouter un asset impose
+  de l'ajouter a `assets_attendus`, sinon le test echoue volontairement.
+- Aucun changement de comportement applicatif ; seules les URL de cache
+  changent.
+
+**Tests / verification** : 79 tests FabBoard OK, `git diff --check` OK ;
+  pages `/`, `/ecran/2`, `/slides`, `/parametres`, `/medias` en HTTP 200 avec
+  tous les CSS/JS en `?v=3.8.12`. Version applicative d'alors (3.8.12), pas
+  de commit, tag ni release.
+
+**Prochaine action** : integrer ce correctif au lot 3.9.0 ; les notes 3.8.13
+  restent dans l'historique comme etape intermediaire.
+
 ## 2026-11-25 — FabBoard : audit des versions 3.8.3 a 3.8.12
 
 **Perimetre**

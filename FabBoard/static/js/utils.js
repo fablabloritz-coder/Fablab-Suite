@@ -1,6 +1,77 @@
 // FabBoard — Utilitaires JavaScript
 
 /**
+ * Lit la configuration de disposition d'une slide.
+ * Accepte un objet (API récente) ou une chaîne JSON (ancienne réponse).
+ */
+function getLayoutConfig(slide) {
+    let config = slide && slide.layout_config;
+    if (typeof config === 'string') {
+        try {
+            config = JSON.parse(config);
+        } catch (e) {
+            config = {};
+        }
+    }
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        config = {};
+    }
+    return config;
+}
+
+/**
+ * Retourne les fractions d'un axe (cols/rows) pour un nombre de pistes donné.
+ * Des valeurs absentes ou invalides retombent sur des pistes égales, ce qui
+ * conserve le rendu historique des gabarits.
+ */
+function getLayoutTracks(slide, axis, count) {
+    const config = getLayoutConfig(slide);
+    let values = config[axis];
+    if (!Array.isArray(values) || values.length !== count) {
+        values = Array(count).fill(1);
+    }
+    values = values.map(value => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? number : 1;
+    });
+    const total = values.reduce((sum, value) => sum + value, 0) || count || 1;
+    return values.map(value => value / total);
+}
+
+/** Vrai si l'axe a une configuration valide et donc prime sur le ratio. */
+function layoutAxisPersonnalise(slide, axis, count) {
+    const values = getLayoutConfig(slide)[axis];
+    return Array.isArray(values) && values.length === count && values.every(value => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0;
+    });
+}
+
+/**
+ * Pistes réellement affichées : une personnalisation de lignes prime sur le
+ * ratio historique des gabarits large_top_*, qui reste sinon appliqué.
+ */
+function getLayoutTracksAffichees(slide, axis, count) {
+    const tracks = getLayoutTracks(slide, axis, count);
+    if (axis !== 'rows' || layoutAxisPersonnalise(slide, axis, count)) {
+        return tracks;
+    }
+
+    const ratio = parseInt(slide.layout_ratio, 10);
+    if ((slide.layout_code === 'large_top_2bottom' || slide.layout_code === 'large_top_3bottom')
+            && count === 2 && Number.isFinite(ratio)) {
+        const large = Math.max(50, Math.min(80, ratio)) / 100;
+        return [large, 1 - large];
+    }
+    return tracks;
+}
+
+/** Construit la valeur CSS grid-template-* à partir de fractions. */
+function layoutTracksToGrid(tracks) {
+    return tracks.map(track => `${Number(track).toFixed(4)}fr`).join(' ');
+}
+
+/**
  * Affiche une notification toast
  * @param {string} message - Le message à afficher
  * @param {string} type - Type : success, error, warning, info

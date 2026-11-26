@@ -477,6 +477,15 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 
 <!-- changelog:start -->
 
+### v1.11.3 — 2026-11-26
+
+#### Purge des rappels réversible
+
+- La purge des lignes de blocage redondantes ne supprime plus l'historique sans trace : chaque ligne retirée est archivée dans `rappels_email_log_archive` avec ses colonnes d'origine, la date d'archivage et le motif, ce qui permet une restauration SQL.
+- La table d'archive est créée dès `init_db()` et remplie en un seul `INSERT ... SELECT` avant le `DELETE` ; les tests vérifient le contenu colonne par colonne et la restauration complète de l'historique.
+
+---
+
 ### v1.11.2 — 2026-11-18
 
 #### Historique des rappels alleger

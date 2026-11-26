@@ -185,6 +185,8 @@ let selectedSlideId = null;
 let sortableInstance = null;
 let isRenderingSlides = false; // Flag pour éviter les rendus concurrents
 let currentEditingWidgetConfig = null; // Contexte d'édition config avancée
+let layoutEditMode = false; // Séparateurs de colonnes/lignes visibles
+let layoutResizeState = null; // Glisser en cours sur un séparateur
 
 /** Écran d'affichage d'une slide : 1 par défaut, 2 pour le second écran. */
 function ecranDeSlide(slide) {
@@ -282,6 +284,7 @@ function setupEventListeners() {
         'btnDeleteSlide': deleteCurrentSlide,
         'btnDeleteAllSlides': deleteAllSlides,
         'btnRefreshPreview': refreshPreview,
+        'btnToggleLayoutEdit': toggleLayoutEditMode,
         'btnFullscreenPreview': openFullscreenPreview,
         'btnSaveWidgetConfig': saveWidgetConfig
     };
@@ -505,19 +508,12 @@ function renderPreview() {
     const container = document.getElementById('previewContainer');
     const layout = JSON.parse(slide.grille_json);
     const slideWidgets = slide.widgets || [];
-    
-    // Construire la grille CSS
-    let gridRows = `repeat(${slide.lignes}, 1fr)`;
-    const slideRatio = parseInt(slide.layout_ratio, 10);
-    if ((slide.layout_code === 'large_top_2bottom' || slide.layout_code === 'large_top_3bottom') && slide.lignes === 2 && !Number.isNaN(slideRatio)) {
-        const large = Math.max(50, Math.min(80, slideRatio));
-        const small = 100 - large;
-        gridRows = `${large}fr ${small}fr`;
-    }
+    const colTracks = getLayoutTracksAffichees(slide, 'cols', slide.colonnes);
+    const rowTracks = getLayoutTracksAffichees(slide, 'rows', slide.lignes);
 
     const gridStyle = `
-        grid-template-columns: repeat(${slide.colonnes}, 1fr);
-        grid-template-rows: ${gridRows};
+        grid-template-columns: ${layoutTracksToGrid(colTracks)};
+        grid-template-rows: ${layoutTracksToGrid(rowTracks)};
     `;
     
     // Construire les widgets
@@ -547,15 +543,239 @@ function renderPreview() {
     }).join('');
     
     container.innerHTML = `
-        <div class="preview-grid" style="${gridStyle}">
+        <div class="preview-grid${layoutEditMode ? ' layout-edit' : ''}" style="${gridStyle}">
             ${widgetsHTML}
+            ${buildLayoutHandles(layout, colTracks, rowTracks)}
         </div>
     `;
+    updateLayoutEditUi();
     
     // Mettre à jour les infos
     document.getElementById('previewLayoutName').textContent = slide.layout_nom || 'Gabarit personnalisé';
     const ecran = ecranDeSlide(slide);
     document.getElementById('previewDuration').textContent = `Durée : ${slide.temps_affichage}s · Écran ${ecran}`;
+}
+
+/**
+ * Construit les séparateurs de pistes réellement utiles pour ce gabarit.
+ * Un séparateur situé à l'intérieur de toutes les cellules (aucune cellule
+ * ne commence ou ne finit dessus) est masqué : le glisser ne changerait rien.
+ */
+function buildLayoutHandles(layout, colTracks, rowTracks) {
+    function handles(axis, tracks) {
+        let total = 0;
+        const cumul = tracks.map(track => {
+            total += track;
+            return total;
+        });
+        return cumul.slice(0, -1).map((fraction, index) => {
+            const boundary = index + 1;
+            const utile = layout.some(pos => axis === 'cols'
+                ? (pos.x === boundary || pos.x + pos.w === boundary)
+                : (pos.y === boundary || pos.y + pos.h === boundary));
+            if (!utile) return '';
+
+            const position = (fraction * 100).toFixed(4);
+            const classe = axis === 'cols' ? 'layout-resize-col' : 'layout-resize-row';
+            const style = axis === 'cols' ? `left:${position}%` : `top:${position}%`;
+            return `<div class="layout-resize-handle ${classe}" style="${style}"
+                        data-boundary="${boundary}"
+                        onpointerdown="startLayoutResize(event, '${axis}', ${boundary})"
+                        title="Glisser pour redimensionner"></div>`;
+        }).join('');
+    }
+
+    return handles('cols', colTracks) + handles('rows', rowTracks);
+}
+
+function updateLayoutEditUi() {
+    const bouton = document.getElementById('btnToggleLayoutEdit');
+    const aide = document.getElementById('layoutEditHint');
+    if (bouton) {
+        bouton.classList.toggle('active', layoutEditMode);
+        bouton.setAttribute('aria-pressed', layoutEditMode ? 'true' : 'false');
+    }
+    if (aide) {
+        aide.style.display = layoutEditMode ? '' : 'none';
+    }
+}
+
+function toggleLayoutEditMode() {
+    if (!selectedSlideId) {
+        showToast('Sélectionnez une slide pour ajuster sa disposition', 'warning');
+        return;
+    }
+    layoutEditMode = !layoutEditMode;
+    const grille = document.querySelector('#previewContainer .preview-grid');
+    if (grille) {
+        grille.classList.toggle('layout-edit', layoutEditMode);
+    }
+    updateLayoutEditUi();
+}
+
+function startLayoutResize(event, axis, boundary) {
+    if (!layoutEditMode || event.button !== 0) return;
+
+    const grille = event.currentTarget.closest('.preview-grid');
+    const slide = currentSlides.find(s => s.id === selectedSlideId);
+    if (!grille || !slide) return;
+
+    const nombre = axis === 'cols' ? slide.colonnes : slide.lignes;
+    const tracks = getLayoutTracksAffichees(slide, axis, nombre);
+    const rect = grille.getBoundingClientRect();
+    const totalPx = axis === 'cols' ? rect.width : rect.height;
+    if (!totalPx) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    layoutResizeState = {
+        axis,
+        boundary,
+        grille,
+        slide,
+        totalPx,
+        depart: axis === 'cols' ? event.clientX : event.clientY,
+        baseTracks: tracks,
+        currentTracks: tracks.slice(),
+        moved: false
+    };
+
+    grille.classList.add('layout-resizing');
+    document.body.classList.add('layout-resizing');
+    document.addEventListener('pointermove', onLayoutResizeMove);
+    document.addEventListener('pointerup', finishLayoutResize);
+    document.addEventListener('pointercancel', finishLayoutResize);
+}
+
+function onLayoutResizeMove(event) {
+    const state = layoutResizeState;
+    if (!state) return;
+
+    const position = state.axis === 'cols' ? event.clientX : event.clientY;
+    const delta = (position - state.depart) / state.totalPx;
+    const minimum = 0.08;
+    let gauche = state.baseTracks[state.boundary - 1] + delta;
+    let droite = state.baseTracks[state.boundary] - delta;
+
+    if (gauche < minimum) {
+        droite -= minimum - gauche;
+        gauche = minimum;
+    }
+    if (droite < minimum) {
+        gauche -= minimum - droite;
+        droite = minimum;
+    }
+    if (gauche < minimum - 1e-9 || droite < minimum - 1e-9) return;
+
+    const tracks = state.baseTracks.slice();
+    tracks[state.boundary - 1] = gauche;
+    tracks[state.boundary] = droite;
+    state.currentTracks = tracks;
+    if (Math.abs(delta) > 0.002) state.moved = true;
+
+    applyLayoutTracks(state.grille, state.axis, tracks);
+}
+
+function applyLayoutTracks(grille, axis, tracks) {
+    if (axis === 'cols') {
+        grille.style.gridTemplateColumns = layoutTracksToGrid(tracks);
+    } else {
+        grille.style.gridTemplateRows = layoutTracksToGrid(tracks);
+    }
+
+    let total = 0;
+    const cumul = tracks.map(track => {
+        total += track;
+        return total;
+    });
+    grille.querySelectorAll(axis === 'cols' ? '.layout-resize-col' : '.layout-resize-row').forEach(handle => {
+        const boundary = parseInt(handle.getAttribute('data-boundary'), 10);
+        const fraction = cumul[boundary - 1];
+        if (!Number.isFinite(fraction)) return;
+        if (axis === 'cols') {
+            handle.style.left = `${(fraction * 100).toFixed(4)}%`;
+        } else {
+            handle.style.top = `${(fraction * 100).toFixed(4)}%`;
+        }
+    });
+}
+
+async function finishLayoutResize() {
+    const state = layoutResizeState;
+    if (!state) return;
+    layoutResizeState = null;
+
+    document.removeEventListener('pointermove', onLayoutResizeMove);
+    document.removeEventListener('pointerup', finishLayoutResize);
+    document.removeEventListener('pointercancel', finishLayoutResize);
+    state.grille.classList.remove('layout-resizing');
+    document.body.classList.remove('layout-resizing');
+
+    if (!state.moved) return;
+
+    const slide = state.slide;
+    const index = currentSlides.findIndex(s => s.id === slide.id);
+    if (index < 0) return;
+
+    const arrondir = valeur => Math.round(valeur * 10000) / 10000;
+    const configAvant = getLayoutConfig(slide);
+    const config = {};
+    if (state.axis === 'cols') {
+        config.cols = state.currentTracks.map(arrondir);
+    } else {
+        config.rows = state.currentTracks.map(arrondir);
+    }
+
+    // Ne pas figer l'autre axe : une colonne ajustée ne doit pas remplacer
+    // le ratio historique des lignes, et inversement.
+    const autreAxe = state.axis === 'cols' ? 'rows' : 'cols';
+    const autreNombre = autreAxe === 'cols' ? slide.colonnes : slide.lignes;
+    if (layoutAxisPersonnalise(slide, autreAxe, autreNombre)) {
+        config[autreAxe] = configAvant[autreAxe].map(arrondir);
+    }
+
+    slide.layout_config = config;
+    renderPreview();
+
+    try {
+        const resultat = await apiCall(`/api/slides/${slide.id}`, 'PUT', { layout_config: config });
+        currentSlides[index] = resultat.data;
+        if (selectedSlideId === slide.id) {
+            renderPreview();
+            renderConfig();
+        }
+        showToast('Disposition ajustée', 'success');
+    } catch (error) {
+        slide.layout_config = configAvant;
+        renderPreview();
+        showToast('Impossible d\'enregistrer la disposition', 'error');
+        console.error(error);
+    }
+}
+
+async function resetLayoutConfig() {
+    const slide = currentSlides.find(s => s.id === selectedSlideId);
+    if (!slide) return;
+    if (!confirm('Réinitialiser les tailles de colonnes et de lignes de cette slide ?')) return;
+
+    const configAvant = getLayoutConfig(slide);
+    const index = currentSlides.findIndex(s => s.id === slide.id);
+    slide.layout_config = {};
+    renderPreview();
+
+    try {
+        const resultat = await apiCall(`/api/slides/${slide.id}`, 'PUT', { layout_config: {} });
+        currentSlides[index] = resultat.data;
+        renderPreview();
+        renderConfig();
+        showToast('Disposition réinitialisée', 'success');
+    } catch (error) {
+        slide.layout_config = configAvant;
+        renderPreview();
+        showToast('Impossible de réinitialiser la disposition', 'error');
+        console.error(error);
+    }
 }
 
 function refreshPreview() {
@@ -591,6 +811,8 @@ function renderConfig() {
     try {
         const layout = JSON.parse(slide.grille_json || '[]');
         const slideWidgets = slide.widgets || [];
+        const personnalisee = layoutAxisPersonnalise(slide, 'cols', slide.colonnes)
+            || layoutAxisPersonnalise(slide, 'rows', slide.lignes);
         
         container.innerHTML = `
             <!-- Infos générales -->
@@ -620,6 +842,14 @@ function renderConfig() {
                 <button class="btn btn-sm btn-outline-primary w-100" onclick="editSlide(${slide.id})">
                     <i class="bi bi-pencil"></i> Modifier
                 </button>
+                <div class="small text-muted mt-2">
+                    <i class="bi bi-sliders"></i> Cliquez sur l'outil d'ajustement au-dessus de l'aperçu, puis glissez les séparateurs pour modifier la taille des zones.
+                </div>
+                ${personnalisee ? `
+                    <button class="btn btn-sm btn-outline-secondary w-100 mt-2" onclick="resetLayoutConfig()">
+                        <i class="bi bi-arrow-counterclockwise"></i> Réinitialiser la disposition
+                    </button>
+                ` : ''}
             </div>
             
             <!-- Widgets -->
@@ -827,6 +1057,9 @@ async function saveSlide() {
             // Modification — si le layout change, nettoyer les widgets hors bornes
             const slide = currentSlides.find(s => s.id == slideId);
             if (slide && slide.layout_id !== layout_id) {
+                // Le nouveau gabarit a ses propres proportions : ne pas reporter
+                // la personnalisation de l'ancien layout.
+                data.layout_config = {};
                 const newLayout = currentLayouts.find(l => l.id === layout_id);
                 if (newLayout) {
                     const maxPositions = JSON.parse(newLayout.grille_json).length;

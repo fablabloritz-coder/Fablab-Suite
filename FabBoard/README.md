@@ -33,7 +33,8 @@ Les applications sont **indépendantes** — chacune peut tourner seule avec son
 ## ✨ Fonctionnalités
 
 ### Système de slides
-- Éditeur visuel de slides avec layouts configurables (grilles 1×1 à 3×2)
+- Éditeur visuel de slides avec 17 gabarits (grilles jusqu'à 4×2 ou 3×3, blocs asymétriques et barre latérale)
+- Largeur des colonnes et hauteur des lignes ajustables à la souris dans l'aperçu, par slide, avec réinitialisation en un clic
 - Widgets assignables par glisser-déposer
 - Durée d'affichage individuelle par slide (5s à 5min)
 - Fond personnalisable par slide (couleur ou image)
@@ -528,7 +529,33 @@ Navigation :
 
 ## 📜 Changelog
 
+> **Politique de publication** — seules les versions effectivement publiées
+> (`fabboard-vX.Y.Z`) reçoivent un tag et une release GitHub. Les versions
+> intermédiaires d'un lot restent dans l'historique sans lien et ne sont pas
+> taguées rétroactivement : les versions 3.8.3 à 3.8.11 sont regroupées dans
+> la release 3.8.12, et la 3.8.13 sera livrée avec la release 3.9.0.
+
 <!-- changelog:start -->
+
+### v3.9.0 — 2026-11-26
+
+#### Layouts variés et tailles personnalisables
+
+- Sept nouveaux gabarits (grand gauche + 3 droite, grand droite + 2 gauche, grilles 4×1, 4×2 et 3×3, grand haut + 4 bas, barre gauche + grille 2×2) sont proposés en plus des dix existants.
+- Chaque slide peut désormais ajuster à la souris la largeur de ses colonnes et la hauteur de ses lignes : l'outil « Ajuster » affiche des séparateurs dans l'aperçu, le glisser est sauvegardé automatiquement, et un bouton réinitialise la disposition.
+- La personnalisation est stockée par slide dans une colonne optionnelle ; sans réglage, les gabarits gardent exactement leurs pistes égales et le ratio de hauteur historique. La migration est idempotente et ne modifie aucun layout existant.
+
+---
+
+### v3.8.13 — 2026-11-26
+
+#### Cache des assets et widgets lisibles en cellules étroites
+
+- Tous les CSS/JS locaux (style.css, utils.js, slides.css, parametres.js et Bootstrap) suivent désormais la version de l'application : un changement de version invalide leur cache au lieu de laisser d'anciens fichiers.
+- Le timer passe en grille 2×2 sans séparateurs dans les cellules de moins de 300 px, et garde une seule ligne au-delà : plus de débordement à 1280/1366/1440, avec des unités lisibles dans les cellules étroites.
+- La météo contient son chiffre principal dans sa boîte de ligne (line-height 1.2), sans débordement vertical.
+
+---
 
 ### v3.8.12 — 2026-11-25
 

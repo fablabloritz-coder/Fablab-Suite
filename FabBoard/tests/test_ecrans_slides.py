@@ -38,6 +38,7 @@ class EcransSlidesTests(unittest.TestCase):
             import app as app_module
             app_module.app.config['TESTING'] = True
             app_module._db_initialized = True
+            cls.app = app_module.app
             cls.client = app_module.app.test_client()
 
     @classmethod
@@ -190,27 +191,90 @@ class EcransSlidesTests(unittest.TestCase):
         self.assertIn('id="slideEcran"', html)
         self.assertIn('value="2"', html)
 
-    # ---------- Cache du script de configuration ----------
+    # ---------- Cache des assets locaux ----------
 
-    def test_page_slides_charge_le_script_avec_la_version(self):
-        """`slides.js` change avec les versions : il doit être cache-busté.
-
-        Sans numéro de version, un navigateur qui a déjà chargé le script garde
-        son ancienne copie et n'affiche pas les nouvelles options du panneau de
-        configuration (cas du réglage « missions terminées »).
-        """
+    @staticmethod
+    def _assets_versionnes(html):
+        """Retourne [(chemin static, version)] pour les CSS/JS locaux."""
         import re
+        from urllib.parse import parse_qs, urlsplit
+
+        assets = []
+        for tag in re.findall(r'<(?:script|link)\b[^>]*>', html, re.IGNORECASE):
+            if tag.lower().startswith('<link'):
+                rel = re.search(r'\brel="([^"]*)"', tag, re.IGNORECASE)
+                if not rel or 'stylesheet' not in rel.group(1).split():
+                    continue
+                cible = re.search(r'\bhref="([^"]+)"', tag, re.IGNORECASE)
+            else:
+                cible = re.search(r'\bsrc="([^"]+)"', tag, re.IGNORECASE)
+            if not cible:
+                continue
+
+            parsed = urlsplit(cible.group(1))
+            if not parsed.path.startswith('/static/'):
+                continue
+            chemin = parsed.path[len('/static/'):]
+            if not chemin.endswith(('.css', '.js')):
+                continue
+            assets.append((chemin, parse_qs(parsed.query).get('v', [''])[0]))
+        return assets
+
+    def test_assets_locaux_charges_avec_la_version(self):
+        """Tous les CSS/JS locaux changent avec la version de l'application.
+
+        Le correctif 3.8.7 ne couvrait que `slides.js`. On vérifie ici chaque
+        balise `<script src>` et `<link rel="stylesheet">` servie par /static,
+        y compris celles qui n'avaient encore aucun paramètre de version.
+        """
         from routes import APP_VERSION
 
-        for url in ('/slides', '/'):
+        assets_attendus = {
+            'css/bootstrap-icons.css',
+            'css/bootstrap.min.css',
+            'css/dashboard.css',
+            'css/slides.css',
+            'css/style.css',
+            'js/bootstrap.bundle.min.js',
+            'js/dashboard.js',
+            'js/parametres.js',
+            'js/slides.js',
+            'js/utils.js',
+        }
+        vus = set()
+
+        for url in ('/', '/ecran/2', '/slides', '/parametres', '/medias'):
             html = self.client.get(url).get_data(as_text=True)
-            scripts = re.findall(r'(js/[a-z_]+\.js)\?v=([^"\'&]+)', html)
-            self.assertTrue(scripts, f'aucun script versionné sur {url}')
-            for fichier, version in scripts:
+            for chemin, version in self._assets_versionnes(html):
+                vus.add(chemin)
                 self.assertEqual(
                     version, APP_VERSION,
-                    f'{fichier} chargé avec ?v={version} au lieu de {APP_VERSION}',
+                    f'{chemin} chargé sans ?v={APP_VERSION} sur {url}',
                 )
+
+        self.assertEqual(
+            vus, assets_attendus,
+            'tous les CSS/JS locaux doivent être référencés et versionnés',
+        )
+
+        # Une autre version dans le contexte doit changer toutes les URL :
+        # cela détecte aussi une version recopiée en dur dans un template.
+        version_test = '9.9.9-test'
+        vus_avec_version_test = set()
+        with mock.patch.dict(self.app.jinja_env.globals, {'app_version': version_test}):
+            for url in ('/', '/ecran/2', '/slides', '/parametres', '/medias'):
+                html = self.client.get(url).get_data(as_text=True)
+                for chemin, version in self._assets_versionnes(html):
+                    vus_avec_version_test.add(chemin)
+                    self.assertEqual(
+                        version, version_test,
+                        f'{chemin} ne suit pas la version du contexte sur {url}',
+                    )
+
+        self.assertEqual(
+            vus_avec_version_test, assets_attendus,
+            'tous les CSS/JS locaux doivent suivre la version du contexte',
+        )
 
     def test_panneau_dependances_propose_de_masquer_les_terminees(self):
         """Le réglage doit rester offert, désactivé par défaut.

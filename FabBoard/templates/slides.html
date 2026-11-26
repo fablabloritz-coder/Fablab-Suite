@@ -3,7 +3,7 @@
 {% block title %}Configuration des Slides — FabBoard{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/slides.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/slides.css') }}?v={{ app_version }}">
 {% endblock %}
 
 {% block content %}
@@ -38,6 +38,11 @@
         <div class="panel-header">
             <h5><i class="bi bi-tv"></i> Aperçu Live</h5>
             <div class="preview-controls">
+                <button class="btn btn-sm btn-outline-secondary" id="btnToggleLayoutEdit"
+                        title="Ajuster la taille des zones à la souris"
+                        aria-label="Ajuster la taille des zones" aria-pressed="false">
+                    <i class="bi bi-sliders"></i>
+                </button>
                 <button class="btn btn-sm btn-outline-secondary" id="btnRefreshPreview">
                     <i class="bi bi-arrow-clockwise"></i>
                 </button>
@@ -58,6 +63,9 @@
             <div id="previewInfo" class="preview-info">
                 <span id="previewLayoutName" class="badge bg-secondary">Aucune slide</span>
                 <span id="previewDuration" class="text-muted ms-2"></span>
+            </div>
+            <div id="layoutEditHint" class="preview-edit-hint" style="display:none;">
+                <i class="bi bi-arrows-move"></i> Glissez les séparateurs pour ajuster la taille des zones.
             </div>
         </div>
     </div>

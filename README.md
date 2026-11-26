@@ -244,6 +244,17 @@ leurs versions indépendamment (`v1.7.1` de FabHome et `v1.10.1` de PretGo ne do
 Les tags sont annotés et posés sur le commit de la release. Le générateur s'en sert pour savoir depuis
 quel point lire l'historique.
 
+### Versions intermédiaires et tags rétroactifs
+
+Seules les versions effectivement publiées reçoivent un tag `<app>-vX.Y.Z` et une release GitHub. Les
+versions intermédiaires d'un même lot restent dans `history` pour la traçabilité, mais ne sont pas
+taguées après coup : le tag est posé sur la version courante (`APP_VERSION`), qui regroupe leurs
+évolutions. Exemple : FabBoard 3.8.3 à 3.8.11, livrées ensemble sous `fabboard-v3.8.12` ; aucune de
+ces versions intermédiaires n'a de tag ni de release. Une entrée sans tag ne porte pas de clé `url`,
+et la popup n'affiche donc pas de lien de release.
+
+Cette règle vaut pour Fabtrack, FabBoard, PretGo, FabHome et FabInventory.
+
 ### Publier une version
 
 1. Mettre à jour la constante `APP_VERSION` de l'application (manifest FabSuite, bannière de démarrage

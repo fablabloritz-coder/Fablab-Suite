@@ -395,19 +395,15 @@ async function displayCurrentSlide() {
     // Parser la grille layout
     hideWebpageFrames();
     const grille = JSON.parse(slide.grille_json);
-    
-    // Style CSS Grid
-    let gridRows = `repeat(${slide.lignes}, 1fr)`;
-    const slideRatio = parseInt(slide.layout_ratio, 10);
-    if ((slide.layout_code === 'large_top_2bottom' || slide.layout_code === 'large_top_3bottom') && slide.lignes === 2 && !Number.isNaN(slideRatio)) {
-        const large = Math.max(50, Math.min(80, slideRatio));
-        const small = 100 - large;
-        gridRows = `${large}fr ${small}fr`;
-    }
+    // Largeurs de colonnes et hauteurs de lignes personnalisées par slide.
+    // Sans configuration, les colonnes restent égales et les lignes suivent
+    // le ratio historique des gabarits large_top_*.
+    const colTracks = getLayoutTracksAffichees(slide, 'cols', slide.colonnes);
+    const rowTracks = getLayoutTracksAffichees(slide, 'rows', slide.lignes);
 
     const gridStyle = `
-        grid-template-columns: repeat(${slide.colonnes}, 1fr);
-        grid-template-rows: ${gridRows};
+        grid-template-columns: ${layoutTracksToGrid(colTracks)};
+        grid-template-rows: ${layoutTracksToGrid(rowTracks)};
         gap: 0.8rem;
         padding: 0.8rem;
     `;
