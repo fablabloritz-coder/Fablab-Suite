@@ -1428,6 +1428,7 @@ const WIDGET_CONFIG_DEFINITIONS = {
             { key: 'afficher_a_faire', label: 'Afficher "À faire"', type: 'checkbox', default: true },
             { key: 'afficher_en_cours', label: 'Afficher "En cours"', type: 'checkbox', default: true },
             { key: 'afficher_termine', label: 'Afficher "Terminé"', type: 'checkbox', default: false },
+            { key: 'afficher_dependances', label: "Afficher les missions dépendantes d'un service", type: 'checkbox', default: true },
             ECHELLE_FIELD
         ]
     },
@@ -1566,6 +1567,7 @@ const WIDGET_CONFIG_DEFINITIONS = {
             { key: 'afficher_a_faire', label: 'Afficher "À faire"', type: 'checkbox', default: true },
             { key: 'afficher_en_cours', label: 'Afficher "En cours"', type: 'checkbox', default: true },
             { key: 'afficher_termine', label: 'Afficher "Terminé"', type: 'checkbox', default: false },
+            { key: 'afficher_dependances', label: "Afficher les missions dépendantes d'un service", type: 'checkbox', default: true },
             ECHELLE_FIELD
         ]
     }

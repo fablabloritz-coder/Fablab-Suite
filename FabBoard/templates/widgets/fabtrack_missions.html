@@ -142,6 +142,16 @@
     const showDoing = config.afficher_en_cours !== false;
     const showDone = config.afficher_termine === true;
     const sourceId = config.source_id || null;
+    // Option « missions dependantes d'un service » : sans la cle, on garde
+    // exactement l'affichage historique (toutes les missions). Decochee, les
+    // missions rattachees a un service Fabtrack sont exclues, pour ne pas les
+    // doubler avec le widget « Dependances externes » sur un ecran unique.
+    const afficherDependances = !(
+        config.afficher_dependances === false
+        || config.afficher_dependances === 0
+        || config.afficher_dependances === '0'
+        || config.afficher_dependances === 'false'
+    );
 
     const cols = [];
     if (showTodo) cols.push({ key: 'a_faire', label: 'À faire', icon: 'bi-circle', cls: 'col-todo' });
@@ -176,6 +186,17 @@
         return /^#[0-9a-fA-F]{6}$/.test(value || '');
     }
 
+    // Meme marqueur que le widget « Dependances externes » : `service_id` cote
+    // Fabtrack, avec repli sur `depend_service_externe` puis `service_nom`
+    // pour les payloads anciens ou un service supprime.
+    function dependDeService(mission) {
+        if (!mission) return false;
+        if (Number(mission.depend_service_externe) === 1) return true;
+        const serviceId = Number(mission.service_id);
+        if (Number.isFinite(serviceId) && serviceId > 0) return true;
+        return String(mission.service_nom || '').trim() !== '';
+    }
+
     function hexToRgba(hex, alpha) {
         const h = (hex || '').replace('#', '');
         if (h.length !== 6) return 'rgba(148,163,184,' + alpha + ')';
@@ -186,8 +207,11 @@
     }
 
     function render(missions) {
+        const retenues = (missions || []).filter(function (m) {
+            return afficherDependances || !dependDeService(m);
+        });
         const grouped = { a_faire: [], en_cours: [], termine: [] };
-        (missions || []).forEach(function (m) {
+        retenues.forEach(function (m) {
             if (grouped[m.statut]) grouped[m.statut].push(m);
         });
 

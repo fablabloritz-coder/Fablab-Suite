@@ -537,6 +537,16 @@ Navigation :
 
 <!-- changelog:start -->
 
+### v3.9.1 — 2026-11-26
+
+#### Missions : masquer celles qui dépendent d'un service
+
+- Widget « Missions Fabtrack » : une nouvelle option « Afficher les missions dépendantes d'un service », cochée par défaut, permet de masquer les missions rattachées à un service Fabtrack — celles que présente aussi le widget « Dépendances externes ».
+- Sur une installation à un seul écran, les deux widgets peuvent désormais coexister sans doublon : les dépendances restent dans leur widget dédié, ou dans la liste des missions si l'option est laissée active.
+- La détection reprend celle des dépendances externes (service_id, puis depend_service_externe, puis service_nom) : les configurations existantes, sans la clé, et les payloads anciens gardent exactement l'affichage actuel. Le filtre s'applique aussi à la colonne « Terminé » et aux compteurs.
+
+---
+
 ### v3.9.0 — 2026-11-26
 
 #### Layouts variés et tailles personnalisables

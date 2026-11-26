@@ -6,6 +6,32 @@ action imperative.
 
 ---
 
+## 2026-11-26 — FabBoard : missions dépendantes d'un service masquables
+
+**Fonctionnalité**
+- Le widget « Missions Fabtrack » reçoit une option « Afficher les missions
+  dépendantes d'un service », cochée par défaut. Décochée, elle retire des
+  colonnes les missions rattachées à un service Fabtrack, celles du widget
+  « Dépendances externes ».
+- Intérêt : sur une installation à un seul écran, les deux widgets peuvent
+  coexister sans doublon ; sans l'option, l'affichage reste identique.
+- Détection commune avec les dépendances externes : `service_id`, puis
+  `depend_service_externe`, puis `service_nom` (payloads anciens, service
+  supprimé). Filtre appliqué avant le regroupement, donc compteurs justes.
+- Option proposée dans le formulaire du widget canonique `fabtrack_missions`
+  et dans son alias legacy `missions`.
+
+**Vérification**
+- Pilote Node `tests/js/missions_widget_check.js` + 10 tests Python : défaut
+  (tout affiché), option active/inactive, valeurs `"0"`/`"false"`, service
+  supprimé sans nom, colonne « Terminé », présence de l'option dans
+  `slides.js` pour les deux codes.
+
+**Version** : 3.9.1.
+
+**Prochaine action** : pousser sur `main` pour laisser Auto release créer
+  `fabboard-v3.9.1`, puis tester les deux widgets sur un écran unique.
+
 ## 2026-11-26 — PretGo : préparation de 1.11.3
 
 **Notes**
