@@ -18,10 +18,10 @@
                 <span class="badge bg-success">Disponible</span>
             {% elif materiel.etat == 'prete' %}
                 <span class="badge bg-warning">En prêt</span>
-            {% elif materiel.etat == 'en_panne' %}
-                <span class="badge bg-danger">En panne</span>
-            {% elif materiel.etat == 'reforme' %}
-                <span class="badge bg-secondary">Réformé</span>
+            {% elif materiel.etat in ('en_reparation', 'en_panne') %}
+                <span class="badge bg-danger">En réparation</span>
+            {% elif materiel.etat in ('hors_service', 'reforme') %}
+                <span class="badge bg-secondary">Hors service</span>
             {% else %}
                 <span class="badge bg-info">{{ materiel.etat }}</span>
             {% endif %}
@@ -59,6 +59,17 @@
         </div>
     </div>
 </div>
+
+{% if materiel.etat_modifie_at or materiel.etat_motif %}
+{% set etat_labels = {'disponible': 'Disponible', 'prete': 'En prêt', 'en_panne': 'En panne',
+                      'reforme': 'Réformé', 'hors_service': 'Hors service', 'en_reparation': 'En réparation'} %}
+<div class="alert alert-secondary d-flex flex-wrap gap-2 align-items-center">
+    <i class="bi bi-info-circle"></i>
+    <span><strong>Dernier état constaté :</strong> {{ etat_labels.get(materiel.etat, materiel.etat) }}</span>
+    {% if materiel.etat_motif %}<span>— Motif : {{ materiel.etat_motif }}</span>{% endif %}
+    {% if materiel.etat_modifie_at %}<span class="text-muted">({{ materiel.etat_modifie_at | format_date }})</span>{% endif %}
+</div>
+{% endif %}
 
 {% if prets %}
 <!-- Timeline des prêts -->

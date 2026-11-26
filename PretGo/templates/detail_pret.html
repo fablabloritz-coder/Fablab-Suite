@@ -88,8 +88,14 @@
                                 {% elif not pret.retour_confirme %}
                                 <form method="POST"
                                       action="{{ url_for('prets.retourner_objet_pret', pret_id=pret.id, pm_id=item.id) }}"
-                                      class="ms-auto"
-                                      onsubmit="return confirm('Marquer cet objet comme rendu ?')">
+                                      class="ms-auto d-flex flex-wrap gap-1 align-items-center justify-content-end"
+                                      onsubmit="return confirm('Marquer cet objet comme rendu avec cet état ?')">
+                                    <select name="etat_retour" class="form-select form-select-sm" style="width:auto" aria-label="État de l'objet rendu">
+                                        <option value="disponible" selected>Disponible</option>
+                                        <option value="en_reparation">En réparation</option>
+                                        <option value="hors_service">Hors service</option>
+                                    </select>
+                                    <input type="text" name="etat_motif" class="form-control form-control-sm" style="width:110px" maxlength="200" placeholder="Motif">
                                     <button type="submit" class="btn btn-sm btn-outline-success">
                                         <i class="bi bi-box-arrow-in-left"></i> Rendre cet objet
                                     </button>

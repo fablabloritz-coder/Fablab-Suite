@@ -2,7 +2,8 @@
 from flask import Blueprint, jsonify, request, url_for
 from werkzeug.utils import secure_filename
 from database import get_setting, DATA_DIR
-from utils import get_app_db, admin_required, allowed_file, get_categories_personnes, UPLOAD_FOLDER
+from utils import (get_app_db, admin_required, allowed_file, get_categories_personnes,
+                   UPLOAD_FOLDER, ETATS_MATERIEL_INDISPONIBLES)
 import os
 import string
 import uuid
@@ -254,7 +255,13 @@ def api_scan():
         })
 
     # 2) Vérifier l'état du matériel
-    if mat['etat'] == 'hors_service':
+    etats_indisponibles = {
+        'en_panne': 'En panne',
+        'reforme': 'Réformé',
+        'hors_service': 'Hors service',
+        'en_reparation': 'En réparation',
+    }
+    if mat['etat'] in ETATS_MATERIEL_INDISPONIBLES:
         label = mat['type_materiel']
         if mat['marque']:
             label += f" {mat['marque']}"
@@ -263,7 +270,7 @@ def api_scan():
         return jsonify({
             'found': True,
             'type': 'hors_service',
-            'message': f'{label} — Matériel hors service',
+            'message': f"{label} — {etats_indisponibles[mat['etat']]}",
             'url': url_for('inventaire.modifier_materiel', mat_id=mat['id']),
         })
 

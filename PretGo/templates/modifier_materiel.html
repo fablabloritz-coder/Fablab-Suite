@@ -62,9 +62,18 @@
                     <select name="etat" class="form-select">
                         <option value="disponible" {{ 'selected' if materiel.etat == 'disponible' }}>✅ Disponible</option>
                         <option value="prete" {{ 'selected' if materiel.etat == 'prete' }}>🔄 En prêt</option>
-                        <option value="en_panne" {{ 'selected' if materiel.etat == 'en_panne' }}>🔧 En panne</option>
-                        <option value="reforme" {{ 'selected' if materiel.etat == 'reforme' }}>🗑️ Réformé</option>
+                        <option value="en_reparation" {{ 'selected' if materiel.etat in ('en_reparation', 'en_panne') }}>🔧 En réparation</option>
+                        <option value="hors_service" {{ 'selected' if materiel.etat in ('hors_service', 'reforme') }}>🗑️ Hors service</option>
                     </select>
+                </div>
+
+                <!-- Motif de l'état -->
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold">Motif de l'état</label>
+                    <input type="text" name="etat_motif" class="form-control" maxlength="200"
+                           value="{{ materiel.etat_motif or '' }}"
+                           placeholder="Ex. écran fissuré (facultatif)">
+                    <small class="text-muted">Conservé pour « En réparation » et « Hors service » ; effacé quand le matériel redevient disponible.</small>
                 </div>
 
                 <!-- Notes -->

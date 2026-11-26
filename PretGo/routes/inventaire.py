@@ -7,7 +7,7 @@ from flask import Blueprint, Response, flash, jsonify, redirect, render_template
 from database import get_setting
 
 
-from utils import get_app_db, admin_required, query_inventaire, get_champs_personnalises, get_valeurs_champs, sauver_valeurs_champs, allowed_file
+from utils import get_app_db, admin_required, query_inventaire, get_champs_personnalises, get_valeurs_champs, sauver_valeurs_champs, allowed_file, ETATS_MATERIEL
 
 
 import csv
@@ -32,6 +32,7 @@ import logging
 
 
 import sqlite3
+from datetime import datetime
 
 
 import traceback
@@ -701,6 +702,18 @@ def modifier_materiel(mat_id):
 
 
         etat = request.form.get('etat', 'disponible')
+        etat_motif = (request.form.get('etat_motif') or '').strip()[:200]
+        if etat not in ETATS_MATERIEL:
+            etat = 'disponible'
+        if etat == 'disponible':
+            etat_motif = ''
+        ancien_etat = materiel_existant['etat'] or ''
+        ancien_motif = materiel_existant['etat_motif'] or ''
+        etat_modifie_at = (
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            if (etat != ancien_etat or etat_motif != ancien_motif)
+            else (materiel_existant['etat_modifie_at'] or '')
+        )
 
 
         notes = request.form.get('notes', '').strip()
@@ -736,10 +749,11 @@ def modifier_materiel(mat_id):
                numero_serie=?, numero_inventaire=?, systeme_exploitation=?,
 
 
-               etat=?, notes=?, image=? WHERE id=?''',
+               etat=?, etat_motif=?, etat_modifie_at=?, notes=?, image=? WHERE id=?''',
 
 
-            (type_mat, marque, modele, numero_serie, numero_inv, os_val, etat, notes, image, mat_id)
+            (type_mat, marque, modele, numero_serie, numero_inv, os_val, etat, etat_motif,
+             etat_modifie_at, notes, image, mat_id)
 
 
         )

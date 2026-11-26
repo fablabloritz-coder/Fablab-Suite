@@ -104,6 +104,23 @@
                 <i class="bi bi-question-circle"></i>
                 Confirmer le retour de <em>{{ pret.descriptif_objets }}</em> par {{ pret.nom }} {{ pret.prenom }} ?
             </p>
+            <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-6">
+                    <label class="form-label small mb-1" for="etat-retour-{{ pret.id }}">État du matériel rendu</label>
+                    <select class="form-select form-select-sm" id="etat-retour-{{ pret.id }}" name="etat_retour_{{ pret.id }}">
+                        <option value="disponible" selected>Disponible — remis en service</option>
+                        <option value="en_reparation">En réparation — à réparer</option>
+                        <option value="hors_service">Hors service — ne sera plus prêté</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label small mb-1" for="etat-motif-{{ pret.id }}">Motif (facultatif)</label>
+                    <input type="text" class="form-control form-control-sm" id="etat-motif-{{ pret.id }}" name="etat_motif_{{ pret.id }}" maxlength="200" placeholder="Ex. écran fissuré">
+                </div>
+            </div>
+            <p class="small text-muted mb-2">
+                Cet état s'applique aux {{ total_objets or 1 }} objet(s) du prêt. Pour un seul objet, utilisez la fiche du prêt.
+            </p>
             <div class="d-flex gap-2 align-items-center">
                 <button type="submit" class="btn btn-success" formaction="{{ url_for('prets.confirmer_retour', pret_id=pret.id) }}">
                     <i class="bi bi-check-lg"></i> Oui, valider le retour

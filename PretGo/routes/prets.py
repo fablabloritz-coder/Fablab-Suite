@@ -9,10 +9,18 @@ from reservations_logic import (
     parse_db_datetime,
 )
 from utils import (get_app_db, admin_required, calculer_annee_scolaire, liberer_materiels_pret,
+                   appliquer_etat_materiel, normaliser_etat_materiel,
                    TYPE_LONGUE_DUREE, LONGUE_DUREE_DATE)
 from datetime import datetime, timedelta
 
 bp = Blueprint('prets', __name__)
+
+
+def _etat_retour_depuis_form(form, suffix=''):
+    """Lit l'etat constate au retour, avec repli sur 'disponible'."""
+    etat = (form.get(f'etat_retour{suffix}') or 'disponible').strip()
+    motif = (form.get(f'etat_motif{suffix}') or '').strip()
+    return normaliser_etat_materiel(etat, motif)
 
 
 def _parse_duree(form):
@@ -458,6 +466,7 @@ def confirmer_retour(pret_id):
     conn = get_app_db()
     signature = request.form.get('signature', '')
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    etat_retour, motif_retour = _etat_retour_depuis_form(request.form, f'_{pret_id}')
 
     # Récupérer le materiel_id legacy avant de confirmer le retour
     pret = conn.execute('SELECT materiel_id FROM prets WHERE id = ?', (pret_id,)).fetchone()
@@ -471,9 +480,14 @@ def confirmer_retour(pret_id):
         "WHERE pret_id = ? AND IFNULL(retour_confirme, 0) = 0",
         (now, pret_id)
     )
-    liberer_materiels_pret(conn, pret_id, pret_row=pret)
+    liberer_materiels_pret(conn, pret_id, pret_row=pret,
+                           etat=etat_retour, motif=motif_retour)
     conn.commit()
     flash('Retour confirmé avec succès !', 'success')
+    if etat_retour == 'en_reparation':
+        flash('Matériel marqué en réparation : il ne sera plus proposé aux réservations.', 'warning')
+    elif etat_retour == 'hors_service':
+        flash('Matériel marqué hors service : il ne sera plus proposé aux réservations.', 'warning')
     return redirect(url_for('prets.retour'))
 
 
@@ -482,6 +496,7 @@ def retourner_objet_pret(pret_id, pm_id):
     """Rend un seul objet d'un prêt : le prêt reste ouvert jusqu'au dernier objet."""
     conn = get_app_db()
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    etat_retour, motif_retour = _etat_retour_depuis_form(request.form)
 
     pret = conn.execute(
         'SELECT id, retour_confirme FROM prets WHERE id = ?', (pret_id,)
@@ -510,13 +525,18 @@ def retourner_objet_pret(pret_id, pm_id):
         (now, pm_id),
     )
     if item['materiel_id']:
-        conn.execute("UPDATE inventaire SET etat = 'disponible' WHERE id = ?", (item['materiel_id'],))
+        appliquer_etat_materiel(conn, item['materiel_id'], etat_retour, motif_retour)
 
     restants = conn.execute(
         'SELECT COUNT(*) AS c FROM pret_materiels '
         'WHERE pret_id = ? AND IFNULL(retour_confirme, 0) = 0',
         (pret_id,),
     ).fetchone()['c']
+
+    if etat_retour == 'en_reparation':
+        flash('Objet marqué en réparation.', 'warning')
+    elif etat_retour == 'hors_service':
+        flash('Objet marqué hors service.', 'warning')
 
     if restants == 0:
         # Tous les objets sont rendus : le prêt se clôture comme un retour complet.

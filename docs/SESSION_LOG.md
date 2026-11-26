@@ -6,6 +6,39 @@ action imperative.
 
 ---
 
+## 2026-11-26 — PretGo : retour avec état constaté
+
+**Fonctionnalité**
+- Au retour complet, un état par prêt (Disponible / En réparation / Hors
+  service) et un motif facultatif (200 caractères) s'appliquent à tous les
+  objets du prêt ; sans choix, le matériel redevient disponible comme avant.
+- Retour partiel : même choix par objet dans la fiche du prêt, sans toucher
+  aux autres objets ; le dernier objet rendu clôture le prêt.
+- Retour en masse : inchangé, il ignore tout état fourni et remet disponible.
+- Le motif est conservé pour « En réparation » et « Hors service », effacé
+  quand le matériel redevient disponible ; `etat_modifie_at` est horodaté et
+  l'encart « Dernier état constaté » apparaît dans l'historique du matériel.
+- Vocabulaire unifié sur le trio déjà utilisé par Fabtrack : les anciens
+  libellés `en_panne`/`reforme` sont convertis au démarrage en
+  `en_reparation`/`hors_service` (migration idempotente).
+- Un matériel en réparation ou hors service n'est plus proposé aux
+  réservations (les listes et `_stock_capacities` excluent en_reparation,
+  hors_service et les anciens libellés, tout en comptant toujours les
+  matériels prêtés) ; le scan affiche l'état constaté.
+
+**Vérification**
+- `tests/test_retour_etat.py` : 12 tests — retour complet avec motif, défaut
+  disponible, état invalide, retour partiel isolé, clôture au dernier objet,
+  masse sans état, capacité de réservation, scan, listes et fiche, historique,
+  migration des colonnes et conversion des anciens libellés.
+- Suite PretGo : 75/75 OK.
+
+**Version** : 1.11.4.
+
+**Prochaine action** : valider, puis pousser sur `main` pour laisser Auto
+  release créer `pretgo-v1.11.4` ; en cas d'erreur de saisie, rouvrir la fiche
+  du matériel et le repasser disponible.
+
 ## 2026-11-26 — FabBoard : missions dépendantes d'un service masquables
 
 **Fonctionnalité**

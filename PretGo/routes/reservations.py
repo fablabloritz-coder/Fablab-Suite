@@ -354,7 +354,7 @@ def reservations():
         """
         SELECT id, numero_inventaire, type_materiel, marque, modele, etat
         FROM inventaire
-        WHERE actif = 1 AND etat != 'hors_service'
+        WHERE actif = 1 AND etat NOT IN ('en_panne', 'reforme', 'hors_service', 'en_reparation')
         ORDER BY numero_inventaire ASC
         """
     ).fetchall()
@@ -573,7 +573,7 @@ def modifier_reservation(reservation_id):
         '''
         SELECT id, numero_inventaire, type_materiel, marque, modele, etat
         FROM inventaire
-        WHERE actif = 1 AND etat != 'hors_service'
+        WHERE actif = 1 AND etat NOT IN ('en_panne', 'reforme', 'hors_service', 'en_reparation')
         ORDER BY numero_inventaire ASC
         '''
     ).fetchall()

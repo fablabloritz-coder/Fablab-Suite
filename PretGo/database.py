@@ -15,7 +15,7 @@ from fabsuite_core.schema import stamp_schema_version, assert_min_schema_version
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DATABASE_PATH = os.path.join(DATA_DIR, 'gestion_prets.db')
 RECOVERY_CODE_PATH = os.path.join(DATA_DIR, 'code_recuperation.txt')
-PRETGO_SCHEMA_VERSION = 2026111401
+PRETGO_SCHEMA_VERSION = 2026112601
 
 
 def get_db():
@@ -339,6 +339,20 @@ def init_db():
         cursor.execute("ALTER TABLE inventaire ADD COLUMN image TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
+
+    # ── Migration colonnes etat constate pour inventaire ──
+    for col, default in [
+        ('etat_motif', "TEXT DEFAULT ''"),
+        ('etat_modifie_at', "TEXT DEFAULT ''"),
+    ]:
+        try:
+            cursor.execute(f'ALTER TABLE inventaire ADD COLUMN {col} {default}')
+        except sqlite3.OperationalError:
+            pass
+
+    # ── Migration des anciens libelles d'etat vers en_reparation / hors_service ──
+    cursor.execute("UPDATE inventaire SET etat = 'en_reparation' WHERE etat = 'en_panne'")
+    cursor.execute("UPDATE inventaire SET etat = 'hors_service' WHERE etat = 'reforme'")
 
     # ── Migration colonne email pour personnes ──
     try:

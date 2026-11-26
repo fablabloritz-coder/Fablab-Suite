@@ -244,7 +244,7 @@ def _stock_capacities(conn) -> dict[str, int]:
         SELECT type_materiel, COUNT(*) AS c
         FROM inventaire
         WHERE actif = 1
-          AND etat != 'hors_service'
+          AND etat NOT IN ('en_panne', 'reforme', 'hors_service', 'en_reparation')
         GROUP BY type_materiel
         """
     ).fetchall()

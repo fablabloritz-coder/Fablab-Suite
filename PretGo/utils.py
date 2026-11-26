@@ -184,13 +184,36 @@ def get_next_inventory_number(conn, prefix):
 #  LIBÉRATION DES MATÉRIELS D'UN PRÊT
 # ============================================================
 
-def liberer_materiels_pret(conn, pret_id, pret_row=None):
+def normaliser_etat_materiel(etat, motif=''):
+    """Ramene un etat saisi a une valeur connue, avec son motif.
+
+    Un etat non disponible conserve un motif court ; l'etat disponible
+    efface le motif precedent pour ne pas laisser une raison perimee.
+    """
+    if etat not in ETATS_MATERIEL:
+        etat = 'disponible'
+    motif = (motif or '').strip()[:200] if etat != 'disponible' else ''
+    return etat, motif
+
+
+def appliquer_etat_materiel(conn, materiel_id, etat, motif=''):
+    """Ecrit l'etat constate d'un materiel et l'horodate."""
+    etat, motif = normaliser_etat_materiel(etat, motif)
+    conn.execute(
+        'UPDATE inventaire SET etat = ?, etat_motif = ?, etat_modifie_at = ? WHERE id = ?',
+        (etat, motif, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), materiel_id),
+    )
+
+
+def liberer_materiels_pret(conn, pret_id, pret_row=None, etat='disponible', motif=''):
     """Libère tous les matériels liés à un prêt (multi-matériel + rétrocompat legacy).
 
     Args:
         conn: connexion DB active
         pret_id: ID du prêt
         pret_row: (optionnel) row du prêt déjà chargée (évite un SELECT supplémentaire)
+        etat: etat constate au retour ('disponible' par defaut)
+        motif: motif libre, conserve seulement pour un etat non disponible
     """
     # Multi-matériel (table pret_materiels)
     mats = conn.execute(
@@ -198,12 +221,12 @@ def liberer_materiels_pret(conn, pret_id, pret_row=None):
         (pret_id,)
     ).fetchall()
     for m in mats:
-        conn.execute("UPDATE inventaire SET etat = 'disponible' WHERE id = ?", (m['materiel_id'],))
+        appliquer_etat_materiel(conn, m['materiel_id'], etat, motif)
     # Rétrocompat : ancien champ materiel_id sur la table prets
     if pret_row is None:
         pret_row = conn.execute('SELECT materiel_id FROM prets WHERE id = ?', (pret_id,)).fetchone()
     if pret_row and pret_row['materiel_id']:
-        conn.execute("UPDATE inventaire SET etat = 'disponible' WHERE id = ?", (pret_row['materiel_id'],))
+        appliquer_etat_materiel(conn, pret_row['materiel_id'], etat, motif)
 
 
 # ============================================================
@@ -227,6 +250,12 @@ def get_categories_personnes():
 # ce qui évite tout retard/rappel via les calculs « date précise » existants.
 TYPE_LONGUE_DUREE = 'longue_duree'
 LONGUE_DUREE_DATE = '2999-12-31'
+
+# Etats du materiel proposes au retour et dans la fiche inventaire.
+ETATS_MATERIEL = ('disponible', 'en_reparation', 'hors_service')
+# Etats qui rendent un materiel indisponible pour une reservation.
+# en_panne/reforme sont les anciens libelles, convertis par la migration.
+ETATS_MATERIEL_INDISPONIBLES = ('en_reparation', 'hors_service', 'en_panne', 'reforme')
 
 
 def _reglage_alerte(cle, defaut):
@@ -1337,7 +1366,9 @@ def query_inventaire(
             "CASE etat "
             "WHEN 'disponible' THEN 0 "
             "WHEN 'prete' THEN 1 "
+            "WHEN 'en_reparation' THEN 2 "
             "WHEN 'en_panne' THEN 2 "
+            "WHEN 'hors_service' THEN 3 "
             "WHEN 'reforme' THEN 3 "
             "ELSE 4 END ASC, numero_inventaire ASC"
         ),
@@ -1345,7 +1376,9 @@ def query_inventaire(
             "CASE etat "
             "WHEN 'disponible' THEN 0 "
             "WHEN 'prete' THEN 1 "
+            "WHEN 'en_reparation' THEN 2 "
             "WHEN 'en_panne' THEN 2 "
+            "WHEN 'hors_service' THEN 3 "
             "WHEN 'reforme' THEN 3 "
             "ELSE 4 END DESC, numero_inventaire ASC"
         ),

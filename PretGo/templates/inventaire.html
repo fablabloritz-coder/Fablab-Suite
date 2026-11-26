@@ -140,10 +140,10 @@
                         <span class="badge bg-success">Disponible</span>
                     {% elif item.etat == 'prete' %}
                         <span class="badge bg-warning">En prêt</span>
-                    {% elif item.etat == 'en_panne' %}
-                        <span class="badge bg-danger">En panne</span>
-                    {% elif item.etat == 'reforme' %}
-                        <span class="badge bg-secondary">Réformé</span>
+                    {% elif item.etat in ('en_reparation', 'en_panne') %}
+                        <span class="badge bg-danger">En réparation</span>
+                    {% elif item.etat in ('hors_service', 'reforme') %}
+                        <span class="badge bg-secondary">Hors service</span>
                     {% else %}
                         <span class="badge bg-info">{{ item.etat }}</span>
                     {% endif %}

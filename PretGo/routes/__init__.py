@@ -7,7 +7,7 @@ from utils import get_app_db, calcul_depassement_heures, TYPE_LONGUE_DUREE
 from fabsuite_core.widgets import counter, item_list, chart, notification
 
 # Source unique de la version : manifeste FabSuite et templates.
-APP_VERSION = "1.11.3"
+APP_VERSION = "1.11.4"
 
 
 # ── Callbacks FabSuite widgets ──
@@ -76,6 +76,9 @@ def _widget_equipment_status():
     label_map = {
         'disponible': 'Disponible',
         'prete': 'Prêté',
+        'en_panne': 'En panne',
+        'reforme': 'Réformé',
+        'en_reparation': 'En réparation',
         'hors_service': 'Hors service'
     }
     return chart(
