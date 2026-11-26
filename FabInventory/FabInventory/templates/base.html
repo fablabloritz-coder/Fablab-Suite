@@ -26,6 +26,7 @@
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'minimal_pack_page' %}active{% endif %}" href="/roadmap/minimal-pack"><i class="bi bi-box-seam me-1"></i>Pack minimal</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'search_multi_master' %}active{% endif %}" href="/search"><i class="bi bi-search me-1"></i>Recherche</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint == 'compare' %}active{% endif %}" href="/compare"><i class="bi bi-arrow-left-right me-1"></i>Comparer</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.endpoint in ['fleet_health', 'network_registry'] %}active{% endif %}" href="/sante"><i class="bi bi-heart-pulse me-1"></i>Santé</a></li>
       </ul>
       <ul class="navbar-nav ms-auto">
         <li class="nav-item"><a class="nav-link {% if request.endpoint and request.endpoint.startswith('admin_') %}active{% endif %}" href="/admin/"><i class="bi bi-shield-lock me-1"></i>Admin</a></li>

@@ -1,19 +1,34 @@
 @echo off
-chcp 65001 >nul
-echo ============================================
-echo   INVENTAIRE DU POSTE v3 - Lancement
-echo ============================================
-echo.
-echo   Clic droit ^> Executer en tant qu'admin
-echo   pour detecter tous les logiciels (AppX)
-echo.
+setlocal EnableExtensions
 
-powershell -ExecutionPolicy Bypass -File "%~dp0inventaire.ps1"
+chcp 65001 >nul 2>&1
+set "SCRIPT_DIR=%~dp0"
+set "PS1_FILE=%SCRIPT_DIR%inventaire_master.ps1"
 
-echo.
-echo ============================================
-echo   INVENTAIRE TERMINE !
-echo   Ouvrir le fichier HTML dans un navigateur
-echo ============================================
-echo.
-pause
+if not exist "%PS1_FILE%" (
+  echo [ERREUR] Script introuvable: "%PS1_FILE%"
+  echo Assurez-vous que le .bat est dans le meme dossier que inventaire_master.ps1
+  pause
+  exit /b 1
+)
+
+where powershell.exe >nul 2>&1
+if errorlevel 1 (
+  echo [ERREUR] Windows PowerShell est introuvable sur ce poste.
+  echo Installez PowerShell 5.1 ou lancez le script avec pwsh.
+  pause
+  exit /b 1
+)
+
+rem Les arguments sont transmis tels quels : -NoGui, -OutputDirectory, -SelfTest...
+powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File "%PS1_FILE%" %*
+set "EXIT_CODE=%ERRORLEVEL%"
+
+if not "%EXIT_CODE%"=="0" (
+  echo.
+  echo [ERREUR] L'inventaire a echoue (code %EXIT_CODE%).
+  echo Consultez le journal indique ci-dessus.
+  pause
+)
+
+exit /b %EXIT_CODE%

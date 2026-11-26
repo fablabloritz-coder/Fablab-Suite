@@ -1,6 +1,7 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 
+chcp 65001 >nul 2>&1
 set "SCRIPT_DIR=%~dp0"
 set "PS1_FILE=%SCRIPT_DIR%inventaire_master.ps1"
 
@@ -11,12 +12,22 @@ if not exist "%PS1_FILE%" (
   exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS1_FILE%"
+where powershell.exe >nul 2>&1
+if errorlevel 1 (
+  echo [ERREUR] Windows PowerShell est introuvable sur ce poste.
+  echo Installez PowerShell 5.1 ou lancez le script avec pwsh.
+  pause
+  exit /b 1
+)
+
+rem Les arguments sont transmis tels quels : -NoGui, -OutputDirectory, -SelfTest...
+powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File "%PS1_FILE%" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
   echo.
   echo [ERREUR] L'inventaire a echoue (code %EXIT_CODE%).
+  echo Consultez le journal indique ci-dessus.
   pause
 )
 

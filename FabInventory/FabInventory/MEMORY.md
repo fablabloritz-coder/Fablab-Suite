@@ -1,5 +1,21 @@
 # MEMORY - FabInventory
 
+> **Mise à jour 2026-11-26 (consolidation).** Le schéma ajoute
+> `snapshots.scan_date_iso`, `snapshots.content_hash` et
+> `masters.pc_name_key` ; les vues `snapshot_keys` et `latest_snapshots`
+> définissent le dernier scan par date de scan (ISO), avec `id` comme
+> tie-breaker. Les seeds admin/pack ne s'exécutent qu'au premier démarrage
+> (`app_meta.initial_seed`), les clés étrangères sont actives, SQLite est en
+> WAL, et `/healthz` teste la base. Les écritures admin sont protégées ; les
+> écritures inventaire publiques (upload, flags, roadmap) restent à trancher.
+> Suite de référence : `python tests/run_all.py` (19 modules, 98 tests). Les
+> scans conservent aussi `warnings_json`, `script_version`, `scan_schema` et
+> `generated_at` ; `/master/<id>/evolution`, `/sante` et `/reseau` exploitent
+> ces données. Les absences de logiciels sont suivies dans
+> `software_followups` (statut `pending` par défaut, résolution automatique
+> au retour du logiciel). Le Lot 6 (script PowerShell unique) reste en attente
+> d'un test Windows.
+
 ## 1) Purpose of this file
 
 This file is the single quick context handover for any new AI/session working on FabInventory.
@@ -41,6 +57,9 @@ snapshots
 ├── scan_date (TEXT, from HTML report)
 ├── os_info, cpu_info, ram_go, fabricant, num_serie, domaine
 ├── software_json (TEXT, JSON array of software objects)
+├── disks_json, network_json, services_json (TEXT, JSON arrays)
+├── warnings_json (TEXT, avertissements de collecte)
+├── script_version, scan_schema, generated_at (métadonnées du scan)
 ├── total_software (INTEGER)
 └── created_at (TIMESTAMP)
 
@@ -51,6 +70,16 @@ software_flags
 ├── is_important (INTEGER 0/1)
 ├── note (TEXT)
 └── UNIQUE(master_id, software_name)
+
+software_followups
+├── master_id (FK -> masters.id, CASCADE)
+├── software_key, software_name
+├── old_version, old_editor, old_source
+├── source_snapshot_id, last_seen_snapshot_id/date
+├── last_missing_snapshot_id/date
+├── status : pending | intentional | to_install | resolved
+├── note, decided_at
+└── resolved_snapshot_id, resolved_at
 ```
 
 ### Software JSON object structure (inside snapshots.software_json)
@@ -99,6 +128,10 @@ FabInventory/
 | `/master/<id>/delete` | POST | Delete master + all snapshots |
 | `/snapshot/<id>` | GET | View a specific scan |
 | `/snapshot/<id>/delete` | POST | Delete a scan |
+| `/master/<id>/absences` | GET/POST | Follow-up list for missing software and decisions |
+| `/master/<id>/evolution` | GET | Compare two scans of the same master |
+| `/sante` | GET | Fleet health: stale scans, low disks, warnings, duplicates |
+| `/reseau` | GET | Registry of last known IP/MAC per interface |
 | `/compare` | GET | Comparison page (select 2 masters) |
 | `/api/compare` | POST | JSON comparison endpoint |
 | `/api/flag` | POST | Set/update software flag (important + note) |
@@ -180,25 +213,28 @@ FabInventory follows the FabSuite inter-app contract:
 | `PORT` | `5590` | App port |
 | `DB_PATH` | `/data/fabinventory.db` | SQLite database path |
 | `UPLOAD_FOLDER` | `/data/uploads` | Upload directory |
-| `SECRET_KEY` | `fabinventory-secret-change-me` | Flask session secret |
+| `SECRET_KEY` | aucune | Flask session secret obligatoire ; le compose refuse une valeur vide |
 | `DEBUG` | `0` | Set to `1` for Flask debug mode |
 
 ## 12) Data persistence
 
-- SQLite database: `/data/fabinventory.db` (inside Docker volume `fabinventory-data`)
+- SQLite database: `/data/fabinventory.db` (inside Docker volume `fabinventory-data`) ; WAL et `synchronous=NORMAL` activés par `init_db()`
 - Upload folder: `/data/uploads` (same volume)
 - All data survives container restarts/rebuilds via the named volume
 
-## 13) PowerShell script companion (v3)
+## 13) PowerShell script companion (v3.1)
 
-The USB inventory script is maintained separately (not in this repo). Key facts:
+La source unique est `static/downloads/inventaire_master.ps1`, servie par
+`/download/master-script` et incluse dans le pack ZIP. `usb_v3/` est
+l'ancien emplacement de distribution, pas la source servie.
 
-- `LANCER_INVENTAIRE.bat` calls `inventaire.ps1` with `-ExecutionPolicy Bypass`
-- Script scans: registry (machine + user), AppX/Store apps, Program Files directories
-- Outputs: HTML report with embedded JSON + CSV file
-- Files saved in `INVENTAIRES/` subfolder, named `PCNAME_DATE.html`
-- Must be run as administrator for full AppX detection
-- The embedded JSON in the HTML is what FabInventory parses
+- Compatible Windows PowerShell 5.1 et PowerShell 7+ ; le lanceur `.bat` force `-STA` pour la fenêtre de sauvegarde
+- Collecte : registre machine et utilisateur, AppX, dossiers Program Files, disques, réseau, services automatiques, système
+- JSON `schema: 3` sérialisé par `ConvertTo-Json`, avec `warnings` et `services` ; les `<` sont échappés en `\u003c` pour ne jamais fermer le bloc `<script>`
+- Repli de l'application sur l'ancien format HTML (labels OS/CPU/RAM et tableaux Disques/Réseau) quand le JSON enrichi est absent
+- Sorties : HTML autonome + CSV ; options `-OutputPath`, `-OutputDirectory`, `-NoGui`, `-SelfTest`, `-SkipAppx`, `-SkipFolderScan`, `-SkipServices`
+- Les erreurs WMI/AppX/dossier sont non bloquantes et visibles dans le rapport ; un échec fatal écrit un journal dans `%TEMP%`
+- Le test Windows manuel reste obligatoire avant diffusion (le CI Linux ne peut pas exécuter WMI/AppX)
 
 ## 14) Project conventions (must keep)
 
@@ -214,19 +250,25 @@ The USB inventory script is maintained separately (not in this repo). Key facts:
 
 ## 15) Known limitations / future improvements
 
-- No authentication (trusts LAN access)
-- No automatic PowerShell script version detection
-- System info extraction is regex-based (fragile if HTML structure changes)
-- No export functionality (PDF/Excel of flagged software)
-- No diff between two snapshots of the SAME master (only cross-master comparison exists)
-- No FabSuite manifest/health endpoints yet
+- Admin authentication exists (`/admin/login`) ; les écritures inventaire publiques (upload, édition, suppression, flags, roadmap) ne sont pas encore toutes protégées.
+- No automatic PowerShell script version detection.
+- Le JSON schema 3 fournit le système, les disques, le réseau et les services ; le parsing regex/HTML ne sert plus que de repli pour les anciens rapports.
+- Le script PowerShell doit encore être validé sur un poste Windows réel (WMI, AppX, fenêtre de sauvegarde) ; l'autotest Linux vérifie le parseur et le JSON mais pas la collecte Windows.
+- No export functionality (PDF/Excel of flagged software).
+- L'évolution d'un même master est disponible dans `/master/<id>/evolution` (sélection de deux scans, sans nouvelle collecte).
+- Les absences de logiciels sont créées avec le statut `pending` (À vérifier) et suivies dans `/master/<id>/absences` ; `intentional` et `to_install` sont des décisions, et un retour du logiciel résout automatiquement le suivi.
+- Une absence peut être un faux positif si le scan est partiel : les avertissements sont affichés sur l'écran de confirmation et le statut par défaut reste `pending`.
+- `/sante` et `/reseau` agrègent uniquement le dernier scan de chaque poste ; ce ne sont pas des vues temps réel.
+- Seuils d'alerte disque fixes : moins de 10 Go libres ou moins de 15 % d'espace libre.
+- Les services ne sont collectés que s'ils sont `Running` et en démarrage automatique ; un service absent peut être arrêté ou désinstallé.
+- `/api/fabsuite/manifest`, `/api/fabsuite/health` et `/healthz` sont présents ; `healthz` teste la base.
 
 ## 16) If you are a new AI entering this project
 
 Start here:
 1. Read this file (MEMORY.md)
 2. Read `README.md`
-3. Read `app.py` (single-file Flask app, ~300 lines)
+3. Read `app.py` (single-file Flask app, ~3800 lines)
 4. Read `templates/master.html` (most complex template, has JS logic)
 5. Understand the data flow: PowerShell script -> HTML file -> upload -> parse JSON -> SQLite -> web UI
 

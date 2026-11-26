@@ -6,6 +6,202 @@ action imperative.
 
 ---
 
+## 2026-11-26 — FabInventory : audit de validation avant publication
+
+**Périmètre vérifié**
+- Suite officielle : `FABINVENTORY_PWSH=/tmp/pwsh/pwsh ../../.venv/bin/python tests/run_all.py`,
+  **19 modules, 98 tests OK**.
+- Compilation de `app.py` et des **30 templates** Jinja ; parseur PowerShell
+  et autotest `inventaire_master.ps1` v3.1.0 (4 logiciels, CSV, avertissement
+  de mode autotest) : OK.
+- Smoke tests sur base temporaire : 52 routes/endpoints publics et admin,
+  connexion admin, catalogue/versions/plugins, wiki, professeurs, demandes,
+  paramètres, roadmap et pack minimal, upload et mise à jour avec décisions,
+  résolution automatique d'absence, recherche/export CSV, comparaison, flags,
+  API FabSuite et suppression en cascade.
+- Interface cloud : fiche master, file des absences et cockpit `/sante`
+  affichés correctement ; aucune erreur applicative dans la console (seul
+  `favicon.ico` renvoie 404, sans impact fonctionnel).
+
+**Conclusion**
+- Aucune anomalie bloquante ou régression détectée. Les fonctions critiques
+  du parcours inventaire sont validées sur une base de démonstration ; les
+  erreurs de payload constatées pendant l'audit étaient des erreurs du script
+  de test, pas de l'application.
+
+**Limites**
+- La collecte Windows réelle (WMI, AppX, registre, dossiers, services et
+  dialogue WinForms) reste à valider sur un poste Windows ; l'autotest Linux
+  ne couvre que le parseur et la génération du rapport.
+
+**Publication**
+- Commit et push de la branche `main` effectués après validation.
+
+## 2026-11-26 — FabInventory : suivi des absences de logiciels
+
+**Fonctionnalité**
+- Migration `software_followups` : le snapshot reste la vérité observée, tandis
+  que la table porte les décisions et la file ponctuelle d'un master.
+- Toute absence détectée entre deux scans est créée en `pending` (À vérifier).
+- L’écran de mise à jour permet de choisir `intentional` (Retiré volontairement)
+  ou `to_install` (À installer), avec conservation des choix lors d’un aperçu.
+- `/master/<id>/absences` liste les absences actives, permet de changer une
+  décision et sert de liste ponctuelle à installer.
+- Un scan ultérieur qui retrouve le logiciel résout automatiquement le suivi ;
+  un nouveau scan sans le logiciel ne crée pas de doublon.
+
+**Vérification**
+- `cd FabInventory/FabInventory && FABINVENTORY_PWSH=/tmp/pwsh/pwsh ../../.venv/bin/python tests/run_all.py` :
+  **19 modules, 98 tests OK**.
+- Nouveaux tests : statut par défaut, choix à installer, retrait volontaire,
+  conservation des choix, résolution automatique et migration de la table.
+- Templates compilés et routes de mise à jour, de suivi et de master vérifiées
+  avec une base temporaire.
+
+**Limites**
+- La détection reste fondée sur les scans : une absence peut être un faux
+  positif si la collecte est partielle ; les warnings sont affichés.
+- Aucun commit, tag ni push effectué.
+
+**Prochaine action** : valider le parcours sur un poste Windows réel, puis
+  décider si les suivis « à installer » doivent être exportés ou regroupés dans
+  une vue parc.
+
+## 2026-11-26 — FabInventory : provenance, évolution et santé du parc (Lots A/B)
+
+**Fonctionnalité**
+- Les snapshots stockent `warnings_json`, `script_version`, `scan_schema` et
+  `generated_at` ; la migration est idempotente et les anciens rapports restent
+  lisibles.
+- La fiche scan affiche la provenance du script et les avertissements ; la fiche
+  master signale une collecte partielle.
+- `/master/<id>/evolution` compare deux scans du même poste : logiciels,
+  système, disques (seuil 10 Go / 15 %), réseau, services et avertissements.
+- `/sante` agrège le dernier scan de chaque master : ancienneté, disques bas,
+  collectes partielles, doublons IP/MAC ; `/reseau` fournit le registre des
+  dernières interfaces connues.
+
+**Vérification**
+- `cd FabInventory/FabInventory && FABINVENTORY_PWSH=/tmp/pwsh/pwsh ../../.venv/bin/python tests/run_all.py` :
+  **18 modules, 92 tests OK**.
+- Nouveaux tests : métadonnées, ancien rapport, évolution entre scans, seuils
+  disque, doublons réseau et pages santé/registre.
+- Migration vérifiée sur une base au schéma ancien ; `/sante`, `/reseau`,
+  `/master/<id>` et `/master/<id>/evolution` répondent en 200 avec des données
+  de démonstration.
+
+**Limites**
+- Les alertes ne sont pas du temps réel : elles reflètent le dernier scan.
+- Les services ne sont collectés que s'ils sont `Running` + `Auto`.
+- Validation Windows réelle (WMI/AppX/WinForms) toujours en attente.
+- Aucun commit, tag ni push effectué.
+
+**Prochaine action** : valider le script sur un poste Windows, puis décider du
+  Lot C (collecte des états de services et baseline par salle/modèle).
+
+## 2026-11-26 — FabInventory : revue de simplification du Lot 6
+
+**Fonctionnalité**
+- Script : suppression d'une liste de chemins de registre morte, appel CIM
+  mutualisé, quota réel du scan des dossiers, comptage unique des catégories.
+- JSON : une seule validation, déplacée avant les écritures pour ne pas laisser
+  de HTML/CSV partiels en cas d'échec ; contrôle du schéma et du nombre de
+  logiciels conservé.
+- CSV : branche Windows PowerShell 5.1 conservée pour `-NoTypeInformation`,
+  car PowerShell 7 le signale comme obsolète ; sortie PS 7 vérifiée sans
+  avertissement.
+- FabInventory : helper `_insert_snapshot` commun à l'upload et à la mise à
+  jour d'un master ; suppression du calcul `scan_date_iso` dupliqué.
+
+**Vérification**
+- `cd FabInventory/FabInventory && FABINVENTORY_PWSH=/tmp/pwsh/pwsh ../../.venv/bin/python tests/run_all.py` :
+  **17 modules, 89 tests OK**.
+- Parseur PowerShell 7.7, autotest `-SelfTest`, CSV BOM/header et parcours
+  `/master/<id>/update` vérifiés sous Linux.
+- `PSUseCompatibleSyntax` PSScriptAnalyzer pour 5.1 et 7.0 : aucune erreur de
+  syntaxe ; les avertissements restants sont des `Write-Host` et des `catch`
+  volontairement best-effort.
+
+**Limites**
+- WMI, AppX et dialogue WinForms restent à valider sur un poste Windows réel.
+- Aucun commit, tag ni push effectué.
+
+**Prochaine action** : exécuter la checklist Windows sur un poste de test, en
+  particulier WMI/AppX et le dialogue de sauvegarde.
+
+## 2026-11-26 — FabInventory : script d'inventaire unifié (Lot 6)
+
+**Fonctionnalité**
+- `static/downloads/inventaire_master.ps1` devient le script unique : collecte
+  système, disques, réseau, services automatiques et logiciels (registre,
+  AppX, dossiers), puis produit un HTML autonome et un CSV.
+- JSON `schema: 3` sérialisé par `ConvertTo-Json`, avec `system`, `disks`,
+  `network`, `services`, `warnings` et `software`; les `<` sont échappés en
+  `\u003c` pour ne jamais fermer le bloc `</script>`.
+- Options `-OutputPath`, `-OutputDirectory`, `-NoGui`, `-SelfTest`,
+  `-SkipAppx`, `-SkipFolderScan`, `-SkipServices`; les erreurs WMI/AppX/dossier
+  sont non bloquantes et visibles dans le rapport.
+- Rapport HTML autonome rendu depuis le JSON (recherche, filtres, notes,
+  impression, comparaison), sans dépendance CDN.
+- FabInventory lit en priorité le JSON enrichi, stocke `services_json` et
+  conserve le repli labels/tableaux HTML pour les anciens rapports.
+- Lanceur `.bat` durci : UTF-8, vérification de PowerShell, `-STA`, arguments
+  transmis et code de sortie.
+
+**Vérification**
+- `cd FabInventory/FabInventory && FABINVENTORY_PWSH=/tmp/pwsh/pwsh ../../.venv/bin/python tests/run_all.py` :
+  **17 modules, 88 tests OK**.
+- Parseur PowerShell 7.7 et autotest `-SelfTest` exécutés sous Linux ; JSON
+  relu, noms avec guillemets/`</script>` et accents vérifiés.
+- Rapport autotest ouvert dans le navigateur cloud : rendu, disques, réseau,
+  services, recherche et comparaison vérifiés ; aucune erreur applicative.
+
+**Limites**
+- La collecte réelle WMI/AppX et le dialogue de sauvegarde n'ont pas pu être
+  exécutés sous Linux : validation manuelle Windows indispensable.
+- `usb_v3/` reste l'ancien emplacement de distribution ; le script servi par
+  l'application est la source de référence.
+
+**Prochaine action** : exécuter le script sur un poste Windows (admin), vérifier
+  AppX/WMI, le dialogue de sauvegarde et l'import du HTML dans FabInventory.
+
+## 2026-11-26 — FabInventory : consolidation des lots 0 à 8
+
+**Fonctionnalité**
+- Dernier scan unique : `scan_date_iso`, vues `snapshot_keys` et
+  `latest_snapshots`, remplacement des choix `created_at`/`scan_date` dans
+  l'accueil, la fiche master, l'admin, la comparaison, l'export et la recherche.
+- Identité : `pc_name_key` (casse/espaces), fusion des doublons existants,
+  index unique par workflow, réimports identiques ignorés par empreinte.
+- Catégories/couverture : la fiche master utilise la catégorie de l'index ;
+  `/api/category-stats` et `_software_masters_count` ne comptent que le dernier
+  scan.
+- Intégrité : clés étrangères actives, seeds uniques via `app_meta`, WAL,
+  auto-réparation d'un index partiel, `/healthz`.
+- Sécurité : `admin_required` sur le reindex, validation des entrées API,
+  cookies `SameSite=Lax`, alerte mot de passe admin par défaut, échappement
+  des rendus JS et des noms de fichiers CSV.
+- Finitions : guides Markdown rendus via marked + DOMPurify, disques/réseau
+  importés depuis les tableaux HTML, catégorie dans la recherche, tri naturel
+  des versions/dates, RAM décimale.
+- Garde-fous : 8 nouveaux modules de tests, compilation de tous les templates,
+  invariants de schéma, découverte automatique par `tests/run_all.py`.
+
+**Vérification**
+- `cd FabInventory/FabInventory && ../../.venv/bin/python tests/run_all.py` :
+  **16 modules, 78 tests OK**.
+- `git diff --check` et compilation Python à vérifier avant commit.
+
+**Limites**
+- Lot 6 non livré : le script PowerShell unique et le JSON enrichi exigent un
+  test manuel Windows ; aucun `pwsh` n'est disponible ici.
+- Les écritures inventaire publiques (upload, flags, roadmap) restent ouvertes :
+  la politique d'accès doit être validée avant de les protéger.
+- Aucun commit, tag ni push effectué.
+
+**Prochaine action** : relire le diff, valider les pages dans un navigateur,
+  puis committer le lot ; traiter le Lot 6 sur un poste Windows.
+
 ## 2026-11-26 — PretGo : retour avec état constaté
 
 **Fonctionnalité**

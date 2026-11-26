@@ -404,13 +404,13 @@ function statCard(label, value, color, bg, icon) {
     '<div style="width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;background:' + bg + ';color:' + color + '">' +
     '<i class="bi ' + icon + '"></i></div>' +
     '<div>' +
-    '<div style="font-size:1.7rem;font-weight:800;line-height:1;letter-spacing:-.05em;color:' + color + '">' + value + '</div>' +
-    '<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-top:.2rem">' + label + '</div>' +
+    '<div style="font-size:1.7rem;font-weight:800;line-height:1;letter-spacing:-.05em;color:' + color + '">' + esc(String(value)) + '</div>' +
+    '<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-top:.2rem">' + esc(label) + '</div>' +
     '</div></div></div></div>';
 }
 
 function esc(s) {
-  return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '—';
+  return s === null || s === undefined ? '—' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 </script>
 {% endblock %}

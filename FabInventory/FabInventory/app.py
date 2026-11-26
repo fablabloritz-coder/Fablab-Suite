@@ -5,6 +5,9 @@ Flask + SQLite - Compatible Fablab-Suite
 
 import os
 import gzip
+import hashlib
+from collections import defaultdict
+import html
 import json
 import sqlite3
 import re
@@ -14,7 +17,7 @@ import base64
 import io
 import csv
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -24,8 +27,12 @@ APP_VERSION = "2.1.4"
 
 app = Flask(__name__)
 app.jinja_env.globals["app_version"] = APP_VERSION
-app.secret_key = os.environ.get("SECRET_KEY", "fabinventory-secret-change-me")
+app.secret_key = os.environ.get("SECRET_KEY") or "fabinventory-secret-change-me"
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+if os.environ.get("COOKIE_SECURE", "0") == "1":
+    app.config["SESSION_COOKIE_SECURE"] = True
 # Cache navigateur des fichiers statiques : evite une revalidation a chaque page.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600
 
@@ -67,6 +74,64 @@ def _perf_logging_enabled():
     return app.debug or os.environ.get("PERF_LOG", "0") == "1"
 
 
+def _parse_scan_date_iso(value):
+    """Convertit une date de scan connue en ISO `YYYY-MM-DD HH:MM:SS`.
+
+    Les anciens rapports utilisent `jj/mm/aaaa hh:mm` ; les tests et certains
+    generateurs utilisent deja l'ISO. Retourne une chaine vide si le format
+    n'est pas reconnu, afin que l'appelant puisse choisir un repli.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    for fmt in (
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+    return ""
+
+
+def _stale_cutoff_iso(days=30):
+    return (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _master_key(name):
+    """Cle d'identite stable d'un master (casse et espaces ignores)."""
+    return str(name or "").strip().lower()
+
+
+def _safe_filename(value, fallback="master"):
+    """Composant de nom de fichier sans separateur ni caractere d'en-tete."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "")).strip("-._")
+    return cleaned[:80] or fallback
+
+
+def _snapshot_content_hash(pc_name, scan_date, software, sys_info, disks=None, network=None, services=None):
+    """Empreinte canonique d'un import, pour ignorer un fichier strictement identique."""
+    payload = {
+        "pc": _master_key(pc_name),
+        "date": str(scan_date or "").strip(),
+        "software": software or [],
+        "sys": sys_info or {},
+        "disks": disks or [],
+        "network": network or [],
+    }
+    # Ne pas changer l'empreinte des anciens rapports (sans services) : sinon
+    # leur premier reimport creerait un snapshot identique une seconde fois.
+    if services:
+        payload["services"] = services
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 # ===== DATABASE =====
 def get_db():
     if "db" not in g:
@@ -75,6 +140,7 @@ def get_db():
         # Attend jusqu'a 5 s qu'une ecriture concurrente libere la base au lieu
         # d'echouer immediatement sur "database is locked".
         g.db.execute("PRAGMA busy_timeout=5000")
+        g.db.execute("PRAGMA foreign_keys=ON")
     return g.db
 
 @app.teardown_appcontext
@@ -84,11 +150,20 @@ def close_db(exception):
 
 def init_db():
     db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
     db.execute("PRAGMA busy_timeout=5000")
+    db.execute("PRAGMA foreign_keys=ON")
+    try:
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.OperationalError:
+        # Certains montages reseau ne supportent pas WAL : on reste en mode par defaut.
+        pass
     db.executescript("""
     CREATE TABLE IF NOT EXISTS masters (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pc_name TEXT NOT NULL,
+        pc_name_key TEXT DEFAULT '',
         label TEXT DEFAULT '',
         notes TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -97,6 +172,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         master_id INTEGER NOT NULL,
         scan_date TEXT NOT NULL,
+        scan_date_iso TEXT DEFAULT '',
+        content_hash TEXT DEFAULT '',
         os_info TEXT DEFAULT '',
         cpu_info TEXT DEFAULT '',
         ram_go REAL DEFAULT 0,
@@ -106,6 +183,11 @@ def init_db():
         software_json TEXT DEFAULT '[]',
         disks_json TEXT DEFAULT '[]',
         network_json TEXT DEFAULT '[]',
+        services_json TEXT DEFAULT '[]',
+        warnings_json TEXT DEFAULT '[]',
+        script_version TEXT DEFAULT '',
+        scan_schema INTEGER DEFAULT 0,
+        generated_at TEXT DEFAULT '',
         total_software INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (master_id) REFERENCES masters(id) ON DELETE CASCADE
@@ -169,6 +251,101 @@ def init_db():
         FOREIGN KEY (master_id) REFERENCES masters(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_roadmap_items_master ON roadmap_items(master_id);
+
+    -- Suivi des logiciels absents d'un scan recent. Le snapshot reste la
+    -- verite observee ; cette table porte les decisions et les taches.
+    CREATE TABLE IF NOT EXISTS software_followups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        master_id INTEGER NOT NULL,
+        software_key TEXT NOT NULL,
+        software_name TEXT NOT NULL,
+        old_version TEXT DEFAULT '',
+        old_editor TEXT DEFAULT '',
+        old_source TEXT DEFAULT '',
+        source_snapshot_id INTEGER,
+        last_seen_snapshot_id INTEGER,
+        last_seen_date TEXT DEFAULT '',
+        last_missing_snapshot_id INTEGER,
+        last_missing_date TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        note TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        decided_at TIMESTAMP,
+        resolved_snapshot_id INTEGER,
+        resolved_at TIMESTAMP,
+        FOREIGN KEY (master_id) REFERENCES masters(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_software_followups_master_status
+        ON software_followups(master_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_software_followups_active
+        ON software_followups(master_id, software_key)
+        WHERE status <> 'resolved';
+    """)
+
+    # ── Dates de scan comparables ────────────────────────────────────────────
+    # `scan_date` reste la valeur affichee (jj/mm/aaaa) ; `scan_date_iso` sert
+    # uniquement au tri et aux comparaisons. Les vues ci-dessous retombent sur
+    # une conversion SQL pour les lignes anciennes ou inserees directement.
+    snap_cols = [row[1] for row in db.execute("PRAGMA table_info(snapshots)").fetchall()]
+    if "scan_date_iso" not in snap_cols:
+        db.execute("ALTER TABLE snapshots ADD COLUMN scan_date_iso TEXT DEFAULT ''")
+
+    for row in db.execute(
+        "SELECT id, scan_date, created_at, scan_date_iso FROM snapshots WHERE scan_date_iso IS NULL OR scan_date_iso = ''"
+    ).fetchall():
+        iso = _parse_scan_date_iso(row["scan_date"]) or _parse_scan_date_iso(row["created_at"])
+        if iso:
+            db.execute("UPDATE snapshots SET scan_date_iso = ? WHERE id = ?", (iso, row["id"]))
+
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snapshots_master_scandate "
+        "ON snapshots(master_id, scan_date_iso DESC, id DESC)"
+    )
+
+    # Une seule definition du « dernier scan » pour toute l'application.
+    # `snapshot_keys.scan_key` est une date ISO comparable, meme pour les
+    # anciennes bases qui n'ont pas encore ete backfillees.
+    db.executescript("""
+    DROP VIEW IF EXISTS snapshot_keys;
+    CREATE VIEW snapshot_keys AS
+    SELECT
+        id,
+        master_id,
+        COALESCE(
+            NULLIF(scan_date_iso, ''),
+            CASE
+                WHEN scan_date GLOB '[0-3][0-9]/[0-1][0-9]/[0-9][0-9][0-9][0-9] [0-2][0-9]:[0-5][0-9]'
+                    THEN substr(scan_date, 7, 4) || '-' || substr(scan_date, 4, 2) || '-' || substr(scan_date, 1, 2)
+                         || ' ' || substr(scan_date, 12, 5) || ':00'
+                WHEN scan_date GLOB '[0-3][0-9]/[0-1][0-9]/[0-9][0-9][0-9][0-9]'
+                    THEN substr(scan_date, 7, 4) || '-' || substr(scan_date, 4, 2) || '-' || substr(scan_date, 1, 2)
+                         || ' 00:00:00'
+                WHEN scan_date GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9]'
+                    THEN scan_date
+                WHEN scan_date GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]'
+                    THEN scan_date || ':00'
+                WHEN scan_date GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'
+                    THEN scan_date || ' 00:00:00'
+                ELSE created_at
+            END
+        ) AS scan_key
+    FROM snapshots;
+
+    DROP VIEW IF EXISTS latest_snapshots;
+    CREATE VIEW latest_snapshots AS
+    SELECT s.*, k.scan_key AS scan_key
+    FROM snapshots s
+    JOIN snapshot_keys k ON k.id = s.id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM snapshot_keys k2
+        WHERE k2.master_id = s.master_id
+          AND (
+              k2.scan_key > k.scan_key
+              OR (k2.scan_key = k.scan_key AND k2.id > s.id)
+          )
+    );
     """)
 
     # Migration idempotente: separation explicite des masters inventories et des listes de preparation.
@@ -187,6 +364,38 @@ def init_db():
           AND id NOT IN (SELECT DISTINCT master_id FROM snapshots)
         """
     )
+
+    # ── Identite normalisee des masters ─────────────────────────────────────
+    # Un meme PC ne doit pas creer trois fiches selon les espaces ou la casse.
+    # La cle est calculee en Python (Unicode) puis stockee pour les requetes.
+    master_cols = [row[1] for row in db.execute("PRAGMA table_info(masters)").fetchall()]
+    if "pc_name_key" not in master_cols:
+        db.execute("ALTER TABLE masters ADD COLUMN pc_name_key TEXT DEFAULT ''")
+    if "content_hash" not in snap_cols:
+        db.execute("ALTER TABLE snapshots ADD COLUMN content_hash TEXT DEFAULT ''")
+    if "services_json" not in snap_cols:
+        db.execute("ALTER TABLE snapshots ADD COLUMN services_json TEXT DEFAULT '[]'")
+    if "warnings_json" not in snap_cols:
+        db.execute("ALTER TABLE snapshots ADD COLUMN warnings_json TEXT DEFAULT '[]'")
+    if "script_version" not in snap_cols:
+        db.execute("ALTER TABLE snapshots ADD COLUMN script_version TEXT DEFAULT ''")
+    if "scan_schema" not in snap_cols:
+        db.execute("ALTER TABLE snapshots ADD COLUMN scan_schema INTEGER DEFAULT 0")
+    if "generated_at" not in snap_cols:
+        db.execute("ALTER TABLE snapshots ADD COLUMN generated_at TEXT DEFAULT ''")
+
+    # L'index unique doit etre recree apres la fusion : sinon le backfill de
+    # la deuxieme fiche homonyme echoue avant que les doublons soient fusionnes.
+    db.execute("DROP INDEX IF EXISTS idx_masters_workflow_key")
+
+    for row in db.execute("SELECT id, pc_name, pc_name_key FROM masters").fetchall():
+        pc_name = str(row["pc_name"] or "").strip()
+        key = _master_key(pc_name)
+        if pc_name != row["pc_name"] or key != (row["pc_name_key"] or ""):
+            db.execute(
+                "UPDATE masters SET pc_name = ?, pc_name_key = ? WHERE id = ?",
+                (pc_name, key, row["id"]),
+            )
 
     # Migration: ensure software_category column exists (idempotent)
     try:
@@ -227,6 +436,59 @@ def init_db():
     db.execute("UPDATE roadmap_minimal_pack SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
     db.execute("UPDATE roadmap_items SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
 
+    # Fusion des doublons deja presents : on garde la fiche la plus ancienne,
+    # puis on deplace snapshots, flags et checklist avant de supprimer l'autre.
+    # Ce bloc est execute apres toutes les migrations de colonnes pour rester
+    # compatible avec les anciennes bases.
+    duplicate_groups = db.execute(
+        """
+        SELECT workflow_type, pc_name_key, MIN(id) AS keep_id
+        FROM masters
+        WHERE pc_name_key <> ''
+        GROUP BY workflow_type, pc_name_key
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    for group in duplicate_groups:
+        keep_id = group["keep_id"]
+        duplicate_ids = [
+            row["id"]
+            for row in db.execute(
+                "SELECT id FROM masters WHERE workflow_type = ? AND pc_name_key = ? AND id <> ?",
+                (group["workflow_type"], group["pc_name_key"], keep_id),
+            ).fetchall()
+        ]
+        for duplicate_id in duplicate_ids:
+            db.execute("UPDATE snapshots SET master_id = ? WHERE master_id = ?", (keep_id, duplicate_id))
+            db.execute(
+                """
+                INSERT OR IGNORE INTO software_flags
+                    (master_id, software_name, is_important, note, is_licensed, license_type)
+                SELECT ?, software_name, is_important, note, is_licensed, license_type
+                FROM software_flags WHERE master_id = ?
+                """,
+                (keep_id, duplicate_id),
+            )
+            db.execute("DELETE FROM software_flags WHERE master_id = ?", (duplicate_id,))
+            db.execute(
+                """
+                INSERT OR IGNORE INTO roadmap_items
+                    (master_id, software_name, install_url, note_text, note,
+                     is_licensed, license_type, is_done, source, created_at)
+                SELECT ?, software_name, install_url, note_text, note,
+                       is_licensed, license_type, is_done, source, created_at
+                FROM roadmap_items WHERE master_id = ?
+                """,
+                (keep_id, duplicate_id),
+            )
+            db.execute("DELETE FROM roadmap_items WHERE master_id = ?", (duplicate_id,))
+            db.execute("DELETE FROM masters WHERE id = ?", (duplicate_id,))
+
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_masters_workflow_key "
+        "ON masters(workflow_type, pc_name_key) WHERE pc_name_key <> ''"
+    )
+
     # ─── NOUVELLES TABLES : portail demandes logiciels ───────────────────────
 
     db.executescript("""
@@ -235,6 +497,11 @@ def init_db():
         username TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS logiciels (
@@ -312,24 +579,35 @@ def init_db():
     );
     """)
 
-    # Seed : compte admin par défaut (admin/admin — à changer après déploiement)
-    existing_admin = db.execute("SELECT id FROM admin_users WHERE username = 'admin'").fetchone()
-    if not existing_admin:
-        db.execute(
-            "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)",
-            ("admin", generate_password_hash("admin"))
-        )
+    # Seed initial unique. Le marqueur evite qu'un admin ou un logiciel du pack
+    # supprime volontairement reapparaisse au prochain demarrage.
+    seed_done = db.execute(
+        "SELECT value FROM app_meta WHERE key = 'initial_seed'"
+    ).fetchone()
+    if not seed_done:
+        existing_admin = db.execute("SELECT id FROM admin_users WHERE username = 'admin'").fetchone()
+        if not existing_admin:
+            db.execute(
+                "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)",
+                ("admin", generate_password_hash("admin"))
+            )
+            db.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) "
+                "VALUES ('admin_password_is_default', '1')"
+            )
 
-    # Seed : pack de base par défaut
-    pack_base = [
-        ("VLC media player", "Multimédia", "Lecteur multimédia universel", 1),
-        ("7-Zip", "Utilitaires", "Archiveur de fichiers gratuit", 1),
-        ("SumatraPDF", "Bureautique", "Lecteur PDF léger et rapide", 1),
-    ]
-    for nom, cat, desc, pack in pack_base:
+        pack_base = [
+            ("VLC media player", "Multimédia", "Lecteur multimédia universel", 1),
+            ("7-Zip", "Utilitaires", "Archiveur de fichiers gratuit", 1),
+            ("SumatraPDF", "Bureautique", "Lecteur PDF léger et rapide", 1),
+        ]
+        for nom, cat, desc, pack in pack_base:
+            db.execute(
+                "INSERT OR IGNORE INTO logiciels (nom, categorie, description, dans_pack_base) VALUES (?, ?, ?, ?)",
+                (nom, cat, desc, pack)
+            )
         db.execute(
-            "INSERT OR IGNORE INTO logiciels (nom, categorie, description, dans_pack_base) VALUES (?, ?, ?, ?)",
-            (nom, cat, desc, pack)
+            "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('initial_seed', '1')"
         )
 
     db.commit()
@@ -409,13 +687,14 @@ def _demande_detail(db, demande_id):
 
 
 def _software_masters_count(db, logiciel_nom):
-    """Nombre de masters ayant ce logiciel détecté (via software_index, any snapshot)."""
+    """Nombre de masters ayant ce logiciel dans leur dernier scan."""
     if not logiciel_nom:
         return 0
     result = db.execute("""
-        SELECT COUNT(DISTINCT master_id) AS c
-        FROM software_index
-        WHERE LOWER(software_name) LIKE LOWER(?)
+        SELECT COUNT(DISTINCT si.master_id) AS c
+        FROM software_index si
+        JOIN latest_snapshots ls ON ls.id = si.snapshot_id
+        WHERE LOWER(si.software_name) LIKE LOWER(?)
     """, (f"%{logiciel_nom}%",)).fetchone()
     return result['c'] if result else 0
 
@@ -512,6 +791,10 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     db = get_db()
+    default_pw = db.execute(
+        "SELECT value FROM app_meta WHERE key = 'admin_password_is_default'"
+    ).fetchone()
+    default_password_warning = bool(default_pw and default_pw['value'] == '1')
     # ── Demandes ──
     statuts = db.execute(
         "SELECT statut, COUNT(*) AS total FROM demandes GROUP BY statut"
@@ -553,16 +836,16 @@ def admin_dashboard():
         if _software_masters_count(db, l['nom']) > 0:
             nb_couverts += 1
 
-    # Masters sans scan récent (>30 jours)
+    # Masters sans scan récent (>30 jours). On compare des dates ISO, jamais
+    # le texte `jj/mm/aaaa` : le tri lexicographique donnait des faux positifs.
+    cutoff_iso = _stale_cutoff_iso()
     masters_obsoletes = db.execute("""
-        SELECT COUNT(DISTINCT m.id) AS c
+        SELECT COUNT(*) AS c
         FROM masters m
-        LEFT JOIN snapshots s ON s.id = (
-            SELECT id FROM snapshots WHERE master_id = m.id ORDER BY scan_date DESC LIMIT 1
-        )
+        LEFT JOIN latest_snapshots ls ON ls.master_id = m.id
         WHERE m.workflow_type = 'inventory'
-          AND (s.scan_date IS NULL OR s.scan_date < datetime('now', '-30 days'))
-    """).fetchone()['c']
+          AND (ls.id IS NULL OR ls.scan_key < ?)
+    """, (cutoff_iso,)).fetchone()['c']
 
     return render_template("admin/dashboard.html",
         statuts_dict=statuts_dict,
@@ -576,6 +859,7 @@ def admin_dashboard():
         nb_couverts=nb_couverts,
         nb_catalogue=len(logiciels_actifs),
         masters_obsoletes=masters_obsoletes,
+        default_password_warning=default_password_warning,
         admin_user=_get_admin_user(),
         STATUT_BADGE=STATUT_BADGE,
     )
@@ -589,16 +873,16 @@ def admin_masters():
 
     masters = db.execute("""
         SELECT m.id, m.pc_name, m.label, m.notes, m.workflow_type,
-               s.scan_date, s.total_software, s.os_info, s.id AS snapshot_id
+               ls.scan_date, ls.total_software, ls.os_info, ls.id AS snapshot_id,
+               ls.scan_key
         FROM masters m
-        LEFT JOIN snapshots s ON s.id = (
-            SELECT id FROM snapshots WHERE master_id = m.id ORDER BY scan_date DESC LIMIT 1
-        )
+        LEFT JOIN latest_snapshots ls ON ls.master_id = m.id
         ORDER BY m.workflow_type, m.pc_name
     """).fetchall()
 
     logiciels_actifs = db.execute("SELECT id, nom FROM logiciels WHERE actif=1").fetchall()
 
+    cutoff_iso = _stale_cutoff_iso()
     result = []
     for m in masters:
         master = dict(m)
@@ -615,6 +899,7 @@ def admin_masters():
             nb_couverts = 0
         master['nb_couverts'] = nb_couverts
         master['nb_catalogue'] = nb_catalogue
+        master['is_stale'] = (not m['scan_key']) or m['scan_key'] < cutoff_iso
         result.append(master)
 
     return render_template("admin/masters.html",
@@ -671,10 +956,13 @@ def admin_demandes():
 def api_admin_update_demande(demande_id):
     data = request.get_json(silent=True) or {}
     nouveau_statut = data.get("statut") or ""
-    notes = data.get("notes_internes") or ""
+    # Ne pas ecraser les notes quand le client ne les envoie pas.
+    notes = data.get("notes_internes")
 
     if nouveau_statut and nouveau_statut not in STATUTS_DEMANDE:
         return jsonify({"error": "Statut invalide"}), 400
+    if notes is not None and not isinstance(notes, str):
+        return jsonify({"error": "Notes invalides"}), 400
 
     db = get_db()
     demande = db.execute("SELECT id FROM demandes WHERE id = ?", (demande_id,)).fetchone()
@@ -1025,6 +1313,10 @@ def admin_settings():
                 "UPDATE admin_users SET password_hash=? WHERE id=?",
                 (generate_password_hash(new_password), user_id)
             )
+            db.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) "
+                "VALUES ('admin_password_is_default', '0')"
+            )
             db.commit()
             flash("Mot de passe modifié.", "success")
             return redirect(url_for('admin_settings'))
@@ -1299,16 +1591,26 @@ def fabsuite_options(subpath):
     return ("", 204)
 
 
+@app.route("/healthz")
+def healthz():
+    db = get_db()
+    db.execute("SELECT 1").fetchone()
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/category-stats")
 def api_category_stats():
     """Return category distribution statistics for dashboard"""
     db = get_db()
+    # Ne compter que le dernier scan de chaque master : sinon chaque nouvel
+    # import double artificiellement les categories du dashboard.
     stats = db.execute("""
         SELECT 
-            software_category,
+            si.software_category,
             COUNT(*) as count
-        FROM software_index
-        GROUP BY software_category
+        FROM software_index si
+        JOIN latest_snapshots ls ON ls.id = si.snapshot_id
+        GROUP BY si.software_category
         ORDER BY count DESC
     """).fetchall()
     
@@ -1337,6 +1639,10 @@ def api_software_list():
     # Validate category if provided
     if category and category not in ["main", "update", "composant", "doublon"]:
         return jsonify({"error": "Invalid category"}), 400
+    if limit is None or not (1 <= limit <= 500):
+        return jsonify({"error": "limit doit etre entre 1 et 500"}), 400
+    if offset is None or offset < 0:
+        return jsonify({"error": "offset doit etre positif ou nul"}), 400
 
     db = get_db()
 
@@ -1386,6 +1692,7 @@ def api_software_list():
 
 
 @app.route("/admin/reindex-software", methods=["POST"])
+@admin_required
 def admin_reindex_software():
     """Rebuild software index to recompute categories for existing snapshots."""
     db = get_db()
@@ -1411,8 +1718,168 @@ def parse_inventory_html(html_content):
         return None
 
 
-def extract_system_info(html_content):
-    """Try to extract system info from HTML structure."""
+def _strip_html_cell(value):
+    return html.unescape(re.sub(r"<[^>]+>", "", value)).strip()
+
+
+def _extract_table_rows(section_html):
+    rows = []
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", section_html, re.S | re.I):
+        cells = [
+            _strip_html_cell(cell)
+            for cell in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", tr, re.S | re.I)
+        ]
+        if cells:
+            rows.append(cells)
+    return rows
+
+
+def _clean_value(value):
+    return str(value or "").strip()
+
+
+def _json_number(value, default=0.0):
+    try:
+        return float(str(value).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_json_disks(items):
+    """Normalise les disques du JSON schema 3 (ou renvoie None si absent)."""
+    if not isinstance(items, list):
+        return None
+    result = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        label = _clean_value(item.get("label") or item.get("name"))
+        size = _json_number(item.get("size_go", item.get("size")))
+        free = _json_number(item.get("free_go", item.get("free")))
+        if not label and not size and not free:
+            continue
+        result.append({"label": label or "?", "size_go": round(size, 1), "free_go": round(free, 1)})
+    return result
+
+
+def _normalize_json_network(items):
+    """Normalise le reseau du JSON schema 3 (ou renvoie None si absent)."""
+    if not isinstance(items, list):
+        return None
+    result = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = _clean_value(item.get("name") or item.get("interface"))
+        ip = _clean_value(item.get("ip"))
+        mac = _clean_value(item.get("mac"))
+        if not name and not ip and not mac:
+            continue
+        entry = {"name": name or "?", "ip": ip, "mac": mac}
+        for extra in ("dhcp", "gateway", "dns"):
+            value = _clean_value(item.get(extra))
+            if value:
+                entry[extra] = value
+        result.append(entry)
+    return result
+
+
+def _load_json_list(raw_value):
+    """Charge une liste JSON stockee, sans laisser une ancienne valeur casser la page."""
+    try:
+        value = json.loads(raw_value or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return value if isinstance(value, list) else []
+
+
+def _scan_metadata(data):
+    """Metadonnees de provenance d'un rapport, tolerantes aux anciens formats."""
+    if not isinstance(data, dict):
+        return {"warnings": [], "script_version": "", "schema": 0, "generated_at": ""}
+    warnings = data.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+    warnings = [str(item).strip() for item in warnings if str(item or "").strip()]
+    try:
+        schema = int(data.get("schema") or 0)
+    except (TypeError, ValueError):
+        schema = 0
+    return {
+        "warnings": warnings,
+        "script_version": str(data.get("script_version") or "").strip(),
+        "schema": schema,
+        "generated_at": str(data.get("generated_at") or "").strip(),
+    }
+
+
+def _normalize_json_services(items):
+    """Normalise les services du JSON schema 3."""
+    if not isinstance(items, list):
+        return []
+    result = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = _clean_value(item.get("n") or item.get("name") or item.get("DisplayName"))
+        short_name = _clean_value(item.get("sc") or item.get("short_name") or item.get("Name"))
+        if not name and not short_name:
+            continue
+        result.append({
+            "n": name or short_name,
+            "sc": short_name,
+            "status": _clean_value(item.get("status") or item.get("State")),
+            "start": _clean_value(item.get("start") or item.get("StartMode")),
+        })
+    return result
+
+
+def extract_services(data):
+    """Services automatiques du JSON enrichi (liste vide pour les anciens fichiers)."""
+    if not isinstance(data, dict):
+        return []
+    return _normalize_json_services(data.get("services"))
+
+
+def extract_disks_network(html_content, data=None):
+    """Lit les disques/reseau du JSON enrichi, sinon des tableaux HTML historiques."""
+    json_disks = _normalize_json_disks(data.get("disks")) if isinstance(data, dict) else None
+    json_network = _normalize_json_network(data.get("network")) if isinstance(data, dict) else None
+
+    def section(title_pattern):
+        match = re.search(
+            rf"<h2[^>]*>\s*{title_pattern}\s*</h2>(.*?)(?=<h2[^>]*>|</body>|$)",
+            html_content,
+            re.S | re.I,
+        )
+        return match.group(1) if match else ""
+
+    disks = json_disks
+    if disks is None:
+        disks = []
+        for cells in _extract_table_rows(section(r"Disques?")):
+            if len(cells) < 3 or cells[0].lower() in ("lettre", "lecteur"):
+                continue
+            try:
+                size = float(cells[1].replace("Go", "").replace(",", ".").strip())
+                free = float(cells[2].replace("Go", "").replace(",", ".").strip())
+            except ValueError:
+                continue
+            disks.append({"label": cells[0], "size_go": size, "free_go": free})
+
+    network = json_network
+    if network is None:
+        network = []
+        for cells in _extract_table_rows(section(r"R[eé]seau")):
+            if len(cells) < 3 or cells[0].lower() == "carte":
+                continue
+            network.append({"name": cells[0], "ip": cells[1], "mac": cells[2]})
+
+    return disks, network
+
+
+def extract_system_info(html_content, data=None):
+    """Lit le systeme du JSON enrichi, puis complete avec le HTML historique."""
     info = {
         "os": "",
         "windows_version": "",
@@ -1443,6 +1910,28 @@ def extract_system_info(html_content):
                 else:
                     info[key] = val
                 break
+
+    system = data.get("system") if isinstance(data, dict) else None
+    if isinstance(system, dict):
+        aliases = {
+            "os": ("os",),
+            "windows_version": ("windows_version", "windowsVersion", "release"),
+            "cpu": ("cpu", "cpu_name"),
+            "fabricant": ("fabricant", "manufacturer"),
+            "num_serie": ("num_serie", "serial"),
+            "domaine": ("domaine", "domain"),
+        }
+        for target, sources in aliases.items():
+            for source in sources:
+                value = _clean_value(system.get(source))
+                if value:
+                    info[target] = value
+                    break
+        if "ram" in system:
+            try:
+                info["ram"] = round(float(str(system.get("ram")).replace(",", ".")), 1)
+            except (TypeError, ValueError):
+                pass
     return info
 
 
@@ -1480,6 +1969,24 @@ def _normalize_software_map(software_list):
     return result
 
 
+def _software_meta_map(software_list):
+    """Conserve les champs utiles pour preparer une eventuelle reinstallaion."""
+    result = {}
+    for item in software_list or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("n", "") or "").strip()
+        if not name:
+            continue
+        result[name.lower()] = {
+            "n": name,
+            "v": str(item.get("v", "") or "").strip(),
+            "e": str(item.get("e", "") or "").strip(),
+            "src": str(item.get("src", "") or "").strip(),
+        }
+    return result
+
+
 def _build_software_diff(old_software, new_software, preview_limit=10):
     old_map = _normalize_software_map(old_software)
     new_map = _normalize_software_map(new_software)
@@ -1489,6 +1996,18 @@ def _build_software_diff(old_software, new_software, preview_limit=10):
 
     added_keys = sorted(new_keys - old_keys)
     removed_keys = sorted(old_keys - new_keys)
+    old_meta = _software_meta_map(old_software)
+
+    removed_items = []
+    for key in removed_keys:
+        item = old_meta.get(key, {})
+        removed_items.append({
+            "key": key,
+            "name": item.get("n", key),
+            "version": item.get("v", ""),
+            "editor": item.get("e", ""),
+            "source": item.get("src", ""),
+        })
 
     version_changed = []
     for key in sorted(old_keys & new_keys):
@@ -1508,8 +2027,9 @@ def _build_software_diff(old_software, new_software, preview_limit=10):
         "removed_count": len(removed_keys),
         "changed_count": len(version_changed),
         "preview_limit": preview_limit,
+        "removed_items": removed_items,
         "added_examples": [new_map[k].get("n", k) for k in added_keys[:preview_limit]],
-        "removed_examples": [old_map[k].get("n", k) for k in removed_keys[:preview_limit]],
+        "removed_examples": [item["name"] for item in removed_items[:preview_limit]],
         "changed_examples": version_changed[:preview_limit],
     }
 
@@ -1552,6 +2072,198 @@ def _build_system_diff(latest_snapshot, new_sys_info):
                 changes.append({"label": label, "old": old_txt or "-", "new": new_txt or "-"})
 
     return changes
+
+
+DISK_ALERT_FREE_GO = 10.0
+DISK_ALERT_FREE_PCT = 15.0
+
+
+def _row_value(row, key, default=""):
+    if row is None or key not in row.keys():
+        return default
+    value = row[key]
+    return default if value is None else value
+
+
+def _disk_metrics(disk):
+    disk = disk if isinstance(disk, dict) else {}
+    size = _json_number(disk.get("size_go", disk.get("size")))
+    free = _json_number(disk.get("free_go", disk.get("free")))
+    percent = round((free / size) * 100, 1) if size > 0 else None
+    return {"size": round(size, 1), "free": round(free, 1), "percent": percent}
+
+
+def _disk_is_low(metrics):
+    if not metrics or metrics.get("free") is None:
+        return False
+    return metrics["free"] < DISK_ALERT_FREE_GO or (
+        metrics.get("percent") is not None and metrics["percent"] < DISK_ALERT_FREE_PCT
+    )
+
+
+def _index_items(items, *fields):
+    """Indexe des objets heterogenes sans perdre les doublons de nom."""
+    result = {}
+    for index, item in enumerate(items or []):
+        if not isinstance(item, dict):
+            continue
+        key = ""
+        for field in fields:
+            key = str(item.get(field) or "").strip().lower()
+            if key:
+                break
+        key = key or f"#{index}"
+        if key in result:
+            key = f"{key}#{index}"
+        result[key] = item
+    return result
+
+
+def _change_status(old, new):
+    if old is None:
+        return "Ajouté"
+    if new is None:
+        return "Retiré"
+    return "Modifié"
+
+
+def _software_changes(old_software, new_software):
+    old_map = _normalize_software_map(old_software)
+    new_map = _normalize_software_map(new_software)
+    added = [new_map[key] for key in sorted(set(new_map) - set(old_map))]
+    removed = [old_map[key] for key in sorted(set(old_map) - set(new_map))]
+    changed = []
+    for key in sorted(set(old_map) & set(new_map)):
+        old_v = old_map[key].get("v", "")
+        new_v = new_map[key].get("v", "")
+        if old_v != new_v:
+            changed.append({"n": new_map[key].get("n", key), "old": old_v, "new": new_v})
+    return {"added": added, "removed": removed, "changed": changed}
+
+
+def _system_changes(old_snapshot, new_snapshot):
+    fields = [
+        ("OS", "os_info"),
+        ("CPU", "cpu_info"),
+        ("RAM", "ram_go"),
+        ("Fabricant", "fabricant"),
+        ("Numero serie", "num_serie"),
+        ("Domaine", "domaine"),
+    ]
+    changes = []
+    for label, key in fields:
+        old = _row_value(old_snapshot, key)
+        new = _row_value(new_snapshot, key)
+        if key == "ram_go":
+            old = round(float(old or 0), 1)
+            new = round(float(new or 0), 1)
+        changed = old != new
+        changes.append({"label": label, "old": old, "new": new, "changed": changed})
+    return changes
+
+
+def _disk_changes(old_disks, new_disks):
+    old_map = _index_items(old_disks, "label", "name")
+    new_map = _index_items(new_disks, "label", "name")
+    rows = []
+    for key in sorted(set(old_map) | set(new_map)):
+        old_disk = old_map.get(key)
+        new_disk = new_map.get(key)
+        old_metrics = _disk_metrics(old_disk) if old_disk is not None else None
+        new_metrics = _disk_metrics(new_disk) if new_disk is not None else None
+        status = _change_status(old_disk, new_disk)
+        if status == "Modifié" and old_metrics == new_metrics:
+            status = "Inchangé"
+        delta = None
+        if old_metrics is not None and new_metrics is not None:
+            delta = round(new_metrics["free"] - old_metrics["free"], 1)
+        label = (new_disk or old_disk or {}).get("label") or (new_disk or old_disk or {}).get("name") or key
+        rows.append({
+            "label": label,
+            "old": old_metrics,
+            "new": new_metrics,
+            "delta": delta,
+            "status": status,
+            "changed": status != "Inchangé",
+            "low": _disk_is_low(new_metrics),
+        })
+    return rows
+
+
+def _network_changes(old_network, new_network):
+    old_map = _index_items(old_network, "name", "interface")
+    new_map = _index_items(new_network, "name", "interface")
+    fields = ("ip", "mac", "dhcp", "gateway", "dns")
+    rows = []
+    for key in sorted(set(old_map) | set(new_map)):
+        old_item = old_map.get(key, {})
+        new_item = new_map.get(key, {})
+        changed_fields = [field for field in fields if old_item.get(field, "") != new_item.get(field, "")]
+        status = _change_status(old_map.get(key), new_map.get(key))
+        if status == "Modifié" and not changed_fields:
+            status = "Inchangé"
+        rows.append({
+            "name": new_item.get("name") or old_item.get("name") or key,
+            "old": old_item,
+            "new": new_item,
+            "changed_fields": changed_fields,
+            "status": status,
+            "changed": status != "Inchangé",
+        })
+    return rows
+
+
+def _service_changes(old_services, new_services):
+    old_map = _index_items(old_services, "sc", "n")
+    new_map = _index_items(new_services, "sc", "n")
+    rows = []
+    for key in sorted(set(old_map) | set(new_map)):
+        old_item = old_map.get(key, {})
+        new_item = new_map.get(key, {})
+        changed = old_item.get("status") != new_item.get("status") or old_item.get("start") != new_item.get("start")
+        status = _change_status(old_map.get(key), new_map.get(key))
+        if status == "Modifié" and not changed:
+            status = "Inchangé"
+        rows.append({
+            "name": new_item.get("n") or old_item.get("n") or key,
+            "short": new_item.get("sc") or old_item.get("sc") or key,
+            "old": old_item,
+            "new": new_item,
+            "status": status,
+            "changed": status != "Inchangé",
+        })
+    return rows
+
+
+def _build_inventory_changes(old_snapshot, new_snapshot):
+    old_software = _load_json_list(_row_value(old_snapshot, "software_json", "[]"))
+    new_software = _load_json_list(_row_value(new_snapshot, "software_json", "[]"))
+    old_disks = _load_json_list(_row_value(old_snapshot, "disks_json", "[]"))
+    new_disks = _load_json_list(_row_value(new_snapshot, "disks_json", "[]"))
+    old_network = _load_json_list(_row_value(old_snapshot, "network_json", "[]"))
+    new_network = _load_json_list(_row_value(new_snapshot, "network_json", "[]"))
+    old_services = _load_json_list(_row_value(old_snapshot, "services_json", "[]"))
+    new_services = _load_json_list(_row_value(new_snapshot, "services_json", "[]"))
+    old_warnings = _load_json_list(_row_value(old_snapshot, "warnings_json", "[]"))
+    new_warnings = _load_json_list(_row_value(new_snapshot, "warnings_json", "[]"))
+    return {
+        "software": _software_changes(old_software, new_software),
+        "system": _system_changes(old_snapshot, new_snapshot),
+        "disks": _disk_changes(old_disks, new_disks),
+        "network": _network_changes(old_network, new_network),
+        "services": _service_changes(old_services, new_services),
+        "warnings_added": sorted(set(new_warnings) - set(old_warnings)),
+        "warnings_removed": sorted(set(old_warnings) - set(new_warnings)),
+    }
+
+
+def _snapshot_meta(snapshot):
+    return {
+        "script_version": str(_row_value(snapshot, "script_version", "")),
+        "schema": int(_row_value(snapshot, "scan_schema", 0) or 0),
+        "generated_at": str(_row_value(snapshot, "generated_at", "")),
+        "warnings": _load_json_list(_row_value(snapshot, "warnings_json", "[]")),
+    }
 
 
 def _pending_update_file(token):
@@ -1634,6 +2346,193 @@ def _upsert_snapshot_software_index(db, snapshot_id, master_id, software_list):
         )
 
 
+FOLLOWUP_STATUSES = ("pending", "intentional", "to_install")
+FOLLOWUP_STATUS_LABELS = {
+    "pending": "À vérifier",
+    "intentional": "Retiré volontairement",
+    "to_install": "À installer",
+    "resolved": "Résolu",
+}
+FOLLOWUP_STATUS_ORDER = {"to_install": 0, "pending": 1, "intentional": 2, "resolved": 3}
+
+
+def _active_followups(db, master_id):
+    return db.execute(
+        """
+        SELECT *
+        FROM software_followups
+        WHERE master_id = ? AND status <> 'resolved'
+        ORDER BY CASE status
+                     WHEN 'to_install' THEN 0
+                     WHEN 'pending' THEN 1
+                     WHEN 'intentional' THEN 2
+                     ELSE 3
+                 END,
+                 software_name COLLATE NOCASE
+        """,
+        (master_id,),
+    ).fetchall()
+
+
+def _followup_counts(followups):
+    counts = {"pending": 0, "intentional": 0, "to_install": 0}
+    for followup in followups:
+        status = followup["status"]
+        if status in counts:
+            counts[status] += 1
+    counts["total"] = len(followups)
+    return counts
+
+
+def _set_followup_status(db, followup_id, status):
+    if status not in FOLLOWUP_STATUSES:
+        return False
+    if status == "pending":
+        db.execute(
+            "UPDATE software_followups SET status = ?, decided_at = NULL, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (status, followup_id),
+        )
+    else:
+        db.execute(
+            "UPDATE software_followups SET status = ?, decided_at = CURRENT_TIMESTAMP, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (status, followup_id),
+        )
+    return True
+
+
+def _apply_followup_decisions(db, master_id, decisions):
+    """Applique les choix de l'ecran de confirmation aux suivis actifs."""
+    for software_key, status in (decisions or {}).items():
+        if status not in FOLLOWUP_STATUSES:
+            continue
+        followup = db.execute(
+            "SELECT id FROM software_followups "
+            "WHERE master_id = ? AND software_key = ? AND status <> 'resolved' "
+            "ORDER BY id DESC LIMIT 1",
+            (master_id, software_key),
+        ).fetchone()
+        if followup:
+            _set_followup_status(db, followup["id"], status)
+
+
+def _parse_followup_decisions(form, removed_items, defaults=None):
+    decisions = dict(defaults or {})
+    for index, item in enumerate(removed_items or []):
+        key = str(item.get("key", "") or "").strip().lower()
+        if not key:
+            continue
+        raw = form.get(f"decision_{index}")
+        if raw is None:
+            raw = decisions.get(key, "pending")
+        raw = str(raw or "").strip()
+        if raw not in FOLLOWUP_STATUSES:
+            raw = "pending"
+        decisions[key] = raw
+    return decisions
+
+
+def _sync_software_followups(db, master_id, snapshot_id, scan_date, software, previous_snapshot):
+    """Met a jour les suivis d'absence et resout ceux qui reapparaissent."""
+    active = db.execute(
+        "SELECT * FROM software_followups WHERE master_id = ? AND status <> 'resolved'",
+        (master_id,),
+    ).fetchall()
+    active_by_key = {row["software_key"]: row for row in active}
+    new_map = _normalize_software_map(software)
+
+    for key, followup in active_by_key.items():
+        if key in new_map:
+            db.execute(
+                "UPDATE software_followups SET status = 'resolved', "
+                "last_seen_snapshot_id = ?, last_seen_date = ?, "
+                "resolved_snapshot_id = ?, resolved_at = CURRENT_TIMESTAMP, "
+                "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (snapshot_id, scan_date, snapshot_id, followup["id"]),
+            )
+        else:
+            db.execute(
+                "UPDATE software_followups SET last_missing_snapshot_id = ?, "
+                "last_missing_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (snapshot_id, scan_date, followup["id"]),
+            )
+
+    if previous_snapshot is None:
+        return
+
+    old_software = _load_json_list(_row_value(previous_snapshot, "software_json", "[]"))
+    old_map = _normalize_software_map(old_software)
+    old_meta = _software_meta_map(old_software)
+    previous_id = _row_value(previous_snapshot, "id", None)
+    previous_date = str(_row_value(previous_snapshot, "scan_date", "") or "")
+
+    for key in sorted(set(old_map) - set(new_map)):
+        if key in active_by_key:
+            continue
+        item = old_meta.get(key, {})
+        db.execute(
+            """
+            INSERT OR IGNORE INTO software_followups (
+                master_id, software_key, software_name, old_version, old_editor, old_source,
+                source_snapshot_id, last_seen_snapshot_id, last_seen_date,
+                last_missing_snapshot_id, last_missing_date, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            """,
+            (
+                master_id,
+                key,
+                item.get("n", key),
+                item.get("v", ""),
+                item.get("e", ""),
+                item.get("src", ""),
+                snapshot_id,
+                previous_id,
+                previous_date,
+                snapshot_id,
+                scan_date,
+            ),
+        )
+
+
+def _insert_snapshot(db, master_id, scan_date, scan_date_iso, content_hash,
+                     software, sys_info, disks, network, services, metadata=None):
+    """Insere un snapshot, ses metadonnees de scan et son index, sans commit."""
+    metadata = metadata or {}
+    previous_snapshot = db.execute(
+        "SELECT * FROM latest_snapshots WHERE master_id = ?", (master_id,)
+    ).fetchone()
+    cur = db.execute("""
+        INSERT INTO snapshots (master_id, scan_date, scan_date_iso, content_hash, os_info, cpu_info, ram_go,
+            fabricant, num_serie, domaine, software_json, disks_json, network_json, services_json,
+            warnings_json, script_version, scan_schema, generated_at, total_software)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        master_id,
+        scan_date,
+        scan_date_iso,
+        content_hash,
+        _compose_os_info(sys_info),
+        sys_info.get("cpu", ""),
+        float(sys_info.get("ram", 0) or 0),
+        sys_info.get("fabricant", ""),
+        sys_info.get("num_serie", ""),
+        sys_info.get("domaine", ""),
+        json.dumps(software, ensure_ascii=False),
+        json.dumps(disks, ensure_ascii=False),
+        json.dumps(network, ensure_ascii=False),
+        json.dumps(services, ensure_ascii=False),
+        json.dumps(metadata.get("warnings") or [], ensure_ascii=False),
+        str(metadata.get("script_version") or ""),
+        int(metadata.get("schema") or 0),
+        str(metadata.get("generated_at") or ""),
+        len(software),
+    ))
+    _upsert_snapshot_software_index(db, cur.lastrowid, master_id, software)
+    _sync_software_followups(db, master_id, cur.lastrowid, scan_date, software, previous_snapshot)
+    return cur.lastrowid
+
+
 def _rebuild_software_index(db):
     db.execute("DELETE FROM software_index")
     snapshots = db.execute("SELECT id, master_id, software_json FROM snapshots").fetchall()
@@ -1646,9 +2545,18 @@ def _rebuild_software_index(db):
 
 
 def _ensure_software_index_ready(db):
-    snap_count = int(db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()["c"])
-    indexed_snap_count = int(db.execute("SELECT COUNT(DISTINCT snapshot_id) AS c FROM software_index").fetchone()["c"])
-    if snap_count > 0 and indexed_snap_count == 0:
+    """Repare les snapshots non indexes, y compris quand l'index est partiel."""
+    missing = int(db.execute(
+        """
+        SELECT COUNT(*) AS c
+        FROM snapshots s
+        WHERE s.total_software > 0
+          AND s.software_json IS NOT NULL
+          AND s.software_json NOT IN ('', '[]', 'null')
+          AND NOT EXISTS (SELECT 1 FROM software_index si WHERE si.snapshot_id = s.id)
+        """
+    ).fetchone()["c"])
+    if missing > 0:
         _rebuild_software_index(db)
         db.commit()
 
@@ -1690,15 +2598,149 @@ def _get_preparation_master(db, master_id):
 
 # ===== ROUTES =====
 
+def _fleet_latest_rows(db):
+    return db.execute("""
+        SELECT m.id, m.pc_name, m.label,
+               ls.id AS snapshot_id, ls.scan_date, ls.scan_key,
+               ls.disks_json, ls.network_json, ls.warnings_json,
+               ls.script_version, ls.scan_schema, ls.total_software
+        FROM masters m
+        LEFT JOIN latest_snapshots ls ON ls.master_id = m.id
+        WHERE m.workflow_type = 'inventory'
+        ORDER BY m.pc_name
+    """).fetchall()
+
+
+def _build_fleet_health(db, stale_days=30):
+    """Agrege le dernier etat de chaque master sans charger tout l'historique."""
+    rows = _fleet_latest_rows(db)
+    cutoff = _stale_cutoff_iso(stale_days)
+    entries = []
+    disk_alerts = []
+    warnings = []
+    network_entries = []
+    ip_map = defaultdict(list)
+    mac_map = defaultdict(list)
+
+    for row in rows:
+        snapshot_id = row["snapshot_id"]
+        disks = _load_json_list(row["disks_json"])
+        network = _load_json_list(row["network_json"])
+        scan_warnings = _load_json_list(row["warnings_json"])
+        low_disks = []
+        for disk in disks:
+            metrics = _disk_metrics(disk)
+            if _disk_is_low(metrics):
+                label = disk.get("label") or disk.get("name") or "?"
+                alert = {
+                    "pc_name": row["pc_name"],
+                    "master_id": row["id"],
+                    "snapshot_id": snapshot_id,
+                    "scan_date": row["scan_date"] or "",
+                    "label": label,
+                    "free": metrics["free"],
+                    "size": metrics["size"],
+                    "percent": metrics["percent"],
+                }
+                low_disks.append(alert)
+                disk_alerts.append(alert)
+
+        for message in scan_warnings:
+            warnings.append({
+                "pc_name": row["pc_name"],
+                "master_id": row["id"],
+                "snapshot_id": snapshot_id,
+                "scan_date": row["scan_date"] or "",
+                "message": message,
+            })
+
+        for item in network:
+            if not isinstance(item, dict):
+                continue
+            entry = {
+                "pc_name": row["pc_name"],
+                "master_id": row["id"],
+                "snapshot_id": snapshot_id,
+                "scan_date": row["scan_date"] or "",
+                "name": str(item.get("name") or "?"),
+                "ip": str(item.get("ip") or "").strip(),
+                "mac": str(item.get("mac") or "").strip(),
+                "dhcp": str(item.get("dhcp") or "").strip(),
+                "gateway": str(item.get("gateway") or "").strip(),
+                "dns": str(item.get("dns") or "").strip(),
+                "duplicate_ip": False,
+                "duplicate_mac": False,
+            }
+            network_entries.append(entry)
+            if entry["ip"] and not entry["ip"].startswith("127."):
+                ip_map[entry["ip"]].append(entry)
+            if entry["mac"] and not entry["mac"].startswith("00:00:00"):
+                mac_map[entry["mac"]].append(entry)
+
+        entries.append({
+            "id": row["id"],
+            "pc_name": row["pc_name"],
+            "label": row["label"] or "",
+            "snapshot_id": snapshot_id,
+            "scan_date": row["scan_date"] or "",
+            "scan_key": row["scan_key"] or "",
+            "script_version": row["script_version"] or "",
+            "scan_schema": row["scan_schema"] or 0,
+            "total_software": row["total_software"] or 0,
+            "missing_scan": snapshot_id is None,
+            "stale": (not snapshot_id) or (row["scan_key"] or "") < cutoff,
+            "low_disks": low_disks,
+            "warnings": scan_warnings,
+            "network": network,
+        })
+
+    duplicate_ips = {key: value for key, value in ip_map.items() if len(value) > 1}
+    duplicate_macs = {key: value for key, value in mac_map.items() if len(value) > 1}
+    for entry in network_entries:
+        entry["duplicate_ip"] = entry["ip"] in duplicate_ips
+        entry["duplicate_mac"] = entry["mac"] in duplicate_macs
+
+    for entry in entries:
+        entry["has_low_disk"] = bool(entry["low_disks"])
+        entry["has_warning"] = bool(entry["warnings"])
+        entry["has_network_duplicate"] = any(
+            item.get("ip") in duplicate_ips or item.get("mac") in duplicate_macs
+            for item in entry["network"] if isinstance(item, dict)
+        )
+
+    return {
+        "entries": entries,
+        "network_entries": network_entries,
+        "disk_alerts": disk_alerts,
+        "warnings": warnings,
+        "duplicate_ips": duplicate_ips,
+        "duplicate_macs": duplicate_macs,
+        "stale_days": stale_days,
+        "cutoff": cutoff,
+        "total": len(entries),
+        "scanned": sum(1 for entry in entries if entry["snapshot_id"]),
+        "missing_scan": sum(1 for entry in entries if entry["missing_scan"]),
+        "stale": sum(1 for entry in entries if entry["stale"]),
+        "disk_masters": len({entry["id"] for entry in entries if entry["low_disks"]}),
+        "warning_masters": len({entry["id"] for entry in entries if entry["warnings"]}),
+        "duplicate_ip_count": len(duplicate_ips),
+        "duplicate_mac_count": len(duplicate_macs),
+        "disk_free_go": DISK_ALERT_FREE_GO,
+        "disk_free_pct": DISK_ALERT_FREE_PCT,
+    }
+
+
 @app.route("/")
 def index():
     db = get_db()
+    _ensure_software_index_ready(db)
     masters = db.execute("""
-        SELECT m.*, 
+        SELECT m.*,
             (SELECT COUNT(*) FROM snapshots WHERE master_id = m.id) as snap_count,
-            (SELECT scan_date FROM snapshots WHERE master_id = m.id ORDER BY created_at DESC LIMIT 1) as last_scan,
-            (SELECT total_software FROM snapshots WHERE master_id = m.id ORDER BY created_at DESC LIMIT 1) as last_total
+            ls.scan_date as last_scan,
+            ls.total_software as last_total
         FROM masters m
+        LEFT JOIN latest_snapshots ls ON ls.master_id = m.id
         WHERE m.workflow_type = 'inventory'
         ORDER BY m.pc_name
     """).fetchall()
@@ -1713,6 +2755,18 @@ def index():
         """
     ).fetchone()
     return render_template("index.html", masters=masters, prep_summary=prep_summary)
+
+
+@app.route("/sante")
+def fleet_health():
+    db = get_db()
+    return render_template("health.html", health=_build_fleet_health(db))
+
+
+@app.route("/reseau")
+def network_registry():
+    db = get_db()
+    return render_template("network_registry.html", health=_build_fleet_health(db))
 
 
 @app.route("/download/master-script")
@@ -1788,9 +2842,10 @@ def upload():
 
         files = request.files.getlist("file")
         imported = 0
+        skipped = 0
 
         for f in files:
-            if not f.filename or not f.filename.endswith(".html"):
+            if not f.filename or not f.filename.lower().endswith(".html"):
                 continue
 
             html_content = f.read().decode("utf-8", errors="ignore")
@@ -1800,46 +2855,59 @@ def upload():
                 flash(f"Fichier {f.filename} : pas de donnees d'inventaire v3 detectees", "warning")
                 continue
 
-            pc_name = data.get("pcName", "Inconnu")
+            pc_name = str(data.get("pcName") or "Inconnu").strip() or "Inconnu"
+            pc_key = _master_key(pc_name)
             scan_date = data.get("date", datetime.now().strftime("%d/%m/%Y %H:%M"))
             software = data.get("software", [])
+            if not isinstance(software, list):
+                software = []
 
-            sys_info = extract_system_info(html_content)
+            sys_info = extract_system_info(html_content, data)
+            disks, network = extract_disks_network(html_content, data)
+            services = extract_services(data)
+            metadata = _scan_metadata(data)
 
             db = get_db()
 
-            # Find or create master
+            # Find or create master : la cle ignore casse et espaces.
             master = db.execute(
-                "SELECT id FROM masters WHERE pc_name = ? AND workflow_type = 'inventory'",
-                (pc_name,),
+                "SELECT id FROM masters WHERE pc_name_key = ? AND workflow_type = 'inventory'",
+                (pc_key,),
             ).fetchone()
             if master:
                 master_id = master["id"]
             else:
                 cur = db.execute(
-                    "INSERT INTO masters (pc_name, workflow_type) VALUES (?, 'inventory')",
-                    (pc_name,),
+                    "INSERT INTO masters (pc_name, pc_name_key, workflow_type) VALUES (?, ?, 'inventory')",
+                    (pc_name, pc_key),
                 )
                 master_id = cur.lastrowid
 
+            content_hash = _snapshot_content_hash(pc_name, scan_date, software, sys_info, disks, network, services)
+            latest = db.execute(
+                "SELECT content_hash FROM latest_snapshots WHERE master_id = ?", (master_id,)
+            ).fetchone()
+            if latest and latest["content_hash"] and latest["content_hash"] == content_hash:
+                skipped += 1
+                continue
+
             # Create snapshot
-            cur_snap = db.execute("""
-                INSERT INTO snapshots (master_id, scan_date, os_info, cpu_info, ram_go, 
-                    fabricant, num_serie, domaine, software_json, total_software)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                master_id, scan_date, _compose_os_info(sys_info), sys_info["cpu"],
-                sys_info["ram"], sys_info["fabricant"], sys_info["num_serie"],
-                sys_info["domaine"], json.dumps(software, ensure_ascii=False),
-                len(software)
-            ))
-            _upsert_snapshot_software_index(db, cur_snap.lastrowid, master_id, software)
+            scan_date_iso = _parse_scan_date_iso(scan_date) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            _insert_snapshot(
+                db, master_id, scan_date, scan_date_iso, content_hash,
+                software, sys_info, disks, network, services, metadata,
+            )
             db.commit()
             _invalidate_counts_cache()
             imported += 1
 
         if imported:
-            flash(f"{imported} inventaire(s) importe(s) avec succes", "success")
+            message = f"{imported} inventaire(s) importe(s) avec succes"
+            if skipped:
+                message += f" ({skipped} doublon(s) identique(s) ignore(s))"
+            flash(message, "success")
+        elif skipped:
+            flash(f"{skipped} fichier(s) identique(s) deja importe(s), aucun doublon cree", "info")
         return redirect(url_for("index"))
 
     return render_template("upload.html")
@@ -1868,17 +2936,19 @@ def master_new():
         flash("Le nom du master est obligatoire", "error")
         return render_template("master_new.html", minimal_pack=minimal_pack)
 
+    pc_key = _master_key(pc_name)
     existing = db.execute(
-        "SELECT id FROM masters WHERE lower(pc_name) = lower(?) AND workflow_type = 'preparation'",
-        (pc_name,),
+        "SELECT id FROM masters WHERE pc_name_key = ? AND workflow_type = 'preparation'",
+        (pc_key,),
     ).fetchone()
     if existing:
         flash("Un master avec ce nom existe deja", "error")
         return render_template("master_new.html", minimal_pack=minimal_pack)
 
     cur = db.execute(
-        "INSERT INTO masters (pc_name, label, notes, workflow_type) VALUES (?, ?, ?, 'preparation')",
-        (pc_name, label, notes),
+        "INSERT INTO masters (pc_name, pc_name_key, label, notes, workflow_type) "
+        "VALUES (?, ?, ?, ?, 'preparation')",
+        (pc_name, pc_key, label, notes),
     )
     master_id = cur.lastrowid
 
@@ -1951,12 +3021,25 @@ def master_detail(master_id):
         return redirect(url_for("index"))
 
     snapshots = db.execute(
-        "SELECT * FROM snapshots WHERE master_id = ? ORDER BY created_at DESC", (master_id,)
+        """
+        SELECT s.*, k.scan_key
+        FROM snapshots s
+        JOIN snapshot_keys k ON k.id = s.id
+        WHERE s.master_id = ?
+        ORDER BY k.scan_key DESC, s.id DESC
+        """,
+        (master_id,),
     ).fetchall()
 
-    # Get latest snapshot software
+    # Get latest snapshot software. On renormalise la categorie pour que le
+    # tableau et l'index utilisent la meme regle, y compris sur les anciens
+    # snapshots qui n'ont pas de champ `cat`.
     latest = snapshots[0] if snapshots else None
+    latest_warnings = _load_json_list(latest["warnings_json"]) if latest else []
     software = json.loads(latest["software_json"]) if latest else []
+    for item in software:
+        if isinstance(item, dict):
+            item["cat"] = _normalize_software_fields(item)[4]
 
     # Get flags
     flags = {}
@@ -1968,8 +3051,98 @@ def master_detail(master_id):
             "license_type": row["license_type"],
         }
 
+    followups = _active_followups(db, master_id)
     return render_template("master.html", master=master, snapshots=snapshots,
-                           software=software, flags=flags, latest=latest)
+                           software=software, flags=flags, latest=latest,
+                           latest_warnings=latest_warnings, followups=followups,
+                           followup_counts=_followup_counts(followups))
+
+
+@app.route("/master/<int:master_id>/absences", methods=["GET", "POST"])
+def master_followups(master_id):
+    """File ponctuelle des absences suivies pour un master."""
+    db = get_db()
+    master = db.execute(
+        "SELECT * FROM masters WHERE id = ? AND workflow_type = 'inventory'",
+        (master_id,),
+    ).fetchone()
+    if not master:
+        flash("Master inventorie introuvable", "error")
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        followup_id = request.form.get("followup_id", type=int)
+        status = request.form.get("status", "").strip()
+        followup = db.execute(
+            "SELECT id FROM software_followups "
+            "WHERE id = ? AND master_id = ? AND status <> 'resolved'",
+            (followup_id, master_id),
+        ).fetchone()
+        if not followup or status not in FOLLOWUP_STATUSES:
+            flash("Décision d'absence invalide", "error")
+        else:
+            _set_followup_status(db, followup["id"], status)
+            db.commit()
+            flash("Décision enregistrée", "success")
+        return redirect(url_for("master_followups", master_id=master_id))
+
+    followups = _active_followups(db, master_id)
+    return render_template(
+        "master_followups.html",
+        master=master,
+        followups=followups,
+        counts=_followup_counts(followups),
+        status_labels=FOLLOWUP_STATUS_LABELS,
+    )
+
+
+@app.route("/master/<int:master_id>/evolution")
+def master_evolution(master_id):
+    """Compare deux scans d'un meme poste, sans Nouvelle collecte Windows."""
+    db = get_db()
+    master = db.execute(
+        "SELECT * FROM masters WHERE id = ? AND workflow_type = 'inventory'",
+        (master_id,),
+    ).fetchone()
+    if not master:
+        flash("Master inventorie introuvable", "error")
+        return redirect(url_for("index"))
+
+    snapshots = db.execute(
+        """
+        SELECT s.*, k.scan_key
+        FROM snapshots s
+        JOIN snapshot_keys k ON k.id = s.id
+        WHERE s.master_id = ?
+        ORDER BY k.scan_key DESC, s.id DESC
+        """,
+        (master_id,),
+    ).fetchall()
+
+    by_id = {snapshot["id"]: snapshot for snapshot in snapshots}
+    to_id = request.args.get("to", type=int) or (snapshots[0]["id"] if snapshots else None)
+    from_id = request.args.get("from", type=int) or (snapshots[1]["id"] if len(snapshots) > 1 else None)
+    from_snapshot = by_id.get(from_id)
+    to_snapshot = by_id.get(to_id)
+    if from_snapshot is None or to_snapshot is None or from_snapshot["id"] == to_snapshot["id"]:
+        from_snapshot = snapshots[1] if len(snapshots) > 1 else None
+        to_snapshot = snapshots[0] if snapshots else None
+
+    changes = None
+    if from_snapshot is not None and to_snapshot is not None:
+        changes = _build_inventory_changes(from_snapshot, to_snapshot)
+
+    return render_template(
+        "master_evolution.html",
+        master=master,
+        snapshots=snapshots,
+        from_snapshot=from_snapshot,
+        to_snapshot=to_snapshot,
+        old_meta=_snapshot_meta(from_snapshot),
+        new_meta=_snapshot_meta(to_snapshot),
+        changes=changes,
+    )
+
 
 @app.route("/master/<int:master_id>/export")
 def master_export(master_id):
@@ -1993,13 +3166,16 @@ def master_export(master_id):
             si.software_category,
             sf.is_important,
             sf.note,
-            s.created_at as scan_date
+            s.scan_date as scan_date
         FROM software_index si
         LEFT JOIN software_flags sf ON sf.master_id = ? AND sf.software_name = si.software_name
         LEFT JOIN snapshots s ON s.id = si.snapshot_id
         WHERE si.master_id = ?
+          AND si.snapshot_id = (
+              SELECT id FROM latest_snapshots WHERE master_id = ?
+          )
         ORDER BY si.software_name ASC
-    """, (master_id, master_id)).fetchall()
+    """, (master_id, master_id, master_id)).fetchall()
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
@@ -2032,7 +3208,7 @@ def master_export(master_id):
         csv_bytes,
         mimetype="text/csv",
         headers={
-            "Content-Disposition": f"attachment; filename=FabInventory-{master['pc_name']}.csv"
+            "Content-Disposition": f"attachment; filename=FabInventory-{_safe_filename(master['pc_name'])}.csv"
         },
     )
 
@@ -2112,7 +3288,7 @@ def master_update(master_id):
         return redirect(url_for("index"))
 
     latest = db.execute(
-        "SELECT * FROM snapshots WHERE master_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        "SELECT * FROM latest_snapshots WHERE master_id = ?",
         (master_id,),
     ).fetchone()
 
@@ -2143,12 +3319,38 @@ def master_update(master_id):
 
         software = payload.get("software") or []
         sys_info = payload.get("sys_info") or {}
+        disks = payload.get("disks") or []
+        network = payload.get("network") or []
+        services = payload.get("services") or []
+        metadata = _scan_metadata(payload.get("metadata"))
         scan_date = payload.get("scan_date") or datetime.now().strftime("%d/%m/%Y %H:%M")
+        scan_date_iso = _parse_scan_date_iso(scan_date) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        content_hash = _snapshot_content_hash(master["pc_name"], scan_date, software, sys_info, disks, network, services)
+
+        if latest and latest["content_hash"] and latest["content_hash"] == content_hash:
+            try:
+                os.remove(pending_path)
+            except OSError:
+                pass
+            flash("Ce fichier est identique au dernier scan : aucun nouveau snapshot cree", "info")
+            return redirect(url_for("master_detail", master_id=master_id))
+
+        latest_sw = json.loads(latest["software_json"]) if latest and latest["software_json"] else []
+        diff = _build_software_diff(latest_sw, software, preview_limit=preview_limit)
+        removed_items = diff["removed_items"]
+        saved_decisions = payload.get("decisions") if isinstance(payload.get("decisions"), dict) else {}
+        decisions = _parse_followup_decisions(request.form, removed_items, saved_decisions)
+        system_changes = _build_system_diff(latest, sys_info)
 
         if request.form.get("preview_only") == "1":
-            latest_sw = json.loads(latest["software_json"]) if latest and latest["software_json"] else []
-            diff = _build_software_diff(latest_sw, software, preview_limit=preview_limit)
-            system_changes = _build_system_diff(latest, sys_info)
+            payload["removed_items"] = removed_items
+            payload["decisions"] = decisions
+            try:
+                with open(pending_path, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False)
+            except OSError:
+                flash("Impossible de conserver les choix pour l'aperçu.", "error")
+                return redirect(url_for("master_update", master_id=master_id))
             return render_template(
                 "master_update.html",
                 master=master,
@@ -2157,31 +3359,18 @@ def master_update(master_id):
                 confirm_token=confirm_token,
                 incoming_scan_date=scan_date,
                 incoming_pc_name=str(payload.get("pc_name_from_file", "") or ""),
+                incoming_warnings=metadata.get("warnings") or [],
                 diff=diff,
+                decisions=decisions,
                 system_changes=system_changes,
                 preview_limit=preview_limit,
             )
 
-        cur_snap = db.execute(
-            """
-            INSERT INTO snapshots (master_id, scan_date, os_info, cpu_info, ram_go,
-                fabricant, num_serie, domaine, software_json, total_software)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                master_id,
-                scan_date,
-                _compose_os_info(sys_info),
-                sys_info.get("cpu", ""),
-                float(sys_info.get("ram", 0) or 0),
-                sys_info.get("fabricant", ""),
-                sys_info.get("num_serie", ""),
-                sys_info.get("domaine", ""),
-                json.dumps(software, ensure_ascii=False),
-                len(software),
-            ),
+        snapshot_id = _insert_snapshot(
+            db, master_id, scan_date, scan_date_iso, content_hash,
+            software, sys_info, disks, network, services, metadata,
         )
-        _upsert_snapshot_software_index(db, cur_snap.lastrowid, master_id, software)
+        _apply_followup_decisions(db, master_id, decisions)
         db.commit()
         _invalidate_counts_cache()
 
@@ -2214,10 +3403,15 @@ def master_update(master_id):
 
     scan_date = parsed.get("date") or datetime.now().strftime("%d/%m/%Y %H:%M")
     pc_name_from_file = str(parsed.get("pcName", "")).strip()
-    sys_info = extract_system_info(html_content)
+    sys_info = extract_system_info(html_content, parsed)
+    disks, network = extract_disks_network(html_content, parsed)
+    services = extract_services(parsed)
+    metadata = _scan_metadata(parsed)
 
     latest_sw = json.loads(latest["software_json"]) if latest and latest["software_json"] else []
     diff = _build_software_diff(latest_sw, software, preview_limit=preview_limit)
+    removed_items = diff["removed_items"]
+    decisions = {item["key"]: "pending" for item in removed_items}
     system_changes = _build_system_diff(latest, sys_info)
 
     token = secrets.token_hex(16)
@@ -2228,6 +3422,12 @@ def master_update(master_id):
         "pc_name_from_file": pc_name_from_file,
         "sys_info": sys_info,
         "software": software,
+        "disks": disks,
+        "network": network,
+        "services": services,
+        "metadata": metadata,
+        "removed_items": removed_items,
+        "decisions": decisions,
     }
     with open(pending_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False)
@@ -2240,7 +3440,9 @@ def master_update(master_id):
         confirm_token=token,
         incoming_scan_date=scan_date,
         incoming_pc_name=pc_name_from_file,
+        incoming_warnings=metadata.get("warnings") or [],
         diff=diff,
+        decisions=decisions,
         system_changes=system_changes,
         preview_limit=preview_limit,
     )
@@ -2257,17 +3459,18 @@ def master_edit(master_id):
         flash("Le nom du master est obligatoire", "error")
         return redirect(url_for("master_detail", master_id=master_id))
 
+    pc_key = _master_key(pc_name)
     existing = db.execute(
-        "SELECT id FROM masters WHERE lower(pc_name) = lower(?) AND id != ? AND workflow_type = 'inventory'",
-        (pc_name, master_id),
+        "SELECT id FROM masters WHERE pc_name_key = ? AND id != ? AND workflow_type = 'inventory'",
+        (pc_key, master_id),
     ).fetchone()
     if existing:
         flash("Un autre master utilise deja ce nom", "error")
         return redirect(url_for("master_detail", master_id=master_id))
 
     db.execute(
-        "UPDATE masters SET pc_name = ?, label = ?, notes = ? WHERE id = ?",
-        (pc_name, label, notes, master_id),
+        "UPDATE masters SET pc_name = ?, pc_name_key = ?, label = ?, notes = ? WHERE id = ?",
+        (pc_name, pc_key, label, notes, master_id),
     )
     db.commit()
     flash("Master mis a jour", "success")
@@ -2492,10 +3695,13 @@ def snapshot_detail(snap_id):
     if not snap:
         flash("Snapshot introuvable", "error")
         return redirect(url_for("index"))
-    software = json.loads(snap["software_json"] or "[]")
-    disks = json.loads(snap["disks_json"] or "[]")
-    network = json.loads(snap["network_json"] or "[]")
-    return render_template("snapshot.html", snap=snap, software=software, disks=disks, network=network)
+    software = _load_json_list(snap["software_json"])
+    disks = _load_json_list(snap["disks_json"])
+    network = _load_json_list(snap["network_json"])
+    services = _load_json_list(snap["services_json"]) if "services_json" in snap.keys() else []
+    warnings = _load_json_list(snap["warnings_json"]) if "warnings_json" in snap.keys() else []
+    return render_template("snapshot.html", snap=snap, software=software, disks=disks,
+                           network=network, services=services, warnings=warnings)
 
 
 @app.route("/snapshot/<int:snap_id>/delete", methods=["POST"])
@@ -2515,10 +3721,14 @@ def snapshot_delete(snap_id):
 @app.route("/compare")
 def compare():
     db = get_db()
+    # Ne proposer que les masters inventories ayant au moins un scan : une liste
+    # de preparation ne doit pas faire croire qu'une comparaison est possible.
     masters = db.execute("""
-        SELECT m.id, m.pc_name, m.label,
-            (SELECT id FROM snapshots WHERE master_id = m.id ORDER BY created_at DESC LIMIT 1) as latest_snap_id
-        FROM masters m ORDER BY m.pc_name
+        SELECT m.id, m.pc_name, m.label, ls.id AS latest_snap_id
+        FROM masters m
+        JOIN latest_snapshots ls ON ls.master_id = m.id
+        WHERE m.workflow_type = 'inventory'
+        ORDER BY m.pc_name
     """).fetchall()
     return render_template("compare.html", masters=masters)
 
@@ -2559,19 +3769,21 @@ def search_multi_master():
     cursor_token = (request.args.get("cursor") or "").strip()
 
     # Strict SQL clause mapping prevents injection from query params.
+    # `si.id` est le tie-breaker du curseur keyset : il doit suivre
+    # immediatement la colonne triee pour que la pagination ne saute aucune ligne.
     latest_order_by_map = {
-        "master": "m.pc_name {dir}, si.software_name ASC, si.software_version ASC",
-        "date": "s.created_at {dir}, s.id {dir}, m.pc_name ASC, si.software_name ASC",
-        "software": "si.software_name {dir}, m.pc_name ASC, si.software_version ASC",
-        "version": "si.software_version {dir}, si.software_name ASC, m.pc_name ASC",
-        "editor": "si.software_editor {dir}, si.software_name ASC, m.pc_name ASC",
+        "master": "m.pc_name {dir}, si.id {dir}",
+        "date": "sk.scan_key {dir}, si.id {dir}",
+        "software": "si.software_name {dir}, si.id {dir}",
+        "version": "si.software_version {dir}, si.id {dir}",
+        "editor": "si.software_editor {dir}, si.id {dir}",
     }
     all_order_by_map = {
-        "master": "m.pc_name {dir}, s.created_at DESC, s.id DESC, si.software_name ASC",
-        "date": "s.created_at {dir}, s.id {dir}, m.pc_name ASC, si.software_name ASC",
-        "software": "si.software_name {dir}, m.pc_name ASC, s.created_at DESC",
-        "version": "si.software_version {dir}, si.software_name ASC, m.pc_name ASC",
-        "editor": "si.software_editor {dir}, si.software_name ASC, m.pc_name ASC",
+        "master": "m.pc_name {dir}, si.id {dir}",
+        "date": "sk.scan_key {dir}, si.id {dir}",
+        "software": "si.software_name {dir}, si.id {dir}",
+        "version": "si.software_version {dir}, si.id {dir}",
+        "editor": "si.software_editor {dir}, si.id {dir}",
     }
 
     if scope == "latest":
@@ -2584,23 +3796,15 @@ def search_multi_master():
     total_scanned = 0
 
     if scope == "latest":
-        total_scanned = int(db.execute("SELECT COUNT(DISTINCT master_id) AS c FROM snapshots").fetchone()["c"])
+        total_scanned = int(db.execute("SELECT COUNT(*) AS c FROM latest_snapshots").fetchone()["c"])
     else:
         total_scanned = int(db.execute("SELECT COUNT(*) AS c FROM snapshots").fetchone()["c"])
 
     like_term = f"%{query.lower()}%" if query else None
 
     latest_join = """
-        JOIN (
-            SELECT s1.id, s1.master_id
-            FROM snapshots s1
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM snapshots s2
-                WHERE s2.master_id = s1.master_id
-                  AND (s2.created_at > s1.created_at OR (s2.created_at = s1.created_at AND s2.id > s1.id))
-            )
-        ) latest ON latest.id = si.snapshot_id AND latest.master_id = si.master_id
+        JOIN latest_snapshots latest
+          ON latest.id = si.snapshot_id AND latest.master_id = si.master_id
     """
 
     def _fetch_search_rows(limit=None, offset=None, cursor=None):
@@ -2616,6 +3820,7 @@ def search_multi_master():
                 si.snapshot_id,
                 s.scan_date,
                 s.created_at AS scan_created_at,
+                sk.scan_key AS scan_key,
                 si.software_name,
                 si.software_version,
                 si.software_editor,
@@ -2624,6 +3829,7 @@ def search_multi_master():
                 si.id AS row_id
             FROM software_index si
             JOIN snapshots s ON s.id = si.snapshot_id
+            JOIN snapshot_keys sk ON sk.id = s.id
             JOIN masters m ON m.id = si.master_id
             """
         ]
@@ -2641,7 +3847,7 @@ def search_multi_master():
 
             key_column_map = {
                 "master": "m.pc_name",
-                "date": "s.created_at",
+                "date": "sk.scan_key",
                 "software": "si.software_name",
                 "version": "si.software_version",
                 "editor": "si.software_editor",
@@ -2738,8 +3944,14 @@ def search_multi_master():
     decoded_cursor = None
     if paging_mode == "keyset" and cursor_token:
         try:
-            decoded_cursor = json.loads(base64.urlsafe_b64decode(cursor_token.encode("ascii")).decode("utf-8"))
-        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            candidate = json.loads(base64.urlsafe_b64decode(cursor_token.encode("ascii")).decode("utf-8"))
+            if isinstance(candidate, dict) and candidate.get("value") is not None:
+                decoded_cursor = {
+                    "value": candidate["value"],
+                    "row_id": int(candidate.get("row_id") or 0),
+                }
+        except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
+            # Un curseur abime ne doit jamais produire une erreur 500.
             decoded_cursor = None
 
     start_idx = (page - 1) * per_page
@@ -2757,7 +3969,7 @@ def search_multi_master():
     if paging_mode == "keyset" and has_more and rows:
         key_map = {
             "master": rows[-1]["pc_name"],
-            "date": rows[-1]["scan_created_at"],
+            "date": rows[-1]["scan_key"],
             "software": rows[-1]["software_name"],
             "version": rows[-1]["software_version"],
             "editor": rows[-1]["software_editor"],
@@ -2778,6 +3990,7 @@ def search_multi_master():
             "version": row["software_version"],
             "editor": row["software_editor"],
             "source": row["software_source"],
+            "category": row["software_category"],
         }
         for row in rows
     ]
@@ -2801,9 +4014,14 @@ def search_multi_master():
 
 @app.route("/api/compare", methods=["POST"])
 def api_compare():
-    data = request.get_json()
-    snap_a_id = data.get("a")
-    snap_b_id = data.get("b")
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Corps JSON invalide"}), 400
+    try:
+        snap_a_id = int(data.get("a"))
+        snap_b_id = int(data.get("b"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Identifiants de snapshot invalides"}), 400
     db = get_db()
 
     snap_a = db.execute("SELECT s.*, m.pc_name FROM snapshots s JOIN masters m ON s.master_id=m.id WHERE s.id=?", (snap_a_id,)).fetchone()
@@ -2839,15 +4057,32 @@ def api_compare():
 
 @app.route("/api/flag", methods=["POST"])
 def api_flag():
-    data = request.get_json()
-    master_id = data.get("master_id")
-    sw_name = data.get("name")
-    important = data.get("important", 0)
-    note = data.get("note", "")
-    is_licensed = 1 if int(data.get("is_licensed", 0) or 0) == 1 else 0
-    license_type = data.get("license_type", "")
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Corps JSON invalide"}), 400
+    try:
+        master_id = int(data.get("master_id"))
+        important = int(data.get("important", 0) or 0)
+        is_licensed = int(data.get("is_licensed", 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "master_id, important et is_licensed doivent etre numeriques"}), 400
+    sw_name = str(data.get("name") or "").strip()
+    note = str(data.get("note") or "")
+    license_type = str(data.get("license_type") or "").strip()
+    if not sw_name:
+        return jsonify({"error": "Le nom du logiciel est obligatoire"}), 400
+    if important not in (0, 1) or is_licensed not in (0, 1):
+        return jsonify({"error": "important et is_licensed doivent valoir 0 ou 1"}), 400
+    if license_type not in ("", "reseau", "fichier_local", "numero_serie_contrat", "mot_de_passe"):
+        return jsonify({"error": "Type de licence invalide"}), 400
 
     db = get_db()
+    master = db.execute(
+        "SELECT id FROM masters WHERE id = ? AND workflow_type = 'inventory'",
+        (master_id,),
+    ).fetchone()
+    if not master:
+        return jsonify({"error": "Master introuvable"}), 404
     db.execute("""
         INSERT INTO software_flags (master_id, software_name, is_important, note, is_licensed, license_type)
         VALUES (?, ?, ?, ?, ?, ?)

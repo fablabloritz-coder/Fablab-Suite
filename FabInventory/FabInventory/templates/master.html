@@ -15,11 +15,22 @@
     {% if master.label %}
     <div class="text-muted small mt-1"><i class="bi bi-tag me-1"></i>{{ master.label }}</div>
     {% endif %}
+    {% if latest_warnings %}
+    <a class="badge bg-warning text-dark text-decoration-none mt-2" href="/snapshot/{{ latest.id }}">
+      <i class="bi bi-exclamation-triangle me-1"></i>Collecte partielle ({{ latest_warnings|length }})
+    </a>
+    {% endif %}
   </div>
   <div class="page-header-actions">
     <a class="btn btn-outline-success btn-sm" href="/master/{{ master.id }}/update">
       <i class="bi bi-arrow-repeat me-1"></i>Mettre a jour
     </a>
+      <a class="btn btn-outline-warning btn-sm" href="/master/{{ master.id }}/absences" title="Suivi des logiciels absents">
+        <i class="bi bi-list-check me-1"></i>Absences{% if followup_counts.total %} ({{ followup_counts.total }}){% endif %}
+      </a>
+      <a class="btn btn-outline-primary btn-sm" href="/master/{{ master.id }}/evolution" title="Comparer deux scans">
+        <i class="bi bi-arrow-left-right me-1"></i>Évolution
+      </a>
       <a class="btn btn-outline-info btn-sm" href="/master/{{ master.id }}/export" title="Exporter en CSV avec categories">
         <i class="bi bi-download me-1"></i>CSV
       </a>
@@ -31,6 +42,18 @@
     </form>
   </div>
 </div>
+
+{% if followup_counts.total %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center gap-3 flex-wrap">
+  <div>
+    <strong><i class="bi bi-list-check me-1"></i>{{ followup_counts.total }} absence(s) suivie(s)</strong>
+    <span class="small ms-2">
+      {{ followup_counts.to_install }} à installer · {{ followup_counts.pending }} à vérifier · {{ followup_counts.intentional }} retiré(s) volontairement
+    </span>
+  </div>
+  <a href="/master/{{ master.id }}/absences" class="btn btn-sm btn-warning">Gérer les absences</a>
+</div>
+{% endif %}
 
 {% if latest %}
 <!-- System info cards -->
@@ -87,6 +110,7 @@
       <div>
         <div class="sys-info-label">Dernier scan</div>
         <div class="sys-info-value">{{ latest.scan_date }}</div>
+        {% if latest.script_version %}<div class="small text-muted">Script {{ latest.script_version }}</div>{% endif %}
       </div>
     </div>
   </div>
@@ -127,7 +151,7 @@
           <th class="sortable" onclick="sortSw(2)">Editeur <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(3)">Date <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(4)">Taille <i class="bi bi-arrow-down-up small"></i></th>
-          <th colspan="2">Source &amp; Catégorie</th>
+          <th>Source &amp; Catégorie</th>
           <th style="width:90px">Licence</th>
           <th style="min-width:170px">Type licence</th>
           <th style="min-width:160px">Note</th>
@@ -237,6 +261,18 @@ function renderSw() {
       let va = a[keys[sortCol]] || '';
       let vb = b[keys[sortCol]] || '';
       if (sortCol === 4) { va = parseFloat(va)||0; vb = parseFloat(vb)||0; return sortAsc ? va-vb : vb-va; }
+      if (sortCol === 1) {
+        return sortAsc
+          ? String(va).localeCompare(String(vb), undefined, {numeric: true})
+          : String(vb).localeCompare(String(va), undefined, {numeric: true});
+      }
+      if (sortCol === 3) {
+        const toKey = (value) => {
+          const m = String(value || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+          return m ? `${m[3]}${m[2]}${m[1]}` : String(value || '');
+        };
+        return sortAsc ? toKey(va).localeCompare(toKey(vb)) : toKey(vb).localeCompare(toKey(va));
+      }
       va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
       return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     });
@@ -253,30 +289,31 @@ function renderSw() {
 
     const matchSearch = !q || JSON.stringify(s).toLowerCase().includes(q);
     const matchFilter = !showImportantOnly || isImp;
-    const swCategory = s.cat || 'main';
+    const swCategory = ['main','update','composant','doublon'].includes(s.cat) ? s.cat : 'main';
     const matchCategory = categoryFilters[swCategory] === true;
     
     if (!matchSearch || !matchFilter || !matchCategory) return;
 
     const srcBadge = s.src === 'Registre' ? 'background:#eff6ff;color:#3b82f6' : s.src === 'Utilisateur' ? 'background:#f0fdf4;color:#16a34a' : s.src === 'AppX' ? 'background:#fdf4ff;color:#9333ea' : 'background:#fff7ed;color:#f97316';
     const categoryBadgeClass = 'badge-category badge-category-' + swCategory;
-    const sz = s.s > 0 ? s.s.toFixed(1) + ' Mo' : '—';
+    const sizeValue = Number(s.s);
+    const sz = sizeValue > 0 ? sizeValue.toFixed(1) + ' Mo' : '—';
     const rowStar = isImp ? 'background:#fefce8' : '';
 
     html += '<tr style="'+rowStar+'">' +
-      '<td class="text-center"><input type="checkbox" class="form-check-input" '+(isImp?'checked':'')+' onchange="flagSw(\''+key.replace(/'/g,"\\'")+'\',this.checked)" style="border-color:#f59e0b;accent-color:#f59e0b"></td>' +
+      '<td class="text-center"><input type="checkbox" class="form-check-input" '+(isImp?'checked':'')+' data-action="important" data-sw="'+esc(key)+'" style="border-color:#f59e0b;accent-color:#f59e0b"></td>' +
       '<td style="font-weight:'+(isImp?'600':'400')+'">'+esc(s.n)+'</td>' +
       '<td><small class="text-muted">'+esc(s.v)+'</small></td>' +
       '<td><small class="text-muted">'+esc(s.e)+'</small></td>' +
-      '<td><small class="text-muted">'+s.d+'</small></td>' +
+      '<td><small class="text-muted">'+esc(s.d)+'</small></td>' +
       '<td><small class="text-muted">'+sz+'</small></td>' +
       '<td>' +
-        '<span class="badge badge-sm rounded-pill" style="'+srcBadge+';font-size:.68rem;font-weight:600;margin-right:.4rem">'+s.src+'</span>' +
-        '<span class="'+categoryBadgeClass+'">'+swCategory+'</span>' +
+        '<span class="badge badge-sm rounded-pill" style="'+srcBadge+';font-size:.68rem;font-weight:600;margin-right:.4rem">'+esc(s.src)+'</span>' +
+        '<span class="'+categoryBadgeClass+'">'+esc(swCategory)+'</span>' +
       '</td>' +
-      '<td><select class="form-select form-select-sm" onchange="licenseFlagSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"><option value="0" '+(flag.is_licensed==1?'':'selected')+'>Non</option><option value="1" '+(flag.is_licensed==1?'selected':'')+'>Oui</option></select></td>' +
-      '<td><select class="form-select form-select-sm" onchange="licenseTypeSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"><option value="" '+(!flag.license_type?'selected':'')+'>—</option><option value="reseau" '+(flag.license_type==='reseau'?'selected':'')+'>Reseau</option><option value="fichier_local" '+(flag.license_type==='fichier_local'?'selected':'')+'>Fichier local</option><option value="numero_serie_contrat" '+(flag.license_type==='numero_serie_contrat'?'selected':'')+'>Numero serie / contrat</option><option value="mot_de_passe" '+(flag.license_type==='mot_de_passe'?'selected':'')+'>Mot de passe</option></select></td>' +
-      '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" style="font-size:.8rem" value="'+esc(flag.note || '')+'" placeholder="..." onchange="noteSw(\''+key.replace(/'/g,"\\'")+'\',this.value)"></td></tr>';
+      '<td><select class="form-select form-select-sm" data-action="licensed" data-sw="'+esc(key)+'"><option value="0" '+(flag.is_licensed==1?'':'selected')+'>Non</option><option value="1" '+(flag.is_licensed==1?'selected':'')+'>Oui</option></select></td>' +
+      '<td><select class="form-select form-select-sm" data-action="license_type" data-sw="'+esc(key)+'"><option value="" '+(!flag.license_type?'selected':'')+'>—</option><option value="reseau" '+(flag.license_type==='reseau'?'selected':'')+'>Reseau</option><option value="fichier_local" '+(flag.license_type==='fichier_local'?'selected':'')+'>Fichier local</option><option value="numero_serie_contrat" '+(flag.license_type==='numero_serie_contrat'?'selected':'')+'>Numero serie / contrat</option><option value="mot_de_passe" '+(flag.license_type==='mot_de_passe'?'selected':'')+'>Mot de passe</option></select></td>' +
+      '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" style="font-size:.8rem" data-action="note" data-sw="'+esc(key)+'" value="'+esc(flag.note || '')+'" placeholder="..."></td></tr>';
   });
 
   tbody.innerHTML = html || '<tr><td colspan="11" class="text-center text-muted py-4"><i class="bi bi-search me-2"></i>Aucun logiciel trouve</td></tr>';
@@ -351,6 +388,19 @@ function licenseTypeSw(name, licenseType) {
 // Initialize category buttons
 function initCategoryButtons() {
   document.getElementById('btn-cat-main').classList.add('active');
+}
+
+const swBody = document.getElementById('swBody');
+if (swBody) {
+  swBody.addEventListener('change', (event) => {
+    const el = event.target.closest('[data-action]');
+    if (!el) return;
+    const name = el.dataset.sw;
+    if (el.dataset.action === 'important') flagSw(name, el.checked);
+    else if (el.dataset.action === 'licensed') licenseFlagSw(name, el.value);
+    else if (el.dataset.action === 'license_type') licenseTypeSw(name, el.value);
+    else if (el.dataset.action === 'note') noteSw(name, el.value);
+  });
 }
 
 renderSw();

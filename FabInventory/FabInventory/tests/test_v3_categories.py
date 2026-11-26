@@ -238,6 +238,10 @@ class V3CategoryIntegrationTests(unittest.TestCase):
         )
         db.commit()
 
+        with self.client.session_transaction() as session:
+            session['admin_logged_in'] = True
+            session['admin_username'] = 'admin'
+            session['admin_user_id'] = 1
         response = self.client.post("/admin/reindex-software", follow_redirects=False)
         self.assertEqual(response.status_code, 302)
 

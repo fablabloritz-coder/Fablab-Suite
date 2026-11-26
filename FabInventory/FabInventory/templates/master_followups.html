@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Absences suivies — {{ master.pc_name }} — FabInventory{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+    <li class="breadcrumb-item"><a href="/master/{{ master.id }}">{{ master.pc_name }}</a></li>
+    <li class="breadcrumb-item active">Absences suivies</li>
+  </ol>
+</nav>
+
+<div class="page-header">
+  <div>
+    <h2><i class="bi bi-list-check"></i>Absences suivies — {{ master.pc_name }}</h2>
+    <div class="text-muted small mt-1">
+      Décisions prises après un scan. L’inventaire et les anciens scans ne sont pas modifiés.
+    </div>
+  </div>
+  <a href="/master/{{ master.id }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Retour au master
+  </a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ counts.to_install }}</div>
+      <div class="stat-card-label">À installer</div>
+    </div></div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ counts.pending }}</div>
+      <div class="stat-card-label">À vérifier</div>
+    </div></div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ counts.intentional }}</div>
+      <div class="stat-card-label">Retirés volontairement</div>
+    </div></div>
+  </div>
+</div>
+
+{% if followups %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header">
+    <i class="bi bi-table me-2"></i>File ponctuelle
+    <span class="badge rounded-pill text-bg-secondary ms-1">{{ counts.total }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Logiciel</th>
+          <th>Ancienne version</th>
+          <th>Dernière présence</th>
+          <th>Détecté le</th>
+          <th>Statut</th>
+          <th style="min-width:260px">Décision</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for followup in followups %}
+        <tr>
+          <td>
+            <strong>{{ followup.software_name }}</strong>
+            {% if followup.old_editor %}<div class="small text-muted">{{ followup.old_editor }}</div>{% endif %}
+            {% if followup.old_source %}<div class="small text-muted">{{ followup.old_source }}</div>{% endif %}
+          </td>
+          <td>{{ followup.old_version or '—' }}</td>
+          <td>
+            <div>{{ followup.last_seen_date or '—' }}</div>
+            {% if followup.last_seen_snapshot_id %}
+            <a class="small" href="/snapshot/{{ followup.last_seen_snapshot_id }}">Voir l’ancien scan</a>
+            {% endif %}
+          </td>
+          <td>{{ followup.last_missing_date or '—' }}</td>
+          <td>
+            {% if followup.status == 'to_install' %}
+            <span class="badge bg-success">À installer</span>
+            {% elif followup.status == 'intentional' %}
+            <span class="badge bg-secondary">Retiré volontairement</span>
+            {% else %}
+            <span class="badge bg-warning text-dark">À vérifier</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/master/{{ master.id }}/absences" class="d-flex gap-2">
+              <input type="hidden" name="followup_id" value="{{ followup.id }}">
+              <select name="status" class="form-select form-select-sm" aria-label="Statut de {{ followup.software_name }}">
+                <option value="pending" {% if followup.status == 'pending' %}selected{% endif %}>À vérifier</option>
+                <option value="intentional" {% if followup.status == 'intentional' %}selected{% endif %}>Retiré volontairement</option>
+                <option value="to_install" {% if followup.status == 'to_install' %}selected{% endif %}>À installer</option>
+              </select>
+              <button type="submit" class="btn btn-sm btn-outline-primary">Enregistrer</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <div class="empty-state">
+      <i class="bi bi-check2-circle empty-state-icon"></i>
+      <h4>Aucune absence suivie</h4>
+      <p class="mb-0">Les logiciels absents d’un nouveau scan apparaîtront ici avec le statut « À vérifier ».</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="alert alert-light border small mt-4">
+  <i class="bi bi-info-circle me-1"></i>
+  « À installer » crée une tâche ponctuelle pour ce master. Elle se ferme automatiquement
+  lorsqu’un scan ultérieur retrouve le logiciel. « Retiré volontairement » conserve la décision
+  sans créer de tâche.
+</div>
+
+{% endblock %}

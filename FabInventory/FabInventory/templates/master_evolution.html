@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}Évolution {{ master.pc_name }} — FabInventory{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+    <li class="breadcrumb-item"><a href="/master/{{ master.id }}">{{ master.pc_name }}</a></li>
+    <li class="breadcrumb-item active">Évolution</li>
+  </ol>
+</nav>
+
+<div class="page-header">
+  <div>
+    <h2><i class="bi bi-arrow-left-right"></i>Évolution de {{ master.pc_name }}</h2>
+    <div class="text-muted small mt-1">Comparez deux scans du même poste, sans nouvelle collecte.</div>
+  </div>
+  <a href="/master/{{ master.id }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Retour au master
+  </a>
+</div>
+
+{% if not from_snapshot or not to_snapshot %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <div class="empty-state">
+      <i class="bi bi-clock-history empty-state-icon"></i>
+      <h4>Deux scans nécessaires</h4>
+      <p>Ce poste n’a qu’un seul scan. Importez un nouveau rapport pour afficher son évolution.</p>
+      <a href="/master/{{ master.id }}/update" class="btn btn-primary">Mettre à jour ce master</a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label small text-muted">Du scan</label>
+        <select name="from" class="form-select form-select-sm">
+          {% for s in snapshots %}
+          <option value="{{ s.id }}" {% if s.id == from_snapshot.id %}selected{% endif %}>{{ s.scan_date }}{% if s.script_version %} · script {{ s.script_version }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label small text-muted">Au scan</label>
+        <select name="to" class="form-select form-select-sm">
+          {% for s in snapshots %}
+          <option value="{{ s.id }}" {% if s.id == to_snapshot.id %}selected{% endif %}>{{ s.scan_date }}{% if s.script_version %} · script {{ s.script_version }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary btn-sm">Comparer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-2 mb-3">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-2">
+        <div class="small text-muted">Scan de départ</div>
+        <div class="fw-semibold">{{ from_snapshot.scan_date }}</div>
+        <div class="small text-muted">
+          {% if old_meta.script_version %}Script {{ old_meta.script_version }}{% else %}Version de script inconnue{% endif %}
+          {% if old_meta.schema %} · schéma {{ old_meta.schema }}{% endif %}
+        </div>
+        <a href="/snapshot/{{ from_snapshot.id }}" class="small">Voir le scan</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-2">
+        <div class="small text-muted">Scan d’arrivée</div>
+        <div class="fw-semibold">{{ to_snapshot.scan_date }}</div>
+        <div class="small text-muted">
+          {% if new_meta.script_version %}Script {{ new_meta.script_version }}{% else %}Version de script inconnue{% endif %}
+          {% if new_meta.schema %} · schéma {{ new_meta.schema }}{% endif %}
+        </div>
+        <a href="/snapshot/{{ to_snapshot.id }}" class="small">Voir le scan</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if new_meta.warnings %}
+<div class="alert alert-warning">
+  <strong><i class="bi bi-exclamation-triangle me-1"></i>Collecte partielle au dernier scan</strong>
+  <ul class="mb-0 mt-2">
+    {% for warning in new_meta.warnings %}<li>{{ warning }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="row g-2 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm"><div class="card-body py-2">
+      <div class="fs-4 fw-bold text-success">+{{ changes.software.added|length }}</div>
+      <div class="small text-muted">Logiciels ajoutés</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm"><div class="card-body py-2">
+      <div class="fs-4 fw-bold text-danger">-{{ changes.software.removed|length }}</div>
+      <div class="small text-muted">Logiciels retirés</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm"><div class="card-body py-2">
+      <div class="fs-4 fw-bold text-warning">{{ changes.software.changed|length }}</div>
+      <div class="small text-muted">Versions modifiées</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm"><div class="card-body py-2">
+      <div class="fs-4 fw-bold" style="color:var(--fi-accent)">{{ changes.disks|selectattr('changed')|list|length + changes.network|selectattr('changed')|list|length + changes.services|selectattr('changed')|list|length }}</div>
+      <div class="small text-muted">Changements matériels/réseau/services</div>
+    </div></div>
+  </div>
+</div>
+
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-pc-display me-2"></i>Système</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Champ</th><th>Avant</th><th>Après</th><th></th></tr></thead>
+      <tbody>
+        {% for row in changes.system %}
+        <tr class="{% if row.changed %}table-warning{% endif %}">
+          <td class="fw-semibold">{{ row.label }}</td>
+          <td class="text-muted">{{ row.old if row.old != '' else '—' }}</td>
+          <td>{{ row.new if row.new != '' else '—' }}</td>
+          <td>{% if row.changed %}<span class="badge bg-warning text-dark">modifié</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-hdd me-2"></i>Disques</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Lecteur</th><th>Avant</th><th>Après</th><th>Libre</th><th>Variation</th><th></th></tr></thead>
+      <tbody>
+        {% for row in changes.disks %}
+        <tr class="{% if row.low %}table-danger{% elif row.changed %}table-warning{% endif %}">
+          <td class="fw-semibold">{{ row.label }}</td>
+          <td>{% if row.old %}{{ '%.1f'|format(row.old.size) }} Go / {{ '%.1f'|format(row.old.free) }} Go libres{% else %}—{% endif %}</td>
+          <td>{% if row.new %}{{ '%.1f'|format(row.new.size) }} Go / {{ '%.1f'|format(row.new.free) }} Go libres{% else %}—{% endif %}</td>
+          <td>{% if row.new and row.new.percent is not none %}{{ row.new.percent }} %{% else %}—{% endif %}</td>
+          <td>{% if row.delta is not none %}{{ '%+.1f'|format(row.delta) }} Go{% else %}—{% endif %}</td>
+          <td>
+            {% if row.low %}<span class="badge bg-danger">seuil bas</span>{% endif %}
+            {% if row.changed %}<span class="badge bg-warning text-dark">{{ row.status }}</span>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">Aucun disque.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-ethernet me-2"></i>Réseau</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Interface</th><th>Avant (IP / MAC)</th><th>Après (IP / MAC)</th><th>Champs modifiés</th><th></th></tr></thead>
+      <tbody>
+        {% for row in changes.network %}
+        <tr class="{% if row.changed %}table-warning{% endif %}">
+          <td class="fw-semibold">{{ row.name }}</td>
+          <td><code>{{ row.old.get('ip') or '—' }}</code> / <code>{{ row.old.get('mac') or '—' }}</code></td>
+          <td><code>{{ row.new.get('ip') or '—' }}</code> / <code>{{ row.new.get('mac') or '—' }}</code></td>
+          <td>{{ row.changed_fields|join(', ') or '—' }}</td>
+          <td>{% if row.changed %}<span class="badge bg-warning text-dark">{{ row.status }}</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Aucune interface.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-gear-wide-connected me-2"></i>Services automatiques</div>
+  <div class="card-body py-2 small text-muted">
+    Le script collecte uniquement les services en cours d’exécution et en démarrage automatique : un service absent peut être arrêté ou désinstallé.
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Service</th><th>Nom court</th><th>Avant</th><th>Après</th><th></th></tr></thead>
+      <tbody>
+        {% for row in changes.services %}
+        <tr class="{% if row.changed %}table-warning{% endif %}">
+          <td class="fw-semibold">{{ row.name }}</td>
+          <td><code>{{ row.short }}</code></td>
+          <td>{{ row.old.get('status') or '—' }} / {{ row.old.get('start') or '—' }}</td>
+          <td>{{ row.new.get('status') or '—' }} / {{ row.new.get('start') or '—' }}</td>
+          <td>{% if row.changed %}<span class="badge bg-warning text-dark">{{ row.status }}</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">Aucun service collecté.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-box-seam me-2"></i>Logiciels</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-lg-4">
+        <h6 class="text-success">Ajoutés ({{ changes.software.added|length }})</h6>
+        <ul class="small mb-0">
+          {% for item in changes.software.added %}<li>{{ item.n }} <span class="text-muted">{{ item.v }}</span></li>{% else %}<li class="text-muted">Aucun</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-4">
+        <h6 class="text-danger">Retirés ({{ changes.software.removed|length }})</h6>
+        <ul class="small mb-0">
+          {% for item in changes.software.removed %}<li>{{ item.n }} <span class="text-muted">{{ item.v }}</span></li>{% else %}<li class="text-muted">Aucun</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="col-lg-4">
+        <h6 class="text-warning">Versions modifiées ({{ changes.software.changed|length }})</h6>
+        <ul class="small mb-0">
+          {% for item in changes.software.changed %}<li>{{ item.n }} : <span class="text-muted">{{ item.old or '—' }}</span> → <strong>{{ item.new or '—' }}</strong></li>{% else %}<li class="text-muted">Aucune</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if changes.warnings_added or changes.warnings_removed %}
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-exclamation-triangle me-2"></i>Avertissements de collecte</div>
+  <div class="card-body row g-3">
+    <div class="col-md-6">
+      <h6 class="text-warning">Apparus ({{ changes.warnings_added|length }})</h6>
+      <ul class="small mb-0">{% for item in changes.warnings_added %}<li>{{ item }}</li>{% else %}<li class="text-muted">Aucun</li>{% endfor %}</ul>
+    </div>
+    <div class="col-md-6">
+      <h6 class="text-success">Disparus ({{ changes.warnings_removed|length }})</h6>
+      <ul class="small mb-0">{% for item in changes.warnings_removed %}<li>{{ item }}</li>{% else %}<li class="text-muted">Aucun</li>{% endfor %}</ul>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% endif %}
+{% endblock %}

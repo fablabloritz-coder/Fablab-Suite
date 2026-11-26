@@ -157,20 +157,21 @@
   </div>
 </div>
 
-<!-- Contrôle aperçu -->
+<!-- Contrôle aperçu : les champs sont rattachés au formulaire de confirmation
+     pour conserver les décisions déjà prises. -->
 <div class="toolbar-card mb-3">
   <span class="text-muted small">Limite d'affichage :</span>
   <span class="badge rounded-pill" style="background:var(--fi-accent-soft);color:var(--fi-accent);font-size:.75rem;font-weight:700">{{ preview_limit }}</span>
-  <form method="post" class="d-flex align-items-center gap-2 ms-2">
-    <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
-    <input type="hidden" name="preview_only" value="1">
-    <select class="form-select form-select-sm" style="width:auto" name="preview_limit" id="previewLimitPreviewOnly">
+  <div class="d-flex align-items-center gap-2 ms-2">
+    <select class="form-select form-select-sm" style="width:auto" name="preview_limit"
+            id="previewLimitPreviewOnly" form="confirmUpdateForm">
       {% for value in [10, 25, 50, 100, 200] %}
       <option value="{{ value }}" {% if preview_limit == value %}selected{% endif %}>{{ value }}</option>
       {% endfor %}
     </select>
-    <button type="submit" class="btn btn-outline-secondary btn-sm">Appliquer</button>
-  </form>
+    <button type="submit" class="btn btn-outline-secondary btn-sm"
+            form="confirmUpdateForm" name="preview_only" value="1">Appliquer</button>
+  </div>
 </div>
 
 <!-- Exemples de diff -->
@@ -239,6 +240,63 @@
   </div>
 </div>
 
+<form method="post" id="confirmUpdateForm">
+  <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-list-check me-2"></i>Suivi des absences</span>
+    <span class="badge rounded-pill text-bg-secondary">{{ diff.removed_count }}</span>
+  </div>
+  <div class="card-body">
+    {% if incoming_warnings %}
+    <div class="alert alert-warning py-2">
+      <strong><i class="bi bi-exclamation-triangle me-1"></i>Collecte partielle :</strong>
+      ces absences peuvent être un faux positif.
+      <ul class="mb-0 mt-1 small">
+        {% for warning in incoming_warnings %}<li>{{ warning }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <p class="text-muted small mb-3">
+      L’inventaire enregistre toujours le nouveau scan. Les absences sont suivies séparément :
+      choisissez <strong>À vérifier</strong>, <strong>Retiré volontairement</strong> ou <strong>À installer</strong>.
+      Sans choix, elles restent <strong>à vérifier</strong>. L’ancien scan n’est jamais modifié.
+    </p>
+    {% if diff.removed_items %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr><th>Logiciel absent</th><th>Dernière version vue</th><th>Source</th><th style="min-width:210px">Décision</th></tr>
+        </thead>
+        <tbody>
+          {% for item in diff.removed_items %}
+          <tr>
+            <td>
+              <strong>{{ item.name }}</strong>
+              {% if item.editor %}<div class="small text-muted">{{ item.editor }}</div>{% endif %}
+            </td>
+            <td>{{ item.version or '—' }}</td>
+            <td class="small text-muted">{{ item.source or '—' }}</td>
+            <td>
+              {% set current_decision = decisions.get(item.key, 'pending') %}
+              <select class="form-select form-select-sm" name="decision_{{ loop.index0 }}">
+                <option value="pending" {% if current_decision == 'pending' %}selected{% endif %}>À vérifier</option>
+                <option value="intentional" {% if current_decision == 'intentional' %}selected{% endif %}>Retiré volontairement</option>
+                <option value="to_install" {% if current_decision == 'to_install' %}selected{% endif %}>À installer</option>
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0"><i class="bi bi-check2-circle me-1"></i>Aucun logiciel absent du nouveau scan.</p>
+    {% endif %}
+  </div>
+</div>
+
 {% if system_changes %}
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header"><i class="bi bi-pc-display me-2"></i>Changements systeme detectes</div>
@@ -260,18 +318,15 @@
 {% endif %}
 
 <!-- Actions -->
-<div class="d-flex gap-2 pb-2">
-  <form method="post" id="confirmUpdateForm">
-    <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
-    <input type="hidden" name="preview_limit" value="{{ preview_limit }}" id="previewLimitConfirmHidden">
-    <button type="submit" class="btn btn-success">
-      <i class="bi bi-check2-circle me-1"></i>Confirmer la mise a jour
-    </button>
-  </form>
+<div class="d-flex gap-2 pb-2 flex-wrap">
+  <button type="submit" class="btn btn-success">
+    <i class="bi bi-check2-circle me-1"></i>Confirmer la mise a jour
+  </button>
   <a href="/master/{{ master.id }}/update" class="btn btn-outline-secondary">
     <i class="bi bi-x me-1"></i>Annuler
   </a>
 </div>
+</form>
 {% endif %}
 
 {% endblock %}
@@ -284,7 +339,7 @@
 
   const uploadSelect      = document.getElementById('previewLimitUpload');
   const previewOnlySelect = document.getElementById('previewLimitPreviewOnly');
-  const confirmHidden     = document.getElementById('previewLimitConfirmHidden');
+  const confirmForm       = document.getElementById('confirmUpdateForm');
 
   function isValidOption(sel, val) {
     return sel && val && Array.from(sel.options).some(o => o.value === val);
@@ -295,7 +350,6 @@
     if (saved) {
       if (isValidOption(uploadSelect, saved))      uploadSelect.value      = saved;
       if (isValidOption(previewOnlySelect, saved)) previewOnlySelect.value = saved;
-      if (confirmHidden) confirmHidden.value = saved;
     }
   }
 
@@ -307,17 +361,14 @@
   if (previewOnlySelect) {
     previewOnlySelect.addEventListener('change', () => {
       localStorage.setItem(STORAGE_KEY, previewOnlySelect.value);
-      if (confirmHidden) confirmHidden.value = previewOnlySelect.value;
-    });
-    previewOnlySelect.closest('form')?.addEventListener('submit', () => {
-      localStorage.setItem(STORAGE_KEY, previewOnlySelect.value);
-      if (confirmHidden) confirmHidden.value = previewOnlySelect.value;
     });
   }
 
-  document.getElementById('confirmUpdateForm')?.addEventListener('submit', () => {
-    if (confirmHidden) localStorage.setItem(STORAGE_KEY, confirmHidden.value);
-  });
+  if (confirmForm) {
+    confirmForm.addEventListener('submit', () => {
+      if (previewOnlySelect) localStorage.setItem(STORAGE_KEY, previewOnlySelect.value);
+    });
+  }
 })();
 </script>
 {% endblock %}

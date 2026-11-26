@@ -243,8 +243,9 @@ function ouvrirLogiciel(id) {
     plugins.forEach(p => {
       const div = document.createElement('div');
       div.className = 'form-check';
+      const escHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       div.innerHTML = `<input type="checkbox" class="form-check-input plugin-cb" id="p${p.id}" value="${p.id}" ${p.optionnel ? '' : 'checked disabled'}>
-        <label class="form-check-label small" for="p${p.id}">${p.nom}${p.optionnel ? '' : ' <span class="badge bg-secondary">Inclus</span>'}</label>`;
+        <label class="form-check-label small" for="p${p.id}">${escHtml(p.nom)}${p.optionnel ? '' : ' <span class="badge bg-secondary">Inclus</span>'}</label>`;
       pluginsDiv.appendChild(div);
     });
   } else {

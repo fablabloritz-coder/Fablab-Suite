@@ -26,7 +26,7 @@
           <h6 class="fw-bold mb-0">{{ m.pc_name }}</h6>
           {% if not m.scan_date %}
           <span class="badge bg-secondary">Pas de scan</span>
-          {% elif m.scan_date < (now_minus_30 if now_minus_30 is defined else '2000') %}
+          {% elif m.is_stale %}
           <span class="badge bg-warning text-dark" title="Scan > 30 jours"><i class="bi bi-clock-history me-1"></i>Ancien</span>
           {% else %}
           <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Récent</span>
@@ -58,11 +58,11 @@
         {% endif %}
       </div>
       <div class="card-footer bg-transparent border-top-0 d-flex gap-2">
-        <a href="/masters/{{ m.id }}" class="btn btn-outline-primary btn-sm flex-fill">
+        <a href="{{ url_for('master_detail', master_id=m.id) }}" class="btn btn-outline-primary btn-sm flex-fill">
           <i class="bi bi-eye me-1"></i>Détail
         </a>
         {% if m.snapshot_id %}
-        <a href="/snapshots/{{ m.snapshot_id }}" class="btn btn-outline-secondary btn-sm flex-fill">
+        <a href="{{ url_for('snapshot_detail', snap_id=m.snapshot_id) }}" class="btn btn-outline-secondary btn-sm flex-fill">
           <i class="bi bi-camera me-1"></i>Snapshot
         </a>
         {% endif %}
@@ -86,7 +86,7 @@
         {% if m.label %}<div class="small text-muted">{{ m.label }}</div>{% endif %}
       </div>
       <div class="card-footer bg-transparent border-top-0">
-        <a href="/roadmaps/{{ m.id }}" class="btn btn-outline-secondary btn-sm">
+        <a href="{{ url_for('master_roadmap', master_id=m.id) }}" class="btn btn-outline-secondary btn-sm">
           <i class="bi bi-list-check me-1"></i>Checklist
         </a>
       </div>

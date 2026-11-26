@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Registre réseau — FabInventory{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h2><i class="bi bi-ethernet"></i>Registre réseau</h2>
+    <div class="text-muted small mt-1">Dernière adresse connue par interface, issue du dernier scan de chaque poste.</div>
+  </div>
+  <a href="/sante" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-heart-pulse me-1"></i>Santé du parc
+  </a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.network_entries|length }}</div>
+      <div class="stat-card-label">Interfaces connues</div>
+    </div></div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.duplicate_ip_count }}</div>
+      <div class="stat-card-label">IP dupliquées</div>
+    </div></div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.duplicate_mac_count }}</div>
+      <div class="stat-card-label">MAC dupliquées</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="alert alert-light border small">
+  <i class="bi bi-info-circle me-1"></i>
+  Le script ne collecte que les interfaces actives avec une adresse IPv4. Une IP ou une MAC peut avoir changé depuis le scan.
+  Les MAC virtuelles, VPN et adresses aléatoires peuvent produire des doublons légitimes.
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header">
+    <i class="bi bi-table me-2"></i>Dernières coordonnées réseau
+    <span class="badge rounded-pill text-bg-secondary ms-1">{{ health.network_entries|length }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0">
+      <thead>
+        <tr><th>Poste</th><th>Interface</th><th>IP</th><th>MAC</th><th>DHCP</th><th>Passerelle</th><th>DNS</th><th>Scan</th></tr>
+      </thead>
+      <tbody>
+        {% for item in health.network_entries %}
+        <tr class="{% if item.duplicate_ip or item.duplicate_mac %}table-warning{% endif %}">
+          <td><a href="/master/{{ item.master_id }}" class="text-decoration-none fw-semibold">{{ item.pc_name }}</a></td>
+          <td>{{ item.name }}</td>
+          <td>
+            <code>{{ item.ip or '—' }}</code>
+            {% if item.duplicate_ip %}<span class="badge bg-danger ms-1">doublon</span>{% endif %}
+          </td>
+          <td>
+            <code>{{ item.mac or '—' }}</code>
+            {% if item.duplicate_mac %}<span class="badge bg-warning text-dark ms-1">doublon</span>{% endif %}
+          </td>
+          <td>{{ item.dhcp or '—' }}</td>
+          <td><code>{{ item.gateway or '—' }}</code></td>
+          <td><code>{{ item.dns or '—' }}</code></td>
+          <td class="small text-muted">{{ item.scan_date or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted py-4">Aucune interface réseau inventoriée.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

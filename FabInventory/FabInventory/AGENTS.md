@@ -45,10 +45,13 @@ FabInventory est une application simple (single-file Flask) mais les conventions
 Le parser depend de cette structure exacte dans les fichiers HTML importes:
 ```html
 <script id="inventoryData" type="application/json">
-{"pcName":"...","date":"...","software":[{"n":"...","v":"...","e":"...","d":"...","s":0,"src":"..."}]}
+{"schema":3,"pcName":"...","date":"...","system":{},"disks":[],"network":[],"services":[],"software":[{"n":"...","v":"...","e":"...","d":"...","s":0,"src":"..."}]}
 </script>
 ```
-Toute modification du script PowerShell DOIT preserver cette structure.
+Le JSON enrichi est prioritaire ; les anciens rapports sans `system`,
+`disks`, `network` ou `services` doivent rester importables via le repli HTML.
+Toute modification du script PowerShell DOIT preserver ce contrat et
+l'echappement de `<` (`\u003c`) dans le bloc JSON.
 
 ### Flags en base (pas en localStorage)
 Les flags (important + notes) sont stockes en SQLite via `/api/flag`.
@@ -82,10 +85,14 @@ Si FabInventory est integre au monorepo Fablab-Suite:
 
 ## Taches futures identifiees
 
-- [ ] Ajouter `/api/fabsuite/manifest` et `/api/fabsuite/health`
-- [ ] Authentification basique (login/password simple)
+- [x] Ajouter `/api/fabsuite/manifest` et `/api/fabsuite/health`
+- [x] Authentification basique (login/password simple)
+- [ ] Protéger toutes les écritures inventaire (upload, flags, roadmap)
+- [ ] Valider le script PowerShell sur un poste Windows réel (WMI, AppX, dialogue de sauvegarde)
 - [ ] Export PDF/Excel des logiciels importants
-- [ ] Diff entre deux snapshots du MEME master (evolution dans le temps)
-- [ ] Inclusion du system info dans le JSON embarque (eliminer le parsing regex)
+- [x] Diff entre deux snapshots du MEME master (evolution dans le temps)
+- [x] Cockpit sante du parc et registre reseau (`/sante`, `/reseau`)
+- [x] Suivi des logiciels absents (statuts, liste par master, resolution automatique)
+- [x] Inclusion du system info dans le JSON embarque (eliminer le parsing regex)
 - [ ] Page de statistiques globales (logiciel le plus repandu, masters similaires)
 - [ ] Integration complete dans le monorepo Fablab-Suite

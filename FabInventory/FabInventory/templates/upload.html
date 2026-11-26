@@ -54,13 +54,17 @@ dz.addEventListener('drop', e => {
 });
 fi.addEventListener('change', () => showFiles(fi.files));
 
+function escHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function showFiles(files) {
   fl.innerHTML = '';
   let count = 0;
   for (const f of files) {
     if (f.name.endsWith('.html')) {
       count++;
-      fl.innerHTML += '<div class="file-item"><i class="bi bi-file-earmark-code text-primary"></i><span class="fw-500" style="font-weight:500">' + f.name + '</span><span class="text-muted small ms-auto">' + (f.size/1024).toFixed(0) + ' Ko</span></div>';
+      fl.innerHTML += '<div class="file-item"><i class="bi bi-file-earmark-code text-primary"></i><span class="fw-500" style="font-weight:500">' + escHtml(f.name) + '</span><span class="text-muted small ms-auto">' + (f.size/1024).toFixed(0) + ' Ko</span></div>';
     }
   }
   if (count > 0) { sb.classList.remove('d-none'); fc.textContent = count; }

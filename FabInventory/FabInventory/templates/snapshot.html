@@ -14,6 +14,9 @@
   <div>
     <h2><i class="bi bi-camera"></i>Scan du {{ snap.scan_date }}</h2>
     <div class="text-muted small mt-1"><i class="bi bi-pc-display me-1"></i>{{ snap.pc_name }}{% if snap.label %} &mdash; {{ snap.label }}{% endif %}</div>
+    {% if snap.script_version %}
+    <div class="text-muted small mt-1">Script {{ snap.script_version }}{% if snap.scan_schema %} &middot; schéma {{ snap.scan_schema }}{% endif %}{% if snap.generated_at %} &middot; généré le {{ snap.generated_at }}{% endif %}</div>
+    {% endif %}
   </div>
   <div class="page-header-actions">
     <a href="/master/{{ snap.master_id }}" class="btn btn-outline-secondary btn-sm">
@@ -24,6 +27,15 @@
     </form>
   </div>
 </div>
+
+{% if warnings %}
+<div class="alert alert-warning">
+  <strong><i class="bi bi-exclamation-triangle me-1"></i>Collecte partielle</strong>
+  <ul class="mb-0 mt-2">
+    {% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
 
 <!-- Infos système principales -->
 <div class="row g-2 mb-3">
@@ -50,7 +62,7 @@
       <div class="sys-info-icon" style="background:#fff7ed;color:#f97316"><i class="bi bi-memory"></i></div>
       <div>
         <div class="sys-info-label">RAM</div>
-        <div class="sys-info-value">{{ snap.ram_go | int if snap.ram_go == snap.ram_go | int else snap.ram_go }} Go</div>
+        <div class="sys-info-value">{{ snap.ram_go or '—' }} Go</div>
       </div>
     </div>
   </div>
@@ -194,13 +206,38 @@
   <div class="card-header"><i class="bi bi-ethernet me-2"></i>Reseau</div>
   <div class="card-body p-0">
     <table class="table table-sm mb-0">
-      <thead><tr><th>Interface</th><th>Adresse MAC</th><th>Adresse IP</th></tr></thead>
+      <thead><tr><th>Interface</th><th>Adresse MAC</th><th>Adresse IP</th><th>DHCP</th><th>Passerelle</th><th>DNS</th></tr></thead>
       <tbody>
         {% for n in network %}
         <tr>
           <td class="fw-semibold">{{ n.name or n.interface or '?' }}</td>
           <td><code style="font-size:.8rem">{{ n.mac or '—' }}</code></td>
           <td><code style="font-size:.8rem">{{ n.ip or '—' }}</code></td>
+          <td>{{ n.dhcp or '—' }}</td>
+          <td><code style="font-size:.8rem">{{ n.gateway or '—' }}</code></td>
+          <td><code style="font-size:.8rem">{{ n.dns or '—' }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Services automatiques (si données disponibles) -->
+{% if services %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-gear-wide-connected me-2"></i>Services automatiques <span class="text-muted small">({{ services|length }})</span></div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Service</th><th>Nom court</th><th>État</th><th>Démarrage</th></tr></thead>
+      <tbody>
+        {% for s in services %}
+        <tr>
+          <td class="fw-semibold">{{ s.n or '?' }}</td>
+          <td><code style="font-size:.8rem">{{ s.sc or '—' }}</code></td>
+          <td>{{ s.status or '—' }}</td>
+          <td>{{ s.start or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>

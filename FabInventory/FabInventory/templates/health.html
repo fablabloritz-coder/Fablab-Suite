@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Santé du parc — FabInventory{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <h2><i class="bi bi-heart-pulse"></i>Santé du parc</h2>
+    <div class="text-muted small mt-1">Dernier état connu de chaque master. Seuil d’ancienneté : {{ health.stale_days }} jours.</div>
+  </div>
+  <a href="/reseau" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-ethernet me-1"></i>Registre réseau
+  </a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="card stat-card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.scanned }}</div>
+      <div class="stat-card-label">Postes scannés</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="card stat-card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.stale }}</div>
+      <div class="stat-card-label">Scans anciens</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="card stat-card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.disk_masters }}</div>
+      <div class="stat-card-label">Postes disque bas</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="card stat-card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.warning_masters }}</div>
+      <div class="stat-card-label">Collectes partielles</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="card stat-card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.duplicate_ip_count }}</div>
+      <div class="stat-card-label">IP dupliquées</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="card stat-card border-0 shadow-sm"><div class="card-body py-3">
+      <div class="stat-card-value">{{ health.duplicate_mac_count }}</div>
+      <div class="stat-card-label">MAC dupliquées</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="alert alert-light border small">
+  <i class="bi bi-info-circle me-1"></i>
+  Les alertes reposent sur le dernier scan de chaque poste, pas sur une supervision temps réel.
+  Un disque est signalé sous {{ health.disk_free_go|int }} Go libres ou sous {{ health.disk_free_pct|int }} % d’espace libre.
+  Une IP ou une MAC dupliquée peut être ancienne, virtualisée ou attribuée par DHCP : vérifier la date du scan.
+</div>
+
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-pc-display me-2"></i>Postes à surveiller</span>
+    <span class="badge rounded-pill text-bg-secondary">{{ health.total }} master(s)</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0">
+      <thead><tr><th>Poste</th><th>Dernier scan</th><th>Logiciels</th><th>Alertes</th><th></th></tr></thead>
+      <tbody>
+        {% for entry in health.entries %}
+        <tr>
+          <td>
+            <a href="/master/{{ entry.id }}" class="fw-semibold text-decoration-none">{{ entry.pc_name }}</a>
+            {% if entry.label %}<div class="small text-muted">{{ entry.label }}</div>{% endif %}
+          </td>
+          <td>
+            {% if entry.scan_date %}
+            <span class="{% if entry.stale %}text-warning fw-semibold{% endif %}">{{ entry.scan_date }}</span>
+            {% if entry.script_version %}<div class="small text-muted">script {{ entry.script_version }}</div>{% endif %}
+            {% else %}
+            <span class="text-muted">Aucun scan</span>
+            {% endif %}
+          </td>
+          <td>{% if entry.snapshot_id %}{{ entry.total_software }}{% else %}—{% endif %}</td>
+          <td>
+            {% if entry.stale %}<span class="badge bg-warning text-dark">scan ancien</span>{% endif %}
+            {% if entry.missing_scan %}<span class="badge bg-secondary">sans scan</span>{% endif %}
+            {% if entry.has_low_disk %}<span class="badge bg-danger">disque bas</span>{% endif %}
+            {% if entry.has_warning %}<span class="badge bg-warning text-dark">collecte partielle</span>{% endif %}
+            {% if entry.has_network_duplicate %}<span class="badge bg-info text-dark">réseau à vérifier</span>{% endif %}
+          </td>
+          <td>
+            {% if entry.snapshot_id %}<a href="/snapshot/{{ entry.snapshot_id }}" class="btn btn-sm btn-outline-secondary">Voir</a>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted py-4">Aucun master inventorié.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <section class="card border-0 shadow-sm mb-4">
+      <div class="card-header"><i class="bi bi-hdd me-2"></i>Disques sous seuil</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Poste</th><th>Disque</th><th>Libre</th><th>%</th></tr></thead>
+          <tbody>
+            {% for item in health.disk_alerts %}
+            <tr>
+              <td><a href="/master/{{ item.master_id }}">{{ item.pc_name }}</a></td>
+              <td>{{ item.label }}</td>
+              <td class="text-danger fw-semibold">{{ '%.1f'|format(item.free) }} Go</td>
+              <td>{{ item.percent if item.percent is not none else '—' }} %</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">Aucun disque sous le seuil.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-lg-6">
+    <section class="card border-0 shadow-sm mb-4">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-exclamation-triangle me-2"></i>Collectes partielles</span>
+        <a href="/reseau" class="small">Voir le réseau</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Poste</th><th>Avertissement</th></tr></thead>
+          <tbody>
+            {% for item in health.warnings %}
+            <tr>
+              <td><a href="/master/{{ item.master_id }}">{{ item.pc_name }}</a></td>
+              <td class="small">{{ item.message }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="2" class="text-muted">Aucun avertissement.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+{% if health.duplicate_ips %}
+<section class="card border-0 shadow-sm mb-4">
+  <div class="card-header"><i class="bi bi-diagram-3 me-2"></i>Adresses IP présentes sur plusieurs interfaces</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>IP</th><th>Postes / interfaces</th></tr></thead>
+      <tbody>
+        {% for ip, items in health.duplicate_ips.items() %}
+        <tr>
+          <td><code>{{ ip }}</code></td>
+          <td>
+            {% for item in items %}
+            <a href="/master/{{ item.master_id }}">{{ item.pc_name }}</a> <span class="text-muted">({{ item.name }}, {{ item.scan_date }})</span>{% if not loop.last %}<br>{% endif %}
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

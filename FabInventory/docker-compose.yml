@@ -7,7 +7,7 @@ services:
     volumes:
       - ${FABINVENTORY_DATA_PATH:-./docker-data/data}:/data
     environment:
-      SECRET_KEY: ${FLASK_SECRET_KEY:-}
+      SECRET_KEY: "${FLASK_SECRET_KEY:?Definir FLASK_SECRET_KEY dans .env}"
       DB_PATH: /data/fabinventory.db
       UPLOAD_FOLDER: /data/uploads
       PORT: 5590

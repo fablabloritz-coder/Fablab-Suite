@@ -6,18 +6,23 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 
 ## Fonctionnalités
 
-- **Script de collecte téléchargeable** : depuis l'accueil, téléchargez un script PowerShell prêt à l'emploi
+- **Script de collecte téléchargeable** : depuis l'accueil, téléchargez un script PowerShell prêt à l'emploi (Windows PowerShell 5.1 et PowerShell 7+)
 - **Export dual automatique** : le script génère un **.html** (import FabInventory) et un **.csv** (exploitation bureautique)
-- **Fenêtre de sauvegarde** : l'utilisateur choisit le dossier + le nom du fichier via une fenêtre Windows
+- **JSON enrichi schema 3** : système, disques, réseau, services automatiques et logiciels sont sérialisés par `ConvertTo-Json`, avec repli HTML pour les anciens rapports
+- **Fenêtre de sauvegarde** : l'utilisateur choisit le dossier + le nom du fichier via une fenêtre Windows ; `-OutputPath`, `-OutputDirectory` et `-NoGui` permettent l'automatisation
 - **Import HTML** : uploadez les fichiers générés par le script d'inventaire
 - **Dashboard** : vue d'ensemble de tous les masters avec statistiques
 - **Détail par master** : liste complète des logiciels avec tri, recherche, filtrage
 - **Cases à cocher** : marquez les logiciels importants (sauvegardé en base)
 - **Notes** : ajoutez des notes par logiciel (licence, salle, remarques)
-- **Historique** : chaque scan est conservé, consultez l'évolution dans le temps
+- **Historique** : chaque scan est conservé, avec provenance du script et avertissements de collecte
+- **Évolution d'un master** : comparez deux scans du même poste (logiciels, système, disques, réseau, services)
+- **Santé du parc** : repérez les scans anciens, disques bas, collectes partielles et doublons réseau
+- **Registre réseau** : retrouvez la dernière IP/MAC connue de chaque interface
 - **Comparaison** : comparez deux masters côte à côte (commun / unique A / unique B)
 - **Renommage master** : le bouton Modifier permet de changer le nom du master, son label et ses notes
 - **Mise à jour avec confirmation** : upload d'un nouveau fichier pour un master avec comparatif avant/après puis validation explicite
+- **Suivi des absences** : chaque logiciel absent est « à vérifier » par défaut ; choisissez « Retiré volontairement » ou « À installer ». La liste ponctuelle est propre au master et se ferme automatiquement quand le logiciel réapparaît.
 - **API FabSuite** : endpoints `/api/fabsuite/manifest`, `/api/fabsuite/health`, `/api/fabsuite/status`
 
 ## Installation rapide (Docker)
@@ -47,7 +52,38 @@ python app.py
 5. Récupérez les deux fichiers générés : `.html` et `.csv`
 6. Dans FabInventory, cliquez sur **Importer** puis sélectionnez le `.html`
 7. Pour une mise à jour ciblée d'un master existant, ouvrez sa fiche puis cliquez sur **Mettre à jour**
-8. Vérifiez le comparatif (ajouts/suppressions/changements) puis confirmez
+8. Vérifiez le comparatif, décidez du sort des logiciels absents (à vérifier, retiré volontairement ou à installer), puis confirmez
+9. Retrouvez la file ponctuelle d'un master via **Absences** ; elle se met à jour automatiquement quand un logiciel réapparaît
+
+## Script d'inventaire (Lot 6)
+
+Le script servi par `/download/master-script` est la source unique :
+`static/downloads/inventaire_master.ps1`. Il collecte le registre machine et
+utilisateur, les applications AppX, les dossiers Program Files, les disques,
+le réseau, les services automatiques et les informations système.
+
+```powershell
+# Mode interactif : fenêtre de sauvegarde
+.\inventaire_master.ps1
+
+# Mode silencieux, pour un déploiement ou une tâche planifiée
+.\inventaire_master.ps1 -NoGui -OutputDirectory C:\Inventaires
+
+# Vérification du script sans interroger Windows
+.\inventaire_master.ps1 -SelfTest -OutputPath C:\Temp\selftest.html
+```
+
+Le rapport HTML est autonome (aucun CDN) et contient un bloc
+`<script id="inventoryData" type="application/json">` de la forme :
+
+```json
+{"schema":3,"pcName":"PC-01","date":"26/11/2026 21:00","system":{},"disks":[],"network":[],"services":[],"software":[{"n":"...","v":"...","e":"...","d":"...","s":0,"src":"..."}]}
+```
+
+Les erreurs de collecte (WMI indisponible, AppX refusé, dossier inaccessible)
+sont consignées dans `warnings` et visibles dans le rapport ; elles
+n'interrompent pas le reste de l'inventaire. Un journal est écrit dans le
+dossier temporaire en cas d'échec fatal.
 
 ## Architecture
 
@@ -59,12 +95,18 @@ FabInventory/
 │   ├── index.html          # Dashboard
 │   ├── upload.html         # Page d'import
 │   ├── master.html         # Détail d'un master
-│   ├── master_update.html  # Mise à jour master avec comparaison + confirmation
+│   ├── master_update.html  # Mise à jour master avec comparaison + décisions
+│   ├── master_followups.html # File ponctuelle des absences d'un master
 │   ├── snapshot.html       # Détail d'un scan
+│   ├── master_evolution.html # Évolution entre deux scans d'un master
+│   ├── health.html         # Santé du parc
+│   ├── network_registry.html # Registre IP/MAC
 │   └── compare.html        # Comparaison
 ├── static/css/style.css    # Styles
 ├── static/downloads/
-│   └── inventaire_master.ps1  # Script telechargeable (HTML + CSV)
+│   ├── inventaire_master.ps1     # Script telechargeable (HTML + CSV + JSON)
+│   └── lancer_inventaire_master.bat
+├── tests/                       # Suite de non-regression (run_all.py)
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
@@ -84,7 +126,7 @@ FabInventory/
 | `PORT` | `5590` | Port de l'application |
 | `DB_PATH` | `/data/fabinventory.db` | Chemin de la base SQLite |
 | `UPLOAD_FOLDER` | `/data/uploads` | Dossier d'upload |
-| `SECRET_KEY` | `fabinventory-secret` | Clé secrète Flask |
+| `SECRET_KEY` | aucune | Clé secrète Flask obligatoire ; le compose refuse de démarrer si `FLASK_SECRET_KEY` est vide. Générer avec `python -c "import secrets; print(secrets.token_hex(32))"`. |
 
 ---
 

@@ -2,6 +2,11 @@
   INVENTAIRE DE MASTER v3 - MODE D'EMPLOI
 ======================================================
 
+NOTE : ce dossier est un miroir de secours. Le script servi par
+FabInventory (/download/master-script) est la source de reference ;
+les deux copies sont identiques et le test de la suite verifie cette
+synchronisation.
+
 UTILISATION :
   1. Copier le contenu sur une cle USB
   2. Clic droit sur LANCER_INVENTAIRE.bat > Executer en tant qu'administrateur
@@ -42,5 +47,14 @@ FONCTIONNALITES DU RAPPORT HTML :
       - Rouge : logiciels absents ICI mais presents dans l'autre
       - Bleu : logiciels en commun (avec comparaison de version)
 
-  SECTIONS REPLIABLES
-    Cliquer sur le titre d'une section pour la replier/deplier.
+  DISQUES, RESEAU ET SERVICES
+    Le rapport affiche les disques, les interfaces actives (IP, MAC,
+    DHCP, passerelle), les services automatiques et les informations
+    systeme collectees sur le poste.
+
+  MODE SILENCIEUX
+    inventaire.ps1 -NoGui -OutputDirectory C:\Inventaires
+    inventaire.ps1 -SelfTest -OutputPath C:\Temp\selftest.html
+
+  Les avertissements de collecte (WMI, AppX, dossier inaccessible)
+  sont affiches dans le rapport et ne bloquent pas le reste.

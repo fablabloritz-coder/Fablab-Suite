@@ -110,6 +110,7 @@
               Editeur {% if sort_by == 'editor' %}<i class="bi {% if sort_dir == 'asc' %}bi-sort-alpha-down{% else %}bi-sort-alpha-up{% endif %}"></i>{% else %}<i class="bi bi-arrow-down-up" style="opacity:.4"></i>{% endif %}
             </a>
           </th>
+          <th>Categorie</th>
           <th>Source</th>
           <th></th>
         </tr>
@@ -124,6 +125,7 @@
             <td>{{ r.name }}</td>
             <td><small class="text-muted">{{ r.version or '—' }}</small></td>
             <td><small class="text-muted">{{ r.editor or '—' }}</small></td>
+            <td><span class="badge badge-category badge-category-{{ r.category or 'main' }}">{{ r.category or 'main' }}</span></td>
             <td>
               <span class="badge badge-sm rounded-pill" style="
                 {% if r.source == 'Registre' %}background:#eff6ff;color:#3b82f6
@@ -138,7 +140,7 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="8">
+            <td colspan="9">
               <div class="empty-state py-4">
                 <i class="bi bi-search empty-state-icon" style="font-size:2.5rem"></i>
                 <h4 style="font-size:1rem">Aucun resultat</h4>

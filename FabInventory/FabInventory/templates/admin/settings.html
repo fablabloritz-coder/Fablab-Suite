@@ -30,5 +30,23 @@
       </div>
     </div>
   </div>
+
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">Maintenance de l'inventaire</div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">
+          Reconstruit l'index des logiciels et recalcule les catégories des scans existants.
+          A utiliser apres un import important ou une mise a jour des regles de classement.
+        </p>
+        <form method="POST" action="{{ url_for('admin_reindex_software') }}"
+              onsubmit="return confirm('Reconstruire tout l index des logiciels ? Cette operation peut prendre quelques secondes.')">
+          <button type="submit" class="btn btn-outline-warning">
+            <i class="bi bi-arrow-repeat me-1"></i>Reconstruire l'index logiciels
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
