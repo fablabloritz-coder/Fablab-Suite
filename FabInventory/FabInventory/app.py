@@ -3148,6 +3148,187 @@ def _get_preparation_master(db, master_id):
     ).fetchone()
 
 
+# ─── RAPPORTS PARC ───────────────────────────────────────────────────────────
+# Trois lectures agregees du dernier scan : versions par logiciel, licences
+# declarees et logiciels importants. Les scans anciens et les masters de
+# preparation sont exclus ; aucune de ces fonctions n'ecrit en base.
+
+
+def _parc_version_key(value):
+    """Cle de tri naturelle des versions (24.10 apres 24.9), texte sinon."""
+    parts = re.findall(r"\d+", str(value or ""))
+    if not parts:
+        return (0, str(value or "").lower())
+    return (1, ".".join(f"{int(part):09d}" for part in parts[:4]))
+
+
+def _parc_version_rows(db):
+    """Logiciel x version x nombre de masters sur le dernier scan."""
+    rows = db.execute(
+        """
+        SELECT si.software_name AS software_name,
+               TRIM(COALESCE(si.software_version, '')) AS software_version,
+               COUNT(DISTINCT si.master_id) AS masters
+        FROM software_index si
+        JOIN masters m ON m.id = si.master_id
+        WHERE m.workflow_type = 'inventory'
+          AND si.snapshot_id IN (SELECT id FROM latest_snapshots)
+        GROUP BY si.software_name, software_version
+        """
+    ).fetchall()
+
+    latest_by_software = {}
+    for row in rows:
+        key = _parc_version_key(row["software_version"])
+        current = latest_by_software.get(row["software_name"])
+        if current is None or key > current:
+            latest_by_software[row["software_name"]] = key
+
+    result = [
+        {
+            "software_name": row["software_name"],
+            "version": row["software_version"],
+            "masters": int(row["masters"]),
+            "is_latest": _parc_version_key(row["software_version"])
+            == latest_by_software[row["software_name"]],
+        }
+        for row in rows
+    ]
+    # Versions recentes d'abord, puis groupes par logiciel.
+    result.sort(key=lambda item: _parc_version_key(item["version"]), reverse=True)
+    result.sort(key=lambda item: item["software_name"].lower())
+    return result
+
+
+def _parc_licence_rows(db):
+    """Logiciels marques sous licence, avec les masters sans information."""
+    rows = db.execute(
+        """
+        SELECT sf.software_name AS software_name,
+               TRIM(COALESCE(sf.license_type, '')) AS license_type,
+               TRIM(COALESCE(sf.note, '')) AS note,
+               m.pc_name AS pc_name
+        FROM software_flags sf
+        JOIN masters m ON m.id = sf.master_id
+        WHERE sf.is_licensed = 1 AND m.workflow_type = 'inventory'
+        ORDER BY sf.software_name COLLATE NOCASE, m.pc_name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    grouped = {}
+    for row in rows:
+        item = grouped.setdefault(
+            row["software_name"],
+            {
+                "software_name": row["software_name"],
+                "license_types": [],
+                "masters": [],
+                "notes": [],
+                "missing": 0,
+            },
+        )
+        if row["license_type"]:
+            if row["license_type"] not in item["license_types"]:
+                item["license_types"].append(row["license_type"])
+        else:
+            item["missing"] += 1
+        if row["pc_name"] not in item["masters"]:
+            item["masters"].append(row["pc_name"])
+        if row["note"] and row["note"] not in item["notes"]:
+            item["notes"].append(row["note"])
+
+    result = sorted(grouped.values(), key=lambda item: item["software_name"].lower())
+    for item in result:
+        item["license_label"] = ", ".join(item["license_types"]) or "—"
+        item["without_info"] = item["missing"] > 0
+    return result
+
+
+def _parc_important_rows(db):
+    """Logiciels marques importants, avec leur version sur le dernier scan."""
+    rows = db.execute(
+        """
+        SELECT sf.software_name AS software_name,
+               TRIM(COALESCE(sf.note, '')) AS note,
+               sf.is_licensed AS is_licensed,
+               TRIM(COALESCE(sf.license_type, '')) AS license_type,
+               m.id AS master_id,
+               m.pc_name AS pc_name,
+               MAX(COALESCE(si.software_version, '')) AS software_version,
+               MAX(COALESCE(si.software_category, '')) AS software_category
+        FROM software_flags sf
+        JOIN masters m ON m.id = sf.master_id
+        LEFT JOIN latest_snapshots ls ON ls.master_id = m.id
+        LEFT JOIN software_index si
+          ON si.snapshot_id = ls.id AND si.software_name = sf.software_name
+        WHERE sf.is_important = 1 AND m.workflow_type = 'inventory'
+        GROUP BY sf.id
+        ORDER BY sf.software_name COLLATE NOCASE, m.pc_name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    grouped = {}
+    for row in rows:
+        item = grouped.setdefault(
+            row["software_name"],
+            {
+                "software_name": row["software_name"],
+                "masters": [],
+                "notes": [],
+                "license_types": [],
+                "licensed": False,
+            },
+        )
+        item["masters"].append(
+            {
+                "id": row["master_id"],
+                "pc_name": row["pc_name"],
+                "version": row["software_version"],
+                "category": row["software_category"],
+            }
+        )
+        if row["note"] and row["note"] not in item["notes"]:
+            item["notes"].append(row["note"])
+        if row["is_licensed"]:
+            item["licensed"] = True
+            if row["license_type"] and row["license_type"] not in item["license_types"]:
+                item["license_types"].append(row["license_type"])
+
+    result = sorted(grouped.values(), key=lambda item: item["software_name"].lower())
+    for item in result:
+        item["license_label"] = ", ".join(item["license_types"]) or "—"
+        item["versions"] = sorted(
+            {master["version"] for master in item["masters"] if master["version"]},
+            key=_parc_version_key,
+            reverse=True,
+        )
+    return result
+
+
+def _parc_report_summary(versions, licences, importants):
+    return {
+        "software_count": len({row["software_name"] for row in versions}),
+        "version_rows": len(versions),
+        "licensed_count": len(licences),
+        "licensed_without_info": sum(1 for row in licences if row["without_info"]),
+        "important_count": len(importants),
+    }
+
+
+def _csv_response(rows, header, filename):
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(header)
+    writer.writerows(rows)
+    content = output.getvalue().encode("utf-8-sig")
+    output.close()
+    return app.response_class(
+        content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 # ===== ROUTES =====
 
 def _fleet_latest_rows(db):
@@ -3340,6 +3521,96 @@ def fleet_health():
 def network_registry():
     db = get_db()
     return render_template("network_registry.html", health=_build_fleet_health(db))
+
+
+@app.route("/rapports")
+def parc_reports():
+    db = get_db()
+    versions = _parc_version_rows(db)
+    licences = _parc_licence_rows(db)
+    importants = _parc_important_rows(db)
+    return render_template(
+        "parc_reports.html",
+        versions=versions,
+        licences=licences,
+        importants=importants,
+        summary=_parc_report_summary(versions, licences, importants),
+    )
+
+
+@app.route("/rapports/export/licences.csv")
+def parc_reports_licences_csv():
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT m.id AS master_id,
+               m.pc_name AS pc_name,
+               sf.software_name AS software_name,
+               TRIM(COALESCE(sf.license_type, '')) AS license_type,
+               TRIM(COALESCE(sf.note, '')) AS note
+        FROM software_flags sf
+        JOIN masters m ON m.id = sf.master_id
+        WHERE sf.is_licensed = 1 AND m.workflow_type = 'inventory'
+        ORDER BY sf.software_name COLLATE NOCASE, m.pc_name COLLATE NOCASE
+        """
+    ).fetchall()
+    data = [
+        [
+            row["master_id"],
+            row["pc_name"],
+            row["software_name"],
+            row["license_type"],
+            "non" if row["license_type"] else "oui",
+            row["note"],
+        ]
+        for row in rows
+    ]
+    return _csv_response(
+        data,
+        [
+            "master_id",
+            "master",
+            "logiciel",
+            "type_licence",
+            "information_manquante",
+            "note",
+        ],
+        "FabInventory-Licences.csv",
+    )
+
+
+@app.route("/rapports/export/importants.csv")
+def parc_reports_importants_csv():
+    db = get_db()
+    data = []
+    for software in _parc_important_rows(db):
+        for master in software["masters"]:
+            data.append(
+                [
+                    master["id"],
+                    master["pc_name"],
+                    software["software_name"],
+                    master["version"],
+                    master["category"],
+                    "; ".join(software["notes"]),
+                    "oui" if software["licensed"] else "non",
+                    "" if software["license_label"] == "—" else software["license_label"],
+                ]
+            )
+    return _csv_response(
+        data,
+        [
+            "master_id",
+            "master",
+            "logiciel",
+            "version",
+            "categorie",
+            "note",
+            "sous_licence",
+            "type_licence",
+        ],
+        "FabInventory-Logiciels-Importants.csv",
+    )
 
 
 @app.route("/download/master-script")

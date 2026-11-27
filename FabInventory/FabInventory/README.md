@@ -19,6 +19,8 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 - **Notes** : ajoutez des notes par logiciel (licence, salle, remarques)
 - **Couverture logicielle fiable** : les noms sont normalisés (casse, accents, préfixes d'éditeur, suffixes d'édition/version) et complétés par des alias gérés dans le catalogue. « Java » ne compte plus « JavaScript », « Office » ne compte plus « OpenOffice », « Visual Studio » ne compte plus « Visual Studio Code ».
 - **Migrations de schéma versionnées** : chaque migration idempotente est listée dans l'ordre et enregistrée dans `schema_version`. Une base vide comme une base antérieure (v2.1.4) est reprise au démarrage suivant, sans perte.
+- **Rapports parc** : versions par logiciel (avec repérage des versions anciennes), licences déclarées et logiciels importants, calculés sur le dernier scan de chaque master inventorié.
+- **Exports CSV des rapports** : licences (avec l'information manquante) et logiciels importants (master, version, catégorie, note, licence).
 - **Historique** : chaque scan est conservé, avec provenance du script et avertissements de collecte
 - **Évolution d'un master** : comparez deux scans du même poste (logiciels, système, disques, réseau, services)
 - **Santé du parc** : repérez les scans anciens, disques bas, collectes partielles et doublons réseau
@@ -110,6 +112,7 @@ FabInventory/
 │   ├── snapshot.html       # Détail d'un scan
 │   ├── master_evolution.html # Évolution entre deux scans d'un master
 │   ├── health.html         # Santé du parc
+│   ├── parc_reports.html   # Rapports parc (versions, licences, importants)
 │   ├── network_registry.html # Registre IP/MAC
 │   └── compare.html        # Comparaison
 ├── static/css/style.css    # Styles
@@ -126,7 +129,7 @@ FabInventory/
 ## Tests et mesures
 
 ```bash
-python3 tests/run_all.py        # 26 modules, 154 tests, un processus par module
+python3 tests/run_all.py        # 27 modules, 159 tests, un processus par module
 python3 tools/parc_scale.py --db /tmp/parc-500.db --force --benchmark
 ```
 

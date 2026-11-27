@@ -6,6 +6,41 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : rapports parc, versions, licences et logiciels importants (suite 6)
+
+**Fonctionnel**
+- Nouvelle page `/rapports` (« Rapports parc ») adossée au dernier scan de
+  chaque master inventorié : aucun scan ancien ni master de préparation
+  n'entre dans les comptes.
+- **Versions** : couple logiciel × version × nombre de masters, tri naturel
+  des versions ; une version est marquée « ancienne » quand une version plus
+  récente du même logiciel existe dans le parc, « dernière observée » sinon.
+- **Licences** : logiciels marqués sous licence, type déclaré, masters
+  concernés, badge « Sans information » quand un master n'a pas de type.
+- **Logiciels importants** : flags `important`, masters, versions du dernier
+  scan, licence et notes.
+- Exports CSV (UTF-8 BOM, séparateur `;`) : `/rapports/export/licences.csv`
+  avec la colonne `information_manquante`, et
+  `/rapports/export/importants.csv` (master, version, catégorie, note,
+  licence).
+
+**Performance**
+- Sur le parc synthétique (500 masters, 10 000 snapshots, 400 000 lignes
+  d'index), `/rapports` passe de 1 663 ms à **153 ms** : jointure sur la vue
+  remplacée par `IN (SELECT id FROM latest_snapshots)`, et agrégat global de
+  `_parc_important_rows` remplacé par un `GROUP BY sf.id`. Export importants :
+  40 ms.
+
+**Tests**
+- `tests/test_parc_reports.py` (5 tests) : agrégation sur le seul dernier
+  scan, exclusion des scans anciens et des masters de préparation, licences
+  sans information, logiciels importants et exports CSV, non-régression de
+  `/` et `/sante`.
+- Suite officielle : `python tests/run_all.py`, **27 modules, 159 tests OK**.
+
+**Prochaine action**
+- Suite 8 de la feuille de route : journal d'audit et rôle technicien.
+
 ## 2026-11-27 — FabInventory : import d'identité fiable, aperçu et rapport de fusion (suite 4)
 
 **Fonctionnel**

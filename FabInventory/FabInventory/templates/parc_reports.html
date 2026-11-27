@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}FabInventory - Rapports parc{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h2><i class="bi bi-clipboard-data"></i>Rapports parc</h2>
+  <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Imprimer
+  </button>
+</div>
+
+<div class="row g-2 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800;color:var(--fi-accent)">{{ summary['software_count'] }}</div>
+      <div class="text-muted small">Logiciels suivis</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800">{{ summary['version_rows'] }}</div>
+      <div class="text-muted small">Couples logiciel / version</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800">{{ summary['licensed_count'] }}</div>
+      <div class="text-muted small">Logiciels sous licence</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800;color:#b02a37">{{ summary['licensed_without_info'] }}</div>
+      <div class="text-muted small">Licences sans information</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 flex-wrap mb-4">
+  <a href="#versions" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags me-1"></i>Versions</a>
+  <a href="#licences" class="btn btn-outline-primary btn-sm"><i class="bi bi-key me-1"></i>Licences</a>
+  <a href="#importants" class="btn btn-outline-primary btn-sm"><i class="bi bi-star me-1"></i>Logiciels importants</a>
+</div>
+
+<!-- VERSIONS -->
+<div class="card border-0 shadow-sm mb-4" id="versions">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h5 class="mb-0">Versions par logiciel</h5>
+        <div class="text-muted small mt-1">
+          Dernier scan de chaque master inventorie. Une version est marquee « ancienne »
+          quand une version plus recente du meme logiciel existe dans le parc.
+        </div>
+      </div>
+      <span class="badge bg-secondary">{{ summary['version_rows'] }}</span>
+    </div>
+    {% if versions %}
+    <div class="table-responsive" style="max-height:620px;overflow:auto">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Logiciel</th>
+            <th>Version</th>
+            <th class="text-end">Masters</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in versions %}
+          <tr>
+            <td>{{ row['software_name'] }}</td>
+            <td><code>{{ row['version'] or '—' }}</code></td>
+            <td class="text-end">{{ row['masters'] }}</td>
+            <td>
+              {% if row['is_latest'] %}
+              <span class="badge bg-success">Derniere observee</span>
+              {% else %}
+              <span class="badge bg-warning text-dark">Ancienne</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Aucun logiciel indexe pour l'instant.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- LICENCES -->
+<div class="card border-0 shadow-sm mb-4" id="licences">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h5 class="mb-0">Licences declarees</h5>
+        <div class="text-muted small mt-1">
+          Logiciels marques sous licence. « Sans information » signale un master
+          ou le type de licence n'est pas renseigne.
+        </div>
+      </div>
+      <a href="{{ url_for('parc_reports_licences_csv') }}" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-filetype-csv me-1"></i>Export CSV
+      </a>
+    </div>
+    {% if licences %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Logiciel</th>
+            <th>Type de licence</th>
+            <th>Masters</th>
+            <th>Information</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in licences %}
+          <tr>
+            <td>{{ row['software_name'] }}</td>
+            <td>{{ row['license_label'] }}</td>
+            <td>
+              {% for name in row['masters'][:5] %}
+              <span class="badge rounded-pill text-bg-light border">{{ name }}</span>
+              {% endfor %}
+              {% if row['masters']|length > 5 %}
+              <span class="text-muted small">+{{ row['masters']|length - 5 }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row['without_info'] %}
+              <span class="badge bg-danger">Sans information ({{ row['missing'] }})</span>
+              {% else %}
+              <span class="badge bg-success">Complete</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Aucun logiciel marque sous licence.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- IMPORTANTS -->
+<div class="card border-0 shadow-sm mb-4" id="importants">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h5 class="mb-0">Logiciels importants</h5>
+        <div class="text-muted small mt-1">
+          Logiciels coches « important » sur au moins un master, avec leur version
+          au dernier scan.
+        </div>
+      </div>
+      <a href="{{ url_for('parc_reports_importants_csv') }}" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-filetype-csv me-1"></i>Export CSV
+      </a>
+    </div>
+    {% if importants %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Logiciel</th>
+            <th class="text-end">Masters</th>
+            <th>Versions</th>
+            <th>Licence</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in importants %}
+          <tr>
+            <td>{{ row['software_name'] }}</td>
+            <td class="text-end">{{ row['masters']|length }}</td>
+            <td>
+              {% for version in row['versions'] %}
+              <code>{{ version }}</code>{% if not loop.last %} · {% endif %}
+              {% endfor %}
+              {% if not row['versions'] %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% if row['licensed'] %}
+              <span class="badge bg-primary">{{ row['license_label'] }}</span>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="small text-muted">{{ row['notes']|join(' · ') or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Aucun logiciel marque important.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
