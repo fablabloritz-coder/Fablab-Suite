@@ -15,9 +15,10 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
+from werkzeug.security import generate_password_hash  # noqa: E402
+
 from tests.support import login_admin, reset_temp_db  # noqa: E402
 from app import (  # noqa: E402
-    _admin_initial_password_path,
     _load_secret_key,
     app,
     get_db,
@@ -53,10 +54,7 @@ class SecurityXssTests(unittest.TestCase):
             401,
         )
 
-    def test_mot_de_passe_admin_sans_valeur_par_defaut(self):
-        html = self.client.get("/admin/").get_data(as_text=True)
-        self.assertNotIn("mot de passe par defaut", html)
-
+    def test_mot_de_passe_admin_fourni_par_environnement(self):
         anonymous = app.test_client()
         env_password = os.environ["ADMIN_PASSWORD"]
         self.assertEqual(
@@ -97,7 +95,7 @@ class SecurityXssTests(unittest.TestCase):
             302,
         )
 
-    def test_seed_genere_un_mot_de_passe_admin_aleatoire(self):
+    def _reset_seed_avec_mot_de_passe_par_defaut(self):
         with mock.patch.dict(os.environ, {"ADMIN_PASSWORD": ""}):
             with app.app_context():
                 db = get_db()
@@ -106,27 +104,181 @@ class SecurityXssTests(unittest.TestCase):
                 db.commit()
                 init_db()
 
-        chemin = _admin_initial_password_path()
-        self.assertTrue(os.path.exists(chemin))
-        self.assertEqual(os.stat(chemin).st_mode & 0o777, 0o600)
-        with open(chemin, encoding="utf-8") as handle:
-            generated = handle.read().strip()
-        self.assertGreaterEqual(len(generated), 16)
-        self.assertNotEqual(generated, "admin")
+    def test_premiere_connexion_admin_1234_impose_le_changement(self):
+        self._reset_seed_avec_mot_de_passe_par_defaut()
+
+        # Plus de fichier de mot de passe genere : le defaut est admin / 1234.
+        fichier = os.path.join(
+            os.path.dirname(os.environ["DB_PATH"]), "admin-initial-password.txt"
+        )
+        self.assertFalse(os.path.exists(fichier))
 
         anonymous = app.test_client()
+        login = anonymous.post(
+            "/admin/login", data={"username": "admin", "password": "1234"}
+        )
+        self.assertEqual(login.status_code, 302)
+        self.assertTrue(login.headers["Location"].endswith("/admin/settings"))
+
+        # Le reste de l'administration reste inaccessible avant le changement.
+        forced = anonymous.get("/admin/")
+        self.assertEqual(forced.status_code, 302)
+        self.assertTrue(forced.headers["Location"].endswith("/admin/settings"))
+
+        change = anonymous.post(
+            "/admin/settings",
+            data={
+                "old_password": "1234",
+                "new_password": "secret123",
+                "confirm_password": "secret123",
+            },
+        )
+        self.assertEqual(change.status_code, 302)
+        self.assertTrue(change.headers["Location"].endswith("/admin/"))
+        self.assertEqual(anonymous.get("/admin/").status_code, 200)
+
+        with app.app_context():
+            db = get_db()
+            flag = db.execute(
+                "SELECT value FROM app_meta "
+                "WHERE key = 'admin_password_is_default'"
+            ).fetchone()
+            self.assertEqual(flag["value"], "0")
+
+        anonymous.get("/admin/logout")
         self.assertEqual(
             anonymous.post(
-                "/admin/login", data={"username": "admin", "password": "admin"}
+                "/admin/login", data={"username": "admin", "password": "1234"}
             ).status_code,
             200,
         )
         self.assertEqual(
             anonymous.post(
-                "/admin/login", data={"username": "admin", "password": generated}
+                "/admin/login", data={"username": "admin", "password": "secret123"}
             ).status_code,
             302,
         )
+
+    def test_changement_force_ne_concerne_que_l_admin(self):
+        self._reset_seed_avec_mot_de_passe_par_defaut()
+        with app.app_context():
+            db = get_db()
+            db.execute(
+                "INSERT INTO admin_users (username, password_hash, role) "
+                "VALUES (?, ?, 'technicien')",
+                ("tech-force", generate_password_hash("tech-pass")),
+            )
+            db.commit()
+
+        anonymous = app.test_client()
+        login = anonymous.post(
+            "/admin/login", data={"username": "tech-force", "password": "tech-pass"}
+        )
+        self.assertEqual(login.status_code, 302)
+        self.assertEqual(login.headers["Location"], "/")
+        self.assertEqual(anonymous.get("/").status_code, 200)
+        self.assertEqual(anonymous.get("/admin/logiciels").status_code, 403)
+
+    def test_autre_admin_ne_libere_pas_le_changement_force(self):
+        self._reset_seed_avec_mot_de_passe_par_defaut()
+        with app.app_context():
+            db = get_db()
+            db.execute(
+                "INSERT INTO admin_users (username, password_hash, role) "
+                "VALUES (?, ?, 'admin')",
+                ("admin-bis", generate_password_hash("admin-bis-pass")),
+            )
+            db.commit()
+
+        autre = app.test_client()
+        login = autre.post(
+            "/admin/login",
+            data={"username": "admin-bis", "password": "admin-bis-pass"},
+        )
+        self.assertEqual(login.status_code, 302)
+        self.assertEqual(login.headers["Location"], "/admin/")
+        self.assertEqual(autre.get("/admin/").status_code, 200)
+
+        change = autre.post(
+            "/admin/settings",
+            data={
+                "old_password": "admin-bis-pass",
+                "new_password": "admin-bis-new",
+                "confirm_password": "admin-bis-new",
+            },
+        )
+        self.assertEqual(change.status_code, 302)
+        self.assertEqual(autre.get("/admin/").status_code, 200)
+
+        with app.app_context():
+            flag = get_db().execute(
+                "SELECT value FROM app_meta "
+                "WHERE key = 'admin_password_is_default'"
+            ).fetchone()
+            self.assertEqual(flag["value"], "1")
+
+        defaut = app.test_client()
+        forced = defaut.post(
+            "/admin/login", data={"username": "admin", "password": "1234"}
+        )
+        self.assertEqual(forced.status_code, 302)
+        self.assertTrue(forced.headers["Location"].endswith("/admin/settings"))
+
+    def test_base_existante_bascule_une_fois_sur_1234(self):
+        with mock.patch.dict(os.environ, {"ADMIN_PASSWORD": ""}):
+            with app.app_context():
+                db = get_db()
+                # Etat d'une base creee avant le mecanisme : compte existant,
+                # initial_seed pose, drapeau absent.
+                db.execute(
+                    "UPDATE admin_users SET password_hash = ? WHERE username = 'admin'",
+                    (generate_password_hash("ancien-mot-de-passe"),),
+                )
+                db.execute(
+                    "DELETE FROM app_meta WHERE key = 'admin_password_is_default'"
+                )
+                db.commit()
+                init_db()
+
+        anonymous = app.test_client()
+        self.assertEqual(
+            anonymous.post(
+                "/admin/login",
+                data={"username": "admin", "password": "ancien-mot-de-passe"},
+            ).status_code,
+            200,
+        )
+        forced = anonymous.post(
+            "/admin/login", data={"username": "admin", "password": "1234"}
+        )
+        self.assertEqual(forced.status_code, 302)
+        self.assertTrue(forced.headers["Location"].endswith("/admin/settings"))
+
+        # La bascule ne se rejoue pas : un second demarrage garde le mot de
+        # passe en place (et le changement impose).
+        with mock.patch.dict(os.environ, {"ADMIN_PASSWORD": ""}):
+            with app.app_context():
+                db = get_db()
+                db.execute(
+                    "UPDATE admin_users SET password_hash = ? WHERE username = 'admin'",
+                    (generate_password_hash("mot-de-passe-choisi"),),
+                )
+                db.commit()
+                init_db()
+        apres = app.test_client()
+        self.assertEqual(
+            apres.post(
+                "/admin/login",
+                data={"username": "admin", "password": "ancien-mot-de-passe"},
+            ).status_code,
+            200,
+        )
+        garde = apres.post(
+            "/admin/login",
+            data={"username": "admin", "password": "mot-de-passe-choisi"},
+        )
+        self.assertEqual(garde.status_code, 302)
+        self.assertTrue(garde.headers["Location"].endswith("/admin/settings"))
 
     def test_cle_de_session_aleatoire_est_persistee(self):
         with mock.patch.dict(os.environ, {"SECRET_KEY": "change-me-in-production"}):

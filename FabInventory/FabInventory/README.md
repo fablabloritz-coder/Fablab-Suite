@@ -62,6 +62,81 @@ de passe passe par **Paramètres**, ce qui évite qu'un administrateur se retire
 lui-même l'accès. La désactivation bloque les connexions suivantes ; une session
 déjà ouverte reste valide jusqu'à sa déconnexion.
 
+## Première connexion administrateur
+
+Au tout premier démarrage (base vide, aucune clé `initial_seed` en base),
+l'application crée un unique compte, comme PretGo :
+
+- **identifiant : `admin`**
+- **mot de passe : `1234`**
+
+La connexion avec `admin` / `1234` n'ouvre pas le dashboard : elle mène à
+**Paramètres**, qui demande de choisir un nouveau mot de passe (6 caractères
+minimum). Tant que ce changement n'est pas fait, les autres pages de
+l'administration redirigent vers Paramètres. Le nouveau mot de passe remplace
+`1234` immédiatement et la session continue avec lui.
+
+`ADMIN_PASSWORD` permet de fournir directement un mot de passe initial
+(installation scriptée, machine exposée) : définie et non vide au premier
+démarrage, elle remplace `1234` et aucun changement n'est imposé. Le seed n'a
+lieu qu'une fois — modifier la variable après coup ne change plus rien ; le mot
+de passe se change ensuite dans **Admin → Paramètres**. Aucun fichier de mot de
+passe n'est généré.
+
+**Base existante** : à la première mise à jour vers cette version, une base qui
+n'a pas encore le drapeau `admin_password_is_default` est basculée **une seule
+fois** sur `admin` / `1234` (ou sur `ADMIN_PASSWORD` si elle est définie) et le
+changement est imposé à la connexion suivante. Une base déjà passée par ce
+mécanisme, y compris une base neuve, n'est plus touchée.
+
+> **Sécurité** : tant que `1234` n'a pas été changé, toute personne joignant
+> l'application peut ouvrir Paramètres. Sur une machine exposée, définissez
+> `ADMIN_PASSWORD` dans le `.env` avant le premier lancement.
+
+### En Docker
+
+Les trois composes de la suite transmettent `ADMIN_PASSWORD` depuis le `.env`.
+Laisser la variable vide donne le compte `admin` / `1234` avec changement
+imposé ; la renseigner évite le mot de passe par défaut :
+
+```bash
+# .env — optionnel
+ADMIN_PASSWORD=UnMotDePasseProvisoire
+```
+
+### Réinitialisation si le mot de passe est perdu
+
+Il n'existe pas d'écran « mot de passe oublié » : la page Paramètres exige
+l'ancien mot de passe et la page Comptes exclut volontairement les
+administrateurs. Le compte se réinitialise donc directement en base, avec le
+même hachage que l'application (Werkzeug). **Arrêtez l'application** et
+sauvegardez la base avant l'opération.
+
+Docker, depuis le dossier du `docker-compose.yml` utilisé — on remet le compte
+`admin` sur `1234` et on réarme le changement obligatoire :
+
+```bash
+docker compose stop fabinventory
+docker compose run --rm --no-deps fabinventory cp /data/fabinventory.db /data/fabinventory.db.bak
+docker compose run --rm --no-deps fabinventory python -c 'import sqlite3; from werkzeug.security import generate_password_hash; db = sqlite3.connect("/data/fabinventory.db"); db.execute("UPDATE admin_users SET password_hash = ?, is_active = 1 WHERE username = ?", (generate_password_hash("1234"), "admin")); db.execute("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)", ("admin_password_is_default", "1")); db.commit(); print(db.total_changes, "ligne(s) mise(s) a jour")'
+docker compose start fabinventory
+```
+
+Installation manuelle (hors Docker) — la même commande, avec le chemin réel de
+la base (`DB_PATH`, `/data/fabinventory.db` par défaut) :
+
+```bash
+python -c 'import sqlite3; from werkzeug.security import generate_password_hash; db = sqlite3.connect("/data/fabinventory.db"); db.execute("UPDATE admin_users SET password_hash = ?, is_active = 1 WHERE username = ?", (generate_password_hash("1234"), "admin")); db.execute("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)", ("admin_password_is_default", "1")); db.commit(); print(db.total_changes, "ligne(s) mise(s) a jour")'
+```
+
+Après redémarrage, `admin` / `1234` rouvre Paramètres et impose un nouveau mot de
+passe. Pour fixer directement un autre mot de passe, remplacez `1234` par la
+valeur voulue et écrivez `0` dans `admin_password_is_default` : aucun changement
+ne sera alors demandé. Si aucune ligne n'est mise à jour, la ligne `admin` a été
+supprimée : réinsérez-la avec un `password_hash` généré de la même façon, ou
+restaurez `fabinventory.db.bak` en arrêtant l'application et en remplaçant
+`/data/fabinventory.db`.
+
 ## Installation rapide (Docker)
 
 ```bash
@@ -70,7 +145,8 @@ cd FabInventory
 docker compose up -d --build
 ```
 
-Accès : `http://IP-DU-SERVEUR:5590`
+Accès : `http://IP-DU-SERVEUR:5590`. Le compte `admin` et son mot de passe
+initial sont décrits dans [Première connexion administrateur](#première-connexion-administrateur).
 
 ## Installation manuelle (dev)
 
@@ -192,7 +268,7 @@ mesure sur chaque PR touchant l'application, avant fusion.
 | `DB_PATH` | `/data/fabinventory.db` | Chemin de la base SQLite |
 | `UPLOAD_FOLDER` | `/data/uploads` | Dossier d'upload |
 | `SECRET_KEY` | générée | Clé de session Flask. Une valeur absente, de moins de 32 caractères, trop peu variée ou connue (`change-me`, `secret`, `tests`…) est ignorée : une clé aléatoire est générée et conservée dans la base. Recommandé : `python -c "import secrets; print(secrets.token_hex(32))"`. |
-| `ADMIN_PASSWORD` | généré | Mot de passe du compte `admin` créé au premier démarrage. S'il est absent, un mot de passe aléatoire est écrit une seule fois dans `admin-initial-password.txt` (0600) à côté de la base. |
+| `ADMIN_PASSWORD` | `1234` | Mot de passe initial du compte `admin`, lu au premier démarrage et lors de la bascule d'une base existante, et transmis par les `docker-compose.yml` depuis le `.env`. Absent ou vide, le compte est `admin` / `1234` et le changement de mot de passe est imposé à la connexion ; renseigné, il est utilisé tel quel sans changement imposé. |
 
 ---
 

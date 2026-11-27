@@ -162,6 +162,7 @@ services:
     stop_grace_period: 20s
     environment:
       SECRET_KEY: "${FLASK_SECRET_KEY:?Definir FLASK_SECRET_KEY dans .env}"
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       DB_PATH: /data/fabinventory.db
       UPLOAD_FOLDER: /data/uploads
       PORT: 5590

@@ -6,6 +6,147 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : bascule des bases existantes sur `admin` / `1234`
+
+**Constat**
+- Le seed ne rejoue jamais (`initial_seed` posé) : une base déjà en place gardait
+  son ancien mot de passe et aucun changement n'était imposé après la mise à
+  jour. Le compte par défaut ne concernait donc que les bases neuves.
+
+**Changement**
+- `_seed_initial_data` traite le cas « base existante sans drapeau » : le compte
+  `admin` est basculé une seule fois sur `1234` (ou `ADMIN_PASSWORD` si définie)
+  et `admin_password_is_default` passe à `1` (ou `0` avec la variable).
+- `_admin_initial_credentials()` factorise le choix mot de passe + drapeau,
+  partagé par le seed et la bascule.
+- La bascule est idempotente : dès que le drapeau existe, un redémarrage ne
+  touche plus au mot de passe (vérifié par test).
+- README et tableau des variables précisent ce comportement de mise à jour.
+
+**Risque assumé**
+- Une installation existante perd son mot de passe admin au premier démarrage
+  après mise à jour : elle repasse par `1234` (ou `ADMIN_PASSWORD`) et le
+  changement obligatoire. C'est le comportement PretGo demandé.
+
+**Tests**
+- Nouveau test : base ancienne (drapeau absent) → `1234` accepté et changement
+  imposé, ancien mot de passe refusé, second démarrage sans effet.
+- Suite officielle : `python tests/run_all.py`, **30 modules, 197 tests OK**.
+
+## 2026-11-27 — FabInventory : revue du compte admin par défaut
+
+**Trou corrigé**
+- Le passage du drapeau `admin_password_is_default` à `0` était fait par
+  n'importe quel administrateur changeant *son* mot de passe : un second compte
+  admin pouvait donc lever l'obligation sans toucher au compte `admin`, qui
+  restait sur `1234`. Le drapeau n'est plus effacé que par le compte seedé
+  (`session['admin_username'] == 'admin'`).
+
+**Simplifications**
+- Bandeau « mot de passe par défaut » du dashboard supprimé : il était
+  inatteignable pour le compte concerné (la garde redirige vers Paramètres) et
+  trompeur pour les autres administrateurs. La requête et le paramètre de
+  template correspondants disparaissent ; le seul rappel utile est le message
+  de Paramètres.
+- Requête d'existence du seed paramétrée sur `DEFAULT_ADMIN_USERNAME` au lieu du
+  littéral SQL `'admin'`.
+- Le test devenue tautologique sur l'absence du bandeau est remplacé par le nom
+  de son vrai sujet : mot de passe fourni par l'environnement.
+
+**Garanties vérifiées**
+- Changement de mot de passe : la session est libérée (`force_password_change`
+  retiré, redirection vers le dashboard) et `1234` est refusé ensuite.
+- Autres comptes : technicien non redirigé, second administrateur non redirigé
+  et son changement de mot de passe laisse le drapeau à `1` ; `admin` / `1234`
+  reste renvoyé vers Paramètres.
+- La garde `before_request` n'exempte que Paramètres, Déconnexion et les
+  fichiers statiques ; la connexion paramètre l'exemption par session, pas par
+  compte.
+
+**Tests**
+- `test_security_xss.py` : 14 tests (dont le nouveau cas « autre admin »).
+- Suite officielle : `python tests/run_all.py`, **30 modules, 196 tests OK**.
+
+## 2026-11-27 — FabInventory : compte admin par défaut `admin` / `1234` (modèle PretGo)
+
+**Constat**
+- Le compte initial dépendait de `ADMIN_PASSWORD`, sinon d'un mot de passe
+  aléatoire écrit dans un fichier : un opérateur ne pouvait pas se connecter
+  sans retrouver ce fichier. PretGo, lui, crée `admin` / `1234` et impose le
+  changement à la première connexion.
+
+**Changement**
+- Seed : sans `ADMIN_PASSWORD`, le compte est `admin` / `1234` et
+  `app_meta.admin_password_is_default` vaut `1` ; avec la variable, elle est
+  utilisée telle quelle et le drapeau vaut `0` (aucun changement imposé).
+- Première connexion : `admin` / `1234` est redirigé vers Paramètres et reçoit
+  `session['force_password_change']` ; un `before_request` renvoie toutes les
+  autres pages vers Paramètres tant que le mot de passe n'est pas changé. Le
+  changement libère la session et redirige vers le dashboard.
+- Le forçage ne vise que l'identifiant `admin` : les autres comptes
+  administrateurs et les techniciens ne sont pas concernés (le drapeau est
+  global, le contrôle est nominatif).
+- Suppression du fichier `admin-initial-password.txt` et de son écriture ;
+  README, `.env.example` et variables documentées sont alignés.
+
+**Tests**
+- `test_security_xss.py` : le test de mot de passe aléatoire est remplacé par
+  deux tests — parcours complet `admin` / `1234` → Paramètres → nouveau mot de
+  passe → dashboard (et `1234` refusé ensuite), et non-forçage d'un technicien.
+- Suite officielle : `python tests/run_all.py`, **30 modules, 195 tests OK**.
+
+**Limite assumée**
+- `1234` est public : tant qu'il n'est pas changé, l'écran Paramètres est
+  atteignable par quiconque joint l'application. Sur une machine exposée,
+  définir `ADMIN_PASSWORD` avant le premier démarrage.
+
+## 2026-11-27 — FabInventory : documentation de la première connexion admin
+
+**Constat**
+- Le README expliquait `ADMIN_PASSWORD` en une ligne, sans dire où lire le
+  fichier généré en Docker ni comment repartir d'un mot de passe admin perdu.
+  Aucun écran ne permet cette réinitialisation (Paramètres exige l'ancien mot de
+  passe, Comptes exclut les administrateurs).
+
+**Changement**
+- README FabInventory : nouvelle section « Première connexion administrateur »
+  (tableau `ADMIN_PASSWORD` définie / absente, seed unique, changement via
+  Paramètres), cas Docker (lecture de `/data/admin-initial-password.txt` par
+  `exec` ou `run`, emplacement sur l'hôte pour chaque compose) et procédure de
+  réinitialisation en base (sauvegarde, arrêt, `UPDATE password_hash` avec
+  Werkzeug, redémarrage).
+- Le paragraphe dupliqué de « Installation rapide (Docker) » est remplacé par un
+  renvoi vers cette section.
+
+**Vérifications**
+- Commande de réinitialisation testée sur une base temporaire : hachage remplacé,
+  ancien mot de passe refusé, nouveau accepté (`1 compte(s) mis a jour`).
+- Pas de test Docker réel : `docker` n'est pas disponible dans cet environnement.
+
+## 2026-11-27 — FabInventory : `ADMIN_PASSWORD` transmis par Docker
+
+**Constat**
+- Les `docker-compose.yml` ne transmettaient pas `ADMIN_PASSWORD` : en Docker,
+  le seul moyen d'obtenir le mot de passe initial était donc le fichier
+  `admin-initial-password.txt` généré aléatoirement.
+
+**Changement**
+- `ADMIN_PASSWORD` est transmis depuis le `.env` par les trois composes qui
+  lancent FabInventory (racine, `FabInventory/`, `FabInventory/FabInventory/`),
+  avec `${ADMIN_PASSWORD:-}` : vide ou absent conserve le mot de passe aléatoire.
+- `.env.example` documente la variable ; README FabInventory (installation
+  Docker et tableau des variables) et README racine (variables reconnues)
+  précisent qu'elle n'est lue qu'au premier démarrage.
+
+**Limite**
+- Une fois le seed effectué (`app_meta.initial_seed`), changer la variable ne
+  modifie plus le mot de passe : il se change dans Admin → Paramètres.
+
+**Tests**
+- Aucun changement de code applicatif : validation YAML des trois composes et
+  vérification du rendu `${ADMIN_PASSWORD:-}` (vide → génération aléatoire déjà
+  couverte par `test_security_xss.py`).
+
 ## 2026-11-27 — FabInventory : revue de la gestion des comptes (suite 8)
 
 **Constat de revue**

@@ -261,38 +261,20 @@ def close_db(exception):
     if db: db.close()
 
 
-ADMIN_INITIAL_PASSWORD_FILENAME = "admin-initial-password.txt"
+# Compte admin cree au premier demarrage, sur le modele de PretGo : mot de passe
+# par defaut faible et changement impose a la premiere connexion. ADMIN_PASSWORD
+# permet de fournir directement un mot de passe initial ; dans ce cas aucun
+# changement n'est impose.
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "1234"
 
 
-def _admin_initial_password_path():
-    """Fichier lisible par le seul proprietaire, a cote de la base."""
-    return os.path.join(
-        os.path.dirname(os.path.abspath(DB_PATH)), ADMIN_INITIAL_PASSWORD_FILENAME
-    )
-
-
-def _write_initial_admin_password(password):
-    """Ecrit le mot de passe genere une seule fois, en 0600."""
-    chemin = _admin_initial_password_path()
-    try:
-        with open(chemin, "w", encoding="utf-8") as handle:
-            handle.write(password + "\n")
-        os.chmod(chemin, 0o600)
-    except OSError:
-        app.logger.error(
-            "Impossible d'ecrire le mot de passe admin initial dans %s", chemin
-        )
-        return None
-    return chemin
-
-
-def _remove_initial_admin_password():
-    try:
-        os.remove(_admin_initial_password_path())
-    except FileNotFoundError:
-        pass
-    except OSError:
-        app.logger.warning("Impossible de supprimer le fichier de mot de passe initial")
+def _admin_initial_credentials():
+    """Mot de passe initial et drapeau `admin_password_is_default` associe."""
+    password = (os.environ.get("ADMIN_PASSWORD") or "").strip()
+    if password:
+        return password, "0"
+    return DEFAULT_ADMIN_PASSWORD, "1"
 
 
 # Version du schema, portee par la table `schema_version`. Chaque etape de
@@ -880,25 +862,25 @@ def _seed_initial_data(db):
         "SELECT value FROM app_meta WHERE key = 'initial_seed'"
     ).fetchone()
     if not seed_done:
-        existing_admin = db.execute("SELECT id FROM admin_users WHERE username = 'admin'").fetchone()
+        existing_admin = db.execute(
+            "SELECT id FROM admin_users WHERE username = ?",
+            (DEFAULT_ADMIN_USERNAME,),
+        ).fetchone()
         if not existing_admin:
-            # Pas de compte admin/admin : mot de passe fourni par
-            # ADMIN_PASSWORD, sinon valeur aleatoire ecrite une seule fois dans
-            # un fichier reserve au proprietaire.
-            admin_password = (os.environ.get("ADMIN_PASSWORD") or "").strip()
-            generated = not admin_password
-            if generated:
-                admin_password = secrets.token_urlsafe(12)
+            # Modele PretGo : sans ADMIN_PASSWORD, le compte est admin / 1234 et
+            # la premiere connexion impose de choisir un autre mot de passe.
+            # Avec ADMIN_PASSWORD, le mot de passe initial est celui fourni et
+            # aucun changement n'est impose.
+            admin_password, is_default = _admin_initial_credentials()
             db.execute(
                 "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)",
-                ("admin", generate_password_hash(admin_password))
+                (DEFAULT_ADMIN_USERNAME, generate_password_hash(admin_password))
             )
-            if generated:
-                chemin = _write_initial_admin_password(admin_password)
-                if chemin:
-                    app.logger.warning(
-                        "Mot de passe admin initial genere : voir %s", chemin
-                    )
+            db.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) "
+                "VALUES ('admin_password_is_default', ?)",
+                (is_default,),
+            )
 
         pack_base = [
             ("VLC media player", "Multimédia", "Lecteur multimédia universel", 1),
@@ -913,6 +895,30 @@ def _seed_initial_data(db):
         db.execute(
             "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('initial_seed', '1')"
         )
+    else:
+        # Base creee avant ce mecanisme (drapeau absent) : on applique une seule
+        # fois le compte par defaut admin / 1234 avec changement impose, comme
+        # PretGo. ADMIN_PASSWORD reste prioritaire. Une base deja passee par ce
+        # mecanisme garde son mot de passe.
+        has_flag = db.execute(
+            "SELECT value FROM app_meta WHERE key = 'admin_password_is_default'"
+        ).fetchone()
+        if not has_flag:
+            existing_admin = db.execute(
+                "SELECT id FROM admin_users WHERE username = ?",
+                (DEFAULT_ADMIN_USERNAME,),
+            ).fetchone()
+            if existing_admin:
+                admin_password, is_default = _admin_initial_credentials()
+                db.execute(
+                    "UPDATE admin_users SET password_hash = ? WHERE id = ?",
+                    (generate_password_hash(admin_password), existing_admin["id"]),
+                )
+                db.execute(
+                    "INSERT OR REPLACE INTO app_meta (key, value) "
+                    "VALUES ('admin_password_is_default', ?)",
+                    (is_default,),
+                )
 
 
 
@@ -1024,6 +1030,14 @@ MIN_PASSWORD_LENGTH = 6
 def _get_admin_user():
     """Retourne le nom d'utilisateur admin connecté (pour affichage)."""
     return session.get('admin_username', 'admin')
+
+
+def _admin_password_is_default(db):
+    """Vrai tant que le compte admin garde le mot de passe par defaut."""
+    row = db.execute(
+        "SELECT value FROM app_meta WHERE key = 'admin_password_is_default'"
+    ).fetchone()
+    return bool(row and row["value"] == "1")
 
 
 @app.context_processor
@@ -1179,6 +1193,19 @@ def _require_admin_for_writes():
         return jsonify({"error": "Authentification admin requise"}), 401
     flash("Connectez-vous pour effectuer cette action.", "error")
     return redirect(url_for("admin_login"))
+
+
+_PASSWORD_CHANGE_ALLOWED_ENDPOINTS = {"admin_settings", "admin_logout", "static"}
+
+
+@app.before_request
+def _require_password_change():
+    """Tant que le mot de passe par defaut est en place, seul Parametres repond."""
+    if not session.get("force_password_change"):
+        return None
+    if request.endpoint in _PASSWORD_CHANGE_ALLOWED_ENDPOINTS:
+        return None
+    return redirect(url_for("admin_settings"))
 
 
 # ─── HELPERS DEMANDES ─────────────────────────────────────────────────────────
@@ -1480,6 +1507,15 @@ def admin_login():
             session['admin_username'] = username
             session['admin_user_id'] = user['id']
             session['admin_role'] = role
+            # Premiere connexion avec le mot de passe par defaut : on impose le
+            # passage par Parametres avant tout autre ecran (modele PretGo).
+            if (
+                role == ROLE_ADMIN
+                and username == DEFAULT_ADMIN_USERNAME
+                and _admin_password_is_default(db)
+            ):
+                session['force_password_change'] = True
+                return redirect(url_for('admin_settings'))
             return redirect(
                 url_for('admin_dashboard' if role == ROLE_ADMIN else 'index')
             )
@@ -1497,10 +1533,6 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     db = get_db()
-    default_pw = db.execute(
-        "SELECT value FROM app_meta WHERE key = 'admin_password_is_default'"
-    ).fetchone()
-    default_password_warning = bool(default_pw and default_pw['value'] == '1')
     # ── Demandes ──
     statuts = db.execute(
         "SELECT statut, COUNT(*) AS total FROM demandes GROUP BY statut"
@@ -1565,7 +1597,6 @@ def admin_dashboard():
         nb_couverts=nb_couverts,
         nb_catalogue=len(logiciels_actifs),
         masters_obsoletes=masters_obsoletes,
-        default_password_warning=default_password_warning,
         admin_user=_get_admin_user(),
         STATUT_BADGE=STATUT_BADGE,
     )
@@ -2064,10 +2095,14 @@ def admin_settings():
                 "UPDATE admin_users SET password_hash=? WHERE id=?",
                 (generate_password_hash(new_password), user_id)
             )
-            db.execute(
-                "INSERT OR REPLACE INTO app_meta (key, value) "
-                "VALUES ('admin_password_is_default', '0')"
-            )
+            # Le drapeau ne concerne que le compte seede `admin` : un autre
+            # administrateur ne doit pas pouvoir lever l'obligation en changeant
+            # son propre mot de passe.
+            if session.get("admin_username") == DEFAULT_ADMIN_USERNAME:
+                db.execute(
+                    "INSERT OR REPLACE INTO app_meta (key, value) "
+                    "VALUES ('admin_password_is_default', '0')"
+                )
             _audit(
                 db,
                 "settings",
@@ -2077,10 +2112,15 @@ def admin_settings():
                 "Mot de passe modifié",
             )
             db.commit()
-            _remove_initial_admin_password()
+            session.pop("force_password_change", None)
             flash("Mot de passe modifié.", "success")
-            return redirect(url_for('admin_settings'))
-    return render_template("admin/settings.html", error=error, admin_user=_get_admin_user())
+            return redirect(url_for('admin_dashboard'))
+    return render_template(
+        "admin/settings.html",
+        error=error,
+        admin_user=_get_admin_user(),
+        must_change_password=bool(session.get("force_password_change")),
+    )
 
 
 # ─── COMPTES : CRÉATION, MOT DE PASSE, DÉSACTIVATION (ADMIN) ─────────────

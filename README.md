@@ -402,7 +402,7 @@ local. Tableau des réglages réellement lus par le code (hors Docker) :
 | FabBoard | 5580 | `FABBOARD_PORT`, `FABTRACK_URL`, `FABBOARD_FABTRACK_CACHE_TTL`, `FLASK_DEBUG` | `PORT` est **ignoré** : sans `FABBOARD_PORT`, l'app écoute sur 5580 |
 | PretGo | 5000 | — | Port fixé dans `app.py` (aucune variable de port) |
 | FabHome | 3000 | `PORT`, `FABHOME_APP_PORT` (prioritaire), `FABHOME_DB`, `FABHOME_DATA`, `FLASK_DEBUG` | Base `data/fabhome.db` et dossier `data/` par défaut, déplaçables par `FABHOME_DB`/`FABHOME_DATA` |
-| FabInventory | 5590 | `PORT`, `DB_PATH`, `UPLOAD_FOLDER`, `SECRET_KEY`, `DEBUG`, `PERF_LOG` | `DB_PATH` et `UPLOAD_FOLDER` visent `/data` par défaut, chemin de conteneur |
+| FabInventory | 5590 | `PORT`, `DB_PATH`, `UPLOAD_FOLDER`, `SECRET_KEY`, `ADMIN_PASSWORD`, `DEBUG`, `PERF_LOG` | `DB_PATH` et `UPLOAD_FOLDER` visent `/data` par défaut, chemin de conteneur ; `ADMIN_PASSWORD` ne sert qu'au premier démarrage (sinon `admin` / `1234`, changement imposé) |
 
 En Docker, ce sont les ports **hôtes** de `docker-compose.yml` qui changent (variables du `.env`) :
 

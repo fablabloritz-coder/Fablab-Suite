@@ -9,6 +9,13 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-white fw-semibold">Changer le mot de passe</div>
       <div class="card-body">
+        {% if must_change_password %}
+        <div class="alert alert-warning small">
+          <strong>Première connexion :</strong> le compte admin utilise encore le mot de passe
+          par défaut (<code>1234</code>). Choisissez un nouveau mot de passe pour accéder au
+          reste de l'administration.
+        </div>
+        {% endif %}
         {% if error %}
         <div class="alert alert-danger small">{{ error }}</div>
         {% endif %}

@@ -8,8 +8,9 @@
 > (`app_meta.initial_seed`), les clés étrangères sont actives, SQLite est en
 > WAL, et `/healthz` teste la base. Toutes les écritures exigent une session
 > admin (portail professeur et comparaison exceptés) ; la clé de session est
-> aléatoire et persistée, et le compte admin n'a plus de mot de passe par
-> défaut. Les suppressions de masters et de scans passent par une corbeille
+> aléatoire et persistée, et le compte admin initial est `admin` / `1234` avec
+> changement impose a la premiere connexion (modele PretGo ; `ADMIN_PASSWORD`
+> fournit un mot de passe definitif). Les suppressions de masters et de scans passent par une corbeille
 > restaurable (`deleted_items`, `/admin/trash`). Le schéma est porté par des
 > migrations ordonnées et idempotentes (`_SCHEMA_MIGRATIONS`, constante
 > `SCHEMA_VERSION`) enregistrées dans la table `schema_version` : une base vide
@@ -249,7 +250,7 @@ FabInventory follows the FabSuite inter-app contract:
 | `DB_PATH` | `/data/fabinventory.db` | SQLite database path |
 | `UPLOAD_FOLDER` | `/data/uploads` | Upload directory |
 | `SECRET_KEY` | générée | Clé de session Flask ; une valeur absente, de moins de 32 caractères, trop peu variée ou connue est ignorée et remplacée par une clé aléatoire persistée dans `app_meta`. Le compose exige `FLASK_SECRET_KEY`. |
-| `ADMIN_PASSWORD` | généré | Mot de passe initial du compte `admin` ; sinon mot de passe aléatoire écrit une fois dans `admin-initial-password.txt` (0600) à côté de la base. |
+| `ADMIN_PASSWORD` | `1234` | Mot de passe initial du compte `admin` ; absent ou vide, le compte est `admin` / `1234` et le changement est imposé a la premiere connexion. |
 | `DEBUG` | `0` | Set to `1` for Flask debug mode |
 
 ## 12) Data persistence
