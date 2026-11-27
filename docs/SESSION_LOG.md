@@ -6,6 +6,47 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : CI sur PR, migrations versionnées et parc 500 PC (suite 7)
+
+**Fonctionnel**
+- `init_db()` ne porte plus un empilement de `ALTER TABLE` : le schéma est une
+  liste ordonnée et idempotente (`_SCHEMA_MIGRATIONS`, `SCHEMA_VERSION = 5`)
+  enregistrée dans la table `schema_version` (`version`, `name`, `applied_at`).
+  Une base vide ou v2.1.4 rejoue les étapes manquantes ; une base à jour n'en
+  rejoue aucune. Le SQL des étapes est repris tel quel, sans changement de
+  comportement pour les parcours validés.
+- `tools/parc_scale.py` génère un parc synthétique déterministe (500 masters,
+  10 000 snapshots, 400 000 lignes d'index par défaut) et mesure `/`, `/sante`,
+  `/search`, `/api/software` et `/admin/masters`. Le budget SQL est la clé de
+  la table `PAGES` (7, 5, 8, 6 et 9 requêtes, soit le nombre mesuré + 2) : une
+  page sans budget ne peut pas être mesurée sans échec, et une requête ajoutée
+  par master fait échouer le contrôle. Le seuil de temps est de 4 000 ms par
+  page (`FABINVENTORY_MAX_MS` pour une machine plus lente). Le jeu n'est jamais
+  committé.
+- Nouveau workflow `.github/workflows/fabinventory-tests.yml` : suites sur
+  push/PR touchant l'application, compilation des modules et des 31 templates,
+  puis génération du parc et mesure des budgets.
+
+**Tests**
+- `tests/test_schema_migrations.py` (5 tests) : ordre sans trou, base vide,
+  absence de rejeu sur base à jour, migration d'une base v2.1.4 sans perte,
+  reprise d'un fichier sans `schema_version`.
+- `tests/test_parc_scale.py` (4 tests) : volume généré (500 masters), pages
+  critiques en 200, budget SQL fixe, seuil de temps.
+- Trois tests de migration existants partent maintenant explicitement d'une
+  base sans `schema_version` (`support.simuler_base_ancienne`), pour continuer
+  à vérifier la migration et non le rejeu d'une base à jour.
+- Suite officielle : `python tests/run_all.py`, **25 modules, 143 tests OK**.
+- Mesure de référence (VM de développement, meilleure de deux passes) : `/`
+  5 requêtes / 52 ms, `/sante` 3 / 43 ms, `/search` 6 / 436 ms,
+  `/api/software` 4 / 6 ms, `/admin/masters` 7 / 954 ms sur 500 masters et
+  10 000 snapshots. Budgets et seuil ont été vérifiés en négatif : budget
+  abaissé à 2 et seuil à 1 ms déclenchent bien un échec.
+
+**Prochaine action**
+- Suite 6 de la feuille de route : rapports parc (versions, licences,
+  logiciels importants).
+
 ## 2026-11-27 — FabInventory : couverture logicielle par normalisation et alias (suite 5)
 
 **Fonctionnel**

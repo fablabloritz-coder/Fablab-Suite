@@ -34,3 +34,15 @@ def reset_temp_db(init_db):
             except FileNotFoundError:
                 pass
     init_db()
+
+
+def simuler_base_ancienne(db):
+    """Ramene le suivi de schema a zero, comme une base v2.1.4.
+
+    Les migrations sont enregistrees dans `schema_version` et ne sont plus
+    rejouees sur une base a jour. Un test qui verifie une migration doit donc
+    retirer ce suivi avant d'appeler `init_db()`, sinon il testerait une base
+    qui n'a rien a migrer.
+    """
+    db.execute("DROP TABLE IF EXISTS schema_version")
+    db.commit()

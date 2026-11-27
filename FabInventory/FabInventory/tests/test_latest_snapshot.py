@@ -14,7 +14,7 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
-from tests.support import reset_temp_db  # noqa: E402
+from tests.support import reset_temp_db, simuler_base_ancienne  # noqa: E402
 from app import (  # noqa: E402
     _upsert_snapshot_software_index,
     app,
@@ -131,8 +131,9 @@ class LatestSnapshotTests(unittest.TestCase):
     def test_backfill_remplit_scan_date_iso(self):
         _, newest, oldest = self._seed_two_scans()
         with app.app_context():
-            init_db()
             db = get_db()
+            simuler_base_ancienne(db)
+            init_db()
             values = {
                 row["id"]: row["scan_date_iso"]
                 for row in db.execute(

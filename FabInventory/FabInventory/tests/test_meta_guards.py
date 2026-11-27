@@ -16,7 +16,7 @@ if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
 from tests import run_all  # noqa: E402
-from tests.support import reset_temp_db  # noqa: E402
+from tests.support import reset_temp_db, simuler_base_ancienne  # noqa: E402
 from app import APP_VERSION, app, get_db, init_db  # noqa: E402
 
 
@@ -94,6 +94,7 @@ class MetaGuardTests(unittest.TestCase):
             db = get_db()
             db.execute("DROP TABLE IF EXISTS software_followups")
             db.commit()
+            simuler_base_ancienne(db)
             init_db()
             tables = {
                 row["name"]

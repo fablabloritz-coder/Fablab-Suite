@@ -10,8 +10,13 @@
 > admin (portail professeur et comparaison exceptés) ; la clé de session est
 > aléatoire et persistée, et le compte admin n'a plus de mot de passe par
 > défaut. Les suppressions de masters et de scans passent par une corbeille
-> restaurable (`deleted_items`, `/admin/trash`). Suite de référence :
-> `python tests/run_all.py` (23 modules, 134 tests). Les
+> restaurable (`deleted_items`, `/admin/trash`). Le schéma est porté par des
+> migrations ordonnées et idempotentes (`_SCHEMA_MIGRATIONS`, constante
+> `SCHEMA_VERSION`) enregistrées dans la table `schema_version` : une base vide
+> comme une base v2.1.4 rejoue les étapes manquantes au démarrage, une base à
+> jour n'en rejoue aucune. Suite de référence : `python tests/run_all.py`
+> (25 modules, 143 tests). Un parc synthétique de 500 PC
+> (`tools/parc_scale.py`) mesure les pages critiques et leur budget SQL. Les
 > scans conservent aussi `warnings_json`, `script_version`, `scan_schema` et
 > `generated_at` ; `/master/<id>/evolution`, `/sante` et `/reseau` exploitent
 > ces données. La couverture logicielle compare une clé normalisée
@@ -134,6 +139,8 @@ FabInventory/
 │   ├── snapshot.html           # Single scan detail (read-only)
 │   └── compare.html            # Side-by-side master comparison
 ├── static/css/style.css        # Custom styles
+├── tests/                      # Suite de non-regression (run_all.py)
+├── tools/parc_scale.py         # Parc synthetique 500 PC + mesure des pages
 ├── Dockerfile                  # Python 3.11 slim + gunicorn
 ├── docker-compose.yml          # Standalone deployment
 ├── requirements.txt            # flask, gunicorn

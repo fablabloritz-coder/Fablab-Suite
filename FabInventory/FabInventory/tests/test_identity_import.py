@@ -16,7 +16,7 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
-from tests.support import login_admin, reset_temp_db  # noqa: E402
+from tests.support import login_admin, reset_temp_db, simuler_base_ancienne  # noqa: E402
 from app import app, get_db, init_db  # noqa: E402
 
 
@@ -85,6 +85,7 @@ class IdentityImportTests(unittest.TestCase):
                 (ids[0],),
             )
             db.commit()
+            simuler_base_ancienne(db)
 
         init_db()
 

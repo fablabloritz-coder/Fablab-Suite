@@ -16,6 +16,7 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 - **Cases à cocher** : marquez les logiciels importants (sauvegardé en base)
 - **Notes** : ajoutez des notes par logiciel (licence, salle, remarques)
 - **Couverture logicielle fiable** : les noms sont normalisés (casse, accents, préfixes d'éditeur, suffixes d'édition/version) et complétés par des alias gérés dans le catalogue. « Java » ne compte plus « JavaScript », « Office » ne compte plus « OpenOffice », « Visual Studio » ne compte plus « Visual Studio Code ».
+- **Migrations de schéma versionnées** : chaque migration idempotente est listée dans l'ordre et enregistrée dans `schema_version`. Une base vide comme une base antérieure (v2.1.4) est reprise au démarrage suivant, sans perte.
 - **Historique** : chaque scan est conservé, avec provenance du script et avertissements de collecte
 - **Évolution d'un master** : comparez deux scans du même poste (logiciels, système, disques, réseau, services)
 - **Santé du parc** : repérez les scans anciens, disques bas, collectes partielles et doublons réseau
@@ -113,10 +114,28 @@ FabInventory/
 │   ├── inventaire_master.ps1     # Script telechargeable (HTML + CSV + JSON)
 │   └── lancer_inventaire_master.bat
 ├── tests/                       # Suite de non-regression (run_all.py)
+├── tools/parc_scale.py          # Parc synthetique (500 PC) et mesure des pages
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
 ```
+
+## Tests et mesures
+
+```bash
+python3 tests/run_all.py        # 25 modules, 143 tests, un processus par module
+python3 tools/parc_scale.py --db /tmp/parc-500.db --force --benchmark
+```
+
+La seconde commande génère un parc synthétique (500 masters, 10 000 snapshots,
+400 000 lignes d'index logiciel) puis mesure `/`, `/sante`, `/search`,
+`/api/software` et `/admin/masters` : un budget SQL fixe par page et un seuil de
+temps de réponse. Un budget constant prouve qu'aucune requête n'est faite par
+master ou par snapshot (N+1). Le jeu n'est jamais committé : il est généré à la
+demande.
+
+La CI `.github/workflows/fabinventory-tests.yml` rejoue les suites et cette
+mesure sur chaque PR touchant l'application, avant fusion.
 
 ## Stack technique
 

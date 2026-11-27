@@ -294,17 +294,15 @@ def _remove_initial_admin_password():
         app.logger.warning("Impossible de supprimer le fichier de mot de passe initial")
 
 
-def init_db():
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout=5000")
-    db.execute("PRAGMA foreign_keys=ON")
-    try:
-        db.execute("PRAGMA journal_mode=WAL")
-        db.execute("PRAGMA synchronous=NORMAL")
-    except sqlite3.OperationalError:
-        # Certains montages reseau ne supportent pas WAL : on reste en mode par defaut.
-        pass
+# Version du schema, portee par la table `schema_version`. Chaque etape de
+# `_SCHEMA_MIGRATIONS` est idempotente et s'execute dans l'ordre : une base
+# ancienne (v2.1.4) les rejoue toutes une fois, une base a jour n'en rejoue
+# aucune. Les tests `test_schema_migrations.py` verifient les deux cas.
+SCHEMA_VERSION = 5
+
+
+def _migrate_1_core_schema(db):
+    """Tables de base, index et colonnes historiques (etat v2.0)."""
     db.executescript("""
     CREATE TABLE IF NOT EXISTS masters (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -440,6 +438,9 @@ def init_db():
         ON deleted_items(restored_at, deleted_at DESC);
     """)
 
+
+def _migrate_2_snapshot_dates(db):
+    """Dates de scan comparables, index et vues latest_snapshots/snapshot_keys."""
     # ── Dates de scan comparables ────────────────────────────────────────────
     # `scan_date` reste la valeur affichee (jj/mm/aaaa) ; `scan_date_iso` sert
     # uniquement au tri et aux comparaisons. Les vues ci-dessous retombent sur
@@ -505,6 +506,9 @@ def init_db():
     );
     """)
 
+
+def _migrate_3_master_identity(db):
+    """Workflow inventory/preparation, cle de nom et colonnes ajoutees depuis v2.0."""
     # Migration idempotente: separation explicite des masters inventories et des listes de preparation.
     cols = [row[1] for row in db.execute("PRAGMA table_info(masters)").fetchall()]
     if "workflow_type" not in cols:
@@ -526,6 +530,7 @@ def init_db():
     # Un meme PC ne doit pas creer trois fiches selon les espaces ou la casse.
     # La cle est calculee en Python (Unicode) puis stockee pour les requetes.
     master_cols = [row[1] for row in db.execute("PRAGMA table_info(masters)").fetchall()]
+    snap_cols = [row[1] for row in db.execute("PRAGMA table_info(snapshots)").fetchall()]
     if "pc_name_key" not in master_cols:
         db.execute("ALTER TABLE masters ADD COLUMN pc_name_key TEXT DEFAULT ''")
     if "content_hash" not in snap_cols:
@@ -593,6 +598,9 @@ def init_db():
     db.execute("UPDATE roadmap_minimal_pack SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
     db.execute("UPDATE roadmap_items SET note_text = note WHERE (note_text IS NULL OR note_text = '') AND note IS NOT NULL AND note <> ''")
 
+
+def _migrate_4_master_merge(db):
+    """Fusion des doublons de masters homonymes et index unique."""
     # Fusion des doublons deja presents : on garde la fiche la plus ancienne,
     # puis on deplace snapshots, flags et checklist avant de supprimer l'autre.
     # Ce bloc est execute apres toutes les migrations de colonnes pour rester
@@ -646,6 +654,9 @@ def init_db():
         "ON masters(workflow_type, pc_name_key) WHERE pc_name_key <> ''"
     )
 
+
+def _migrate_5_catalogue_coverage(db):
+    """Tables du portail, alias et cle normalisee de couverture logicielle."""
     # ─── NOUVELLES TABLES : portail demandes logiciels ───────────────────────
 
     db.executescript("""
@@ -771,6 +782,50 @@ def init_db():
             ],
         )
 
+
+_SCHEMA_MIGRATIONS = [
+    (1, "tables de base", _migrate_1_core_schema),
+    (2, "dates de scan", _migrate_2_snapshot_dates),
+    (3, "identite des masters", _migrate_3_master_identity),
+    (4, "fusion des doublons", _migrate_4_master_merge),
+    (5, "catalogue et couverture", _migrate_5_catalogue_coverage),
+]
+
+assert SCHEMA_VERSION == _SCHEMA_MIGRATIONS[-1][0]
+
+
+def _apply_schema_migrations(db):
+    """Applique dans l'ordre les migrations non encore enregistrees.
+
+    Une etape est enregistree dans `schema_version` juste apres son execution :
+    si une migration ulterieure echoue, les precedentes restent acquises et la
+    suivante reprend au bon endroit. Chaque etape etant idempotente, rejouer
+    une base ancienne sans table `schema_version` reste sans effet de bord.
+    """
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    applied = {
+        row["version"] for row in db.execute("SELECT version FROM schema_version")
+    }
+    for version, name, migration in _SCHEMA_MIGRATIONS:
+        if version in applied:
+            continue
+        migration(db)
+        db.execute(
+            "INSERT OR IGNORE INTO schema_version (version, name) VALUES (?, ?)",
+            (version, name),
+        )
+        db.commit()
+
+
+def _seed_initial_data(db):
     # Seed initial unique. Le marqueur evite qu'un admin ou un logiciel du pack
     # supprime volontairement reapparaisse au prochain demarrage.
     seed_done = db.execute(
@@ -811,10 +866,26 @@ def init_db():
             "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('initial_seed', '1')"
         )
 
+
+
+def init_db():
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA busy_timeout=5000")
+    db.execute("PRAGMA foreign_keys=ON")
+    try:
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.OperationalError:
+        # Certains montages reseau ne supportent pas WAL : on reste en mode par defaut.
+        pass
+    _apply_schema_migrations(db)
+    _seed_initial_data(db)
     db.commit()
     db.close()
 
 init_db()
+
 
 
 def _load_secret_key():
