@@ -31,7 +31,7 @@
   <div class="col-6 col-md-3">
     <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
       <div class="fw-800 fs-4" style="font-weight:800;color:#b02a37">{{ summary['licensed_without_info'] }}</div>
-      <div class="text-muted small">Licences sans information</div>
+      <div class="text-muted small">Logiciels à licence incomplète</div>
     </div></div>
   </div>
 </div>
@@ -49,8 +49,10 @@
       <div>
         <h5 class="mb-0">Versions par logiciel</h5>
         <div class="text-muted small mt-1">
-          Dernier scan de chaque master inventorie. Une version est marquee « ancienne »
-          quand une version plus recente du meme logiciel existe dans le parc.
+          Dernier scan de chaque master inventorié. Les variantes d'un même nom
+          (« Mozilla Firefox » et « Firefox ») sont regroupées. Une version est
+          marquée « ancienne » quand une version plus récente du même logiciel
+          existe dans le parc ; une version absente reste « sans version ».
         </div>
       </div>
       <span class="badge bg-secondary">{{ summary['version_rows'] }}</span>
@@ -73,8 +75,10 @@
             <td><code>{{ row['version'] or '—' }}</code></td>
             <td class="text-end">{{ row['masters'] }}</td>
             <td>
-              {% if row['is_latest'] %}
-              <span class="badge bg-success">Derniere observee</span>
+              {% if row['status'] == 'sans_version' %}
+              <span class="badge bg-secondary">Sans version</span>
+              {% elif row['status'] == 'last' %}
+              <span class="badge bg-success">Dernière observée</span>
               {% else %}
               <span class="badge bg-warning text-dark">Ancienne</span>
               {% endif %}
@@ -85,7 +89,7 @@
       </table>
     </div>
     {% else %}
-    <p class="text-muted mb-0">Aucun logiciel indexe pour l'instant.</p>
+    <p class="text-muted mb-0">Aucun logiciel indexé pour l'instant.</p>
     {% endif %}
   </div>
 </div>
@@ -95,10 +99,10 @@
   <div class="card-body p-4">
     <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
       <div>
-        <h5 class="mb-0">Licences declarees</h5>
+        <h5 class="mb-0">Licences déclarées</h5>
         <div class="text-muted small mt-1">
-          Logiciels marques sous licence. « Sans information » signale un master
-          ou le type de licence n'est pas renseigne.
+          Logiciels marqués sous licence, comptés en logiciels. « Sans information »
+          signale les masters où le type de licence n'est pas renseigné.
         </div>
       </div>
       <a href="{{ url_for('parc_reports_licences_csv') }}" class="btn btn-outline-success btn-sm">
@@ -131,9 +135,11 @@
             </td>
             <td>
               {% if row['without_info'] %}
-              <span class="badge bg-danger">Sans information ({{ row['missing'] }})</span>
+              <span class="badge bg-danger">
+                Sans information ({{ row['missing'] }} master{% if row['missing'] > 1 %}s{% endif %})
+              </span>
               {% else %}
-              <span class="badge bg-success">Complete</span>
+              <span class="badge bg-success">Complète</span>
               {% endif %}
             </td>
           </tr>
@@ -142,7 +148,7 @@
       </table>
     </div>
     {% else %}
-    <p class="text-muted mb-0">Aucun logiciel marque sous licence.</p>
+    <p class="text-muted mb-0">Aucun logiciel marqué sous licence.</p>
     {% endif %}
   </div>
 </div>
@@ -154,8 +160,8 @@
       <div>
         <h5 class="mb-0">Logiciels importants</h5>
         <div class="text-muted small mt-1">
-          Logiciels coches « important » sur au moins un master, avec leur version
-          au dernier scan.
+          Logiciels cochés « important » sur au moins un master, avec toutes leurs
+          versions installées au dernier scan.
         </div>
       </div>
       <a href="{{ url_for('parc_reports_importants_csv') }}" class="btn btn-outline-success btn-sm">
@@ -199,7 +205,7 @@
       </table>
     </div>
     {% else %}
-    <p class="text-muted mb-0">Aucun logiciel marque important.</p>
+    <p class="text-muted mb-0">Aucun logiciel marqué important.</p>
     {% endif %}
   </div>
 </div>

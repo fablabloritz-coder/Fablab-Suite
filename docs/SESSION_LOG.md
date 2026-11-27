@@ -6,6 +6,99 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : rapports parc, corrections de la revue (suite 6)
+
+**Fonctionnel**
+- Versions, licences et logiciels importants sont désormais regroupés par nom
+  normalisé `software_name_norm` : « Mozilla Firefox » et « Firefox » forment
+  une seule ligne, avec la variante la plus courte (« Firefox ») comme libellé.
+- Une version absente n'est plus étiquetée « ancienne » ni « dernière
+  observée » : elle porte le statut dédié « Sans version » et ne participe pas
+  au calcul de la dernière version observée du logiciel.
+- Les logiciels importants conservent toutes les versions installées sur un
+  même master (deux versions côte à côte), en page comme dans l'export CSV
+  (une ligne par version).
+
+**Revue risque**
+- Le regroupement s'appuie sur la clé normalisée déjà stockée et maintenue par
+  `init_db`, avec recalcul à la volée si la colonne est vide.
+- Le comptage des masters reste un `COUNT(DISTINCT master_id)` : une même
+  machine qui déclare deux variantes du nom pour la même version ne compte
+  qu'une fois.
+- Les rapports restent en lecture seule, sans nouvelle requête par master.
+
+**Simplification (revue fraîche)**
+- Un seul champ de statut (`sans_version`, `last`, `old`) remplace les
+  booléens dérivés `has_version` / `is_latest` et le helper
+  `_parc_version_status` : le template et les tests lisent la même valeur.
+- Licences : la liste `notes` (jamais lue) est supprimée. Masters importants :
+  un seul dictionnaire par logiciel (plus de liste parallèle `masters_by_id`),
+  versions dédupliquées au moment du tri.
+- Libellé d'un groupe = variante la plus courte, donc stable quand le parc
+  évolue ; l'ancienne règle « variante la plus fréquente » changeait de libellé
+  à chaque nouveau poste.
+- CSV : neutralisation limitée aux quatre préfixes demandés (`= + - @`) et aux
+  cellules de données, les en-têtes étant des constantes ;
+  `licensed_without_info` somme directement les booléens.
+
+**Tests**
+- `tests/test_parc_reports.py` : +4 tests (variantes de nom regroupées sur les
+  trois rapports, version vide en « Sans version », deux versions sur un même
+  poste avec deux lignes CSV, neutralisation des formules CSV), 9 au total.
+- Points mineurs de la revue : indicateurs de licences exprimés en logiciels
+  (« Logiciels sous licence », « Logiciels à licence incomplète ») avec le
+  détail par master dans la colonne Information ; cellules CSV commençant par
+  `=`, `+`, `-` ou `@` neutralisées par une apostrophe à l'export ; requête des
+  licences partagée entre le rapport et l'export ; accents rétablis dans
+  `parc_reports.html`.
+- Suite officielle : `python tests/run_all.py`, **28 modules, 171 tests OK**.
+
+**Prochaine action**
+- Enchaîner sur le rôle `technicien` de la suite 8 (colonne `role`, décorateur
+  de permission, matrice testée).
+
+## 2026-11-27 — FabInventory : journal d'audit des écritures (suite 8, première moitié)
+
+**Fonctionnel**
+- Nouvelle table versionnée `audit_log` (migration 6) : horodatage,
+  utilisateur, action, type et identifiant de cible, libellé, résumé et IP.
+- Écritures journalisées : import d'inventaire (compteurs du rapport de
+  fusion), création/renommage/suppression de master, nouveau scan, suppression
+  de scan, restauration et purge de la corbeille, flag logiciel, ajout /
+  modification / cochage / suppression de checklist, application du pack
+  minimal et entrées du pack, décision d'absence, changement de mot de passe
+  et rétention du journal.
+- Les résumés ne recopient ni les notes de licence ni les mots de passe :
+  seuls des faits (booléens, type de licence, compteurs, ancien → nouveau nom)
+  sont conservés.
+- Page admin `/admin/journal` : filtres utilisateur / action / période,
+  pagination par 100, export CSV (UTF-8 BOM, séparateur `;`) et réglage de la
+  rétention (365 jours par défaut, 0 = illimité, maximum 3 650 jours).
+
+**Revue risque**
+- Journalisation dans la transaction de l'écriture : un échec de commit
+  n'invente pas d'entrée. La purge de rétention s'exécute avant l'insertion
+  pour ne jamais supprimer l'entrée courante.
+- Aucune donnée sensible recopiée (test dédié avec une note de licence
+  contenant un mot de passe).
+- Lecture et export réservés aux admins (`@admin_required`), comme la
+  corbeille. Les lectures publiques restent inchangées (suite 9 à décider).
+
+**Tests**
+- `tests/test_audit_log.py` (8 tests) : import et flag sans fuite de note,
+  suppression/restauration/purge, renommage et suppression de scan, checklist
+  et décision d'absence, paramètres sans mot de passe, filtres + CSV,
+  rétention (30 jours et illimitée), accès réservé et non-régression.
+- Suite officielle : `python tests/run_all.py`, **28 modules, 167 tests OK**.
+
+**Reste à faire (même suite)**
+- Rôle `technicien` (écritures inventaire autorisées, catalogue/paramètres
+  interdits) et rôle lecture, avec matrice de permissions testée.
+
+**Prochaine action**
+- Ajouter la colonne `role` à `admin_users` et le décorateur de permission,
+  puis couvrir les parcours technicien/administrateur en tests.
+
 ## 2026-11-27 — FabInventory : rapports parc, versions, licences et logiciels importants (suite 6)
 
 **Fonctionnel**

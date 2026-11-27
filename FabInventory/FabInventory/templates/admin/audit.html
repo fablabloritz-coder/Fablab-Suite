@@ -1,0 +1,120 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Journal d'audit — FabInventory{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-4">
+  <div>
+    <h3 class="fw-bold mb-1"><i class="bi bi-journal-text me-2 text-primary"></i>Journal d'audit</h3>
+    <div class="text-muted small">
+      Trace des écritures : imports, scans, suppressions, flags, checklists, absences et paramètres.
+      {{ total }} entrée(s) correspondent aux filtres.
+    </div>
+  </div>
+  <a href="{{ url_for('admin_audit_export') }}{% if export_query %}?{{ export_query }}{% endif %}"
+     class="btn btn-outline-success">
+    <i class="bi bi-filetype-csv me-1"></i>Export CSV
+  </a>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1" for="filtre-user">Utilisateur</label>
+        <select class="form-select form-select-sm" id="filtre-user" name="user">
+          <option value="">Tous</option>
+          {% for name in users %}
+          <option value="{{ name }}" {% if filters['user'] == name %}selected{% endif %}>{{ name or '(inconnu)' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1" for="filtre-action">Action</label>
+        <select class="form-select form-select-sm" id="filtre-action" name="action">
+          <option value="">Toutes</option>
+          {% for slug, label in actions.items() %}
+          <option value="{{ slug }}" {% if filters['action'] == slug %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="filtre-from">Du</label>
+        <input type="date" class="form-control form-control-sm" id="filtre-from" name="from" value="{{ filters['from'] }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="filtre-to">Au</label>
+        <input type="date" class="form-control form-control-sm" id="filtre-to" name="to" value="{{ filters['to'] }}">
+      </div>
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-funnel me-1"></i>Filtrer</button>
+        <a href="{{ url_for('admin_audit_log') }}" class="btn btn-outline-secondary btn-sm" title="Réinitialiser"><i class="bi bi-x-lg"></i></a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="white-space:nowrap;">Horodatage</th>
+          <th>Utilisateur</th>
+          <th>Action</th>
+          <th>Cible</th>
+          <th>Résumé</th>
+          <th>Adresse IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td class="text-nowrap small">{{ entry['created_at'] }}</td>
+          <td><i class="bi bi-person me-1 text-muted"></i>{{ entry['username'] or '(inconnu)' }}</td>
+          <td><span class="badge text-bg-light border">{{ entry['action_label'] }}</span></td>
+          <td>
+            {% if entry['target_label'] %}{{ entry['target_label'] }}{% else %}<span class="text-muted">—</span>{% endif %}
+            {% if entry['target_type'] %}<div class="text-muted small">{{ entry['target_type'] }}{% if entry['target_id'] %} #{{ entry['target_id'] }}{% endif %}</div>{% endif %}
+          </td>
+          <td class="small">{{ entry['summary'] or '—' }}</td>
+          <td class="small text-muted">{{ entry['ip'] or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Aucune entrée pour ces filtres.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if pages > 1 %}
+<nav class="d-flex align-items-center justify-content-between mb-4">
+  <span class="text-muted small">Page {{ page }} / {{ pages }}</span>
+  <div class="btn-group btn-group-sm">
+    <a class="btn btn-outline-secondary {% if page <= 1 %}disabled{% endif %}"
+       href="{{ url_for('admin_audit_log') }}?{{ export_query }}{% if export_query %}&{% endif %}page={{ page - 1 }}">Précédent</a>
+    <a class="btn btn-outline-secondary {% if page >= pages %}disabled{% endif %}"
+       href="{{ url_for('admin_audit_log') }}?{{ export_query }}{% if export_query %}&{% endif %}page={{ page + 1 }}">Suivant</a>
+  </div>
+</nav>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <h6 class="fw-bold mb-1"><i class="bi bi-clock-history me-1"></i>Rétention</h6>
+    <p class="text-muted small mb-3">
+      Les entrées plus anciennes sont supprimées à la prochaine écriture journalisée.
+      Mettre 0 conserve le journal sans limite.
+    </p>
+    <form method="post" class="d-flex flex-wrap align-items-end gap-2">
+      <div>
+        <label class="form-label small text-muted mb-1" for="retention_days">Jours de conservation</label>
+        <input type="number" class="form-control form-control-sm" id="retention_days" name="retention_days"
+               min="0" max="{{ retention_max }}" value="{{ retention }}" style="width:140px;" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
+      <span class="text-muted small">Maximum {{ retention_max }} jours.</span>
+    </form>
+  </div>
+</div>
+{% endblock %}

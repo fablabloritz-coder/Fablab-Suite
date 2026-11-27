@@ -1,7 +1,10 @@
 """Tests du Lot 6 : rapports parc (versions, licences, logiciels importants).
 
-Les rapports lisent le dernier scan des masters inventorie seulement : un scan
+Les rapports lisent le dernier scan des masters inventoriés seulement : un scan
 ancien ou un master de preparation ne doit jamais apparaitre dans les comptes.
+Les variantes de nom sont regroupees par `software_name_norm`, une version
+absente reste « sans version » et deux versions installees cote a cote sur un
+meme poste restent toutes deux visibles.
 """
 import io
 import json
@@ -127,6 +130,23 @@ class ParcReportsTests(unittest.TestCase):
             )
             db.commit()
 
+    def _add_master(self, pc_name, software, flags):
+        """Ajoute un scan, puis des drapeaux (nom, important, licence, type)."""
+        self._upload(pc_name, "28/11/2026 10:00", software)
+        with app.app_context():
+            db = get_db()
+            master_id = db.execute(
+                "SELECT id FROM masters WHERE pc_name = ?", (pc_name,)
+            ).fetchone()["id"]
+            for software_name, important, licensed, license_type in flags:
+                db.execute(
+                    "INSERT OR REPLACE INTO software_flags "
+                    "(master_id, software_name, is_important, note, is_licensed, "
+                    "license_type) VALUES (?, ?, ?, '', ?, ?)",
+                    (master_id, software_name, important, licensed, license_type),
+                )
+            db.commit()
+
     def _csv(self, path):
         response = self.client.get(path)
         self.assertEqual(response.status_code, 200)
@@ -147,18 +167,18 @@ class ParcReportsTests(unittest.TestCase):
         # Le premier scan de M1 (Firefox 128) est remplace par son dernier scan.
         self.assertEqual(len([r for r in rows if r["software_name"] == "Firefox"]), 2)
 
-        latest = {
-            (row["software_name"], row["version"]): row["is_latest"] for row in rows
+        status = {
+            (row["software_name"], row["version"]): row["status"] for row in rows
         }
-        self.assertTrue(latest[("Firefox", "129")])
-        self.assertFalse(latest[("Firefox", "128")])
-        self.assertTrue(latest[("7-Zip", "24.0")])
+        self.assertEqual(status[("Firefox", "129")], "last")
+        self.assertEqual(status[("Firefox", "128")], "old")
+        self.assertEqual(status[("7-Zip", "24.0")], "last")
 
         body = self.client.get("/rapports").get_data(as_text=True)
         self.assertIn("Rapports parc", body)
         self.assertIn("Firefox", body)
         self.assertIn("Ancienne", body)
-        self.assertIn("Derniere observee", body)
+        self.assertIn("Dernière observée", body)
 
     # ── licences ─────────────────────────────────────────────────────────────
 
@@ -178,8 +198,36 @@ class ParcReportsTests(unittest.TestCase):
         self.assertNotIn("PREP-01", by_name["Firefox"]["masters"])
 
         body = self.client.get("/rapports").get_data(as_text=True)
-        self.assertIn("Sans information", body)
+        self.assertIn("Sans information (1 master)", body)
         self.assertIn("7-Zip", body)
+        # Les deux indicateurs de licences comptent des logiciels, pas des masters.
+        self.assertIn("Logiciels sous licence", body)
+        self.assertIn("Logiciels à licence incomplète", body)
+
+    def test_export_csv_neutralise_les_formules(self):
+        """Une cellule commencant par =, +, - ou @ ne devient pas une formule."""
+        self._add_master("M4", [("LibreOffice", "7.6")], [])
+        with app.app_context():
+            db = get_db()
+            master_id = db.execute(
+                "SELECT id FROM masters WHERE pc_name = 'M4'"
+            ).fetchone()["id"]
+            db.execute(
+                "INSERT INTO software_flags "
+                "(master_id, software_name, is_important, note, is_licensed, "
+                "license_type) VALUES (?, 'LibreOffice', 0, ?, 1, ?)",
+                (master_id, '=HYPERLINK("http://exemple")', "@SUM(A1)"),
+            )
+            db.commit()
+
+        _, lines = self._csv("/rapports/export/licences.csv")
+        exported = [line for line in lines if "LibreOffice" in line][0]
+        cells = exported.split(";")
+        self.assertEqual(cells[3], "'@SUM(A1)")
+        self.assertIn("'=HYPERLINK", exported)
+        self.assertTrue(
+            all(not cell.startswith(("=", "+", "-", "@")) for cell in cells)
+        )
 
     def test_export_csv_licences(self):
         response, lines = self._csv("/rapports/export/licences.csv")
@@ -214,7 +262,7 @@ class ParcReportsTests(unittest.TestCase):
         self.assertEqual(set(by_name), {"Firefox", "7-Zip"})
         self.assertEqual(len(by_name["Firefox"]["masters"]), 1)
         self.assertEqual(by_name["Firefox"]["masters"][0]["pc_name"], "M1")
-        self.assertEqual(by_name["Firefox"]["masters"][0]["version"], "129")
+        self.assertEqual(by_name["Firefox"]["masters"][0]["versions"], ["129"])
         self.assertEqual(by_name["Firefox"]["notes"], ["Licence site"])
         self.assertEqual(by_name["7-Zip"]["versions"], ["24.0"])
         self.assertTrue(by_name["7-Zip"]["licensed"])
@@ -249,6 +297,79 @@ class ParcReportsTests(unittest.TestCase):
         self.assertNotIn("PREP-01", exported)
 
     # ── non-regression ───────────────────────────────────────────────────────
+
+    def test_regroupe_les_variantes_de_nom(self):
+        """« Mozilla Firefox » rejoint « Firefox » dans les trois rapports."""
+        self._add_master(
+            "M4",
+            [("Mozilla Firefox", "129")],
+            [("Mozilla Firefox", 1, 1, "Site")],
+        )
+
+        with app.app_context():
+            db = get_db()
+            versions = _parc_version_rows(db)
+            licences = _parc_licence_rows(db)
+            importants = _parc_important_rows(db)
+
+        firefox = [row for row in versions if row["norm"] == "firefox"]
+        self.assertEqual(
+            {(row["version"], row["masters"]) for row in firefox},
+            {("129", 3), ("128", 1)},
+        )
+        self.assertEqual({row["software_name"] for row in firefox}, {"Firefox"})
+
+        licensed = [row for row in licences if row["software_name"] == "Firefox"]
+        self.assertEqual(len(licensed), 1)
+        # M1 et M4 declarent « Site », M3 n'a pas de type de licence.
+        self.assertEqual(licensed[0]["masters"], ["M1", "M3", "M4"])
+        self.assertEqual(licensed[0]["missing"], 1)
+
+        important = [row for row in importants if row["norm"] == "firefox"]
+        self.assertEqual(len(important), 1)
+        self.assertEqual(
+            [master["pc_name"] for master in important[0]["masters"]], ["M1", "M4"]
+        )
+
+    def test_version_vide_reste_sans_version(self):
+        """Une version absente n'est ni ancienne ni derniere observee."""
+        self._add_master("M4", [("7-Zip", "")], [])
+
+        with app.app_context():
+            rows = _parc_version_rows(get_db())
+
+        seven_zip = {row["version"]: row for row in rows if row["norm"] == "7 zip"}
+        self.assertEqual(set(seven_zip), {"24.0", ""})
+        self.assertEqual(seven_zip["24.0"]["status"], "last")
+        self.assertEqual(seven_zip[""]["status"], "sans_version")
+
+        body = self.client.get("/rapports").get_data(as_text=True)
+        self.assertIn("Sans version", body)
+        self.assertIn("Dernière observée", body)
+
+    def test_deux_versions_sur_un_meme_master(self):
+        """Un poste avec deux versions installees garde les deux."""
+        self._add_master(
+            "M4",
+            [("AutoCAD", "2023"), ("AutoCAD", "2024")],
+            [("AutoCAD", 1, 0, "")],
+        )
+
+        with app.app_context():
+            rows = _parc_important_rows(get_db())
+
+        autocad = [row for row in rows if row["norm"] == "autocad"][0]
+        self.assertEqual(len(autocad["masters"]), 1)
+        self.assertEqual(autocad["masters"][0]["pc_name"], "M4")
+        self.assertEqual(autocad["masters"][0]["versions"], ["2024", "2023"])
+        self.assertEqual(autocad["versions"], ["2024", "2023"])
+
+        _, lines = self._csv("/rapports/export/importants.csv")
+        exported = [line for line in lines[1:] if ";AutoCAD;" in line]
+        self.assertEqual(len(exported), 2)
+        self.assertEqual(
+            sorted(line.split(";")[3] for line in exported), ["2023", "2024"]
+        )
 
     def test_rapports_ne_cassent_pas_les_pages_existantes(self):
         for path in ("/", "/sante", "/rapports"):

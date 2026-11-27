@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+from urllib.parse import urlencode
 
 # Source unique de la version : manifeste FabSuite et templates.
 APP_VERSION = "2.1.4"
@@ -298,7 +299,7 @@ def _remove_initial_admin_password():
 # `_SCHEMA_MIGRATIONS` est idempotente et s'execute dans l'ordre : une base
 # ancienne (v2.1.4) les rejoue toutes une fois, une base a jour n'en rejoue
 # aucune. Les tests `test_schema_migrations.py` verifient les deux cas.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _migrate_1_core_schema(db):
@@ -783,12 +784,39 @@ def _migrate_5_catalogue_coverage(db):
         )
 
 
+def _migrate_6_audit_log(db):
+    """Journal des ecritures : qui a change quoi, quand et depuis quelle IP."""
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            username TEXT NOT NULL DEFAULT '',
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            target_type TEXT NOT NULL DEFAULT '',
+            target_id INTEGER,
+            target_label TEXT NOT NULL DEFAULT '',
+            summary TEXT NOT NULL DEFAULT '',
+            ip TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_log_created
+            ON audit_log(created_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_action
+            ON audit_log(action, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_user
+            ON audit_log(username, created_at DESC);
+        """
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     (1, "tables de base", _migrate_1_core_schema),
     (2, "dates de scan", _migrate_2_snapshot_dates),
     (3, "identite des masters", _migrate_3_master_identity),
     (4, "fusion des doublons", _migrate_4_master_merge),
     (5, "catalogue et couverture", _migrate_5_catalogue_coverage),
+    (6, "journal d'audit", _migrate_6_audit_log),
 ]
 
 assert SCHEMA_VERSION == _SCHEMA_MIGRATIONS[-1][0]
@@ -949,6 +977,113 @@ def admin_required(f):
 def _get_admin_user():
     """Retourne le nom d'utilisateur admin connecté (pour affichage)."""
     return session.get('admin_username', 'admin')
+
+
+# ─── JOURNAL D'AUDIT ─────────────────────────────────────────────────────────
+# Chaque ecriture journalisee garde l'auteur, l'action, la cible et un resume.
+# Les notes de licence et les mots de passe ne sont jamais recopies : les
+# resumes ne contiennent que des faits (booleens, types, compteurs).
+
+AUDIT_RETENTION_DEFAULT_DAYS = 365
+AUDIT_RETENTION_MAX_DAYS = 3650
+AUDIT_PAGE_SIZE = 100
+AUDIT_ACTION_LABELS = {
+    "import": "Import d'inventaire",
+    "master_create": "Création de master",
+    "master_update": "Nouveau scan",
+    "master_edit": "Modification de master",
+    "master_delete": "Suppression de master",
+    "snapshot_delete": "Suppression de scan",
+    "trash_restore": "Restauration",
+    "trash_purge": "Purge de la corbeille",
+    "flag": "Flag logiciel",
+    "roadmap_add": "Ajout checklist",
+    "roadmap_update": "Modification checklist",
+    "roadmap_toggle": "Cochage checklist",
+    "roadmap_delete": "Suppression checklist",
+    "roadmap_pack": "Application du pack minimal",
+    "pack_add": "Ajout au pack minimal",
+    "pack_update": "Modification du pack minimal",
+    "pack_delete": "Retrait du pack minimal",
+    "followup": "Décision d'absence",
+    "settings": "Paramètres",
+}
+
+
+def _audit_retention_days(db):
+    """Jours de conservation du journal ; 0 signifie « sans limite »."""
+    row = db.execute(
+        "SELECT value FROM app_meta WHERE key = 'audit_retention_days'"
+    ).fetchone()
+    try:
+        days = int(row["value"]) if row else AUDIT_RETENTION_DEFAULT_DAYS
+    except (TypeError, ValueError):
+        days = AUDIT_RETENTION_DEFAULT_DAYS
+    if days < 0:
+        return AUDIT_RETENTION_DEFAULT_DAYS
+    return days
+
+
+def _purge_audit_log(db):
+    """Supprime les entrees plus anciennes que la retention configuree."""
+    days = _audit_retention_days(db)
+    if days == 0:
+        return 0
+    cur = db.execute(
+        "DELETE FROM audit_log WHERE created_at < datetime('now', ?)",
+        (f"-{days} days",),
+    )
+    return cur.rowcount or 0
+
+
+def _audit(db, action, target_type="", target_id=None, target_label="", summary=""):
+    """Ajoute une entree au journal ; l'appelant valide avec son commit."""
+    _purge_audit_log(db)
+    db.execute(
+        """
+        INSERT INTO audit_log
+        (username, user_id, action, target_type, target_id, target_label, summary, ip)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            session.get("admin_username") or "",
+            session.get("admin_user_id"),
+            action,
+            target_type or "",
+            target_id,
+            (target_label or "")[:200],
+            (summary or "")[:500],
+            (request.remote_addr or "")[:45],
+        ),
+    )
+
+
+def _audit_filter_args(args):
+    """Traduit les filtres de la page en clauses SQL parametrees."""
+    user = (args.get("user") or "").strip()
+    action = (args.get("action") or "").strip()
+    date_from = (args.get("from") or "").strip()
+    date_to = (args.get("to") or "").strip()
+    where, params = [], []
+    if user:
+        where.append("username = ?")
+        params.append(user)
+    if action in AUDIT_ACTION_LABELS:
+        where.append("action = ?")
+        params.append(action)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_from):
+        where.append("date(created_at) >= date(?)")
+        params.append(date_from)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_to):
+        where.append("date(created_at) <= date(?)")
+        params.append(date_to)
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    return clause, params, {
+        "user": user,
+        "action": action if action in AUDIT_ACTION_LABELS else "",
+        "from": date_from if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_from) else "",
+        "to": date_to if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_to) else "",
+    }
 
 
 # ─── PROTECTION DES ÉCRITURES ────────────────────────────────────────────────
@@ -1848,11 +1983,121 @@ def admin_settings():
                 "INSERT OR REPLACE INTO app_meta (key, value) "
                 "VALUES ('admin_password_is_default', '0')"
             )
+            _audit(
+                db,
+                "settings",
+                "utilisateur",
+                user_id,
+                session.get("admin_username") or "",
+                "Mot de passe modifié",
+            )
             db.commit()
             _remove_initial_admin_password()
             flash("Mot de passe modifié.", "success")
             return redirect(url_for('admin_settings'))
     return render_template("admin/settings.html", error=error, admin_user=_get_admin_user())
+
+
+# ─── JOURNAL D'AUDIT : CONSULTATION, EXPORT, RETENTION ───────────────────────
+
+@app.route("/admin/journal", methods=["GET", "POST"])
+@admin_required
+def admin_audit_log():
+    db = get_db()
+    if request.method == "POST":
+        raw = (request.form.get("retention_days") or "").strip()
+        if not raw.isdigit() or int(raw) > AUDIT_RETENTION_MAX_DAYS:
+            flash(
+                f"Rétention invalide : 0 (illimité) à {AUDIT_RETENTION_MAX_DAYS} jours.",
+                "error",
+            )
+        else:
+            days = int(raw)
+            db.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) "
+                "VALUES ('audit_retention_days', ?)",
+                (str(days),),
+            )
+            summary = "Rétention illimitée" if days == 0 else f"Rétention : {days} jour(s)"
+            _audit(db, "settings", "journal", None, "Journal d'audit", summary)
+            db.commit()
+            flash("Rétention du journal mise à jour.", "success")
+        return redirect(url_for("admin_audit_log"))
+
+    clause, params, filters = _audit_filter_args(request.args)
+    total = db.execute(
+        "SELECT COUNT(*) AS c FROM audit_log" + clause, params
+    ).fetchone()["c"]
+    pages = max(1, (total + AUDIT_PAGE_SIZE - 1) // AUDIT_PAGE_SIZE)
+    page = min(max(request.args.get("page", type=int) or 1, 1), pages)
+    rows = db.execute(
+        "SELECT * FROM audit_log"
+        + clause
+        + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+        (*params, AUDIT_PAGE_SIZE, (page - 1) * AUDIT_PAGE_SIZE),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        entry = dict(row)
+        entry["action_label"] = AUDIT_ACTION_LABELS.get(row["action"], row["action"])
+        entries.append(entry)
+    users = [
+        row["username"]
+        for row in db.execute(
+            "SELECT DISTINCT username FROM audit_log ORDER BY username"
+        ).fetchall()
+    ]
+    export_query = urlencode({key: value for key, value in filters.items() if value})
+    return render_template(
+        "admin/audit.html",
+        entries=entries,
+        total=total,
+        page=page,
+        pages=pages,
+        users=users,
+        actions=AUDIT_ACTION_LABELS,
+        filters=filters,
+        retention=_audit_retention_days(db),
+        retention_max=AUDIT_RETENTION_MAX_DAYS,
+        export_query=export_query,
+        admin_user=_get_admin_user(),
+    )
+
+
+@app.route("/admin/journal/export.csv")
+@admin_required
+def admin_audit_export():
+    db = get_db()
+    clause, params, _ = _audit_filter_args(request.args)
+    rows = db.execute(
+        "SELECT * FROM audit_log" + clause + " ORDER BY created_at ASC, id ASC",
+        params,
+    ).fetchall()
+    data = [
+        [
+            row["created_at"],
+            row["username"],
+            AUDIT_ACTION_LABELS.get(row["action"], row["action"]),
+            row["target_type"],
+            row["target_label"],
+            row["summary"],
+            row["ip"],
+        ]
+        for row in rows
+    ]
+    return _csv_response(
+        data,
+        [
+            "horodatage",
+            "utilisateur",
+            "action",
+            "type_cible",
+            "cible",
+            "resume",
+            "adresse_ip",
+        ],
+        "FabInventory-Journal-Audit.csv",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3162,49 +3407,91 @@ def _parc_version_key(value):
     return (1, ".".join(f"{int(part):09d}" for part in parts[:4]))
 
 
-def _parc_version_rows(db):
-    """Logiciel x version x nombre de masters sur le dernier scan."""
-    rows = db.execute(
+def _parc_software_key(row):
+    """Cle normalisee d'une ligne : celle stockee, sinon recalculee."""
+    return row["software_name_norm"] or _normalize_software_name(row["software_name"])
+
+
+def _parc_display_name(names):
+    """Nom lisible d'un groupe : la variante la plus courte (« Firefox »)."""
+    return min(names, key=lambda name: (len(name), name.lower()))
+
+
+def _latest_software_rows(db):
+    """Index logiciel du dernier scan de chaque master inventorie.
+
+    La cle `software_name_norm` regroupe les variantes d'un meme logiciel
+    (« Mozilla Firefox » et « Firefox »). Les lignes restent individuelles :
+    deux versions installees cote a cote sur un poste sont donc conservees.
+    """
+    return db.execute(
         """
-        SELECT si.software_name AS software_name,
+        SELECT si.master_id AS master_id,
+               si.software_name AS software_name,
+               COALESCE(si.software_name_norm, '') AS software_name_norm,
                TRIM(COALESCE(si.software_version, '')) AS software_version,
-               COUNT(DISTINCT si.master_id) AS masters
+               TRIM(COALESCE(si.software_category, '')) AS software_category
         FROM software_index si
         JOIN masters m ON m.id = si.master_id
         WHERE m.workflow_type = 'inventory'
           AND si.snapshot_id IN (SELECT id FROM latest_snapshots)
-        GROUP BY si.software_name, software_version
         """
     ).fetchall()
 
-    latest_by_software = {}
-    for row in rows:
-        key = _parc_version_key(row["software_version"])
-        current = latest_by_software.get(row["software_name"])
-        if current is None or key > current:
-            latest_by_software[row["software_name"]] = key
 
-    result = [
-        {
-            "software_name": row["software_name"],
-            "version": row["software_version"],
-            "masters": int(row["masters"]),
-            "is_latest": _parc_version_key(row["software_version"])
-            == latest_by_software[row["software_name"]],
-        }
-        for row in rows
-    ]
+def _parc_version_rows(db):
+    """Logiciel (cle normalisee) x version x nombre de masters."""
+    grouped = {}
+    for row in _latest_software_rows(db):
+        item = grouped.setdefault(
+            (_parc_software_key(row), row["software_version"]),
+            {
+                "version": row["software_version"],
+                "masters": set(),
+                "names": [],
+            },
+        )
+        item["masters"].add(row["master_id"])
+        item["names"].append(row["software_name"])
+
+    # Une version absente ne peut etre ni « ancienne » ni « derniere observee ».
+    latest_by_norm = {}
+    for (norm, version), item in grouped.items():
+        if not version:
+            continue
+        key = _parc_version_key(version)
+        if norm not in latest_by_norm or key > latest_by_norm[norm]:
+            latest_by_norm[norm] = key
+
+    result = []
+    for (norm, version), item in grouped.items():
+        if not version:
+            status = "sans_version"
+        elif _parc_version_key(version) == latest_by_norm[norm]:
+            status = "last"
+        else:
+            status = "old"
+        result.append(
+            {
+                "software_name": _parc_display_name(item["names"]),
+                "norm": norm,
+                "version": version,
+                "masters": len(item["masters"]),
+                "status": status,
+            }
+        )
     # Versions recentes d'abord, puis groupes par logiciel.
     result.sort(key=lambda item: _parc_version_key(item["version"]), reverse=True)
-    result.sort(key=lambda item: item["software_name"].lower())
+    result.sort(key=lambda item: (item["norm"], item["software_name"].lower()))
     return result
 
 
-def _parc_licence_rows(db):
-    """Logiciels marques sous licence, avec les masters sans information."""
-    rows = db.execute(
+def _parc_licence_flag_rows(db):
+    """Drapeaux « sous licence » du parc : une ligne par master et logiciel."""
+    return db.execute(
         """
-        SELECT sf.software_name AS software_name,
+        SELECT sf.master_id AS master_id,
+               sf.software_name AS software_name,
                TRIM(COALESCE(sf.license_type, '')) AS license_type,
                TRIM(COALESCE(sf.note, '')) AS note,
                m.pc_name AS pc_name
@@ -3215,18 +3502,24 @@ def _parc_licence_rows(db):
         """
     ).fetchall()
 
+
+def _parc_licence_rows(db):
+    """Logiciels sous licence (unite : logiciel), masters sans information."""
+    rows = _parc_licence_flag_rows(db)
+
     grouped = {}
     for row in rows:
+        norm = _normalize_software_name(row["software_name"])
         item = grouped.setdefault(
-            row["software_name"],
+            norm,
             {
-                "software_name": row["software_name"],
+                "names": [],
                 "license_types": [],
                 "masters": [],
-                "notes": [],
                 "missing": 0,
             },
         )
+        item["names"].append(row["software_name"])
         if row["license_type"]:
             if row["license_type"] not in item["license_types"]:
                 item["license_types"].append(row["license_type"])
@@ -3234,59 +3527,70 @@ def _parc_licence_rows(db):
             item["missing"] += 1
         if row["pc_name"] not in item["masters"]:
             item["masters"].append(row["pc_name"])
-        if row["note"] and row["note"] not in item["notes"]:
-            item["notes"].append(row["note"])
 
-    result = sorted(grouped.values(), key=lambda item: item["software_name"].lower())
-    for item in result:
+    result = []
+    for item in grouped.values():
+        item["software_name"] = _parc_display_name(item.pop("names"))
         item["license_label"] = ", ".join(item["license_types"]) or "—"
         item["without_info"] = item["missing"] > 0
+        result.append(item)
+    result.sort(key=lambda item: item["software_name"].lower())
     return result
 
 
 def _parc_important_rows(db):
-    """Logiciels marques importants, avec leur version sur le dernier scan."""
+    """Logiciels marques importants, avec toutes leurs versions au dernier scan."""
     rows = db.execute(
         """
-        SELECT sf.software_name AS software_name,
+        SELECT sf.master_id AS master_id,
+               sf.software_name AS software_name,
                TRIM(COALESCE(sf.note, '')) AS note,
                sf.is_licensed AS is_licensed,
                TRIM(COALESCE(sf.license_type, '')) AS license_type,
-               m.id AS master_id,
-               m.pc_name AS pc_name,
-               MAX(COALESCE(si.software_version, '')) AS software_version,
-               MAX(COALESCE(si.software_category, '')) AS software_category
+               m.pc_name AS pc_name
         FROM software_flags sf
         JOIN masters m ON m.id = sf.master_id
-        LEFT JOIN latest_snapshots ls ON ls.master_id = m.id
-        LEFT JOIN software_index si
-          ON si.snapshot_id = ls.id AND si.software_name = sf.software_name
         WHERE sf.is_important = 1 AND m.workflow_type = 'inventory'
-        GROUP BY sf.id
-        ORDER BY sf.software_name COLLATE NOCASE, m.pc_name COLLATE NOCASE
+        ORDER BY m.pc_name COLLATE NOCASE
         """
     ).fetchall()
 
+    # Toutes les versions installees d'un logiciel sur un master, pas seulement
+    # la plus grande chaine : deux versions cote a cote restent visibles.
+    versions_by_master = {}
+    for row in _latest_software_rows(db):
+        versions_by_master.setdefault(
+            (row["master_id"], _parc_software_key(row)), []
+        ).append((row["software_version"], row["software_category"]))
+
     grouped = {}
     for row in rows:
+        norm = _normalize_software_name(row["software_name"])
         item = grouped.setdefault(
-            row["software_name"],
+            norm,
             {
-                "software_name": row["software_name"],
-                "masters": [],
+                "norm": norm,
+                "names": [],
+                "masters": {},
                 "notes": [],
                 "license_types": [],
                 "licensed": False,
             },
         )
-        item["masters"].append(
-            {
+        item["names"].append(row["software_name"])
+        master = item["masters"].get(row["master_id"])
+        if master is None:
+            master = item["masters"][row["master_id"]] = {
                 "id": row["master_id"],
                 "pc_name": row["pc_name"],
-                "version": row["software_version"],
-                "category": row["software_category"],
+                "versions": [],
+                "category": "",
             }
-        )
+            for version, category in versions_by_master.get((row["master_id"], norm), []):
+                if version:
+                    master["versions"].append(version)
+                if category and not master["category"]:
+                    master["category"] = category
         if row["note"] and row["note"] not in item["notes"]:
             item["notes"].append(row["note"])
         if row["is_licensed"]:
@@ -3294,32 +3598,55 @@ def _parc_important_rows(db):
             if row["license_type"] and row["license_type"] not in item["license_types"]:
                 item["license_types"].append(row["license_type"])
 
-    result = sorted(grouped.values(), key=lambda item: item["software_name"].lower())
-    for item in result:
+    result = []
+    for item in grouped.values():
+        item["software_name"] = _parc_display_name(item.pop("names"))
         item["license_label"] = ", ".join(item["license_types"]) or "—"
+        for master in item["masters"].values():
+            master["versions"] = sorted(
+                set(master["versions"]), key=_parc_version_key, reverse=True
+            )
+        # L'ordre des masters suit le nom du poste, comme les autres rapports.
+        item["masters"] = sorted(
+            item["masters"].values(), key=lambda master: master["pc_name"].lower()
+        )
         item["versions"] = sorted(
-            {master["version"] for master in item["masters"] if master["version"]},
+            {version for master in item["masters"] for version in master["versions"]},
             key=_parc_version_key,
             reverse=True,
         )
+        result.append(item)
+    result.sort(key=lambda item: (item["norm"], item["software_name"].lower()))
     return result
 
 
 def _parc_report_summary(versions, licences, importants):
     return {
-        "software_count": len({row["software_name"] for row in versions}),
+        "software_count": len({row["norm"] for row in versions}),
         "version_rows": len(versions),
         "licensed_count": len(licences),
-        "licensed_without_info": sum(1 for row in licences if row["without_info"]),
+        "licensed_without_info": sum(row["without_info"] for row in licences),
         "important_count": len(importants),
     }
+
+
+# Prefixes interpretes comme une formule par un tableur : une cellule qui en
+# commence une est neutralisee par une apostrophe, sinon un nom de logiciel ou
+# une note saisie dans l'interface pourrait executer une formule a l'ouverture.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def _csv_safe(value):
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
 
 def _csv_response(rows, header, filename):
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
     writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerows([[_csv_safe(cell) for cell in row] for row in rows])
     content = output.getvalue().encode("utf-8-sig")
     output.close()
     return app.response_class(
@@ -3541,19 +3868,6 @@ def parc_reports():
 @app.route("/rapports/export/licences.csv")
 def parc_reports_licences_csv():
     db = get_db()
-    rows = db.execute(
-        """
-        SELECT m.id AS master_id,
-               m.pc_name AS pc_name,
-               sf.software_name AS software_name,
-               TRIM(COALESCE(sf.license_type, '')) AS license_type,
-               TRIM(COALESCE(sf.note, '')) AS note
-        FROM software_flags sf
-        JOIN masters m ON m.id = sf.master_id
-        WHERE sf.is_licensed = 1 AND m.workflow_type = 'inventory'
-        ORDER BY sf.software_name COLLATE NOCASE, m.pc_name COLLATE NOCASE
-        """
-    ).fetchall()
     data = [
         [
             row["master_id"],
@@ -3563,7 +3877,7 @@ def parc_reports_licences_csv():
             "non" if row["license_type"] else "oui",
             row["note"],
         ]
-        for row in rows
+        for row in _parc_licence_flag_rows(db)
     ]
     return _csv_response(
         data,
@@ -3585,18 +3899,20 @@ def parc_reports_importants_csv():
     data = []
     for software in _parc_important_rows(db):
         for master in software["masters"]:
-            data.append(
-                [
-                    master["id"],
-                    master["pc_name"],
-                    software["software_name"],
-                    master["version"],
-                    master["category"],
-                    "; ".join(software["notes"]),
-                    "oui" if software["licensed"] else "non",
-                    "" if software["license_label"] == "—" else software["license_label"],
-                ]
-            )
+            # Une ligne par version installee sur le poste, vide si aucune.
+            for version in master["versions"] or [""]:
+                data.append(
+                    [
+                        master["id"],
+                        master["pc_name"],
+                        software["software_name"],
+                        version,
+                        master["category"],
+                        "; ".join(software["notes"]),
+                        "oui" if software["licensed"] else "non",
+                        "" if software["license_label"] == "—" else software["license_label"],
+                    ]
+                )
     return _csv_response(
         data,
         [
@@ -3963,6 +4279,19 @@ def _import_upload_plan(db, entries, plan):
         db.commit()
         counts["snapshots"] += 1
 
+    _audit(
+        db,
+        "import",
+        "parc",
+        None,
+        f"{counts['snapshots']} snapshot(s)",
+        (
+            f"{counts['created']} master(s) créé(s), {counts['updated']} mis à jour, "
+            f"{counts['duplicates']} doublon(s) ignoré(s), "
+            f"{counts['conflicts']} refusé(s), {counts['invalid']} illisible(s)"
+        ),
+    )
+    db.commit()
     _invalidate_counts_cache()
     return counts
 
@@ -4181,6 +4510,14 @@ def master_new():
     if use_minimal_pack:
         _apply_minimal_pack_to_master(db, master_id)
 
+    _audit(
+        db,
+        "master_create",
+        "master",
+        master_id,
+        pc_name,
+        "Liste de préparation créée",
+    )
     db.commit()
     _invalidate_counts_cache()
     flash("Liste de preparation creee pour ce master cible", "success")
@@ -4273,7 +4610,7 @@ def master_followups(master_id):
         followup_id = request.form.get("followup_id", type=int)
         status = request.form.get("status", "").strip()
         followup = db.execute(
-            "SELECT id FROM software_followups "
+            "SELECT id, software_name FROM software_followups "
             "WHERE id = ? AND master_id = ? AND status <> 'resolved'",
             (followup_id, master_id),
         ).fetchone()
@@ -4281,6 +4618,14 @@ def master_followups(master_id):
             flash("Décision d'absence invalide", "error")
         else:
             _set_followup_status(db, followup["id"], status)
+            _audit(
+                db,
+                "followup",
+                "master",
+                master_id,
+                followup["software_name"],
+                f"Décision : {FOLLOWUP_STATUS_LABELS.get(status, status)}",
+            )
             db.commit()
             flash("Décision enregistrée", "success")
         return redirect(url_for("master_followups", master_id=master_id))
@@ -4575,6 +4920,14 @@ def master_update(master_id):
             software, sys_info, disks, network, services, metadata,
         )
         _apply_followup_decisions(db, master_id, decisions)
+        _audit(
+            db,
+            "master_update",
+            "master",
+            master_id,
+            master["pc_name"],
+            f"Scan du {scan_date} : {len(software)} logiciel(s)",
+        )
         db.commit()
         _invalidate_counts_cache()
 
@@ -4662,6 +5015,9 @@ def master_update(master_id):
 @app.route("/master/<int:master_id>/edit", methods=["POST"])
 def master_edit(master_id):
     db = get_db()
+    previous = db.execute(
+        "SELECT pc_name FROM masters WHERE id = ?", (master_id,)
+    ).fetchone()
     pc_name = request.form.get("pc_name", "").strip()
     label = request.form.get("label", "")
     notes = request.form.get("notes", "")
@@ -4683,6 +5039,9 @@ def master_edit(master_id):
         "UPDATE masters SET pc_name = ?, pc_name_key = ?, label = ?, notes = ? WHERE id = ?",
         (pc_name, pc_key, label, notes, master_id),
     )
+    old_name = previous["pc_name"] if previous else ""
+    summary = f"{old_name} → {pc_name}" if old_name != pc_name else "Libellé / notes mis à jour"
+    _audit(db, "master_edit", "master", master_id, pc_name, summary)
     db.commit()
     flash("Master mis a jour", "success")
     return redirect(url_for("master_detail", master_id=master_id))
@@ -4862,8 +5221,16 @@ def admin_trash_purge():
         f"DELETE FROM deleted_items WHERE {_TRASH_PURGE_WHERE}",
         (f"-{TRASH_RETENTION_DAYS} days",),
     )
-    db.commit()
     purged = cur.rowcount or 0
+    _audit(
+        db,
+        "trash_purge",
+        "corbeille",
+        None,
+        "Corbeille",
+        f"{purged} archive(s) supprimée(s) définitivement",
+    )
+    db.commit()
     flash(
         f"{purged} archive(s) supprimee(s) definitivement",
         "success" if purged else "info",
@@ -4906,6 +5273,14 @@ def admin_trash_restore(item_id):
             "UPDATE deleted_items SET restored_at = CURRENT_TIMESTAMP WHERE id = ?",
             (item_id,),
         )
+        _audit(
+            db,
+            "trash_restore",
+            item["kind"],
+            item_id,
+            item["label"],
+            "Restauré depuis la corbeille",
+        )
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
@@ -4920,6 +5295,9 @@ def admin_trash_restore(item_id):
 @app.route("/master/<int:master_id>/delete", methods=["POST"])
 def master_delete(master_id):
     db = get_db()
+    master = db.execute(
+        "SELECT pc_name FROM masters WHERE id = ?", (master_id,)
+    ).fetchone()
     if not _archive_master(db, master_id):
         flash("Master introuvable", "error")
         return redirect(url_for("index"))
@@ -4928,6 +5306,14 @@ def master_delete(master_id):
     db.execute("DELETE FROM software_index WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM snapshots WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM masters WHERE id = ?", (master_id,))
+    _audit(
+        db,
+        "master_delete",
+        "master",
+        master_id,
+        master["pc_name"] if master else "",
+        "Déplacé dans la corbeille",
+    )
     db.commit()
     _invalidate_counts_cache()
     flash("Master deplace dans la corbeille (restauration possible).", "success")
@@ -4962,6 +5348,7 @@ def roadmap_add_item(master_id):
         """,
         (master_id, software_name, install_url, note_text, note_text, is_licensed, license_type),
     )
+    _audit(db, "roadmap_add", "master", master_id, software_name, "Ajouté à la checklist")
     db.commit()
     flash("Element ajoute a la checklist", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
@@ -4971,7 +5358,7 @@ def roadmap_add_item(master_id):
 def roadmap_update_item(master_id, item_id):
     db = get_db()
     item = db.execute(
-        "SELECT id, master_id FROM roadmap_items WHERE id = ? AND master_id = ?",
+        "SELECT id, master_id, software_name FROM roadmap_items WHERE id = ? AND master_id = ?",
         (item_id, master_id),
     ).fetchone()
     if not item:
@@ -4995,6 +5382,14 @@ def roadmap_update_item(master_id, item_id):
         """,
         (software_name, install_url, note_text, note_text, is_licensed, license_type, item_id, master_id),
     )
+    _audit(
+        db,
+        "roadmap_update",
+        "master",
+        master_id,
+        software_name,
+        f"Checklist mise à jour ({item['software_name']} → {software_name})",
+    )
     db.commit()
     flash("Element de checklist mis a jour", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
@@ -5004,7 +5399,7 @@ def roadmap_update_item(master_id, item_id):
 def roadmap_toggle_item(master_id, item_id):
     db = get_db()
     item = db.execute(
-        "SELECT id, is_done FROM roadmap_items WHERE id = ? AND master_id = ?",
+        "SELECT id, is_done, software_name FROM roadmap_items WHERE id = ? AND master_id = ?",
         (item_id, master_id),
     ).fetchone()
     if not item:
@@ -5016,6 +5411,14 @@ def roadmap_toggle_item(master_id, item_id):
         "UPDATE roadmap_items SET is_done = ? WHERE id = ? AND master_id = ?",
         (new_state, item_id, master_id),
     )
+    _audit(
+        db,
+        "roadmap_toggle",
+        "master",
+        master_id,
+        item["software_name"],
+        "Coché" if new_state else "Décoché",
+    )
     db.commit()
     flash("Checklist mise a jour", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
@@ -5024,7 +5427,19 @@ def roadmap_toggle_item(master_id, item_id):
 @app.route("/master/<int:master_id>/roadmap/<int:item_id>/delete", methods=["POST"])
 def roadmap_delete_item(master_id, item_id):
     db = get_db()
+    item = db.execute(
+        "SELECT software_name FROM roadmap_items WHERE id = ? AND master_id = ?",
+        (item_id, master_id),
+    ).fetchone()
     db.execute("DELETE FROM roadmap_items WHERE id = ? AND master_id = ?", (item_id, master_id))
+    _audit(
+        db,
+        "roadmap_delete",
+        "master",
+        master_id,
+        item["software_name"] if item else "",
+        "Retiré de la checklist",
+    )
     db.commit()
     flash("Element supprime de la checklist", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
@@ -5042,6 +5457,14 @@ def roadmap_apply_minimal_pack(master_id):
         return redirect(url_for("roadmaps_index"))
 
     _apply_minimal_pack_to_master(db, master_id)
+    _audit(
+        db,
+        "roadmap_pack",
+        "master",
+        master_id,
+        "Pack minimal",
+        "Pack minimal appliqué",
+    )
     db.commit()
     flash("Pack minimal applique au master cible", "success")
     return redirect(url_for("master_roadmap", master_id=master_id))
@@ -5081,6 +5504,14 @@ def minimal_pack_add_item():
             """,
             (software_name, install_url, note_text, note_text, is_licensed, license_type),
         )
+        _audit(
+            db,
+            "pack_add",
+            "pack_minimal",
+            None,
+            software_name,
+            "Ajouté au pack minimal",
+        )
         db.commit()
         flash("Logiciel ajoute au pack minimal", "success")
 
@@ -5110,6 +5541,14 @@ def minimal_pack_update_item(item_id):
             """,
             (software_name, install_url, note_text, note_text, is_licensed, license_type, item_id),
         )
+        _audit(
+            db,
+            "pack_update",
+            "pack_minimal",
+            item_id,
+            software_name,
+            "Entrée du pack minimal mise à jour",
+        )
         db.commit()
         flash("Pack minimal mis a jour", "success")
 
@@ -5122,7 +5561,18 @@ def minimal_pack_update_item(item_id):
 def minimal_pack_delete_item(item_id):
     db = get_db()
     master_id = request.form.get("master_id", "").strip()
+    item = db.execute(
+        "SELECT software_name FROM roadmap_minimal_pack WHERE id = ?", (item_id,)
+    ).fetchone()
     db.execute("DELETE FROM roadmap_minimal_pack WHERE id = ?", (item_id,))
+    _audit(
+        db,
+        "pack_delete",
+        "pack_minimal",
+        item_id,
+        item["software_name"] if item else "",
+        "Retiré du pack minimal",
+    )
     db.commit()
     flash("Logiciel supprime du pack minimal", "success")
 
@@ -5150,11 +5600,23 @@ def snapshot_detail(snap_id):
 @app.route("/snapshot/<int:snap_id>/delete", methods=["POST"])
 def snapshot_delete(snap_id):
     db = get_db()
-    snap = db.execute("SELECT master_id FROM snapshots WHERE id = ?", (snap_id,)).fetchone()
+    snap = db.execute(
+        "SELECT s.master_id, s.scan_date, m.pc_name "
+        "FROM snapshots s JOIN masters m ON m.id = s.master_id WHERE s.id = ?",
+        (snap_id,),
+    ).fetchone()
     if snap:
         _archive_snapshot(db, snap_id)
         db.execute("DELETE FROM software_index WHERE snapshot_id = ?", (snap_id,))
         db.execute("DELETE FROM snapshots WHERE id = ?", (snap_id,))
+        _audit(
+            db,
+            "snapshot_delete",
+            "snapshot",
+            snap_id,
+            f"{snap['pc_name']} — {snap['scan_date']}",
+            "Déplacé dans la corbeille",
+        )
         db.commit()
         _invalidate_counts_cache()
         flash("Scan deplace dans la corbeille (restauration possible).", "success")
@@ -5533,6 +5995,18 @@ def api_flag():
         ON CONFLICT(master_id, software_name)
         DO UPDATE SET is_important=?, note=?, is_licensed=?, license_type=?
     """, (master_id, sw_name, important, note, is_licensed, license_type, important, note, is_licensed, license_type))
+    _audit(
+        db,
+        "flag",
+        "master",
+        master_id,
+        sw_name,
+        (
+            f"important={'oui' if important else 'non'}, "
+            f"licence={'oui' if is_licensed else 'non'}"
+            + (f", type {license_type}" if license_type else "")
+        ),
+    )
     db.commit()
     return jsonify({"ok": True})
 
