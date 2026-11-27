@@ -21,7 +21,7 @@
             <th>Logiciel</th>
             <th>Source installation (URL)</th>
             <th>Note technique</th>
-            <th>Licence</th>
+            <th style="width:110px">Licence</th>
             <th>Type licence</th>
             <th style="width:200px">Actions</th>
           </tr>
@@ -41,7 +41,7 @@
                   <input type="text" name="note_text" class="form-control form-control-sm" value="{{ item.note_text or item.note or '' }}" placeholder="Ce que fait le logiciel, prerequis, options...">
                 </td>
                 <td>
-                  <select name="is_licensed" class="form-select form-select-sm">
+                  <select name="is_licensed" class="form-select form-select-sm" style="min-width:6rem">
                   <option value="0" {% if not item.is_licensed %}selected{% endif %}>Non</option>
                   <option value="1" {% if item.is_licensed %}selected{% endif %}>Oui</option>
                   </select>
@@ -103,7 +103,7 @@
       </div>
       <div class="col-md-1">
         <label class="form-label">Licence</label>
-        <select name="is_licensed" class="form-select form-select-sm">
+        <select name="is_licensed" class="form-select form-select-sm" style="min-width:6rem">
           <option value="0" selected>Non</option>
           <option value="1">Oui</option>
         </select>

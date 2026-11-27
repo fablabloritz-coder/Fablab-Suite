@@ -157,7 +157,7 @@
           <th class="sortable" onclick="sortSw(3)">Date <i class="bi bi-arrow-down-up small"></i></th>
           <th class="sortable" onclick="sortSw(4)">Taille <i class="bi bi-arrow-down-up small"></i></th>
           <th>Source &amp; Catégorie</th>
-          <th style="width:90px">Licence</th>
+          <th style="width:110px">Licence</th>
           <th style="min-width:170px">Type licence</th>
           <th style="min-width:160px">Note</th>
         </tr>
@@ -316,7 +316,7 @@ function renderSw() {
         '<span class="badge badge-sm rounded-pill" style="'+srcBadge+';font-size:.68rem;font-weight:600;margin-right:.4rem">'+esc(s.src)+'</span>' +
         '<span class="'+categoryBadgeClass+'">'+esc(swCategory)+'</span>' +
       '</td>' +
-      '<td><select class="form-select form-select-sm" data-action="licensed" data-sw="'+esc(key)+'"><option value="0" '+(flag.is_licensed==1?'':'selected')+'>Non</option><option value="1" '+(flag.is_licensed==1?'selected':'')+'>Oui</option></select></td>' +
+      '<td><select class="form-select form-select-sm" style="min-width:6rem" data-action="licensed" data-sw="'+esc(key)+'"><option value="0" '+(flag.is_licensed==1?'':'selected')+'>Non</option><option value="1" '+(flag.is_licensed==1?'selected':'')+'>Oui</option></select></td>' +
       '<td><select class="form-select form-select-sm" data-action="license_type" data-sw="'+esc(key)+'"><option value="" '+(!flag.license_type?'selected':'')+'>—</option><option value="reseau" '+(flag.license_type==='reseau'?'selected':'')+'>Reseau</option><option value="fichier_local" '+(flag.license_type==='fichier_local'?'selected':'')+'>Fichier local</option><option value="numero_serie_contrat" '+(flag.license_type==='numero_serie_contrat'?'selected':'')+'>Numero serie / contrat</option><option value="mot_de_passe" '+(flag.license_type==='mot_de_passe'?'selected':'')+'>Mot de passe</option></select></td>' +
       '<td><input type="text" class="form-control form-control-sm border-0 bg-transparent" style="font-size:.8rem" data-action="note" data-sw="'+esc(key)+'" value="'+esc(flag.note || '')+'" placeholder="..."></td></tr>';
   });

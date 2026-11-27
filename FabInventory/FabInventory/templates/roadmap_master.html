@@ -47,7 +47,7 @@
             <th>Logiciel</th>
             <th>Source installation (URL)</th>
             <th>Note technique</th>
-            <th style="width:100px">Licence</th>
+            <th style="width:110px">Licence</th>
             <th style="width:170px">Type licence</th>
             <th style="width:100px">Origine</th>
             <th style="width:200px">Actions</th>
@@ -79,7 +79,7 @@
                   <input type="text" name="note" class="form-control form-control-sm" value="{{ item.note_text or item.note or '' }}" placeholder="Mode silencieux, prerequis, post-install...">
                 </td>
                 <td>
-                  <select name="is_licensed" class="form-select form-select-sm">
+                  <select name="is_licensed" class="form-select form-select-sm" style="min-width:6rem">
                   <option value="0" {% if not item.is_licensed %}selected{% endif %}>Non</option>
                   <option value="1" {% if item.is_licensed %}selected{% endif %}>Oui</option>
                   </select>
@@ -144,7 +144,7 @@
       </div>
       <div class="col-md-1">
         <label class="form-label">Licence</label>
-        <select name="is_licensed" class="form-select form-select-sm">
+        <select name="is_licensed" class="form-select form-select-sm" style="min-width:6rem">
           <option value="0" selected>Non</option>
           <option value="1">Oui</option>
         </select>
