@@ -6,6 +6,54 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : corbeille restaurable pour les suppressions
+
+**Fonctionnel**
+- Toute suppression de master ou de scan archive d'abord la ligne et ses
+  dependances (scans, flags, checklist, absences) dans `deleted_items`, puis
+  efface comme avant. Un master archive conserve tout son historique.
+- Page `/admin/trash` (reservee aux admins) et action de restauration :
+  les lignes sont reinserees avec leurs identifiants d'origine et l'index de
+  recherche est reconstruit depuis `software_json`.
+- Restauration refusee proprement si un master porte deja le meme nom, ou si
+  le master d'un scan n'existe plus ; l'archive reste alors disponible.
+
+**Tests**
+- Nouveau module `tests/test_trash_restore.py` : 4 tests (restauration
+  complete d'un master avec flags/absences/index, restauration d'un scan,
+  refus sur conflit de nom, acces admin obligatoire).
+- Suite officielle : `python tests/run_all.py`, **21 modules, 117 tests OK**.
+
+**Prochaine action**
+- Suite 3 de la feuille de route : recette Windows reelle du script
+  PowerShell (WMI, AppX, dialogue WinForms).
+
+## 2026-11-27 — FabInventory : écritures protégées par session admin
+
+**Sécurité**
+- `before_request` unique : toute écriture (POST/PATCH/DELETE) exige une
+  session admin ; les pages redirigent vers `/admin/login`, les API répondent
+  401. Restent publics : le portail professeur (token dédié) et `/api/compare`
+  (POST en lecture seule).
+- Clé de session : `SECRET_KEY` saine si fournie, sinon clé aléatoire générée
+  et persistée dans `app_meta` ; les valeurs historiques connues sont
+  ignorées. Le compose exige `FLASK_SECRET_KEY`.
+- Compte admin : plus de `admin/admin`. `ADMIN_PASSWORD` fixe le mot de passe
+  initial ; sinon mot de passe aléatoire écrit une fois dans
+  `admin-initial-password.txt` (0600), supprimé au changement.
+- Confirmations : les noms de masters et de logiciels passent par `data-confirm`
+  et `confirm(this.dataset.confirm)` au lieu d'être concaténés dans le JS.
+
+**Tests**
+- `test_security_xss.py` : 11 tests, dont le refus anonyme de 13 routes
+  d'écriture et de 2 API (401), les exemptions prof/comparaison, la clé
+  persistée, le mot de passe aléatoire et les confirmations échappées.
+- Suite officielle : `python tests/run_all.py`, **20 modules, 113 tests OK**.
+
+**Prochaine action**
+- Suite 2 de la feuille de route : filet anti-suppression (corbeille ou
+  confirmation renforcée) avant les suppressions définitives.
+
 ## 2026-11-27 — FabInventory : smoke test reproductible des parcours critiques
 
 **Tests**

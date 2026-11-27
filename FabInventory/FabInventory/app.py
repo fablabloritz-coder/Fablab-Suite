@@ -27,7 +27,14 @@ APP_VERSION = "2.1.4"
 
 app = Flask(__name__)
 app.jinja_env.globals["app_version"] = APP_VERSION
-app.secret_key = os.environ.get("SECRET_KEY") or "fabinventory-secret-change-me"
+
+# Valeurs historiques connues : les accepter reviendrait a laisser forger un
+# cookie de session admin. Elles sont remplacees par une cle aleatoire.
+_INSECURE_SECRET_KEYS = {
+    "",
+    "change-me-in-production",
+    "fabinventory-secret-change-me",
+}
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -147,6 +154,41 @@ def get_db():
 def close_db(exception):
     db = g.pop("db", None)
     if db: db.close()
+
+
+ADMIN_INITIAL_PASSWORD_FILENAME = "admin-initial-password.txt"
+
+
+def _admin_initial_password_path():
+    """Fichier lisible par le seul proprietaire, a cote de la base."""
+    return os.path.join(
+        os.path.dirname(os.path.abspath(DB_PATH)), ADMIN_INITIAL_PASSWORD_FILENAME
+    )
+
+
+def _write_initial_admin_password(password):
+    """Ecrit le mot de passe genere une seule fois, en 0600."""
+    chemin = _admin_initial_password_path()
+    try:
+        with open(chemin, "w", encoding="utf-8") as handle:
+            handle.write(password + "\n")
+        os.chmod(chemin, 0o600)
+    except OSError:
+        app.logger.error(
+            "Impossible d'ecrire le mot de passe admin initial dans %s", chemin
+        )
+        return None
+    return chemin
+
+
+def _remove_initial_admin_password():
+    try:
+        os.remove(_admin_initial_password_path())
+    except FileNotFoundError:
+        pass
+    except OSError:
+        app.logger.warning("Impossible de supprimer le fichier de mot de passe initial")
+
 
 def init_db():
     db = sqlite3.connect(DB_PATH)
@@ -281,6 +323,17 @@ def init_db():
     CREATE UNIQUE INDEX IF NOT EXISTS ux_software_followups_active
         ON software_followups(master_id, software_key)
         WHERE status <> 'resolved';
+
+    CREATE TABLE IF NOT EXISTS deleted_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        payload_json TEXT NOT NULL,
+        deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        restored_at TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_deleted_items_pending
+        ON deleted_items(restored_at, deleted_at DESC);
     """)
 
     # ── Dates de scan comparables ────────────────────────────────────────────
@@ -587,14 +640,23 @@ def init_db():
     if not seed_done:
         existing_admin = db.execute("SELECT id FROM admin_users WHERE username = 'admin'").fetchone()
         if not existing_admin:
+            # Pas de compte admin/admin : mot de passe fourni par
+            # ADMIN_PASSWORD, sinon valeur aleatoire ecrite une seule fois dans
+            # un fichier reserve au proprietaire.
+            admin_password = (os.environ.get("ADMIN_PASSWORD") or "").strip()
+            generated = not admin_password
+            if generated:
+                admin_password = secrets.token_urlsafe(12)
             db.execute(
                 "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)",
-                ("admin", generate_password_hash("admin"))
+                ("admin", generate_password_hash(admin_password))
             )
-            db.execute(
-                "INSERT OR REPLACE INTO app_meta (key, value) "
-                "VALUES ('admin_password_is_default', '1')"
-            )
+            if generated:
+                chemin = _write_initial_admin_password(admin_password)
+                if chemin:
+                    app.logger.warning(
+                        "Mot de passe admin initial genere : voir %s", chemin
+                    )
 
         pack_base = [
             ("VLC media player", "Multimédia", "Lecteur multimédia universel", 1),
@@ -616,6 +678,43 @@ def init_db():
 init_db()
 
 
+def _load_secret_key():
+    """Cle de session : environnement sain, sinon cle aleatoire persistee.
+
+    Une cle par defaut connue permettrait de forger un cookie admin ; on la
+    remplace par une valeur aleatoire stockee en base pour survivre aux
+    redemarrages sans dependre d'une variable d'environnement.
+    """
+    env_key = (os.environ.get("SECRET_KEY") or "").strip()
+    if env_key and env_key not in _INSECURE_SECRET_KEYS:
+        return env_key
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_meta WHERE key = 'secret_key'"
+        ).fetchone()
+        if row and row["value"]:
+            return row["value"]
+        generated = secrets.token_hex(32)
+        conn.execute(
+            "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('secret_key', ?)",
+            (generated,),
+        )
+        conn.commit()
+        app.logger.warning(
+            "SECRET_KEY absente ou non securisee : cle aleatoire generee et "
+            "stockee dans la base."
+        )
+        return generated
+    finally:
+        conn.close()
+
+
+app.secret_key = _load_secret_key()
+
+
 # ─── DÉCORATEUR AUTH ADMIN ────────────────────────────────────────────────────
 
 def admin_required(f):
@@ -630,6 +729,32 @@ def admin_required(f):
 def _get_admin_user():
     """Retourne le nom d'utilisateur admin connecté (pour affichage)."""
     return session.get('admin_username', 'admin')
+
+
+# ─── PROTECTION DES ÉCRITURES ────────────────────────────────────────────────
+# Toute ecriture exige une session admin ; les lectures restent publiques.
+# Le portail professeur (token dedie) et la comparaison (POST en lecture seule)
+# gardent leur acces propre.
+_PUBLIC_WRITE_ENDPOINTS = {
+    "admin_login",
+    "api_compare",
+    "api_prof_creer_demande",
+    "api_prof_annuler_demande",
+}
+
+
+@app.before_request
+def _require_admin_for_writes():
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    if request.endpoint is None or request.endpoint in _PUBLIC_WRITE_ENDPOINTS:
+        return None
+    if session.get("admin_logged_in"):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Authentification admin requise"}), 401
+    flash("Connectez-vous pour effectuer cette action.", "error")
+    return redirect(url_for("admin_login"))
 
 
 # ─── HELPERS DEMANDES ─────────────────────────────────────────────────────────
@@ -1318,6 +1443,7 @@ def admin_settings():
                 "VALUES ('admin_password_is_default', '0')"
             )
             db.commit()
+            _remove_initial_admin_password()
             flash("Mot de passe modifié.", "success")
             return redirect(url_for('admin_settings'))
     return render_template("admin/settings.html", error=error, admin_user=_get_admin_user())
@@ -3477,9 +3603,208 @@ def master_edit(master_id):
     return redirect(url_for("master_detail", master_id=master_id))
 
 
+# ─── CORBEILLE ────────────────────────────────────────────────────────────────
+# Toute suppression de master ou de snapshot archive d'abord les lignes et
+# leurs dependances dans `deleted_items` ; la restauration les reinsere avec
+# leurs identifiants d'origine (SQLite AUTOINCREMENT ne les reattribue jamais).
+
+DELETED_ITEM_TABLES = (
+    "masters",
+    "snapshots",
+    "software_flags",
+    "roadmap_items",
+    "software_followups",
+)
+
+
+def _row_dict(row):
+    return {key: row[key] for key in row.keys()} if row is not None else {}
+
+
+def _insert_archived_row(db, table, row):
+    """Reinsere une ligne archivee en conservant ses colonnes et son id."""
+    if table not in DELETED_ITEM_TABLES or not row:
+        return
+    columns = list(row.keys())
+    placeholders = ", ".join("?" for _ in columns)
+    db.execute(
+        f"INSERT OR REPLACE INTO {table} ({', '.join(columns)}) "
+        f"VALUES ({placeholders})",
+        [row[column] for column in columns],
+    )
+
+
+def _archive_deleted_item(db, kind, label, payload):
+    cur = db.execute(
+        "INSERT INTO deleted_items (kind, label, payload_json) VALUES (?, ?, ?)",
+        (kind, label, json.dumps(payload, ensure_ascii=False)),
+    )
+    return cur.lastrowid
+
+
+def _archive_master(db, master_id):
+    master = db.execute(
+        "SELECT * FROM masters WHERE id = ?", (master_id,)
+    ).fetchone()
+    if not master:
+        return None
+    payload = {
+        "master": _row_dict(master),
+        "snapshots": [
+            _row_dict(row)
+            for row in db.execute(
+                "SELECT * FROM snapshots WHERE master_id = ? ORDER BY id",
+                (master_id,),
+            ).fetchall()
+        ],
+        "software_flags": [
+            _row_dict(row)
+            for row in db.execute(
+                "SELECT * FROM software_flags WHERE master_id = ?", (master_id,)
+            ).fetchall()
+        ],
+        "roadmap_items": [
+            _row_dict(row)
+            for row in db.execute(
+                "SELECT * FROM roadmap_items WHERE master_id = ?", (master_id,)
+            ).fetchall()
+        ],
+        "software_followups": [
+            _row_dict(row)
+            for row in db.execute(
+                "SELECT * FROM software_followups WHERE master_id = ?", (master_id,)
+            ).fetchall()
+        ],
+    }
+    return _archive_deleted_item(db, "master", master["pc_name"], payload)
+
+
+def _archive_snapshot(db, snapshot_id):
+    snapshot = db.execute(
+        "SELECT * FROM snapshots WHERE id = ?", (snapshot_id,)
+    ).fetchone()
+    if not snapshot:
+        return None
+    master = db.execute(
+        "SELECT pc_name FROM masters WHERE id = ?", (snapshot["master_id"],)
+    ).fetchone()
+    label = (
+        f"{master['pc_name']} — {snapshot['scan_date']}"
+        if master
+        else f"Scan {snapshot_id}"
+    )
+    return _archive_deleted_item(db, "snapshot", label, {"snapshot": _row_dict(snapshot)})
+
+
+def _restore_archived_master(db, payload):
+    master = payload.get("master") or {}
+    if not master:
+        return False, "Archive de master invalide"
+    conflict = db.execute(
+        "SELECT id FROM masters WHERE pc_name_key = ? AND workflow_type = ?",
+        (master.get("pc_name_key", ""), master.get("workflow_type") or "inventory"),
+    ).fetchone()
+    if conflict:
+        return False, "Un master portant ce nom existe deja ; restauration annulee"
+
+    _insert_archived_row(db, "masters", master)
+    for snapshot in payload.get("snapshots", []):
+        _insert_archived_row(db, "snapshots", snapshot)
+        _upsert_snapshot_software_index(
+            db,
+            snapshot["id"],
+            snapshot["master_id"],
+            _load_json_list(snapshot.get("software_json")),
+        )
+    for table in ("software_flags", "roadmap_items", "software_followups"):
+        for row in payload.get(table, []):
+            _insert_archived_row(db, table, row)
+    return True, f"Master {master.get('pc_name', '')} restaure avec son historique"
+
+
+def _restore_archived_snapshot(db, payload):
+    snapshot = payload.get("snapshot") or {}
+    if not snapshot:
+        return False, "Archive de scan invalide"
+    master = db.execute(
+        "SELECT pc_name FROM masters WHERE id = ?", (snapshot["master_id"],)
+    ).fetchone()
+    if not master:
+        return False, "Le master de ce scan n'existe plus ; restaurez-le d'abord"
+
+    _insert_archived_row(db, "snapshots", snapshot)
+    _upsert_snapshot_software_index(
+        db,
+        snapshot["id"],
+        snapshot["master_id"],
+        _load_json_list(snapshot.get("software_json")),
+    )
+    return True, f"Scan du {snapshot.get('scan_date', '')} restaure sur {master['pc_name']}"
+
+
+@app.route("/admin/trash")
+@admin_required
+def admin_trash():
+    db = get_db()
+    items = db.execute(
+        "SELECT id, kind, label, deleted_at FROM deleted_items "
+        "WHERE restored_at IS NULL ORDER BY deleted_at DESC, id DESC"
+    ).fetchall()
+    return render_template("admin/trash.html", items=items, admin_user=_get_admin_user())
+
+
+@app.route("/admin/trash/<int:item_id>/restore", methods=["POST"])
+@admin_required
+def admin_trash_restore(item_id):
+    db = get_db()
+    item = db.execute(
+        "SELECT * FROM deleted_items WHERE id = ? AND restored_at IS NULL",
+        (item_id,),
+    ).fetchone()
+    if not item:
+        flash("Element introuvable dans la corbeille", "error")
+        return redirect(url_for("admin_trash"))
+
+    try:
+        payload = json.loads(item["payload_json"])
+    except (TypeError, json.JSONDecodeError):
+        flash("Archive illisible", "error")
+        return redirect(url_for("admin_trash"))
+
+    try:
+        if item["kind"] == "master":
+            restored, message = _restore_archived_master(db, payload)
+        elif item["kind"] == "snapshot":
+            restored, message = _restore_archived_snapshot(db, payload)
+        else:
+            restored, message = False, "Type d'archive inconnu"
+
+        if not restored:
+            db.rollback()
+            flash(message, "error")
+            return redirect(url_for("admin_trash"))
+
+        db.execute(
+            "UPDATE deleted_items SET restored_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (item_id,),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("Restauration impossible : conflit de donnees", "error")
+        return redirect(url_for("admin_trash"))
+
+    _invalidate_counts_cache()
+    flash(message, "success")
+    return redirect(url_for("admin_trash"))
+
+
 @app.route("/master/<int:master_id>/delete", methods=["POST"])
 def master_delete(master_id):
     db = get_db()
+    if not _archive_master(db, master_id):
+        flash("Master introuvable", "error")
+        return redirect(url_for("index"))
     db.execute("DELETE FROM roadmap_items WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM software_flags WHERE master_id = ?", (master_id,))
     db.execute("DELETE FROM software_index WHERE master_id = ?", (master_id,))
@@ -3487,7 +3812,7 @@ def master_delete(master_id):
     db.execute("DELETE FROM masters WHERE id = ?", (master_id,))
     db.commit()
     _invalidate_counts_cache()
-    flash("Master supprime", "success")
+    flash("Master deplace dans la corbeille (restauration possible).", "success")
     return redirect(url_for("index"))
 
 
@@ -3709,11 +4034,12 @@ def snapshot_delete(snap_id):
     db = get_db()
     snap = db.execute("SELECT master_id FROM snapshots WHERE id = ?", (snap_id,)).fetchone()
     if snap:
+        _archive_snapshot(db, snap_id)
         db.execute("DELETE FROM software_index WHERE snapshot_id = ?", (snap_id,))
         db.execute("DELETE FROM snapshots WHERE id = ?", (snap_id,))
         db.commit()
         _invalidate_counts_cache()
-        flash("Snapshot supprime", "success")
+        flash("Scan deplace dans la corbeille (restauration possible).", "success")
         return redirect(url_for("master_detail", master_id=snap["master_id"]))
     return redirect(url_for("index"))
 

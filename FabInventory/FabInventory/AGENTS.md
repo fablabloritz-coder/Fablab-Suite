@@ -87,7 +87,7 @@ Si FabInventory est integre au monorepo Fablab-Suite:
 
 - [x] Ajouter `/api/fabsuite/manifest` et `/api/fabsuite/health`
 - [x] Authentification basique (login/password simple)
-- [ ] Protéger toutes les écritures inventaire (upload, flags, roadmap)
+- [x] Protéger toutes les écritures inventaire (upload, flags, roadmap)
 - [ ] Valider le script PowerShell sur un poste Windows réel (WMI, AppX, dialogue de sauvegarde)
 - [ ] Export PDF/Excel des logiciels importants
 - [x] Diff entre deux snapshots du MEME master (evolution dans le temps)

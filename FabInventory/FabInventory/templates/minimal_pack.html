@@ -62,7 +62,8 @@
                     </button>
                   </form>
                   <form method="post" action="/roadmap/minimal-pack/{{ item.id }}/delete"
-                        onsubmit="return confirm('Supprimer {{ item.software_name }} du pack minimal ?')">
+                        data-confirm="Supprimer {{ item.software_name }} du pack minimal ?"
+                        onsubmit="return confirm(this.dataset.confirm)">
                     <button type="submit" class="btn btn-sm btn-outline-danger">
                       <i class="bi bi-trash"></i>
                     </button>

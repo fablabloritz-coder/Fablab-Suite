@@ -6,9 +6,12 @@
 > définissent le dernier scan par date de scan (ISO), avec `id` comme
 > tie-breaker. Les seeds admin/pack ne s'exécutent qu'au premier démarrage
 > (`app_meta.initial_seed`), les clés étrangères sont actives, SQLite est en
-> WAL, et `/healthz` teste la base. Les écritures admin sont protégées ; les
-> écritures inventaire publiques (upload, flags, roadmap) restent à trancher.
-> Suite de référence : `python tests/run_all.py` (20 modules, 107 tests). Les
+> WAL, et `/healthz` teste la base. Toutes les écritures exigent une session
+> admin (portail professeur et comparaison exceptés) ; la clé de session est
+> aléatoire et persistée, et le compte admin n'a plus de mot de passe par
+> défaut. Les suppressions de masters et de scans passent par une corbeille
+> restaurable (`deleted_items`, `/admin/trash`). Suite de référence :
+> `python tests/run_all.py` (21 modules, 117 tests). Les
 > scans conservent aussi `warnings_json`, `script_version`, `scan_schema` et
 > `generated_at` ; `/master/<id>/evolution`, `/sante` et `/reseau` exploitent
 > ces données. Les absences de logiciels sont suivies dans
@@ -80,6 +83,13 @@ software_followups
 ├── status : pending | intentional | to_install | resolved
 ├── note, decided_at
 └── resolved_snapshot_id, resolved_at
+
+deleted_items (corbeille)
+├── id (PK)
+├── kind : master | snapshot
+├── label, payload_json (lignes archivees avec leurs ids d'origine)
+├── deleted_at
+└── restored_at (NULL tant que la restauration est possible)
 ```
 
 ### Software JSON object structure (inside snapshots.software_json)
@@ -125,9 +135,11 @@ FabInventory/
 | `/upload` | GET/POST | Upload HTML inventory files |
 | `/master/<id>` | GET | Master detail with software table |
 | `/master/<id>/edit` | POST | Update label/notes |
-| `/master/<id>/delete` | POST | Delete master + all snapshots |
+| `/master/<id>/delete` | POST | Archive then delete master + all snapshots |
 | `/snapshot/<id>` | GET | View a specific scan |
-| `/snapshot/<id>/delete` | POST | Delete a scan |
+| `/snapshot/<id>/delete` | POST | Archive then delete a scan |
+| `/admin/trash` | GET | Corbeille : masters et scans restaurables |
+| `/admin/trash/<id>/restore` | POST | Restaure un master ou un scan archive |
 | `/master/<id>/absences` | GET/POST | Follow-up list for missing software and decisions |
 | `/master/<id>/evolution` | GET | Compare two scans of the same master |
 | `/sante` | GET | Fleet health: stale scans, low disks, warnings, duplicates |
@@ -213,7 +225,8 @@ FabInventory follows the FabSuite inter-app contract:
 | `PORT` | `5590` | App port |
 | `DB_PATH` | `/data/fabinventory.db` | SQLite database path |
 | `UPLOAD_FOLDER` | `/data/uploads` | Upload directory |
-| `SECRET_KEY` | aucune | Flask session secret obligatoire ; le compose refuse une valeur vide |
+| `SECRET_KEY` | générée | Clé de session Flask ; si absente ou historiquement connue, une clé aléatoire est générée et persistée dans `app_meta`. Le compose exige `FLASK_SECRET_KEY`. |
+| `ADMIN_PASSWORD` | généré | Mot de passe initial du compte `admin` ; sinon mot de passe aléatoire écrit une fois dans `admin-initial-password.txt` (0600) à côté de la base. |
 | `DEBUG` | `0` | Set to `1` for Flask debug mode |
 
 ## 12) Data persistence
@@ -250,7 +263,8 @@ l'ancien emplacement de distribution, pas la source servie.
 
 ## 15) Known limitations / future improvements
 
-- Admin authentication exists (`/admin/login`) ; les écritures inventaire publiques (upload, édition, suppression, flags, roadmap) ne sont pas encore toutes protégées.
+- Toutes les écritures exigent une session admin (`before_request`) ; seuls le portail professeur (token dédié) et `/api/compare` (lecture seule) restent accessibles sans session.
+- Les suppressions de masters et de scans sont archivees dans `deleted_items` avant effacement ; la restauration depuis `/admin/trash` réinsère les lignes avec leurs ids d'origine (AUTOINCREMENT ne les réattribue pas). Aucune purge automatique : la corbeille conserve les archives restaurées comme journal.
 - No automatic PowerShell script version detection.
 - Le JSON schema 3 fournit le système, les disques, le réseau et les services ; le parsing regex/HTML ne sert plus que de repli pour les anciens rapports.
 - Le script PowerShell doit encore être validé sur un poste Windows réel (WMI, AppX, fenêtre de sauvegarde) ; l'autotest Linux vérifie le parseur et le JSON mais pas la collecte Windows.

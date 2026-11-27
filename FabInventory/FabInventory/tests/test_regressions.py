@@ -15,6 +15,7 @@ _MODULE_TMP = tempfile.mkdtemp(prefix="fabinventory-lot0-")
 os.environ["DB_PATH"] = os.path.join(_MODULE_TMP, "test.db")
 os.environ["UPLOAD_FOLDER"] = os.path.join(_MODULE_TMP, "uploads")
 os.environ["SECRET_KEY"] = "tests"
+os.environ["ADMIN_PASSWORD"] = "regression-admin-password"
 
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _APP_DIR not in sys.path:
@@ -215,7 +216,8 @@ class Lot0RegressionTests(unittest.TestCase):
         try:
             with self.assertRaises(RuntimeError):
                 app.test_client().post(
-                    "/admin/login", data={"username": "admin", "password": "admin"}
+                    "/admin/login",
+                    data={"username": "admin", "password": os.environ["ADMIN_PASSWORD"]},
                 )
         finally:
             app.secret_key = original

@@ -37,7 +37,7 @@
     <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editModal">
       <i class="bi bi-pencil me-1"></i>Modifier
     </button>
-    <form method="post" action="/master/{{ master.id }}/delete" onsubmit="return confirm('Supprimer le master {{ master.pc_name }} et tout son historique ? Action irreversible.')">
+    <form method="post" action="/master/{{ master.id }}/delete" data-confirm="Supprimer le master {{ master.pc_name }} et tout son historique ? Action irreversible." onsubmit="return confirm(this.dataset.confirm)">
       <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i>Supprimer</button>
     </form>
   </div>

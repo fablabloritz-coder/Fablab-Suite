@@ -15,7 +15,7 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
-from tests.support import reset_temp_db  # noqa: E402
+from tests.support import login_admin, reset_temp_db  # noqa: E402
 from app import app, get_db, init_db  # noqa: E402
 
 
@@ -57,6 +57,7 @@ class FleetInsightsTests(unittest.TestCase):
         self.client = app.test_client()
         with app.app_context():
             reset_temp_db(init_db)
+        login_admin(self.client)
 
     def _upload(self, payload, filename="inventaire.html"):
         return self.client.post(

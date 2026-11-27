@@ -19,7 +19,7 @@ _APP_DIR = Path(__file__).resolve().parent.parent
 if str(_APP_DIR) not in sys.path:
     sys.path.insert(0, str(_APP_DIR))
 
-from tests.support import reset_temp_db  # noqa: E402
+from tests.support import login_admin, reset_temp_db  # noqa: E402
 from app import (  # noqa: E402
     _snapshot_content_hash,
     app,
@@ -103,6 +103,7 @@ class InventoryScriptContractTests(unittest.TestCase):
         self.client = app.test_client()
         with app.app_context():
             reset_temp_db(init_db)
+        login_admin(self.client)
 
     def test_json_enrichi_prime_sur_le_html_historique(self):
         payload = _payload()

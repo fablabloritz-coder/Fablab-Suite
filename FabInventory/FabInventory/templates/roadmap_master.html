@@ -104,7 +104,7 @@
                       <i class="bi bi-check2 me-1"></i>Mettre a jour
                     </button>
                   </form>
-                  <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" onsubmit="return confirm('Supprimer {{ item.software_name }} de la checklist ?')">
+                  <form method="post" action="/master/{{ master.id }}/roadmap/{{ item.id }}/delete" data-confirm="Supprimer {{ item.software_name }} de la checklist ?" onsubmit="return confirm(this.dataset.confirm)">
                     <button type="submit" class="btn btn-sm btn-outline-danger">
                       <i class="bi bi-trash"></i>
                     </button>

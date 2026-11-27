@@ -8,7 +8,7 @@ _APP_DIR = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _APP_DIR not in _sys.path:
     _sys.path.insert(0, _APP_DIR)
 
-from tests.support import reset_temp_db
+from tests.support import login_admin
 
 _MODULE_TMP = _tempfile.mkdtemp(prefix="fabinventory-tests-")
 _os.environ["DB_PATH"] = _os.path.join(_MODULE_TMP, "test.db")
@@ -47,6 +47,7 @@ class RoadmapFeaturesTests(unittest.TestCase):
     def setUp(self):
         self.client = self.app.test_client()
         self._reset_db()
+        login_admin(self.client)
 
     def _reset_db(self):
         db = sqlite3.connect(os.environ["DB_PATH"])

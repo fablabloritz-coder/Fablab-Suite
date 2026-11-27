@@ -114,8 +114,10 @@
               <a href="/admin/wiki?logiciel_id={{ l.id }}" class="btn btn-outline-info btn-sm">
                 <i class="bi bi-book me-1"></i>Éditer le guide
               </a>
-              <form method="POST" action="/admin/logiciels/{{ l.id }}/delete">
-                <button type="submit" class="btn btn-outline-danger btn-sm w-100" onclick="return confirm('Supprimer définitivement {{ l.nom }} et toutes ses demandes ?')">
+              <form method="POST" action="/admin/logiciels/{{ l.id }}/delete"
+                    data-confirm="Supprimer définitivement {{ l.nom }} et toutes ses demandes ?"
+                    onsubmit="return confirm(this.dataset.confirm)">
+                <button type="submit" class="btn btn-outline-danger btn-sm w-100">
                   <i class="bi bi-trash me-1"></i>Supprimer
                 </button>
               </form>

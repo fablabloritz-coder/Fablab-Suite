@@ -1,0 +1,53 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Corbeille — Admin FabInventory{% endblock %}
+
+{% block content %}
+<h3 class="fw-bold mb-4"><i class="bi bi-trash3 me-2 text-primary"></i>Corbeille</h3>
+<p class="text-muted small">
+  Les masters et les scans supprimes restent ici jusqu'a leur restauration.
+  Leur historique complet (scans, flags, checklist, absences) est conserve.
+</p>
+
+{% if items %}
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Type</th>
+          <th>Element</th>
+          <th>Supprime le</th>
+          <th class="text-end">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            {% if item.kind == 'master' %}
+            <span class="badge bg-primary">Master</span>
+            {% else %}
+            <span class="badge bg-secondary">Scan</span>
+            {% endif %}
+          </td>
+          <td class="fw-semibold">{{ item.label }}</td>
+          <td class="text-muted small">{{ item.deleted_at }}</td>
+          <td class="text-end">
+            <form method="POST" action="{{ url_for('admin_trash_restore', item_id=item.id) }}"
+                  data-confirm="Restaurer {{ item.label }} ?"
+                  onsubmit="return confirm(this.dataset.confirm)">
+              <button type="submit" class="btn btn-sm btn-outline-success">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Restaurer
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-light border">La corbeille est vide.</div>
+{% endif %}
+{% endblock %}

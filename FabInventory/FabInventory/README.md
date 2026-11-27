@@ -126,7 +126,8 @@ FabInventory/
 | `PORT` | `5590` | Port de l'application |
 | `DB_PATH` | `/data/fabinventory.db` | Chemin de la base SQLite |
 | `UPLOAD_FOLDER` | `/data/uploads` | Dossier d'upload |
-| `SECRET_KEY` | aucune | Clé secrète Flask obligatoire ; le compose refuse de démarrer si `FLASK_SECRET_KEY` est vide. Générer avec `python -c "import secrets; print(secrets.token_hex(32))"`. |
+| `SECRET_KEY` | générée | Clé de session Flask. Si `FLASK_SECRET_KEY` est vide ou vaut une valeur connue, une clé aléatoire est générée et conservée dans la base. Recommandé : `python -c "import secrets; print(secrets.token_hex(32))"`. |
+| `ADMIN_PASSWORD` | généré | Mot de passe du compte `admin` créé au premier démarrage. S'il est absent, un mot de passe aléatoire est écrit une seule fois dans `admin-initial-password.txt` (0600) à côté de la base. |
 
 ---
 

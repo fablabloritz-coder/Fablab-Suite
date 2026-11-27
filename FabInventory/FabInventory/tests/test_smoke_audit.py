@@ -18,6 +18,7 @@ _MODULE_TMP = tempfile.mkdtemp(prefix="fabinventory-smoke-")
 os.environ["DB_PATH"] = os.path.join(_MODULE_TMP, "test.db")
 os.environ["UPLOAD_FOLDER"] = os.path.join(_MODULE_TMP, "uploads")
 os.environ["SECRET_KEY"] = "tests"
+os.environ["ADMIN_PASSWORD"] = "smoke-admin-password"
 
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _APP_DIR not in sys.path:
@@ -82,7 +83,7 @@ class SmokeAuditTests(unittest.TestCase):
         client = client or self.client
         response = client.post(
             "/admin/login",
-            data={"username": "admin", "password": "admin"},
+            data={"username": "admin", "password": os.environ["ADMIN_PASSWORD"]},
         )
         self.assertEqual(response.status_code, 302)
         return client

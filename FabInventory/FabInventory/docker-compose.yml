@@ -9,7 +9,7 @@ services:
     volumes:
       - fabinventory-data:/data
     environment:
-      - SECRET_KEY=change-me-in-production
+      - SECRET_KEY=${FLASK_SECRET_KEY:?Definir FLASK_SECRET_KEY dans .env}
       - DB_PATH=/data/fabinventory.db
       - UPLOAD_FOLDER=/data/uploads
       - PORT=5590
