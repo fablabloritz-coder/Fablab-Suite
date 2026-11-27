@@ -11,6 +11,8 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 - **JSON enrichi schema 3** : système, disques, réseau, services automatiques et logiciels sont sérialisés par `ConvertTo-Json`, avec repli HTML pour les anciens rapports
 - **Fenêtre de sauvegarde** : l'utilisateur choisit le dossier + le nom du fichier via une fenêtre Windows ; `-OutputPath`, `-OutputDirectory` et `-NoGui` permettent l'automatisation
 - **Import HTML** : uploadez les fichiers générés par le script d'inventaire
+- **Import sécurisé par identité** : avant toute écriture, la série, le fabricant et le domaine du fichier sont comparés au dernier scan du master. Une série connue et différente est refusée par défaut (message clair et renvoi vers la mise à jour ciblée) ; l'aperçu permet de confirmer explicitement un « poste réimaginé ».
+- **Aperçu et rapport de fusion** : `/upload` peut analyser les fichiers sans rien écrire (masters créés, mis à jour, doublons, conflits, fichiers illisibles), puis affiche après import le rapport de fusion avec le détail de chaque fichier.
 - **Dashboard** : vue d'ensemble de tous les masters avec statistiques
 - **Détail par master** : liste complète des logiciels avec tri, recherche, filtrage
 - **Cases à cocher** : marquez les logiciels importants (sauvegardé en base)
@@ -101,6 +103,7 @@ FabInventory/
 │   ├── base.html           # Layout commun
 │   ├── index.html          # Dashboard
 │   ├── upload.html         # Page d'import
+│   ├── upload_preview.html # Aperçu du plan d'import avant écriture
 │   ├── master.html         # Détail d'un master
 │   ├── master_update.html  # Mise à jour master avec comparaison + décisions
 │   ├── master_followups.html # File ponctuelle des absences d'un master
@@ -123,7 +126,7 @@ FabInventory/
 ## Tests et mesures
 
 ```bash
-python3 tests/run_all.py        # 25 modules, 143 tests, un processus par module
+python3 tests/run_all.py        # 26 modules, 153 tests, un processus par module
 python3 tools/parc_scale.py --db /tmp/parc-500.db --force --benchmark
 ```
 

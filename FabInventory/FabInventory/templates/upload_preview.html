@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}FabInventory - Apercu de l'import{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h2><i class="bi bi-clipboard-check"></i>Aperçu de l'import</h2>
+  <a href="/upload" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Changer de fichiers
+  </a>
+</div>
+
+<div class="alert alert-info border-0 shadow-sm">
+  <i class="bi bi-shield-check me-1"></i>
+  Aucune donnée n'a été écrite. Vérifiez le plan ci-dessous, puis confirmez l'import.
+</div>
+
+<div class="row g-2 mb-4">
+  <div class="col-6 col-md-3 col-xl">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800;color:var(--fi-accent)">{{ totals['new'] }}</div>
+      <div class="text-muted small">Création(s)</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800">{{ totals['update'] }}</div>
+      <div class="text-muted small">Mise(s) à jour</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800">{{ totals['duplicate'] }}</div>
+      <div class="text-muted small">Identique(s)</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800;color:#b02a37">{{ totals['conflict'] }}</div>
+      <div class="text-muted small">Conflit(s) d'identité</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3 col-xl">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
+      <div class="fw-800 fs-4" style="font-weight:800">{{ totals['invalid'] }}</div>
+      <div class="text-muted small">Illisible(s)</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h5 class="mb-3">Plan d'import ({{ plan|length }} fichier(s))</h5>
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fichier</th>
+            <th>Poste</th>
+            <th>Statut</th>
+            <th>Master cible</th>
+            <th class="text-end">Logiciels</th>
+            <th>Identité / dernier scan</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in plan %}
+          <tr>
+            <td class="small">{{ item['filename'] }}</td>
+            <td style="font-weight:600">{{ item['pc_name'] or '—' }}</td>
+            <td>
+              <span class="badge bg-{{ status_labels[item['status']][1] }}">{{ status_labels[item['status']][0] }}</span>
+              {% if item['reimaged'] %}
+              <span class="badge bg-warning text-dark">Poste réimaginé</span>
+              {% endif %}
+            </td>
+            <td class="small">{{ item['master_name'] or '—' }}</td>
+            <td class="text-end">{{ item['software_count'] }}</td>
+            <td class="small">
+              {% if item['identity'] %}
+                {% if item['identity']['differences'] %}
+                  {% for diff in item['identity']['differences'] %}
+                  <div class="{{ 'text-danger' if diff['field'] == 'num_serie' else 'text-warning-emphasis' }}">
+                    {{ diff['label'] }} : {{ diff['old'] }} → {{ diff['new'] }}
+                  </div>
+                  {% endfor %}
+                {% else %}
+                  <span class="text-muted">Identique au dernier scan</span>
+                {% endif %}
+                <div class="text-muted">{{ item['identity']['last']['scan_date'] }}</div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+              {% if item['message'] %}
+              <div class="text-danger">{{ item['message'] }}</div>
+              {% endif %}
+              {% if item['warnings'] %}
+              <div class="text-muted">{{ item['warnings']|length }} avertissement(s) de scan</div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<form method="post" action="/upload">
+  <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
+
+  {% if conflicts %}
+  <div class="card border-0 shadow-sm mb-4 border-start border-4 border-danger">
+    <div class="card-body p-4">
+      <h5 class="mb-2">Conflits d'identité ({{ conflicts|length }})</h5>
+      <p class="text-muted small">
+        La série du dernier scan ne correspond pas : le fichier vient probablement d'un autre poste.
+        Par défaut il est refusé. Cochez uniquement un poste réimaginé pour l'importer comme mise à jour du master existant.
+      </p>
+      {% for item in conflicts %}
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="reimaged" value="{{ item['index'] }}" id="reimaged{{ item['index'] }}">
+        <label class="form-check-label" for="reimaged{{ item['index'] }}">
+          <strong>{{ item['filename'] }}</strong> — {{ item['message'] }}.
+          Confirmer « poste réimaginé » pour <strong>{{ item['master_name'] }}</strong>.
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="d-flex gap-2 mb-4">
+    <button type="submit" class="btn btn-primary btn-lg">
+      <i class="bi bi-check2-circle me-1"></i>Confirmer l'import
+    </button>
+    <a href="/upload" class="btn btn-outline-secondary btn-lg">Annuler</a>
+  </div>
+</form>
+
+{% endblock %}

@@ -6,6 +6,44 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : import d'identité fiable, aperçu et rapport de fusion (suite 4)
+
+**Fonctionnel**
+- L'import ne se fie plus au seul `pcName` : pour un master existant, la série
+  du dernier scan est comparée au fichier. Une série connue et différente
+  (`SN-A` → `SN-B`) bloque l'import direct, avec un message explicite et le
+  renvoi vers « Mettre à jour » sur la fiche du master. Le fabricant et le
+  domaine sont signalés mais ne bloquent pas (poste renommé, changement de
+  domaine) ; une valeur absente d'un côté n'est jamais traitée comme un écart.
+- `/upload` propose un aperçu avant écriture : plan par fichier (création,
+  mise à jour, identique ignoré, refusé pour identité, illisible), master
+  cible, nombre de logiciels, écarts d'identité et avertissements de scan. Le
+  plan est conservé dans un fichier temporaire à jeton ; la confirmation
+  recalcule le plan sur l'état courant, ce qui évite un import sur une base
+  modifiée entre-temps.
+- L'aperçu ne coche rien par défaut : un conflit d'identité reste refusé. La
+  case « poste réimaginé » est la seule façon d'accepter l'écart et d'importer
+  comme mise à jour du master existant.
+- Après import (direct ou confirmé), le dashboard affiche un **rapport de
+  fusion** : masters créés, mis à jour, identiques ignorés, refusés pour
+  identité, illisibles, snapshots écrits, avec le détail des dix premiers
+  fichiers. Les parcours existants restent inchangés (import direct toujours
+  en un POST, redirection vers `/`). La résolution du statut (identité,
+  doublon, création ou mise à jour) est unique et rejouée juste avant
+  l'écriture, jamais dupliquée entre l'aperçu et l'exécution.
+
+**Tests**
+- `tests/test_import_identity.py` (10 tests) : même identité, série différente
+  refusée sans écriture, fabricant/domaine signalés sans blocage, aperçu sans
+  écriture, confirmation du plan, jeton consommé non rejouable, conflit
+  accepté en « poste réimaginé », doublon identique compté dans le rapport,
+  confirmation après import concurrent re-résolue en mise à jour.
+- Suite officielle : `python tests/run_all.py`, **26 modules, 153 tests OK**.
+
+**Prochaine action**
+- Suite 6 de la feuille de route : rapports parc (versions, licences,
+  logiciels importants).
+
 ## 2026-11-27 — FabInventory : CI sur PR, migrations versionnées et parc 500 PC (suite 7)
 
 **Fonctionnel**

@@ -9,6 +9,70 @@
   </a>
 </div>
 
+{% if import_report %}
+<div class="card border-0 shadow-sm mb-4" id="importReport">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h5 class="mb-0" style="font-weight:700"><i class="bi bi-diagram-3 me-1"></i>Rapport de fusion</h5>
+        <div class="text-muted small mt-1">
+          {{ import_report['total_items'] }} fichier(s) analysé(s) lors du dernier import.
+        </div>
+      </div>
+      <button type="button" class="btn-close" aria-label="Fermer" onclick="this.closest('.card').remove()"></button>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-2">
+        <div class="fw-800 fs-4" style="font-weight:800;color:var(--fi-accent)">{{ import_report['counts']['created'] }}</div>
+        <div class="text-muted small">Master(s) créé(s)</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="fw-800 fs-4" style="font-weight:800">{{ import_report['counts']['updated'] }}</div>
+        <div class="text-muted small">Mis à jour</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="fw-800 fs-4" style="font-weight:800">{{ import_report['counts']['duplicates'] }}</div>
+        <div class="text-muted small">Identique(s) ignoré(s)</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="fw-800 fs-4" style="font-weight:800;color:#b02a37">{{ import_report['counts']['conflicts'] }}</div>
+        <div class="text-muted small">Refusé(s) (identité)</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="fw-800 fs-4" style="font-weight:800">{{ import_report['counts']['invalid'] }}</div>
+        <div class="text-muted small">Illisible(s)</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="fw-800 fs-4" style="font-weight:800">{{ import_report['counts']['snapshots'] }}</div>
+        <div class="text-muted small">Snapshot(s) écrit(s)</div>
+      </div>
+    </div>
+    {% if import_report['items'] %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr><th>Fichier</th><th>Poste</th><th>Résultat</th><th>Détail</th></tr>
+        </thead>
+        <tbody>
+          {% for item in import_report['items'] %}
+          <tr>
+            <td class="small">{{ item['filename'] }}</td>
+            <td class="small">{{ item['pc_name'] or '—' }}</td>
+            <td><span class="badge bg-{{ item['tone'] }}">{{ item['label'] }}</span></td>
+            <td class="small text-muted">{{ item['message'] or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if import_report['truncated'] %}
+    <p class="text-muted small mb-0 mt-2">Détail limité aux 10 premiers fichiers.</p>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <!-- Panels -->
 <div class="row g-3 mb-4">
   <div class="col-lg-8">

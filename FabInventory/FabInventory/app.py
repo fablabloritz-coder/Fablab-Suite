@@ -2829,7 +2829,8 @@ def _cleanup_pending_updates(max_age_seconds=86400):
         return
 
     for name in entries:
-        if not name.startswith("pending_update_") or not name.endswith(".json"):
+        is_pending = name.startswith("pending_update_") or name.startswith("pending_upload_")
+        if not is_pending or not name.endswith(".json"):
             continue
         path = os.path.join(UPLOAD_FOLDER, name)
         try:
@@ -3325,6 +3326,7 @@ def index():
         masters=masters,
         prep_summary=prep_summary,
         script_sha256=_script_sha256(),
+        import_report=session.pop("last_import_report", None),
     )
 
 
@@ -3400,84 +3402,441 @@ def download_master_bundle():
     )
 
 
+# ─── IMPORT : IDENTITE, APERCU ET RAPPORT DE FUSION ──────────────────────────
+# Le nom du fichier (`pcName`) ne suffit pas a identifier un poste : un fichier
+# d'un autre poste, ou d'un poste reimage, ecraserait le dernier scan du mauvais
+# master. La serie du dernier scan est donc comparee avant toute ecriture. Le
+# fabricant et le domaine sont signales mais ne bloquent pas (poste renomme,
+# changement de domaine) ; une serie connue et differente designe une autre
+# machine et exige une confirmation explicite « poste reimagine ».
+
+IMPORT_STATUS_LABELS = {
+    "new": ("Créé", "success"),
+    "update": ("Mis à jour", "primary"),
+    "duplicate": ("Ignoré (identique)", "secondary"),
+    "conflict": ("Refusé (identité)", "danger"),
+    "invalid": ("Refusé (format)", "warning"),
+}
+
+
+def _pending_upload_file(token):
+    safe_token = re.sub(r"[^a-zA-Z0-9_-]", "", token)
+    return os.path.join(UPLOAD_FOLDER, f"pending_upload_{safe_token}.json")
+
+
+def _identity_text(value):
+    """Comparaison d'identite tolerante : casse, espaces et separateurs ignores."""
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _last_scan_identity(db, master_id):
+    """Identite materielle du dernier scan d'un master, ou None."""
+    row = db.execute(
+        """
+        SELECT scan_date, num_serie, fabricant, domaine
+        FROM latest_snapshots
+        WHERE master_id = ?
+        """,
+        (master_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "scan_date": row["scan_date"] or "",
+        "num_serie": str(row["num_serie"] or "").strip(),
+        "fabricant": str(row["fabricant"] or "").strip(),
+        "domaine": str(row["domaine"] or "").strip(),
+    }
+
+
+def _identity_conflicts(last_identity, sys_info):
+    """Ecarts entre le dernier scan et le fichier, avec blocage sur la serie.
+
+    Une valeur absente d'un cote (ancien scan sans numero de serie) ne prouve
+    rien : elle n'est jamais traitee comme un ecart.
+    """
+    result = {"blocking": False, "differences": [], "summary": ""}
+    if not last_identity:
+        return result
+
+    incoming = {
+        "num_serie": str(sys_info.get("num_serie") or "").strip(),
+        "fabricant": str(sys_info.get("fabricant") or "").strip(),
+        "domaine": str(sys_info.get("domaine") or "").strip(),
+    }
+    labels = {
+        "num_serie": "Numero de serie",
+        "fabricant": "Fabricant",
+        "domaine": "Domaine",
+    }
+    for key, label in labels.items():
+        old_value = last_identity[key]
+        new_value = incoming[key]
+        if not old_value or not new_value:
+            continue
+        if _identity_text(old_value) != _identity_text(new_value):
+            result["differences"].append(
+                {"field": key, "label": label, "old": old_value, "new": new_value}
+            )
+
+    serial = next(
+        (item for item in result["differences"] if item["field"] == "num_serie"),
+        None,
+    )
+    result["blocking"] = serial is not None
+    if serial:
+        result["summary"] = f"serie {serial['old']} -> {serial['new']}"
+    elif result["differences"]:
+        result["summary"] = ", ".join(
+            f"{item['label'].lower()} {item['old']} -> {item['new']}"
+            for item in result["differences"]
+        )
+    return result
+
+
+def _prepare_upload_entry(filename, html_content):
+    """Donnees d'un fichier parsees et normalisees, sans aucune ecriture."""
+    data = parse_inventory_html(html_content)
+    if not data:
+        return {
+            "filename": filename,
+            "status": "invalid",
+            "message": "pas de donnees d'inventaire v3 detectees",
+            "pc_name": "",
+            "software_count": 0,
+            "warnings": [],
+        }
+
+    pc_name = str(data.get("pcName") or "Inconnu").strip() or "Inconnu"
+    raw_software = data.get("software")
+    software = raw_software if isinstance(raw_software, list) else []
+    scan_date = data.get("date") or datetime.now().strftime("%d/%m/%Y %H:%M")
+    sys_info = extract_system_info(html_content, data)
+    disks, network = extract_disks_network(html_content, data)
+    services = extract_services(data)
+    metadata = _scan_metadata(data)
+    return {
+        "filename": filename,
+        "status": "pending",
+        "pc_name": pc_name,
+        "pc_key": _master_key(pc_name),
+        "scan_date": scan_date,
+        "scan_date_iso": _parse_scan_date_iso(scan_date)
+        or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "software": software,
+        "software_count": len(software),
+        "sys_info": sys_info,
+        "disks": disks,
+        "network": network,
+        "services": services,
+        "metadata": metadata,
+        "warnings": metadata.get("warnings") or [],
+        "content_hash": _snapshot_content_hash(
+            pc_name, scan_date, software, sys_info, disks, network, services
+        ),
+    }
+
+
+def _resolve_upload_item(db, entry, index, reimaged=False, batch=None):
+    """Statut d'un fichier sur l'etat courant de la base, sans ecriture.
+
+    Source unique de verite, rejouee a l'apercu puis juste avant l'ecriture :
+    une base modifiee entre les deux ne peut donc ni contourner la comparaison
+    d'identite ni creer un doublon.
+
+    `batch` associe la cle d'un poste a l'empreinte du premier scan du lot :
+    le second scan du meme poste vise le master cree par le premier au lieu
+    d'annoncer une creation concurrente.
+    """
+    item = {
+        "index": index,
+        "filename": entry["filename"],
+        "status": entry["status"],
+        "message": entry.get("message", ""),
+        "pc_name": entry.get("pc_name", ""),
+        "scan_date": entry.get("scan_date", ""),
+        "software_count": entry.get("software_count", 0),
+        "warnings": entry.get("warnings", []),
+        "master_id": None,
+        "master_name": "",
+        "identity": None,
+        "reimaged": False,
+    }
+    if entry["status"] == "invalid":
+        return item
+
+    master = db.execute(
+        "SELECT id, pc_name FROM masters "
+        "WHERE pc_name_key = ? AND workflow_type = 'inventory'",
+        (entry["pc_key"],),
+    ).fetchone()
+    if not master:
+        if batch is not None and entry["pc_key"] in batch:
+            item["status"] = (
+                "duplicate"
+                if batch[entry["pc_key"]] == entry["content_hash"]
+                else "update"
+            )
+            item["master_name"] = f"{entry['pc_name']} (créé dans ce lot)"
+            return item
+        item["status"] = "new"
+        item["master_name"] = entry["pc_name"]
+        return item
+
+    item["master_id"] = master["id"]
+    item["master_name"] = master["pc_name"]
+    last_identity = _last_scan_identity(db, master["id"])
+    conflicts = _identity_conflicts(last_identity, entry["sys_info"])
+    item["identity"] = {"last": last_identity, **conflicts}
+
+    latest = db.execute(
+        "SELECT content_hash FROM latest_snapshots WHERE master_id = ?",
+        (master["id"],),
+    ).fetchone()
+    if latest and latest["content_hash"] and latest["content_hash"] == entry["content_hash"]:
+        item["status"] = "duplicate"
+    elif conflicts["blocking"] and not reimaged:
+        item["status"] = "conflict"
+        item["message"] = (
+            f"identite differente du dernier scan ({conflicts['summary']})"
+        )
+    else:
+        item["status"] = "update"
+        item["reimaged"] = conflicts["blocking"]
+    return item
+
+
+def _plan_upload(db, entries, reimaged=()):
+    """Plan d'import, sans ecriture, etabli par la resolution unique.
+
+    `reimaged` contient les index de fichiers que l'utilisateur a explicitement
+    confirmes comme postes reimagines : leur ecart de serie est alors accepte et
+    le fichier est traite comme une mise a jour du master existant.
+    """
+    reimaged = set(reimaged or ())
+    batch = {}
+    plan = []
+    for index, entry in enumerate(entries):
+        item = _resolve_upload_item(
+            db, entry, index, reimaged=index in reimaged, batch=batch
+        )
+        if item["status"] == "new":
+            batch[entry["pc_key"]] = entry["content_hash"]
+        plan.append(item)
+    return plan
+
+
+def _plan_totals(plan):
+    counts = {status: 0 for status in IMPORT_STATUS_LABELS}
+    for item in plan:
+        counts[item["status"]] = counts.get(item["status"], 0) + 1
+    return counts
+
+
+def _import_upload_plan(db, entries, plan):
+    """Execute un plan d'import et retourne les compteurs du rapport de fusion.
+
+    Chaque fichier est re-resolu juste avant l'ecriture : les statuts et les
+    compteurs du rapport decrivent ce qui a reellement ete fait, pas l'apercu.
+    """
+    counts = {
+        "created": 0,
+        "updated": 0,
+        "duplicates": 0,
+        "conflicts": 0,
+        "invalid": 0,
+        "snapshots": 0,
+    }
+    count_keys = {
+        "new": "created",
+        "update": "updated",
+        "duplicate": "duplicates",
+        "conflict": "conflicts",
+        "invalid": "invalid",
+    }
+    for item in plan:
+        entry = entries[item["index"]]
+        item.update(
+            _resolve_upload_item(
+                db, entry, item["index"], reimaged=item.get("reimaged", False)
+            )
+        )
+        status = item["status"]
+        if status not in ("new", "update"):
+            counts[count_keys[status]] += 1
+            continue
+
+        if status == "new":
+            item["master_id"] = db.execute(
+                "INSERT INTO masters (pc_name, pc_name_key, workflow_type) "
+                "VALUES (?, ?, 'inventory')",
+                (entry["pc_name"], entry["pc_key"]),
+            ).lastrowid
+            counts["created"] += 1
+        else:
+            counts["updated"] += 1
+
+        _insert_snapshot(
+            db,
+            item["master_id"],
+            entry["scan_date"],
+            entry["scan_date_iso"],
+            entry["content_hash"],
+            entry["software"],
+            entry["sys_info"],
+            entry["disks"],
+            entry["network"],
+            entry["services"],
+            entry["metadata"],
+        )
+        db.commit()
+        counts["snapshots"] += 1
+
+    _invalidate_counts_cache()
+    return counts
+
+
+def _import_report(counts, plan, max_items=10):
+    """Rapport de fusion compact, conserve en session pour la page suivante."""
+    details = [
+        {
+            "filename": item["filename"],
+            "pc_name": item["pc_name"],
+            "status": item["status"],
+            "label": IMPORT_STATUS_LABELS.get(item["status"], (item["status"], ""))[0],
+            "tone": IMPORT_STATUS_LABELS.get(item["status"], ("", "secondary"))[1],
+            "message": item["message"],
+        }
+        for item in plan[:max_items]
+    ]
+    return {
+        "counts": counts,
+        "items": details,
+        "total_items": len(plan),
+        "truncated": len(plan) > len(details),
+    }
+
+
+def _flash_import_result(plan, counts):
+    """Resume lisible d'un import, avec le detail des fichiers refuses."""
+    if counts["snapshots"]:
+        resume = (
+            f"Import terminé : {counts['created']} master(s) créé(s), "
+            f"{counts['updated']} mis à jour, "
+            f"{counts['duplicates']} identique(s) ignoré(s)"
+        )
+        if counts["conflicts"]:
+            resume += f", {counts['conflicts']} refusé(s) pour identité"
+        if counts["invalid"]:
+            resume += f", {counts['invalid']} illisible(s)"
+        flash(resume, "success")
+    elif counts["conflicts"] or counts["invalid"]:
+        flash("Aucun inventaire importé : voir le détail des fichiers refusés.", "error")
+    elif counts["duplicates"]:
+        flash(
+            f"{counts['duplicates']} fichier(s) identique(s) déjà importé(s), "
+            "aucun doublon créé",
+            "info",
+        )
+
+    for item in plan:
+        if item["status"] == "conflict":
+            flash(
+                f"Fichier {item['filename']} : {item['message']}. "
+                f"Utilisez « Mettre à jour » sur la fiche de {item['master_name']} "
+                "s'il s'agit d'un poste réimaginé.",
+                "error",
+            )
+        elif item["status"] == "invalid":
+            flash(f"Fichier {item['filename']} : {item['message']}", "warning")
+
+
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":
-        if "file" not in request.files:
-            flash("Aucun fichier selectionne", "error")
-            return redirect(request.url)
+        confirm_token = (request.form.get("confirm_token") or "").strip()
+        if confirm_token:
+            return _confirm_upload(confirm_token)
 
-        files = request.files.getlist("file")
-        imported = 0
-        skipped = 0
-
-        for f in files:
+        entries = []
+        for f in request.files.getlist("file"):
             if not f.filename or not f.filename.lower().endswith(".html"):
                 continue
-
-            html_content = f.read().decode("utf-8", errors="ignore")
-            data = parse_inventory_html(html_content)
-
-            if not data:
-                flash(f"Fichier {f.filename} : pas de donnees d'inventaire v3 detectees", "warning")
-                continue
-
-            pc_name = str(data.get("pcName") or "Inconnu").strip() or "Inconnu"
-            pc_key = _master_key(pc_name)
-            scan_date = data.get("date", datetime.now().strftime("%d/%m/%Y %H:%M"))
-            software = data.get("software", [])
-            if not isinstance(software, list):
-                software = []
-
-            sys_info = extract_system_info(html_content, data)
-            disks, network = extract_disks_network(html_content, data)
-            services = extract_services(data)
-            metadata = _scan_metadata(data)
-
-            db = get_db()
-
-            # Find or create master : la cle ignore casse et espaces.
-            master = db.execute(
-                "SELECT id FROM masters WHERE pc_name_key = ? AND workflow_type = 'inventory'",
-                (pc_key,),
-            ).fetchone()
-            if master:
-                master_id = master["id"]
-            else:
-                cur = db.execute(
-                    "INSERT INTO masters (pc_name, pc_name_key, workflow_type) VALUES (?, ?, 'inventory')",
-                    (pc_name, pc_key),
+            entries.append(
+                _prepare_upload_entry(
+                    f.filename, f.read().decode("utf-8", errors="ignore")
                 )
-                master_id = cur.lastrowid
-
-            content_hash = _snapshot_content_hash(pc_name, scan_date, software, sys_info, disks, network, services)
-            latest = db.execute(
-                "SELECT content_hash FROM latest_snapshots WHERE master_id = ?", (master_id,)
-            ).fetchone()
-            if latest and latest["content_hash"] and latest["content_hash"] == content_hash:
-                skipped += 1
-                continue
-
-            # Create snapshot
-            scan_date_iso = _parse_scan_date_iso(scan_date) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            _insert_snapshot(
-                db, master_id, scan_date, scan_date_iso, content_hash,
-                software, sys_info, disks, network, services, metadata,
             )
-            db.commit()
-            _invalidate_counts_cache()
-            imported += 1
 
-        if imported:
-            message = f"{imported} inventaire(s) importe(s) avec succes"
-            if skipped:
-                message += f" ({skipped} doublon(s) identique(s) ignore(s))"
-            flash(message, "success")
-        elif skipped:
-            flash(f"{skipped} fichier(s) identique(s) deja importe(s), aucun doublon cree", "info")
+        if not entries:
+            flash("Aucun fichier HTML d'inventaire selectionne", "error")
+            return redirect(request.url)
+
+        db = get_db()
+        if request.form.get("preview") == "1":
+            plan = _plan_upload(db, entries)
+            token = secrets.token_hex(16)
+            try:
+                with open(_pending_upload_file(token), "w", encoding="utf-8") as handle:
+                    json.dump({"entries": entries}, handle, ensure_ascii=False)
+            except OSError:
+                flash("Impossible de conserver l'aperçu. Relancez l'import.", "error")
+                return redirect(url_for("upload"))
+            _cleanup_pending_updates()
+            return render_template(
+                "upload_preview.html",
+                plan=plan,
+                totals=_plan_totals(plan),
+                conflicts=[item for item in plan if item["status"] == "conflict"],
+                confirm_token=token,
+                status_labels=IMPORT_STATUS_LABELS,
+            )
+
+        plan = _plan_upload(db, entries)
+        counts = _import_upload_plan(db, entries, plan)
+        session["last_import_report"] = _import_report(counts, plan)
+        _flash_import_result(plan, counts)
         return redirect(url_for("index"))
 
     return render_template("upload.html")
+
+
+def _confirm_upload(confirm_token):
+    """Valide un aperçu : recalcule le plan sur l'etat courant puis importe."""
+    pending_path = _pending_upload_file(confirm_token)
+    if not os.path.isfile(pending_path):
+        flash("Aperçu expiré. Relancez l'analyse des fichiers.", "error")
+        return redirect(url_for("upload"))
+
+    try:
+        with open(pending_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        flash("Aperçu invalide. Relancez l'analyse des fichiers.", "error")
+        return redirect(url_for("upload"))
+
+    entries = payload.get("entries") if isinstance(payload, dict) else None
+    if not isinstance(entries, list) or not entries:
+        flash("Aperçu vide ou invalide. Relancez l'analyse des fichiers.", "error")
+        return redirect(url_for("upload"))
+
+    reimaged = {
+        int(value)
+        for value in request.form.getlist("reimaged")
+        if str(value).isdigit() and int(value) < len(entries)
+    }
+    db = get_db()
+    plan = _plan_upload(db, entries, reimaged)
+    counts = _import_upload_plan(db, entries, plan)
+
+    try:
+        os.remove(pending_path)
+    except OSError:
+        pass
+
+    session["last_import_report"] = _import_report(counts, plan)
+    _flash_import_result(plan, counts)
+    return redirect(url_for("index"))
 
 
 @app.route("/master/new", methods=["GET", "POST"])
