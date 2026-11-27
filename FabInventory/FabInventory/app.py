@@ -12,6 +12,7 @@ import json
 import sqlite3
 import re
 import time
+import unicodedata
 import secrets
 import base64
 import io
@@ -28,6 +29,69 @@ APP_VERSION = "2.1.4"
 # Version du script PowerShell servi par /download/master-script. Elle doit
 # rester alignee sur $script:ScriptVersion (verifie par les tests).
 CURRENT_SCRIPT_VERSION = "3.1.0"
+
+# Prefixes editeurs et suffixes d'edition retires pour comparer les noms de
+# logiciels sans faux positifs (Java/JavaScript, Office/OpenOffice...).
+_EDITOR_PREFIXES = {
+    "adobe",
+    "apache",
+    "apple",
+    "autodesk",
+    "cisco",
+    "google",
+    "hp",
+    "intel",
+    "lenovo",
+    "microsoft",
+    "mozilla",
+    "nvidia",
+    "oracle",
+    "realtek",
+    "vmware",
+}
+_EDITION_SUFFIXES = {
+    "dc",
+    "edition",
+    "enterprise",
+    "home",
+    "ltsb",
+    "ltsc",
+    "plus",
+    "pro",
+    "professional",
+    "standard",
+    "update",
+    "x64",
+    "x86",
+}
+
+
+def _normalize_software_name(value):
+    """Cle de comparaison d'un nom de logiciel.
+
+    Minuscules, sans accents ni ponctuation, sans prefixe d'editeur ni suffixe
+    d'edition ou de version. La correspondance reste exacte sur cette cle (ou
+    via un alias), pour ne pas confondre Java avec JavaScript ni Visual Studio
+    avec Visual Studio Code.
+    """
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = text.lower().replace("&", " et ")
+    tokens = re.sub(r"[^a-z0-9]+", " ", text).split()
+    if len(tokens) > 1 and tokens[0] in _EDITOR_PREFIXES:
+        tokens = tokens[1:]
+    # Une annee au milieu du nom (Office Professional Plus 2019,
+    # Visual C++ 2015-2022) est une version, pas le nom du produit.
+    tokens = [
+        token
+        for token in tokens
+        if not (len(token) == 4 and token.isdigit() and 1990 <= int(token) <= 2099)
+    ]
+    while len(tokens) > 1 and (
+        tokens[-1].isdigit() or tokens[-1] in _EDITION_SUFFIXES
+    ):
+        tokens.pop()
+    return " ".join(tokens)
 
 app = Flask(__name__)
 
@@ -638,6 +702,18 @@ def init_db():
         FOREIGN KEY (logiciel_id) REFERENCES logiciels(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS logiciel_aliases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        logiciel_id INTEGER NOT NULL,
+        alias_nom TEXT NOT NULL,
+        alias_norm TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(logiciel_id, alias_norm),
+        FOREIGN KEY (logiciel_id) REFERENCES logiciels(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_logiciel_aliases_norm ON logiciel_aliases(alias_norm);
+
     CREATE TABLE IF NOT EXISTS prof_tokens (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT NOT NULL UNIQUE,
@@ -671,6 +747,29 @@ def init_db():
         FOREIGN KEY (plugin_id) REFERENCES logiciel_plugins(id) ON DELETE CASCADE
     );
     """)
+
+    # Migration: cle normalisee des noms pour la couverture logicielle.
+    si_cols = [row[1] for row in db.execute("PRAGMA table_info(software_index)").fetchall()]
+    if "software_name_norm" not in si_cols:
+        db.execute(
+            "ALTER TABLE software_index ADD COLUMN software_name_norm TEXT DEFAULT ''"
+        )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_software_index_name_norm "
+        "ON software_index(software_name_norm)"
+    )
+    rows = db.execute(
+        "SELECT id, software_name FROM software_index "
+        "WHERE COALESCE(software_name_norm, '') = ''"
+    ).fetchall()
+    if rows:
+        db.executemany(
+            "UPDATE software_index SET software_name_norm = ? WHERE id = ?",
+            [
+                (_normalize_software_name(row["software_name"]), row["id"])
+                for row in rows
+            ],
+        )
 
     # Seed initial unique. Le marqueur evite qu'un admin ou un logiciel du pack
     # supprime volontairement reapparaisse au prochain demarrage.
@@ -857,29 +956,170 @@ def _demande_detail(db, demande_id):
         WHERE dp.demande_id = ?
     """, (demande_id,)).fetchall()
     d['plugins'] = [dict(p) for p in plugins]
-    d['masters_coverage'] = _software_masters_count(db, d['logiciel_nom'])
+    coverage = _coverage_for_logiciels(
+        db, [{"id": d["logiciel_id"], "nom": d["logiciel_nom"]}]
+    )
+    d['masters_coverage'] = coverage.get(d['logiciel_id'], 0)
     return d
 
 
+def _is_token_identifier(norm):
+    """Identifiant court (KB...) qui doit matcher comme jeton exact."""
+    return bool(re.fullmatch(r"kb\d+", norm))
+
+
+def _matching_terms_sql(terms):
+    """Clause SQL pour une cle normalisee exacte ou un identifiant jeton."""
+    exact = sorted(term for term in terms if term and not _is_token_identifier(term))
+    tokens = sorted(term for term in terms if _is_token_identifier(term))
+    clauses = []
+    params = []
+    if exact:
+        clauses.append(
+            "si.software_name_norm IN ({})".format(
+                ",".join("?" for _ in exact)
+            )
+        )
+        params.extend(exact)
+    for term in tokens:
+        clauses.append("instr(' ' || si.software_name_norm || ' ', ?) > 0")
+        params.append(" {} ".format(term))
+    return "(" + " OR ".join(clauses) + ")", params
+
+
+def _coverage_terms(db, logiciels_list):
+    """{logiciel_id: cles normalisees du nom et des alias}."""
+    if not logiciels_list:
+        return {}
+    aliases = defaultdict(set)
+    for row in db.execute(
+        "SELECT logiciel_id, alias_norm FROM logiciel_aliases"
+    ).fetchall():
+        if row["alias_norm"]:
+            aliases[row["logiciel_id"]].add(row["alias_norm"])
+
+    terms_by_id = {}
+    for logiciel in logiciels_list:
+        norm = _normalize_software_name(logiciel["nom"])
+        terms_by_id[logiciel["id"]] = (
+            ({norm} if norm else set())
+            | aliases.get(logiciel["id"], set())
+        )
+    return terms_by_id
+
+
+def _terms_match(terms, present, present_tokens):
+    """Vrai si un des termes couvre un nom du dernier scan."""
+    return any(
+        term in present
+        or (_is_token_identifier(term) and term in present_tokens)
+        for term in terms
+    )
+
+
 def _software_masters_count(db, logiciel_nom):
-    """Nombre de masters ayant ce logiciel dans leur dernier scan."""
-    if not logiciel_nom:
+    """Nombre de masters inventory ayant ce logiciel dans leur dernier scan.
+
+    Comparaison sur la cle normalisee ou un alias explicite, jamais sur une
+    sous-chaine : « Java » ne compte plus « JavaScript ».
+    """
+    norm = _normalize_software_name(logiciel_nom)
+    if not norm:
         return 0
-    result = db.execute("""
+    logiciels = [
+        row
+        for row in db.execute("SELECT id, nom FROM logiciels").fetchall()
+        if _normalize_software_name(row["nom"]) == norm
+    ]
+    terms = {norm}
+    for logiciel_terms in _coverage_terms(db, logiciels).values():
+        terms |= logiciel_terms
+    where, params = _matching_terms_sql(terms)
+    result = db.execute(
+        f"""
         SELECT COUNT(DISTINCT si.master_id) AS c
         FROM software_index si
         JOIN latest_snapshots ls ON ls.id = si.snapshot_id
-        WHERE LOWER(si.software_name) LIKE LOWER(?)
-    """, (f"%{logiciel_nom}%",)).fetchone()
+        JOIN masters m ON m.id = si.master_id
+        WHERE m.workflow_type = 'inventory' AND {where}
+        """,
+        tuple(params),
+    ).fetchone()
     return result['c'] if result else 0
 
 
 def _coverage_for_logiciels(db, logiciels_list):
-    """Retourne un dict {logiciel_id: masters_count} pour une liste de logiciels."""
-    coverage = {}
-    for l in logiciels_list:
-        coverage[l['id']] = _software_masters_count(db, l['nom'])
+    """Retourne {logiciel_id: masters_count} avec une seule requete de paires."""
+    coverage = {l["id"]: 0 for l in logiciels_list}
+    terms_by_id = _coverage_terms(db, logiciels_list)
+    all_terms = set().union(*terms_by_id.values()) if terms_by_id else set()
+    if not all_terms:
+        return coverage
+
+    where, params = _matching_terms_sql(all_terms)
+    rows = db.execute(
+        f"""
+        SELECT DISTINCT si.software_name_norm AS norm, si.master_id
+        FROM software_index si
+        JOIN latest_snapshots ls ON ls.id = si.snapshot_id
+        JOIN masters m ON m.id = si.master_id
+        WHERE m.workflow_type = 'inventory' AND {where}
+        """,
+        tuple(params),
+    ).fetchall()
+
+    kb_terms = {term for term in all_terms if _is_token_identifier(term)}
+    masters_by_term = defaultdict(set)
+    for row in rows:
+        norm = row["norm"]
+        masters_by_term[norm].add(row["master_id"])
+        for token in norm.split():
+            if token in kb_terms:
+                masters_by_term[token].add(row["master_id"])
+
+    for logiciel_id, terms in terms_by_id.items():
+        covered = set()
+        for term in terms:
+            covered |= masters_by_term.get(term, set())
+        coverage[logiciel_id] = len(covered)
     return coverage
+
+
+def _coverage_for_masters(db, masters, logiciels_list):
+    """{master_id: nombre de logiciels du catalogue detectes}.
+
+    Seuls les masters inventories comptent : une liste de preparation n'a pas
+    de scan et ne doit pas gonfler les compteurs du catalogue.
+    """
+    counts = {m["id"]: 0 for m in masters}
+    terms_by_id = _coverage_terms(db, logiciels_list)
+    if not terms_by_id or not counts:
+        return counts
+
+    norms_by_master = defaultdict(set)
+    for row in db.execute("""
+        SELECT si.master_id, si.software_name_norm AS norm
+        FROM software_index si
+        JOIN latest_snapshots ls ON ls.id = si.snapshot_id
+        JOIN masters m ON m.id = si.master_id
+        WHERE m.workflow_type = 'inventory'
+    """).fetchall():
+        norms_by_master[row["master_id"]].add(row["norm"] or "")
+
+    terms_list = list(terms_by_id.values())
+    for master in masters:
+        if master["workflow_type"] != "inventory":
+            continue
+        present = norms_by_master.get(master["id"], set())
+        present_tokens = set()
+        for norm in present:
+            present_tokens.update(norm.split())
+        counts[master["id"]] = sum(
+            1
+            for terms in terms_list
+            if _terms_match(terms, present, present_tokens)
+        )
+    return counts
 
 
 def _invalidate_counts_cache():
@@ -1006,10 +1246,10 @@ def admin_dashboard():
 
     # Logiciels du catalogue déjà détectés sur au moins un master
     logiciels_actifs = db.execute("SELECT id, nom FROM logiciels WHERE actif=1").fetchall()
-    nb_couverts = 0
-    for l in logiciels_actifs:
-        if _software_masters_count(db, l['nom']) > 0:
-            nb_couverts += 1
+    coverage = _coverage_for_logiciels(db, logiciels_actifs)
+    nb_couverts = sum(
+        1 for l in logiciels_actifs if coverage.get(l['id'], 0) > 0
+    )
 
     # Masters sans scan récent (>30 jours). On compare des dates ISO, jamais
     # le texte `jj/mm/aaaa` : le tri lexicographique donnait des faux positifs.
@@ -1056,23 +1296,13 @@ def admin_masters():
     """).fetchall()
 
     logiciels_actifs = db.execute("SELECT id, nom FROM logiciels WHERE actif=1").fetchall()
+    counts = _coverage_for_masters(db, masters, logiciels_actifs)
 
     cutoff_iso = _stale_cutoff_iso()
     result = []
     for m in masters:
         master = dict(m)
-        if m['snapshot_id'] and logiciels_actifs:
-            nb_couverts = db.execute("""
-                SELECT COUNT(DISTINCT l.id) AS c
-                FROM logiciels l
-                WHERE l.actif = 1 AND EXISTS (
-                    SELECT 1 FROM software_index si
-                    WHERE si.snapshot_id = ? AND LOWER(si.software_name) LIKE '%' || LOWER(l.nom) || '%'
-                )
-            """, (m['snapshot_id'],)).fetchone()['c']
-        else:
-            nb_couverts = 0
-        master['nb_couverts'] = nb_couverts
+        master['nb_couverts'] = counts[m['id']]
         master['nb_catalogue'] = nb_catalogue
         master['is_stale'] = (not m['scan_key']) or m['scan_key'] < cutoff_iso
         result.append(master)
@@ -1179,6 +1409,12 @@ def admin_logiciels():
     nb_masters_total = db.execute(
         "SELECT COUNT(*) AS c FROM masters WHERE workflow_type='inventory'"
     ).fetchone()['c']
+    aliases_by_logiciel = defaultdict(list)
+    for row in db.execute(
+        "SELECT * FROM logiciel_aliases ORDER BY alias_nom"
+    ).fetchall():
+        aliases_by_logiciel[row["logiciel_id"]].append(dict(row))
+
     result = []
     for log in logiciels:
         l = dict(log)
@@ -1191,9 +1427,13 @@ def admin_logiciels():
         l['nb_demandes'] = db.execute(
             "SELECT COUNT(*) AS c FROM demandes WHERE logiciel_id = ?", (l['id'],)
         ).fetchone()['c']
-        l['nb_masters'] = _software_masters_count(db, l['nom'])
         l['nb_masters_total'] = nb_masters_total
+        l['aliases'] = aliases_by_logiciel.get(l['id'], [])
         result.append(l)
+
+    coverage = _coverage_for_logiciels(db, result)
+    for l in result:
+        l['nb_masters'] = coverage.get(l['id'], 0)
 
     categories = sorted(set(r['categorie'] for r in result if r['categorie']))
     return render_template("admin/logiciels.html",
@@ -1315,6 +1555,51 @@ def admin_logiciels_plugin_delete(logiciel_id, plugin_id):
     db.execute("DELETE FROM logiciel_plugins WHERE id=? AND logiciel_id=?", (plugin_id, logiciel_id))
     db.commit()
     flash("Plugin supprimé.", "success")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route("/admin/logiciels/<int:logiciel_id>/aliases/add", methods=["POST"])
+@admin_required
+def admin_logiciels_alias_add(logiciel_id):
+    alias_nom = (request.form.get("alias_nom") or "").strip()
+    db = get_db()
+    logiciel = db.execute(
+        "SELECT id FROM logiciels WHERE id=?", (logiciel_id,)
+    ).fetchone()
+    if not logiciel:
+        flash("Logiciel introuvable.", "error")
+        return redirect(url_for('admin_logiciels'))
+    alias_norm = _normalize_software_name(alias_nom)
+    if not alias_norm:
+        flash("L'alias est vide ou invalide.", "error")
+        return redirect(url_for('admin_logiciels'))
+    try:
+        db.execute(
+            "INSERT INTO logiciel_aliases (logiciel_id, alias_nom, alias_norm) "
+            "VALUES (?,?,?)",
+            (logiciel_id, alias_nom, alias_norm),
+        )
+        db.commit()
+        flash(f"Alias « {alias_nom} » ajouté.", "success")
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("Cet alias existe déjà pour ce logiciel.", "error")
+    return redirect(url_for('admin_logiciels'))
+
+
+@app.route(
+    "/admin/logiciels/<int:logiciel_id>/aliases/<int:alias_id>/delete",
+    methods=["POST"],
+)
+@admin_required
+def admin_logiciels_alias_delete(logiciel_id, alias_id):
+    db = get_db()
+    db.execute(
+        "DELETE FROM logiciel_aliases WHERE id=? AND logiciel_id=?",
+        (alias_id, logiciel_id),
+    )
+    db.commit()
+    flash("Alias supprimé.", "success")
     return redirect(url_for('admin_logiciels'))
 
 
@@ -1540,10 +1825,13 @@ def prof_catalogue(token):
         l['plugins'] = [dict(p) for p in db.execute(
             "SELECT * FROM logiciel_plugins WHERE logiciel_id=? ORDER BY nom", (l['id'],)
         ).fetchall()]
-        l['nb_masters'] = _software_masters_count(db, l['nom'])
         l['nb_masters_total'] = nb_masters_total
         l['demande_en_cours'] = l['id'] in demandes_en_cours
         result.append(l)
+
+    coverage = _coverage_for_logiciels(db, result)
+    for l in result:
+        l['nb_masters'] = coverage.get(l['id'], 0)
 
     mes_demandes = db.execute("""
         SELECT d.id, d.statut, d.date_demande, d.precisions,
@@ -2523,15 +2811,16 @@ def _upsert_snapshot_software_index(db, snapshot_id, master_id, software_list):
         name, version, editor, source, category = _normalize_software_fields(sw)
         if not name:
             continue
+        name_norm = _normalize_software_name(name)
         search_blob = " ".join([name, version, editor, source]).lower()
-        rows.append((snapshot_id, master_id, name, version, editor, source, category, search_blob))
+        rows.append((snapshot_id, master_id, name, name_norm, version, editor, source, category, search_blob))
 
     if rows:
         db.executemany(
             """
             INSERT OR IGNORE INTO software_index (
-                snapshot_id, master_id, software_name, software_version, software_editor, software_source, software_category, search_blob
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                snapshot_id, master_id, software_name, software_name_norm, software_version, software_editor, software_source, software_category, search_blob
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

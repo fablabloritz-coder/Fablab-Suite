@@ -11,10 +11,12 @@
 > aléatoire et persistée, et le compte admin n'a plus de mot de passe par
 > défaut. Les suppressions de masters et de scans passent par une corbeille
 > restaurable (`deleted_items`, `/admin/trash`). Suite de référence :
-> `python tests/run_all.py` (22 modules, 124 tests). Les
+> `python tests/run_all.py` (23 modules, 134 tests). Les
 > scans conservent aussi `warnings_json`, `script_version`, `scan_schema` et
 > `generated_at` ; `/master/<id>/evolution`, `/sante` et `/reseau` exploitent
-> ces données. Les absences de logiciels sont suivies dans
+> ces données. La couverture logicielle compare une clé normalisée
+> (`software_name_norm`) et des alias explicites (`logiciel_aliases`), jamais
+> une sous-chaîne. Les absences de logiciels sont suivies dans
 > `software_followups` (statut `pending` par défaut, résolution automatique
 > au retour du logiciel). La version courante du script est exposée
 > (`CURRENT_SCRIPT_VERSION`) avec un badge « scan avec un script ancien » sur
@@ -75,6 +77,17 @@ software_flags
 ├── is_important (INTEGER 0/1)
 ├── note (TEXT)
 └── UNIQUE(master_id, software_name)
+
+software_index (couverture au dernier scan)
+├── snapshot_id, master_id
+├── software_name, software_name_norm (clé de comparaison)
+├── software_version, software_editor, software_source, software_category
+└── search_blob
+
+logiciel_aliases (couverture du catalogue)
+├── logiciel_id (FK -> logiciels.id, CASCADE)
+├── alias_nom (nom observé dans un scan)
+└── alias_norm (clé normalisée, UNIQUE par logiciel)
 
 software_followups
 ├── master_id (FK -> masters.id, CASCADE)

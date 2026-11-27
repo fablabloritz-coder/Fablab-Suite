@@ -6,6 +6,33 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : couverture logicielle par normalisation et alias (suite 5)
+
+**Fonctionnel**
+- `_normalize_software_name()` : casse, accents, ponctuation, préfixe
+  d'éditeur et suffixe d'édition/version retirés ; la comparaison reste exacte
+  sur la clé, jamais sur une sous-chaîne.
+- `software_index.software_name_norm` (migration + index) et table
+  `logiciel_aliases` avec ajout/suppression depuis `/admin/logiciels`.
+- `_software_masters_count()` et `_coverage_for_logiciels()` utilisent la clé
+  normalisée ou un alias ; les identifiants `KB…` restent comparés comme jetons
+  exacts. Le dashboard admin, `/admin/masters`, le catalogue admin et le portail
+  professeur partagent la même couverture, limitée aux masters `inventory`.
+  `_coverage_for_masters()` réutilise les mêmes termes pour les fiches master.
+- Migration : `software_name_norm` repris en une passe (`executemany`), table
+  `logiciel_aliases` recréée sur les bases existantes.
+
+**Tests**
+- `tests/test_software_coverage.py` : 10 tests, dont Java/JavaScript,
+  Office/OpenOffice, Visual Studio/VS Code, Python/Python Launcher, alias admin,
+  agrégation sans double comptage, identifiants KB et cohérence des compteurs
+  entre dashboard, masters, catalogue et portail.
+- Suite officielle : `python tests/run_all.py`, **23 modules, 134 tests OK**.
+
+**Prochaine action**
+- Suite 6 de la feuille de route : rapports parc (versions, licences,
+  logiciels importants).
+
 ## 2026-11-27 — FabInventory : version du script, badges et SHA256 (suite 3)
 
 **Fonctionnel**

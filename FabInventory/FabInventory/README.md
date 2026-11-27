@@ -15,6 +15,7 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 - **Détail par master** : liste complète des logiciels avec tri, recherche, filtrage
 - **Cases à cocher** : marquez les logiciels importants (sauvegardé en base)
 - **Notes** : ajoutez des notes par logiciel (licence, salle, remarques)
+- **Couverture logicielle fiable** : les noms sont normalisés (casse, accents, préfixes d'éditeur, suffixes d'édition/version) et complétés par des alias gérés dans le catalogue. « Java » ne compte plus « JavaScript », « Office » ne compte plus « OpenOffice », « Visual Studio » ne compte plus « Visual Studio Code ».
 - **Historique** : chaque scan est conservé, avec provenance du script et avertissements de collecte
 - **Évolution d'un master** : comparez deux scans du même poste (logiciels, système, disques, réseau, services)
 - **Santé du parc** : repérez les scans anciens, disques bas, collectes partielles et doublons réseau
