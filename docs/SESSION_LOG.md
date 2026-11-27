@@ -6,6 +6,36 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : smoke test reproductible des parcours critiques
+
+**Tests**
+- Nouveau module `tests/test_smoke_audit.py` : 9 tests sur base temporaire,
+  sans réseau, couvrant 35 routes de lecture/API, la connexion admin et sa
+  protection, l'import avec doublon, la mise à jour avec aperçu et
+  confirmation, les flags, la roadmap et le pack minimal, l'édition et les
+  suppressions en cascade, la recherche/export/comparaison, le portail
+  professeur et le CRUD admin.
+- Suite officielle : `tests/run_all.py`, **20 modules, 107 tests OK**.
+
+**Choix**
+- Les parcours d'écriture du smoke test utilisent une session admin, comme un
+  technicien ; le refus anonyme sera couvert par les tests de la protection
+  des écritures, pas par ce filet de sécurité.
+- Revue de dedoublonnage : les regles de detail restent dans leurs modules
+  dedies (`test_inventory_script` pour le fichier invalide,
+  `test_software_followups` pour les decisions d'absence,
+  `test_regressions` pour la validation des entrees, `test_fleet_insights`
+  pour le contenu sante/reseau) ; le smoke ne garde que la chaine des parcours
+  et la reponse des routes.
+
+**Limites**
+- Aucun test Windows réel (WMI, AppX, registre, dialogue WinForms) ; l'autotest
+  PowerShell sous Linux reste la seule vérification disponible.
+
+**Prochaine action**
+- Valider la politique d'accès des écritures publiques avant d'implémenter la
+  protection et ses tests de refus anonyme.
+
 ## 2026-11-26 — FabInventory : audit de validation avant publication
 
 **Périmètre vérifié**

@@ -8,7 +8,7 @@
 > (`app_meta.initial_seed`), les clés étrangères sont actives, SQLite est en
 > WAL, et `/healthz` teste la base. Les écritures admin sont protégées ; les
 > écritures inventaire publiques (upload, flags, roadmap) restent à trancher.
-> Suite de référence : `python tests/run_all.py` (19 modules, 98 tests). Les
+> Suite de référence : `python tests/run_all.py` (20 modules, 107 tests). Les
 > scans conservent aussi `warnings_json`, `script_version`, `scan_schema` et
 > `generated_at` ; `/master/<id>/evolution`, `/sante` et `/reseau` exploitent
 > ces données. Les absences de logiciels sont suivies dans
