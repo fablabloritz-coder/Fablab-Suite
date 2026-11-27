@@ -4269,6 +4269,10 @@ def master_update(master_id):
         saved_decisions = payload.get("decisions") if isinstance(payload.get("decisions"), dict) else {}
         decisions = _parse_followup_decisions(request.form, removed_items, saved_decisions)
         system_changes = _build_system_diff(latest, sys_info)
+        # La mise a jour ciblee reste volontairement possible, mais l'ecart
+        # d'identite doit etre visible avant confirmation : /upload renvoie
+        # justement ici pour un poste reimagine.
+        identity = _identity_conflicts(_last_scan_identity(db, master_id), sys_info)
 
         if request.form.get("preview_only") == "1":
             payload["removed_items"] = removed_items
@@ -4291,6 +4295,7 @@ def master_update(master_id):
                 diff=diff,
                 decisions=decisions,
                 system_changes=system_changes,
+                identity=identity,
                 preview_limit=preview_limit,
             )
 
@@ -4307,7 +4312,12 @@ def master_update(master_id):
         except OSError:
             pass
 
-        flash("Master mis a jour: nouveau snapshot enregistre", "success")
+        message = "Master mis a jour: nouveau snapshot enregistre"
+        if identity["differences"]:
+            message += (
+                f". Identite differente du dernier scan ({identity['summary']})"
+            )
+        flash(message, "warning" if identity["differences"] else "success")
         return redirect(url_for("master_detail", master_id=master_id))
 
     upload_file = request.files.get("file")
@@ -4341,6 +4351,7 @@ def master_update(master_id):
     removed_items = diff["removed_items"]
     decisions = {item["key"]: "pending" for item in removed_items}
     system_changes = _build_system_diff(latest, sys_info)
+    identity = _identity_conflicts(_last_scan_identity(db, master_id), sys_info)
 
     token = secrets.token_hex(16)
     pending_path = _pending_update_file(token)
@@ -4372,6 +4383,7 @@ def master_update(master_id):
         diff=diff,
         decisions=decisions,
         system_changes=system_changes,
+        identity=identity,
         preview_limit=preview_limit,
     )
 

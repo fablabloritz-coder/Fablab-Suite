@@ -126,7 +126,7 @@ FabInventory/
 ## Tests et mesures
 
 ```bash
-python3 tests/run_all.py        # 26 modules, 153 tests, un processus par module
+python3 tests/run_all.py        # 26 modules, 154 tests, un processus par module
 python3 tools/parc_scale.py --db /tmp/parc-500.db --force --benchmark
 ```
 

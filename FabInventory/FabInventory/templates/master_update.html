@@ -91,6 +91,24 @@
       Le nom dans le fichier ne correspond pas au master cible. La mise a jour sera quand meme appliquee a <strong>{{ master.pc_name }}</strong>.
     </div>
     {% endif %}
+
+    {% if identity and identity.differences %}
+    <div class="alert {{ 'alert-danger' if identity.blocking else 'alert-warning' }} mt-3 mb-0">
+      <i class="bi bi-shield-exclamation me-1"></i>
+      <strong>Identité différente du dernier scan.</strong>
+      <ul class="small mb-0 mt-1">
+        {% for diff in identity.differences %}
+        <li>{{ diff.label }} : {{ diff.old }} → {{ diff.new }}</li>
+        {% endfor %}
+      </ul>
+      {% if identity.blocking %}
+      <div class="small mt-2">
+        La série ne correspond pas : vérifiez que ce fichier vient bien de ce poste
+        (poste réimaginé) avant de confirmer. Un simple nom identique ne suffit pas.
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 </div>
 

@@ -30,15 +30,19 @@ action imperative.
   fichiers. Les parcours existants restent inchangés (import direct toujours
   en un POST, redirection vers `/`). La résolution du statut (identité,
   doublon, création ou mise à jour) est unique et rejouée juste avant
-  l'écriture, jamais dupliquée entre l'aperçu et l'exécution.
+  l'écriture, jamais dupliquée entre l'aperçu et l'exécution. La mise à jour ciblée
+  `/master/<id>/update`, vers laquelle renvoie un conflit, affiche le même
+  écart d'identité avant confirmation et le rappelle après enregistrement,
+  sans bloquer un poste réimaginé volontairement accepté.
 
 **Tests**
-- `tests/test_import_identity.py` (10 tests) : même identité, série différente
+- `tests/test_import_identity.py` (11 tests) : même identité, série différente
   refusée sans écriture, fabricant/domaine signalés sans blocage, aperçu sans
   écriture, confirmation du plan, jeton consommé non rejouable, conflit
   accepté en « poste réimaginé », doublon identique compté dans le rapport,
-  confirmation après import concurrent re-résolue en mise à jour.
-- Suite officielle : `python tests/run_all.py`, **26 modules, 153 tests OK**.
+  confirmation après import concurrent re-résolue en mise à jour, avertissement
+  d'identité sur la mise à jour ciblée et absence d'avertissement sans écart.
+- Suite officielle : `python tests/run_all.py`, **26 modules, 154 tests OK**.
 
 **Prochaine action**
 - Suite 6 de la feuille de route : rapports parc (versions, licences,

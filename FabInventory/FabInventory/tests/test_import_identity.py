@@ -337,6 +337,88 @@ class ImportIdentityTests(unittest.TestCase):
         home = self._html(self.client.get("/"))
         self.assertIn("Mis à jour", home)
 
+    def test_mise_a_jour_ciblee_avertit_sur_l_identite(self):
+        self._upload(_inventory_html("PC-01", "28/11/2026 10:00", serial="SN-A"))
+        self._upload(_inventory_html("PC-02", "28/11/2026 10:00", serial="SN-C"))
+        with app.app_context():
+            db = get_db()
+            ids = {
+                row["pc_name"]: row["id"]
+                for row in db.execute("SELECT id, pc_name FROM masters").fetchall()
+            }
+
+        # Ecart de serie : l'avertissement doit etre visible avant de confirmer,
+        # puisque /upload renvoie justement vers cette mise a jour ciblee.
+        verify = self.client.post(
+            f"/master/{ids['PC-01']}/update",
+            data={
+                "file": (
+                    io.BytesIO(
+                        _inventory_html("PC-01", "29/11/2026 11:00", serial="SN-B").encode(
+                            "utf-8"
+                        )
+                    ),
+                    "reimage.html",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(verify.status_code, 200)
+        body = self._html(verify)
+        self.assertIn("Identité différente du dernier scan", body)
+        self.assertIn("Numero de serie", body)
+        self.assertIn("SN-A", body)
+        self.assertIn("SN-B", body)
+        self.assertIn("poste réimaginé", body)
+        # L'avertissement s'ajoute au parcours normal, il ne le remplace pas.
+        self.assertIn("Verification avant enregistrement", body)
+        self.assertIn("Confirmer la mise a jour", body)
+        self.assertIn("Ajoutes", body)
+
+        # Le parcours de confirmation existant reste inchange et enregistre.
+        confirmed = self.client.post(
+            f"/master/{ids['PC-01']}/update",
+            data={"confirm_token": self._token(verify)},
+        )
+        self.assertEqual(confirmed.status_code, 302)
+        self.assertEqual(self._counts(), (2, 3))
+        with app.app_context():
+            db = get_db()
+            latest_serial = db.execute(
+                "SELECT num_serie FROM snapshots WHERE master_id = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (ids["PC-01"],),
+            ).fetchone()["num_serie"]
+            self.assertEqual(latest_serial, "SN-B")
+            # PC-02, sans écart, n'a pas été touché par cette mise à jour.
+            self.assertEqual(
+                db.execute(
+                    "SELECT COUNT(*) AS c FROM snapshots WHERE master_id = ?",
+                    (ids["PC-02"],),
+                ).fetchone()["c"],
+                1,
+            )
+        detail = self._html(self.client.get(f"/master/{ids['PC-01']}"))
+        self.assertIn("Identite differente du dernier scan", detail)
+
+        # Meme serie, fabricant et domaine : aucun avertissement d'identite.
+        same = self.client.post(
+            f"/master/{ids['PC-02']}/update",
+            data={
+                "file": (
+                    io.BytesIO(
+                        _inventory_html("PC-02", "29/11/2026 11:00", serial="SN-C").encode(
+                            "utf-8"
+                        )
+                    ),
+                    "maj.html",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(same.status_code, 200)
+        self.assertNotIn("Identité différente du dernier scan", self._html(same))
+
     def test_confirmation_invalide_ne_modifie_rien(self):
         response = self._confirm("0123456789abcdef0123456789abcdef")
         self.assertEqual(response.status_code, 302)
