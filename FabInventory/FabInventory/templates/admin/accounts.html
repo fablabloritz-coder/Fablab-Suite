@@ -1,0 +1,100 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Comptes — Admin FabInventory{% endblock %}
+{% block content %}
+<h3 class="fw-bold mb-4"><i class="bi bi-person-badge me-2 text-primary"></i>Comptes</h3>
+<p class="text-muted small">
+  Créez des comptes techniciens pour l'inventaire. Un compte désactivé ne peut
+  plus se connecter ; une session déjà ouverte reste valide jusqu'à sa
+  déconnexion. Le mot de passe d'un administrateur se change dans
+  <a href="/admin/settings">Paramètres</a>.
+</p>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h5 class="mb-3">Nouveau technicien</h5>
+    <form method="POST" action="{{ url_for('admin_accounts_add') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small">Nom d'utilisateur</label>
+        <input type="text" name="username" class="form-control form-control-sm" maxlength="64" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Mot de passe</label>
+        <input type="password" name="password" class="form-control form-control-sm" minlength="{{ min_password }}" autocomplete="new-password" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Confirmation</label>
+        <input type="password" name="confirm_password" class="form-control form-control-sm" minlength="{{ min_password }}" autocomplete="new-password" required>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary btn-sm w-100" type="submit"><i class="bi bi-person-plus me-1"></i>Créer</button>
+      </div>
+    </form>
+    <div class="form-text mt-2">
+      Au moins {{ min_password }} caractères ; le compte créé est toujours de rôle technicien.
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Utilisateur</th>
+          <th>Rôle</th>
+          <th>État</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for account in accounts %}
+        <tr>
+          <td class="fw-semibold">{{ account.username }}</td>
+          <td>
+            {% if account.role == 'admin' %}
+            <span class="badge bg-primary">Administrateur</span>
+            {% else %}
+            <span class="badge bg-secondary">Technicien</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if account.is_active %}
+            <span class="badge bg-success">Actif</span>
+            {% else %}
+            <span class="badge bg-danger">Désactivé</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if account.role != 'admin' %}
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <form method="POST" action="{{ url_for('admin_accounts_password', user_id=account.id) }}" class="d-flex gap-1 align-items-center">
+                <input type="password" name="password" class="form-control form-control-sm" style="width:9rem"
+                       placeholder="Nouveau mot de passe" minlength="{{ min_password }}" autocomplete="new-password" required>
+                <input type="password" name="confirm_password" class="form-control form-control-sm" style="width:9rem"
+                       placeholder="Confirmation" minlength="{{ min_password }}" autocomplete="new-password" required>
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Réinitialiser</button>
+              </form>
+              <form method="POST" action="{{ url_for('admin_accounts_toggle', user_id=account.id) }}"
+                    onsubmit="return confirm('{{ 'Désactiver' if account.is_active else 'Réactiver' }} ce compte ?')">
+                {% if account.is_active %}
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                  <i class="bi bi-person-slash me-1"></i>Désactiver
+                </button>
+                {% else %}
+                <button type="submit" class="btn btn-outline-success btn-sm">
+                  <i class="bi bi-person-check me-1"></i>Réactiver
+                </button>
+                {% endif %}
+              </form>
+            </div>
+            {% else %}
+            <span class="text-muted small">Mot de passe via <a href="/admin/settings">Paramètres</a></span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -23,6 +23,7 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 - **Exports CSV des rapports** : licences (avec l'information manquante) et logiciels importants (master, version, catégorie, note, licence, une ligne par version installée).
 - **Journal d'audit** : chaque écriture (import, nouveau scan, suppression et restauration, flag logiciel, checklist, décision d'absence, paramètres) est journalisée avec son auteur, sa cible, son IP et un résumé. Page admin `/admin/journal` filtrable par utilisateur, action et période, export CSV et rétention configurable (365 jours par défaut, 0 = illimité).
 - **Rôles admin et technicien** : `admin_users.role` distingue l'administrateur (tout) du technicien, limité à l'inventaire (imports, masters, scans, roadmap, pack minimal, flags, absences, rapports, corbeille et restauration). Pour un technicien, le reste de l'espace `/admin` — catalogue, paramètres, professeurs, demandes, journal — et la purge définitive de la corbeille répondent 403 ; chaque écriture reste attribuée à son auteur dans le journal d'audit.
+- **Gestion des comptes** : page `/admin/comptes` réservée aux administrateurs — création d'un technicien, réinitialisation de son mot de passe, désactivation et réactivation. Les actions sont journalisées, sans jamais recopier de mot de passe.
 - **Historique** : chaque scan est conservé, avec provenance du script et avertissements de collecte
 - **Évolution d'un master** : comparez deux scans du même poste (logiciels, système, disques, réseau, services)
 - **Santé du parc** : repérez les scans anciens, disques bas, collectes partielles et doublons réseau
@@ -46,23 +47,20 @@ Un compte créé avant la migration garde `admin` ; un rôle vide ou inconnu ret
 sur `technicien` (moindre privilège), et une session ouverte avant la migration
 reste administrateur pour ne pas verrouiller l'installation. La page de
 connexion est commune aux deux rôles : le technicien arrive sur le dashboard
-inventaire, l'administrateur sur `/admin/`. Pour créer un compte technicien
-(l'interface de gestion des comptes n'existe pas encore) :
+inventaire, l'administrateur sur `/admin/`.
 
-```bash
-cd FabInventory
-python3 - <<'PY'
-from app import app, get_db, generate_password_hash
-with app.app_context():
-    db = get_db()
-    db.execute(
-        "INSERT INTO admin_users (username, password_hash, role) "
-        "VALUES (?, ?, 'technicien')",
-        ("technicien", generate_password_hash("mot-de-passe-fort")),
-    )
-    db.commit()
-PY
-```
+Les comptes techniciens se gèrent dans **Admin → Comptes** (`/admin/comptes`) :
+
+- **créer un technicien** — le rôle est imposé, aucune élévation de privilège
+  n'est possible depuis cette page ; mot de passe de 6 caractères minimum ;
+- **réinitialiser son mot de passe** ;
+- **désactiver / réactiver** un compte : désactivé, il est refusé à la connexion
+  comme un mot de passe erroné, et son historique d'audit est conservé.
+
+Les comptes administrateurs ne sont pas modifiables depuis cette page : leur mot
+de passe passe par **Paramètres**, ce qui évite qu'un administrateur se retire
+lui-même l'accès. La désactivation bloque les connexions suivantes ; une session
+déjà ouverte reste valide jusqu'à sa déconnexion.
 
 ## Installation rapide (Docker)
 
@@ -148,6 +146,7 @@ FabInventory/
 │   ├── health.html         # Santé du parc
 │   ├── parc_reports.html   # Rapports parc (versions, licences, importants)
 │   ├── admin/audit.html    # Journal d'audit (filtres, export, rétention)
+│   ├── admin/accounts.html # Comptes techniciens (création, mot de passe, désactivation)
 │   ├── network_registry.html # Registre IP/MAC
 │   └── compare.html        # Comparaison
 ├── static/css/style.css    # Styles
@@ -164,7 +163,7 @@ FabInventory/
 ## Tests et mesures
 
 ```bash
-python3 tests/run_all.py        # 29 modules, 185 tests, un processus par module
+python3 tests/run_all.py        # 30 modules, 194 tests, un processus par module
 python3 tools/parc_scale.py --db /tmp/parc-500.db --force --benchmark
 ```
 

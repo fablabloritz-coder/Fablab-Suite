@@ -6,6 +6,74 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : revue de la gestion des comptes (suite 8)
+
+**Constat de revue**
+- **Trou corrigé** : `_technicien_account` exigeait `role = 'technicien'`, alors que
+  la connexion traite tout rôle autre que `admin` comme technicien. Un compte au
+  rôle vide restait donc actif et connectable sans pouvoir être révoqué. Le filtre
+  exclut maintenant `admin` (`COALESCE(role,'') <> 'admin'`), miroir exact de la
+  connexion.
+- Champs inutiles retirés : `created_at` sélectionné mais jamais affiché, `role`
+  dans la requête de cible, `admin_user` passé au template sans usage.
+- Longueur minimale du mot de passe factorisée (`MIN_PASSWORD_LENGTH = 6`),
+  partagée par `/admin/settings` et les deux écritures de comptes (avant : 6
+  répété trois fois).
+- Doublon de nom : la requête `SELECT` préalable est remplacée par la capture de
+  `sqlite3.IntegrityError` — une requête de moins et pas de course entre les deux.
+- Confirmation de désactivation : message statique, plus de nom d'utilisateur
+  interpolé dans un `onsubmit` (une apostrophe dans un nom cassait le script).
+
+**Garanties vérifiées**
+- Aucune action ne peut viser un administrateur : le filtre exclut `admin`, la
+  page ne propose les actions que pour les autres rôles, et le test vérifie que
+  `is_active` et le mot de passe restent intacts — et que rien n'est journalisé.
+- Aucun mot de passe dans le journal : `_audit` ne reçoit que le nom de la cible
+  et un résumé fixe ; le test cherche les deux mots de passe utilisés dans les
+  résumés et n'en trouve aucun.
+
+**Tests**
+- `tests/test_admin_accounts.py` : 9 tests (fusion du refus de mot de passe trop
+  court dans la réinitialisation, ajout du compte au rôle inconnu révocable).
+- Suite officielle : `python tests/run_all.py`, **30 modules, 194 tests OK**.
+
+## 2026-11-27 — FabInventory : gestion minimale des comptes (suite 8)
+
+**Fonctionnel**
+- Migration 8 : `admin_users.is_active` (défaut 1) ; un compte se désactive
+  sans perdre son historique.
+- Page `/admin/comptes` (administrateur seul) : création d'un technicien (rôle
+  imposé), réinitialisation de son mot de passe (6 caractères minimum),
+  désactivation et réactivation. Les comptes administrateurs ne sont pas
+  modifiables ici : leur mot de passe passe par `/admin/settings`, ce qui évite
+  l'auto-verrouillage.
+- Connexion inchangée : un compte désactivé est refusé comme un mauvais mot de
+  passe, sans révéler l'existence du compte.
+- Chaque action est journalisée (`account_create`, `account_password`,
+  `account_toggle`) avec le nom de la cible et un résumé sans mot de passe.
+
+**Revue risque**
+- La désactivation bloque les connexions suivantes ; une session déjà ouverte
+  garde ses droits jusqu'à sa déconnexion. Une révocation immédiate demanderait
+  une vérification en base à chaque requête, écartée pour cette brique.
+- Rôle imposé à la création : aucune élévation de privilège depuis la page.
+- Les routes sont sous `/admin` et donc couvertes par la matrice dynamique des
+  rôles (403 pour un technicien, y compris les trois écritures).
+
+**Tests**
+- `tests/test_admin_accounts.py` (9 tests) : création puis connexion du
+  technicien, refus des champs invalides et des doublons, réinitialisation du
+  mot de passe, désactivation / réactivation, protection des comptes
+  administrateurs, 403 pour un technicien, contenu de la page, journal sans mot
+  de passe.
+- `tests/test_schema_migrations.py` : colonne `is_active` et valeur 1 du compte
+  initial.
+- Suite officielle : `python tests/run_all.py`, **30 modules, 194 tests OK**.
+
+**Prochaine action**
+- Décider la suite 9 (confidentialité des lectures), puis la recette Windows de
+  la suite 3.
+
 ## 2026-11-27 — FabInventory : revue du rôle technicien (suite 8)
 
 **Simplification**

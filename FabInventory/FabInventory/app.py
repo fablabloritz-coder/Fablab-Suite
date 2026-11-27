@@ -299,7 +299,7 @@ def _remove_initial_admin_password():
 # `_SCHEMA_MIGRATIONS` est idempotente et s'execute dans l'ordre : une base
 # ancienne (v2.1.4) les rejoue toutes une fois, une base a jour n'en rejoue
 # aucune. Les tests `test_schema_migrations.py` verifient les deux cas.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _migrate_1_core_schema(db):
@@ -819,6 +819,15 @@ def _migrate_7_admin_roles(db):
         )
 
 
+def _migrate_8_accounts_active(db):
+    """Un compte peut etre desactive sans perdre son historique d'audit."""
+    cols = [row[1] for row in db.execute("PRAGMA table_info(admin_users)").fetchall()]
+    if "is_active" not in cols:
+        db.execute(
+            "ALTER TABLE admin_users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"
+        )
+
+
 _SCHEMA_MIGRATIONS = [
     (1, "tables de base", _migrate_1_core_schema),
     (2, "dates de scan", _migrate_2_snapshot_dates),
@@ -827,6 +836,7 @@ _SCHEMA_MIGRATIONS = [
     (5, "catalogue et couverture", _migrate_5_catalogue_coverage),
     (6, "journal d'audit", _migrate_6_audit_log),
     (7, "rôles des comptes", _migrate_7_admin_roles),
+    (8, "comptes actifs", _migrate_8_accounts_active),
 ]
 
 assert SCHEMA_VERSION == _SCHEMA_MIGRATIONS[-1][0]
@@ -1007,6 +1017,9 @@ admin_required = roles_required(ROLE_ADMIN)
 # Gestes d'inventaire rangés dans /admin (corbeille, restauration) : les deux rôles.
 staff_required = roles_required(ROLE_ADMIN, ROLE_TECHNICIEN)
 
+# Longueur minimale commune aux mots de passe (paramètres et comptes).
+MIN_PASSWORD_LENGTH = 6
+
 
 def _get_admin_user():
     """Retourne le nom d'utilisateur admin connecté (pour affichage)."""
@@ -1060,6 +1073,9 @@ AUDIT_ACTION_LABELS = {
     "pack_delete": "Retrait du pack minimal",
     "followup": "Décision d'absence",
     "settings": "Paramètres",
+    "account_create": "Création de compte",
+    "account_password": "Mot de passe de compte",
+    "account_toggle": "Activation de compte",
 }
 
 
@@ -1450,7 +1466,13 @@ def admin_login():
         password = request.form.get("password") or ""
         db = get_db()
         user = db.execute("SELECT * FROM admin_users WHERE username = ?", (username,)).fetchone()
-        if user and check_password_hash(user["password_hash"], password):
+        # Un compte desactive est refuse comme un mauvais mot de passe :
+        # l'ecran de connexion ne revele pas l'existence du compte.
+        if (
+            user
+            and user["is_active"]
+            and check_password_hash(user["password_hash"], password)
+        ):
             # Seul le rôle exact `admin` garde tous les droits : un rôle vide,
             # inconnu ou mal saisi retombe sur technicien (moindre privilège).
             role = ROLE_ADMIN if user["role"] == ROLE_ADMIN else ROLE_TECHNICIEN
@@ -2035,8 +2057,8 @@ def admin_settings():
             error = "Mot de passe actuel incorrect."
         elif new_password != confirm:
             error = "Les mots de passe ne correspondent pas."
-        elif len(new_password) < 6:
-            error = "Le mot de passe doit faire au moins 6 caractères."
+        elif len(new_password) < MIN_PASSWORD_LENGTH:
+            error = f"Le mot de passe doit faire au moins {MIN_PASSWORD_LENGTH} caractères."
         else:
             db.execute(
                 "UPDATE admin_users SET password_hash=? WHERE id=?",
@@ -2059,6 +2081,142 @@ def admin_settings():
             flash("Mot de passe modifié.", "success")
             return redirect(url_for('admin_settings'))
     return render_template("admin/settings.html", error=error, admin_user=_get_admin_user())
+
+
+# ─── COMPTES : CRÉATION, MOT DE PASSE, DÉSACTIVATION (ADMIN) ─────────────
+# Gestion minimale des comptes techniciens : la page ne touche jamais aux
+# comptes administrateurs (mot de passe par /admin/settings), ce qui evite
+# qu'un administrateur se retire lui-meme l'acces.
+
+def _technicien_account(db, user_id):
+    """Compte cible : jamais un administrateur, quel que soit le rôle stocké.
+
+    La connexion traite tout rôle autre que `admin` comme technicien ; le filtre
+    doit donc exclure `admin` et non exiger `technicien`, sinon un compte au rôle
+    vide resterait actif sans pouvoir être révoqué.
+    """
+    return db.execute(
+        "SELECT id, username, is_active FROM admin_users "
+        "WHERE id = ? AND COALESCE(role, '') <> ?",
+        (user_id, ROLE_ADMIN),
+    ).fetchone()
+
+
+@app.route("/admin/comptes")
+@admin_required
+def admin_accounts():
+    db = get_db()
+    accounts = db.execute(
+        "SELECT id, username, role, is_active FROM admin_users "
+        "ORDER BY username COLLATE NOCASE"
+    ).fetchall()
+    return render_template(
+        "admin/accounts.html",
+        accounts=accounts,
+        min_password=MIN_PASSWORD_LENGTH,
+    )
+
+
+@app.route("/admin/comptes/add", methods=["POST"])
+@admin_required
+def admin_accounts_add():
+    """Crée un compte technicien ; le rôle administrateur n'est pas créable ici."""
+    db = get_db()
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    confirm = request.form.get("confirm_password") or ""
+    if not username or len(username) > 64:
+        flash("Nom d'utilisateur obligatoire (64 caractères maximum).", "error")
+    elif len(password) < MIN_PASSWORD_LENGTH:
+        flash(
+            f"Le mot de passe doit faire au moins {MIN_PASSWORD_LENGTH} caractères.",
+            "error",
+        )
+    elif password != confirm:
+        flash("Les mots de passe ne correspondent pas.", "error")
+    else:
+        try:
+            cur = db.execute(
+                "INSERT INTO admin_users (username, password_hash, role) "
+                "VALUES (?, ?, ?)",
+                (username, generate_password_hash(password), ROLE_TECHNICIEN),
+            )
+        except sqlite3.IntegrityError:
+            db.rollback()
+            flash("Ce nom d'utilisateur existe déjà.", "error")
+            return redirect(url_for("admin_accounts"))
+        _audit(
+            db,
+            "account_create",
+            "utilisateur",
+            cur.lastrowid,
+            username,
+            "Compte technicien créé",
+        )
+        db.commit()
+        flash(f"Compte technicien « {username} » créé.", "success")
+    return redirect(url_for("admin_accounts"))
+
+
+@app.route("/admin/comptes/<int:user_id>/password", methods=["POST"])
+@admin_required
+def admin_accounts_password(user_id):
+    db = get_db()
+    account = _technicien_account(db, user_id)
+    if not account:
+        flash("Compte technicien introuvable ou protégé.", "error")
+        return redirect(url_for("admin_accounts"))
+    password = request.form.get("password") or ""
+    confirm = request.form.get("confirm_password") or ""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        flash(
+            f"Le mot de passe doit faire au moins {MIN_PASSWORD_LENGTH} caractères.",
+            "error",
+        )
+    elif password != confirm:
+        flash("Les mots de passe ne correspondent pas.", "error")
+    else:
+        db.execute(
+            "UPDATE admin_users SET password_hash = ? WHERE id = ?",
+            (generate_password_hash(password), user_id),
+        )
+        _audit(
+            db,
+            "account_password",
+            "utilisateur",
+            user_id,
+            account["username"],
+            "Mot de passe réinitialisé",
+        )
+        db.commit()
+        flash(f"Mot de passe de « {account['username']} » réinitialisé.", "success")
+    return redirect(url_for("admin_accounts"))
+
+
+@app.route("/admin/comptes/<int:user_id>/toggle", methods=["POST"])
+@admin_required
+def admin_accounts_toggle(user_id):
+    db = get_db()
+    account = _technicien_account(db, user_id)
+    if not account:
+        flash("Compte technicien introuvable ou protégé.", "error")
+        return redirect(url_for("admin_accounts"))
+    active = 0 if account["is_active"] else 1
+    db.execute("UPDATE admin_users SET is_active = ? WHERE id = ?", (active, user_id))
+    _audit(
+        db,
+        "account_toggle",
+        "utilisateur",
+        user_id,
+        account["username"],
+        "Compte activé" if active else "Compte désactivé",
+    )
+    db.commit()
+    flash(
+        f"Compte « {account['username']} » {'activé' if active else 'désactivé'}.",
+        "success",
+    )
+    return redirect(url_for("admin_accounts"))
 
 
 # ─── JOURNAL D'AUDIT : CONSULTATION, EXPORT, RETENTION ───────────────────────

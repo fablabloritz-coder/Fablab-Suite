@@ -53,6 +53,9 @@
     <a href="/admin/profs" class="nav-link d-flex align-items-center {% if request.endpoint == 'admin_profs' %}active{% endif %}">
       <i class="bi bi-people me-2"></i>Professeurs
     </a>
+    <a href="/admin/comptes" class="nav-link d-flex align-items-center {% if request.endpoint and request.endpoint.startswith('admin_accounts') %}active{% endif %}">
+      <i class="bi bi-person-badge me-2"></i>Comptes
+    </a>
     <a href="/admin/journal" class="nav-link d-flex align-items-center {% if request.endpoint in ['admin_audit_log', 'admin_audit_export'] %}active{% endif %}">
       <i class="bi bi-journal-text me-2"></i>Journal d'audit
     </a>
