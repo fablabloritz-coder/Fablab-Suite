@@ -140,6 +140,36 @@ class SecurityXssTests(unittest.TestCase):
         ):
             self.assertEqual(_load_secret_key(), "une-cle-fournie-par-environnement")
 
+    def test_cle_de_session_trop_courte_ou_faible_est_remplacee(self):
+        with mock.patch.dict(os.environ, {"SECRET_KEY": "tests"}):
+            generated = _load_secret_key()
+        self.assertEqual(len(generated), 64)
+
+        for weak in (
+            "tests",
+            "secret",
+            "   ",
+            "change-me-in-production",
+            "x" * 31,
+            "a" * 64,
+            "abcdefghi" * 7,
+            "change-me-in-production-mais-allongee-0123456789",
+        ):
+            with self.subTest(value=repr(weak)[:24]):
+                with mock.patch.dict(os.environ, {"SECRET_KEY": weak}):
+                    self.assertEqual(_load_secret_key(), generated)
+
+        strong = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        with mock.patch.dict(os.environ, {"SECRET_KEY": strong}):
+            self.assertEqual(_load_secret_key(), strong)
+
+        # 32 caracteres et exactement 10 caracteres distincts : la limite basse
+        # doit rester acceptee, sinon le durcissement deviendrait arbitraire.
+        boundary = "abcdefghij" * 3 + "ab"
+        self.assertEqual(len(boundary), 32)
+        with mock.patch.dict(os.environ, {"SECRET_KEY": boundary}):
+            self.assertEqual(_load_secret_key(), boundary)
+
     def test_les_ecritures_refusent_les_visiteurs_anonymes(self):
         anonymous = app.test_client()
         page_routes = [

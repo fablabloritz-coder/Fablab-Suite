@@ -285,12 +285,75 @@ class TrashRestoreTests(unittest.TestCase):
             ).fetchone()
             self.assertIsNone(pending["restored_at"])
 
+    def test_purge_supprime_les_archives_restaurees_et_anciennes(self):
+        for name in ("PC-PURGE-RESTAURE", "PC-PURGE-ANCIEN", "PC-PURGE-RECENT"):
+            self.assertEqual(self._upload(_payload(name)).status_code, 302)
+        master_ids = {
+            name: self._master_id(name)
+            for name in ("PC-PURGE-RESTAURE", "PC-PURGE-ANCIEN", "PC-PURGE-RECENT")
+        }
+        for master_id in master_ids.values():
+            self.assertEqual(
+                self.client.post(f"/master/{master_id}/delete").status_code, 302
+            )
+
+        with app.app_context():
+            db = get_db()
+            archives = {
+                row["label"]: row["id"]
+                for row in db.execute(
+                    "SELECT id, label FROM deleted_items WHERE restored_at IS NULL"
+                ).fetchall()
+            }
+            db.execute(
+                "UPDATE deleted_items SET deleted_at = datetime('now', '-120 days') "
+                "WHERE id = ?",
+                (archives["PC-PURGE-ANCIEN"],),
+            )
+            db.commit()
+
+        self.assertEqual(
+            self.client.post(
+                f"/admin/trash/{archives['PC-PURGE-RESTAURE']}/restore"
+            ).status_code,
+            302,
+        )
+        self.assertIn("Purger", self.client.get("/admin/trash").get_data(as_text=True))
+
+        self.assertEqual(self.client.post("/admin/trash/purge").status_code, 302)
+
+        with app.app_context():
+            db = get_db()
+            remaining = {
+                row["label"]
+                for row in db.execute("SELECT label FROM deleted_items").fetchall()
+            }
+            self.assertEqual(remaining, {"PC-PURGE-RECENT"})
+            self.assertEqual(
+                db.execute(
+                    "SELECT COUNT(*) AS c FROM masters WHERE id = ?",
+                    (master_ids["PC-PURGE-RESTAURE"],),
+                ).fetchone()["c"],
+                1,
+            )
+
+        # Une seconde purge ne doit rien trouver ni supprimer.
+        self.assertEqual(self.client.post("/admin/trash/purge").status_code, 302)
+        with app.app_context():
+            self.assertEqual(
+                get_db().execute("SELECT COUNT(*) AS c FROM deleted_items").fetchone()["c"],
+                1,
+            )
+
     def test_corbeille_reservee_aux_admins(self):
         anonymous = app.test_client()
         response = anonymous.get("/admin/trash")
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.headers["Location"].endswith("/admin/login"))
         self.assertEqual(anonymous.post("/admin/trash/1/restore").status_code, 302)
+        purge = anonymous.post("/admin/trash/purge")
+        self.assertEqual(purge.status_code, 302)
+        self.assertTrue(purge.headers["Location"].endswith("/admin/login"))
 
 
 if __name__ == "__main__":

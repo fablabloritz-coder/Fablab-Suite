@@ -6,6 +6,45 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : durcissement de SECRET_KEY
+
+**Sécurité**
+- `_is_strong_secret_key()` refuse les clés de moins de 32 caractères, les
+  valeurs connues (`secret`, `changeme`, `tests`…) et les clés trop peu
+  variées (moins de 10 caractères distincts) ou contenant un motif historiquement
+  faible (`change-me`, `fabinventory-secret`).
+- Une valeur refusée est traitée comme absente : un avertissement est journalisé
+  (sans la valeur) et la clé aléatoire persistée dans `app_meta` est utilisée.
+
+**Tests**
+- `test_security_xss.py` : 12 tests, dont le remplacement d'une clé trop
+  courte, connue ou faible et l'acceptation d'une clé d'environnement saine.
+- Suite officielle : `python tests/run_all.py`, **21 modules, 119 tests OK**.
+
+**Prochaine action**
+- Suite 3 de la feuille de route : recette Windows reelle du script
+  PowerShell (WMI, AppX, dialogue WinForms).
+
+## 2026-11-27 — FabInventory : purge de la corbeille
+
+**Fonctionnel**
+- Action `POST /admin/trash/purge` (reservee aux admins, confirmation dans
+  l'interface) : supprime definitivement les archives deja restaurees et
+  celles de plus de 90 jours (`TRASH_RETENTION_DAYS`).
+- La page Corbeille affiche le nombre d'archives purgeables et ne propose le
+  bouton que si necessaire ; les archives recentes non restaurees restent
+  intactes.
+
+**Tests**
+- `tests/test_trash_restore.py` : 5 tests, dont la purge (restauree + ancienne
+  supprimees, recente conservee, donnees restaurees intactes) et le refus
+  anonyme de la purge.
+- Suite officielle : `python tests/run_all.py`, **21 modules, 118 tests OK**.
+
+**Prochaine action**
+- Suite 3 de la feuille de route : recette Windows reelle du script
+  PowerShell (WMI, AppX, dialogue WinForms).
+
 ## 2026-11-27 — FabInventory : corbeille restaurable pour les suppressions
 
 **Fonctionnel**

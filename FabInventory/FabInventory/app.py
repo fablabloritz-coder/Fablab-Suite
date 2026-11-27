@@ -31,10 +31,34 @@ app.jinja_env.globals["app_version"] = APP_VERSION
 # Valeurs historiques connues : les accepter reviendrait a laisser forger un
 # cookie de session admin. Elles sont remplacees par une cle aleatoire.
 _INSECURE_SECRET_KEYS = {
-    "",
     "change-me-in-production",
     "fabinventory-secret-change-me",
+    "secret",
+    "password",
+    "changeme",
+    "change-me",
+    "test",
+    "tests",
+    "admin",
+    "dev",
 }
+_INSECURE_SECRET_KEY_MARKERS = ("change-me", "changeme", "fabinventory-secret")
+SECRET_KEY_MIN_LENGTH = 32
+SECRET_KEY_MIN_UNIQUE_CHARS = 10
+
+
+def _is_strong_secret_key(value):
+    """Refuse une cle trop courte, connue ou trop peu variee."""
+    if len(value) < SECRET_KEY_MIN_LENGTH:
+        return False
+    lowered = value.lower()
+    if lowered in _INSECURE_SECRET_KEYS:
+        return False
+    if any(marker in lowered for marker in _INSECURE_SECRET_KEY_MARKERS):
+        return False
+    return len(set(value)) >= SECRET_KEY_MIN_UNIQUE_CHARS
+
+
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -686,11 +710,16 @@ def _load_secret_key():
     redemarrages sans dependre d'une variable d'environnement.
     """
     env_key = (os.environ.get("SECRET_KEY") or "").strip()
-    if env_key and env_key not in _INSECURE_SECRET_KEYS:
+    if _is_strong_secret_key(env_key):
         return env_key
+    if env_key:
+        app.logger.warning(
+            "SECRET_KEY fournie mais trop courte ou faible : elle est ignoree."
+        )
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     try:
         row = conn.execute(
             "SELECT value FROM app_meta WHERE key = 'secret_key'"
@@ -698,16 +727,21 @@ def _load_secret_key():
         if row and row["value"]:
             return row["value"]
         generated = secrets.token_hex(32)
+        # Plusieurs workers peuvent demarrer ensemble : le premier insere sa
+        # cle, les suivants relisent celle qui est persistee. Sinon chaque
+        # worker signerait les sessions avec une cle differente.
         conn.execute(
-            "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('secret_key', ?)",
+            "INSERT OR IGNORE INTO app_meta (key, value) VALUES ('secret_key', ?)",
             (generated,),
         )
         conn.commit()
+        stored = conn.execute(
+            "SELECT value FROM app_meta WHERE key = 'secret_key'"
+        ).fetchone()
         app.logger.warning(
-            "SECRET_KEY absente ou non securisee : cle aleatoire generee et "
-            "stockee dans la base."
+            "SECRET_KEY exploitable absente : cle aleatoire persistee dans la base."
         )
-        return generated
+        return stored["value"] if stored else generated
     finally:
         conn.close()
 
@@ -3616,6 +3650,11 @@ DELETED_ITEM_TABLES = (
     "software_followups",
 )
 
+# Duree de conservation des archives encore restaurables ; les archives deja
+# restaurees peuvent etre purgees immediatement.
+TRASH_RETENTION_DAYS = 90
+_TRASH_PURGE_WHERE = "restored_at IS NOT NULL OR deleted_at < datetime('now', ?)"
+
 
 def _row_dict(row):
     return {key: row[key] for key in row.keys()} if row is not None else {}
@@ -3750,7 +3789,35 @@ def admin_trash():
         "SELECT id, kind, label, deleted_at FROM deleted_items "
         "WHERE restored_at IS NULL ORDER BY deleted_at DESC, id DESC"
     ).fetchall()
-    return render_template("admin/trash.html", items=items, admin_user=_get_admin_user())
+    purgeable = db.execute(
+        f"SELECT COUNT(*) AS c FROM deleted_items WHERE {_TRASH_PURGE_WHERE}",
+        (f"-{TRASH_RETENTION_DAYS} days",),
+    ).fetchone()["c"]
+    return render_template(
+        "admin/trash.html",
+        items=items,
+        purgeable=purgeable,
+        retention_days=TRASH_RETENTION_DAYS,
+        admin_user=_get_admin_user(),
+    )
+
+
+@app.route("/admin/trash/purge", methods=["POST"])
+@admin_required
+def admin_trash_purge():
+    """Supprime definitivement les archives restaurees ou trop anciennes."""
+    db = get_db()
+    cur = db.execute(
+        f"DELETE FROM deleted_items WHERE {_TRASH_PURGE_WHERE}",
+        (f"-{TRASH_RETENTION_DAYS} days",),
+    )
+    db.commit()
+    purged = cur.rowcount or 0
+    flash(
+        f"{purged} archive(s) supprimee(s) definitivement",
+        "success" if purged else "info",
+    )
+    return redirect(url_for("admin_trash"))
 
 
 @app.route("/admin/trash/<int:item_id>/restore", methods=["POST"])

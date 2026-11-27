@@ -11,7 +11,7 @@
 > aléatoire et persistée, et le compte admin n'a plus de mot de passe par
 > défaut. Les suppressions de masters et de scans passent par une corbeille
 > restaurable (`deleted_items`, `/admin/trash`). Suite de référence :
-> `python tests/run_all.py` (21 modules, 117 tests). Les
+> `python tests/run_all.py` (21 modules, 119 tests). Les
 > scans conservent aussi `warnings_json`, `script_version`, `scan_schema` et
 > `generated_at` ; `/master/<id>/evolution`, `/sante` et `/reseau` exploitent
 > ces données. Les absences de logiciels sont suivies dans
@@ -140,6 +140,7 @@ FabInventory/
 | `/snapshot/<id>/delete` | POST | Archive then delete a scan |
 | `/admin/trash` | GET | Corbeille : masters et scans restaurables |
 | `/admin/trash/<id>/restore` | POST | Restaure un master ou un scan archive |
+| `/admin/trash/purge` | POST | Supprime définitivement les archives restaurées ou de plus de 90 jours |
 | `/master/<id>/absences` | GET/POST | Follow-up list for missing software and decisions |
 | `/master/<id>/evolution` | GET | Compare two scans of the same master |
 | `/sante` | GET | Fleet health: stale scans, low disks, warnings, duplicates |
@@ -225,7 +226,7 @@ FabInventory follows the FabSuite inter-app contract:
 | `PORT` | `5590` | App port |
 | `DB_PATH` | `/data/fabinventory.db` | SQLite database path |
 | `UPLOAD_FOLDER` | `/data/uploads` | Upload directory |
-| `SECRET_KEY` | générée | Clé de session Flask ; si absente ou historiquement connue, une clé aléatoire est générée et persistée dans `app_meta`. Le compose exige `FLASK_SECRET_KEY`. |
+| `SECRET_KEY` | générée | Clé de session Flask ; une valeur absente, de moins de 32 caractères, trop peu variée ou connue est ignorée et remplacée par une clé aléatoire persistée dans `app_meta`. Le compose exige `FLASK_SECRET_KEY`. |
 | `ADMIN_PASSWORD` | généré | Mot de passe initial du compte `admin` ; sinon mot de passe aléatoire écrit une fois dans `admin-initial-password.txt` (0600) à côté de la base. |
 | `DEBUG` | `0` | Set to `1` for Flask debug mode |
 
@@ -264,7 +265,7 @@ l'ancien emplacement de distribution, pas la source servie.
 ## 15) Known limitations / future improvements
 
 - Toutes les écritures exigent une session admin (`before_request`) ; seuls le portail professeur (token dédié) et `/api/compare` (lecture seule) restent accessibles sans session.
-- Les suppressions de masters et de scans sont archivees dans `deleted_items` avant effacement ; la restauration depuis `/admin/trash` réinsère les lignes avec leurs ids d'origine (AUTOINCREMENT ne les réattribue pas). Aucune purge automatique : la corbeille conserve les archives restaurées comme journal.
+- Les suppressions de masters et de scans sont archivees dans `deleted_items` avant effacement ; la restauration depuis `/admin/trash` réinsère les lignes avec leurs ids d'origine (AUTOINCREMENT ne les réattribue pas). La purge est manuelle (`POST /admin/trash/purge`) : archives restaurées et archives de plus de `TRASH_RETENTION_DAYS` (90 jours) ; aucune purge automatique.
 - No automatic PowerShell script version detection.
 - Le JSON schema 3 fournit le système, les disques, le réseau et les services ; le parsing regex/HTML ne sert plus que de repli pour les anciens rapports.
 - Le script PowerShell doit encore être validé sur un poste Windows réel (WMI, AppX, fenêtre de sauvegarde) ; l'autotest Linux vérifie le parseur et le JSON mais pas la collecte Windows.

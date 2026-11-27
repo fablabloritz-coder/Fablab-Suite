@@ -8,6 +8,22 @@
   Leur historique complet (scans, flags, checklist, absences) est conserve.
 </p>
 
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="text-muted small mb-0">
+    Les archives restaurees et celles de plus de {{ retention_days }} jours
+    peuvent etre supprimees definitivement.
+  </p>
+  {% if purgeable %}
+  <form method="POST" action="{{ url_for('admin_trash_purge') }}"
+        data-confirm="Supprimer definitivement {{ purgeable }} archive(s) restauree(s) ou de plus de {{ retention_days }} jours ?"
+        onsubmit="return confirm(this.dataset.confirm)">
+    <button type="submit" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-fire me-1"></i>Purger ({{ purgeable }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+
 {% if items %}
 <div class="card border-0 shadow-sm">
   <div class="table-responsive">
