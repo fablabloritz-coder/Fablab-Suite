@@ -22,6 +22,7 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 - **Rapports parc** : versions par logiciel (avec repérage des versions anciennes), licences déclarées et logiciels importants, calculés sur le dernier scan de chaque master inventorié. Les variantes d'un même nom sont regroupées par clé normalisée, une version absente reste « sans version » et toutes les versions installées sur un poste sont conservées.
 - **Exports CSV des rapports** : licences (avec l'information manquante) et logiciels importants (master, version, catégorie, note, licence, une ligne par version installée).
 - **Journal d'audit** : chaque écriture (import, nouveau scan, suppression et restauration, flag logiciel, checklist, décision d'absence, paramètres) est journalisée avec son auteur, sa cible, son IP et un résumé. Page admin `/admin/journal` filtrable par utilisateur, action et période, export CSV et rétention configurable (365 jours par défaut, 0 = illimité).
+- **Rôles admin et technicien** : `admin_users.role` distingue l'administrateur (tout) du technicien, limité à l'inventaire (imports, masters, scans, roadmap, pack minimal, flags, absences, rapports, corbeille et restauration). Pour un technicien, le reste de l'espace `/admin` — catalogue, paramètres, professeurs, demandes, journal — et la purge définitive de la corbeille répondent 403 ; chaque écriture reste attribuée à son auteur dans le journal d'audit.
 - **Historique** : chaque scan est conservé, avec provenance du script et avertissements de collecte
 - **Évolution d'un master** : comparez deux scans du même poste (logiciels, système, disques, réseau, services)
 - **Santé du parc** : repérez les scans anciens, disques bas, collectes partielles et doublons réseau
@@ -31,6 +32,37 @@ Compatible [Fablab-Suite](https://github.com/fablabloritz-coder/Fablab-Suite) (F
 - **Mise à jour avec confirmation** : upload d'un nouveau fichier pour un master avec comparatif avant/après puis validation explicite
 - **Suivi des absences** : chaque logiciel absent est « à vérifier » par défaut ; choisissez « Retiré volontairement » ou « À installer ». La liste ponctuelle est propre au master et se ferme automatiquement quand le logiciel réapparaît.
 - **API FabSuite** : endpoints `/api/fabsuite/manifest`, `/api/fabsuite/health`, `/api/fabsuite/status`
+
+## Comptes et rôles
+
+`admin_users.role` (migration 7) distingue deux rôles :
+
+| Rôle | Accès |
+|---|---|
+| `admin` | Tout : inventaire, catalogue, paramètres, professeurs, demandes, journal d'audit. |
+| `technicien` | Inventaire seulement : imports, masters, scans, roadmap, pack minimal, flags, absences, rapports, santé, corbeille et restauration. Le reste de `/admin` (catalogue, paramètres, professeurs, demandes, journal) et la purge définitive répondent 403. |
+
+Un compte créé avant la migration garde `admin` ; un rôle vide ou inconnu retombe
+sur `technicien` (moindre privilège), et une session ouverte avant la migration
+reste administrateur pour ne pas verrouiller l'installation. La page de
+connexion est commune aux deux rôles : le technicien arrive sur le dashboard
+inventaire, l'administrateur sur `/admin/`. Pour créer un compte technicien
+(l'interface de gestion des comptes n'existe pas encore) :
+
+```bash
+cd FabInventory
+python3 - <<'PY'
+from app import app, get_db, generate_password_hash
+with app.app_context():
+    db = get_db()
+    db.execute(
+        "INSERT INTO admin_users (username, password_hash, role) "
+        "VALUES (?, ?, 'technicien')",
+        ("technicien", generate_password_hash("mot-de-passe-fort")),
+    )
+    db.commit()
+PY
+```
 
 ## Installation rapide (Docker)
 
@@ -104,6 +136,7 @@ FabInventory/
 ├── app.py                  # Application Flask
 ├── templates/              # Templates HTML (Jinja2)
 │   ├── base.html           # Layout commun
+│   ├── 403.html            # Accès refusé (rôle technicien)
 │   ├── index.html          # Dashboard
 │   ├── upload.html         # Page d'import
 │   ├── upload_preview.html # Aperçu du plan d'import avant écriture
@@ -131,7 +164,7 @@ FabInventory/
 ## Tests et mesures
 
 ```bash
-python3 tests/run_all.py        # 28 modules, 171 tests, un processus par module
+python3 tests/run_all.py        # 29 modules, 185 tests, un processus par module
 python3 tools/parc_scale.py --db /tmp/parc-500.db --force --benchmark
 ```
 

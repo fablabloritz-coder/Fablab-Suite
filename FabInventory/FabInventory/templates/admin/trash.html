@@ -13,6 +13,7 @@
     Les archives restaurees et celles de plus de {{ retention_days }} jours
     peuvent etre supprimees definitivement.
   </p>
+  {% if is_admin %}
   {% if purgeable %}
   <form method="POST" action="{{ url_for('admin_trash_purge') }}"
         data-confirm="Supprimer definitivement {{ purgeable }} archive(s) restauree(s) ou de plus de {{ retention_days }} jours ?"
@@ -21,6 +22,11 @@
       <i class="bi bi-fire me-1"></i>Purger ({{ purgeable }})
     </button>
   </form>
+  {% endif %}
+  {% else %}
+  <p class="text-muted small mb-0">
+    <i class="bi bi-shield-lock me-1"></i>La purge définitive est réservée aux administrateurs.
+  </p>
   {% endif %}
 </div>
 

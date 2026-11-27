@@ -8,10 +8,12 @@ import os
 
 
 def login_admin(client):
-    """Ouvre une session admin dans le client de test.
+    """Ouvre une session connectee dans le client de test.
 
-    Les ecritures exigent une session admin ; les tests qui importent ou
-    modifient des donnees doivent donc s'authentifier comme un technicien.
+    Les ecritures exigent une session admin. Ce raccourci ne pose pas de role :
+    l'application traite une session sans role comme administrateur, par
+    compatibilite avec les sessions ouvertes avant la migration 7. Les tests du
+    role technicien passent par une vraie connexion (`test_admin_roles.py`).
     """
     with client.session_transaction() as session:
         session["admin_logged_in"] = True

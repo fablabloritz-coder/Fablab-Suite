@@ -6,6 +6,120 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : revue du rôle technicien (suite 8)
+
+**Simplification**
+- `admin_required` et `staff_required` partagent une seule implémentation,
+  `roles_required(*roles)` : un contrôle session + rôle, deux alias lisibles
+  (`admin_required = roles_required(ROLE_ADMIN)`,
+  `staff_required = roles_required(ROLE_ADMIN, ROLE_TECHNICIEN)`).
+- Le rôle n'est plus interprété dans les templates : un context processor
+  expose `is_admin` / `is_technicien` (faux hors session) et `base.html`,
+  `base_admin.html` et `trash.html` lisent ces booléens au lieu de comparer
+  `session['admin_role']` à une chaîne.
+- À la connexion, seul le rôle exact `admin` ouvre les droits complets ; plus de
+  normalisation casse/espaces, un rôle vide ou mal saisi retombe sur technicien.
+
+**Vérification de la matrice**
+- Inventaire des routes : toutes les écritures catalogue (`/admin/logiciels/*`,
+  `/admin/wiki/*`, `/admin/reindex-software`), paramètres (`/admin/settings`,
+  rétention de `/admin/journal`) et professeurs (`/admin/profs/*`) sont sous
+  `/admin` et décorées ; les écritures hors `/admin` sont l'inventaire,
+  `/api/compare` (lecture) et le portail professeur à jeton.
+- Les tests n'énumèrent plus les routes à la main : ils parcourent
+  `app.url_map` et exigent 403 sur toute page et toute écriture `/admin`, sauf
+  corbeille, restauration, connexion et sortie. Une route admin ajoutée sans
+  protection fait donc échouer la suite.
+
+**Tests**
+- `tests/test_admin_roles.py` : 14 tests, matrice dynamique (au moins 8 pages et
+  10 écritures vérifiées) et PATCH `/api/admin/demandes/<id>` en 403 JSON.
+- Suite officielle : `python tests/run_all.py`, **29 modules, 185 tests OK**.
+
+**Prochaine action**
+- Décider la suite 9 (confidentialité des lectures), puis la recette Windows de la
+  suite 3.
+
+## 2026-11-27 — FabInventory : corbeille restaurable pour le technicien (suite 8)
+
+**Fonctionnel**
+- Décorateur `staff_required` (tout compte connecté) pour les gestes d'inventaire
+  rangés dans `/admin` : la page Corbeille et la restauration d'un master ou d'un
+  scan supprimé sont ouvertes au technicien.
+- La purge définitive (`/admin/trash/purge`) reste réservée à l'administrateur
+  (`@admin_required`, 403 pour un technicien).
+- La page Corbeille masque le bouton « Purger » au technicien et affiche
+  « La purge définitive est réservée aux administrateurs ».
+- La navigation admin s'adapte au rôle : un technicien ne voit que Inventaire
+  (Corbeille) et Dashboard inventaire, avec le badge « Technicien » dans la
+  barre supérieure ; les sections Catalogue, Administration et Outils restent
+  réservées à l'administrateur.
+
+**Revue risque**
+- Le contrôle reste côté serveur : `staff_required` exige la session, la purge
+  garde `admin_required`. Masquer un bouton ne sert que de confort d'interface.
+- La restauration journalise toujours `trash_restore` sous le nom du technicien
+  et refuse un conflit de nom (message, pas d'écrasement).
+- Aucune autre route `/admin` ne change de rôle.
+
+**Tests**
+- `tests/test_admin_roles.py` : +4 tests (corbeille lisible par le technicien
+  sans bouton de purge, restauration d'un master supprimé, purge refusée en 403,
+  purge réussie pour l'administrateur), 14 au total.
+- Suite officielle : `python tests/run_all.py`, **29 modules, 185 tests OK**.
+
+**Prochaine action**
+- Décider la suite 9 (confidentialité des lectures), puis la recette Windows de la
+  suite 3.
+
+## 2026-11-27 — FabInventory : rôle technicien et matrice de permissions (suite 8, seconde moitié)
+
+**Fonctionnel**
+- `admin_users.role` (migration 7, défaut `admin`) : `admin` garde tout,
+  `technicien` ne garde que l'inventaire.
+- Connexion : le rôle est chargé en session ; le technicien est redirigé vers le
+  dashboard inventaire, l'administrateur vers `/admin/`. Un rôle vide ou inconnu
+  retombe sur `technicien` (moindre privilège).
+- `@admin_required` réserve tout l'espace `/admin` au rôle administrateur :
+  catalogue (logiciels, guides, alias, réindexation), paramètres (mot de passe,
+  rétention), professeurs, demandes et journal. Un technicien reçoit une page
+  403 dédiée, ou un JSON 403 sous `/api/`.
+- Écritures d'inventaire inchangées pour tout compte connecté : import,
+  création / mise à jour / suppression de master, scans, roadmap, pack minimal,
+  flags et absences. Chaque écriture reste attribuée à son auteur dans le
+  journal d'audit.
+- Barre de navigation publique : badge « Technicien » et déconnexion à la place
+  du lien Admin.
+
+**Revue risque**
+- Le contrôle est côté serveur (décorateur et `before_request`), pas seulement
+  masqué dans le template.
+- Une session ouverte avant la migration n'a pas de rôle : elle est traitée comme
+  administrateur pour ne pas verrouiller l'installation ; toute nouvelle
+  connexion lit le rôle en base.
+- Les lectures publiques de l'inventaire restent publiques (choix de la suite 9,
+  inchangé ici).
+- Création de comptes hors périmètre de cette brique : elle est documentée en
+  README (insertion avec `generate_password_hash`), sans page de gestion.
+
+**Tests**
+- `tests/test_admin_roles.py` (10 tests) : redirection selon le rôle, rôle
+  inconnu ramené à technicien, lectures et écritures inventaire du technicien
+  (master, import, flag journalisé), 10 pages et 5 écritures `/admin` en 403,
+  API admin en 403 JSON, accès complets de l'administrateur, session sans rôle,
+  anonyme redirigé vers la connexion.
+- `tests/test_schema_migrations.py` : colonne `role` et valeur `admin` du compte
+  initial.
+- Suite officielle : `python tests/run_all.py`, **29 modules, 181 tests OK**.
+
+**Reste à faire**
+- Gestion des comptes dans l'interface (création / désactivation d'un
+  technicien) si le besoin se confirme ; suite 9 (politique de lecture).
+
+**Prochaine action**
+- Décider la suite 9 (lecture anonyme ou réservée), puis la recette Windows de la
+  suite 3.
+
 ## 2026-11-27 — FabInventory : rapports parc, corrections de la revue (suite 6)
 
 **Fonctionnel**

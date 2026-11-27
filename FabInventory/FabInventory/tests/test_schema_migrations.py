@@ -143,8 +143,15 @@ class SchemaMigrationTests(unittest.TestCase):
                 >= {"schema_version", "software_followups", "deleted_items", "logiciel_aliases"}
             )
             self.assertIn("software_name_norm", _colonnes(db, "software_index"))
+            self.assertIn("role", _colonnes(db, "admin_users"))
             self.assertEqual(
                 db.execute("SELECT COUNT(*) AS c FROM admin_users").fetchone()["c"], 1
+            )
+            self.assertEqual(
+                db.execute(
+                    "SELECT role FROM admin_users WHERE username = 'admin'"
+                ).fetchone()["role"],
+                "admin",
             )
 
     def test_migrations_non_rejouees_sur_base_a_jour(self):

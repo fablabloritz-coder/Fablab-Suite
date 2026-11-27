@@ -19,7 +19,7 @@ import io
 import csv
 import zipfile
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, g, send_from_directory, session, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from urllib.parse import urlencode
@@ -299,7 +299,7 @@ def _remove_initial_admin_password():
 # `_SCHEMA_MIGRATIONS` est idempotente et s'execute dans l'ordre : une base
 # ancienne (v2.1.4) les rejoue toutes une fois, une base a jour n'en rejoue
 # aucune. Les tests `test_schema_migrations.py` verifient les deux cas.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def _migrate_1_core_schema(db):
@@ -810,6 +810,15 @@ def _migrate_6_audit_log(db):
     )
 
 
+def _migrate_7_admin_roles(db):
+    """Role des comptes : `admin` (tout) ou `technicien` (inventaire seulement)."""
+    cols = [row[1] for row in db.execute("PRAGMA table_info(admin_users)").fetchall()]
+    if "role" not in cols:
+        db.execute(
+            "ALTER TABLE admin_users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'"
+        )
+
+
 _SCHEMA_MIGRATIONS = [
     (1, "tables de base", _migrate_1_core_schema),
     (2, "dates de scan", _migrate_2_snapshot_dates),
@@ -817,6 +826,7 @@ _SCHEMA_MIGRATIONS = [
     (4, "fusion des doublons", _migrate_4_master_merge),
     (5, "catalogue et couverture", _migrate_5_catalogue_coverage),
     (6, "journal d'audit", _migrate_6_audit_log),
+    (7, "rôles des comptes", _migrate_7_admin_roles),
 ]
 
 assert SCHEMA_VERSION == _SCHEMA_MIGRATIONS[-1][0]
@@ -963,20 +973,63 @@ def _load_secret_key():
 app.secret_key = _load_secret_key()
 
 
-# ─── DÉCORATEUR AUTH ADMIN ────────────────────────────────────────────────────
+# ─── RÔLES ET DÉCORATEUR AUTH ADMIN ──────────────────────────────────────────
+# Deux rôles : `admin` (tout) et `technicien` (inventaire seulement). Les
+# écritures d'inventaire restent ouvertes à tout compte connecté (voir
+# `_require_admin_for_writes`) ; tout l'espace /admin — catalogue, paramètres,
+# professeurs, demandes, journal — est réservé au rôle administrateur.
 
-def admin_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get('admin_logged_in'):
-            return redirect(url_for('admin_login'))
-        return f(*args, **kwargs)
-    return decorated
+ROLE_ADMIN = "admin"
+ROLE_TECHNICIEN = "technicien"
+
+
+def _current_role():
+    """Rôle de la session ; une session ouverte avant le rôle vaut admin."""
+    return session.get("admin_role") or ROLE_ADMIN
+
+
+def roles_required(*roles):
+    """Session obligatoire, puis contrôle du rôle (403 hors des rôles donnés)."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not session.get('admin_logged_in'):
+                return redirect(url_for('admin_login'))
+            if _current_role() not in roles:
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
+# Catalogue, paramètres, professeurs, demandes, journal : administrateur seul.
+admin_required = roles_required(ROLE_ADMIN)
+# Gestes d'inventaire rangés dans /admin (corbeille, restauration) : les deux rôles.
+staff_required = roles_required(ROLE_ADMIN, ROLE_TECHNICIEN)
 
 
 def _get_admin_user():
     """Retourne le nom d'utilisateur admin connecté (pour affichage)."""
     return session.get('admin_username', 'admin')
+
+
+@app.context_processor
+def _inject_role():
+    """Expose le rôle aux templates : la décision d'accès reste côté serveur."""
+    logged_in = bool(session.get('admin_logged_in'))
+    role = _current_role()
+    return {
+        "is_admin": logged_in and role == ROLE_ADMIN,
+        "is_technicien": logged_in and role == ROLE_TECHNICIEN,
+    }
+
+
+@app.errorhandler(403)
+def forbidden(error):
+    """Un technicien reste hors du catalogue, des paramètres et des professeurs."""
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Action réservée aux administrateurs"}), 403
+    return render_template("403.html"), 403
 
 
 # ─── JOURNAL D'AUDIT ─────────────────────────────────────────────────────────
@@ -1386,7 +1439,11 @@ def log_request_duration(response):
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     if session.get('admin_logged_in'):
-        return redirect(url_for('admin_dashboard'))
+        return redirect(
+            url_for(
+                'admin_dashboard' if _current_role() == ROLE_ADMIN else 'index'
+            )
+        )
     error = None
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
@@ -1394,10 +1451,16 @@ def admin_login():
         db = get_db()
         user = db.execute("SELECT * FROM admin_users WHERE username = ?", (username,)).fetchone()
         if user and check_password_hash(user["password_hash"], password):
+            # Seul le rôle exact `admin` garde tous les droits : un rôle vide,
+            # inconnu ou mal saisi retombe sur technicien (moindre privilège).
+            role = ROLE_ADMIN if user["role"] == ROLE_ADMIN else ROLE_TECHNICIEN
             session['admin_logged_in'] = True
             session['admin_username'] = username
             session['admin_user_id'] = user['id']
-            return redirect(url_for('admin_dashboard'))
+            session['admin_role'] = role
+            return redirect(
+                url_for('admin_dashboard' if role == ROLE_ADMIN else 'index')
+            )
         error = "Identifiants incorrects."
     return render_template("admin/login.html", error=error)
 
@@ -5192,7 +5255,7 @@ def _restore_archived_snapshot(db, payload):
 
 
 @app.route("/admin/trash")
-@admin_required
+@staff_required
 def admin_trash():
     db = get_db()
     items = db.execute(
@@ -5239,7 +5302,7 @@ def admin_trash_purge():
 
 
 @app.route("/admin/trash/<int:item_id>/restore", methods=["POST"])
-@admin_required
+@staff_required
 def admin_trash_restore(item_id):
     db = get_db()
     item = db.execute(

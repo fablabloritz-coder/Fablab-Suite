@@ -30,7 +30,12 @@
         <li class="nav-item"><a class="nav-link {% if request.endpoint and request.endpoint.startswith('parc_reports') %}active{% endif %}" href="/rapports"><i class="bi bi-clipboard-data me-1"></i>Rapports parc</a></li>
       </ul>
       <ul class="navbar-nav ms-auto">
+        {% if is_technicien %}
+        <li class="nav-item"><span class="nav-link"><i class="bi bi-tools me-1"></i>Technicien</span></li>
+        <li class="nav-item"><a class="nav-link" href="/admin/logout"><i class="bi bi-box-arrow-right me-1"></i>Déconnexion</a></li>
+        {% else %}
         <li class="nav-item"><a class="nav-link {% if request.endpoint and request.endpoint.startswith('admin_') %}active{% endif %}" href="/admin/"><i class="bi bi-shield-lock me-1"></i>Admin</a></li>
+        {% endif %}
       </ul>
     </div>
   </div>
