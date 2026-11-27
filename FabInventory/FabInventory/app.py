@@ -25,7 +25,18 @@ from functools import wraps
 # Source unique de la version : manifeste FabSuite et templates.
 APP_VERSION = "2.1.4"
 
+# Version du script PowerShell servi par /download/master-script. Elle doit
+# rester alignee sur $script:ScriptVersion (verifie par les tests).
+CURRENT_SCRIPT_VERSION = "3.1.0"
+
 app = Flask(__name__)
+
+# Fichiers du compagnon PowerShell : source unique pour le telechargement, le
+# pack ZIP et l'empreinte SHA256 affichee.
+_DOWNLOADS_DIR = os.path.join(app.root_path, "static", "downloads")
+_SCRIPT_ASSET_NAME = "inventaire_master.ps1"
+_LAUNCHER_ASSET_NAME = "lancer_inventaire_master.bat"
+
 app.jinja_env.globals["app_version"] = APP_VERSION
 
 # Valeurs historiques connues : les accepter reviendrait a laisser forger un
@@ -68,6 +79,11 @@ if os.environ.get("COOKIE_SECURE", "0") == "1":
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600
 
 _COMPRESSIBLE_TYPES = ("text/", "application/json", "application/javascript", "image/svg+xml")
+
+
+@app.context_processor
+def _inject_script_version():
+    return {"current_script_version": CURRENT_SCRIPT_VERSION}
 
 
 @app.after_request
@@ -1973,6 +1989,21 @@ def _scan_metadata(data):
     }
 
 
+def _script_version_key(value):
+    """Transforme "3.1" ou "v3.1.0" en tuple comparable, ou () si inconnue."""
+    parts = re.findall(r"\d+", str(value or ""))
+    if not parts:
+        return ()
+    numbers = [int(part) for part in parts[:3]]
+    return tuple(numbers + [0] * (3 - len(numbers)))
+
+
+def _is_old_script_version(value):
+    """Vrai si la version est absente ou anterieure a CURRENT_SCRIPT_VERSION."""
+    found = _script_version_key(value)
+    return not found or found < _script_version_key(CURRENT_SCRIPT_VERSION)
+
+
 def _normalize_json_services(items):
     """Normalise les services du JSON schema 3."""
     if not isinstance(items, list):
@@ -2787,6 +2818,9 @@ def _build_fleet_health(db, stale_days=30):
         disks = _load_json_list(row["disks_json"])
         network = _load_json_list(row["network_json"])
         scan_warnings = _load_json_list(row["warnings_json"])
+        script_old = bool(snapshot_id) and _is_old_script_version(
+            row["script_version"]
+        )
         low_disks = []
         for disk in disks:
             metrics = _disk_metrics(disk)
@@ -2846,6 +2880,7 @@ def _build_fleet_health(db, stale_days=30):
             "scan_key": row["scan_key"] or "",
             "script_version": row["script_version"] or "",
             "scan_schema": row["scan_schema"] or 0,
+            "script_old": script_old,
             "total_software": row["total_software"] or 0,
             "missing_scan": snapshot_id is None,
             "stale": (not snapshot_id) or (row["scan_key"] or "") < cutoff,
@@ -2881,6 +2916,7 @@ def _build_fleet_health(db, stale_days=30):
         "scanned": sum(1 for entry in entries if entry["snapshot_id"]),
         "missing_scan": sum(1 for entry in entries if entry["missing_scan"]),
         "stale": sum(1 for entry in entries if entry["stale"]),
+        "old_script": sum(1 for entry in entries if entry["script_old"]),
         "disk_masters": len({entry["id"] for entry in entries if entry["low_disks"]}),
         "warning_masters": len({entry["id"] for entry in entries if entry["warnings"]}),
         "duplicate_ip_count": len(duplicate_ips),
@@ -2888,6 +2924,16 @@ def _build_fleet_health(db, stale_days=30):
         "disk_free_go": DISK_ALERT_FREE_GO,
         "disk_free_pct": DISK_ALERT_FREE_PCT,
     }
+
+
+def _script_sha256():
+    """Empreinte du script servi, pour verification apres telechargement."""
+    path = os.path.join(_DOWNLOADS_DIR, _SCRIPT_ASSET_NAME)
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    except OSError:
+        return ""
 
 
 @app.route("/")
@@ -2914,7 +2960,12 @@ def index():
         WHERE workflow_type = 'preparation'
         """
     ).fetchone()
-    return render_template("index.html", masters=masters, prep_summary=prep_summary)
+    return render_template(
+        "index.html",
+        masters=masters,
+        prep_summary=prep_summary,
+        script_sha256=_script_sha256(),
+    )
 
 
 @app.route("/sante")
@@ -2931,17 +2982,15 @@ def network_registry():
 
 @app.route("/download/master-script")
 def download_master_script():
-    script_dir = os.path.join(app.root_path, "static", "downloads")
-    script_name = "inventaire_master.ps1"
-    script_path = os.path.join(script_dir, script_name)
+    script_path = os.path.join(_DOWNLOADS_DIR, _SCRIPT_ASSET_NAME)
 
     if not os.path.isfile(script_path):
         flash("Script d'inventaire introuvable sur le serveur", "error")
         return redirect(url_for("index"))
 
     return send_from_directory(
-        script_dir,
-        script_name,
+        _DOWNLOADS_DIR,
+        _SCRIPT_ASSET_NAME,
         as_attachment=True,
         download_name="FabInventory-Inventaire-Master.ps1",
     )
@@ -2949,17 +2998,15 @@ def download_master_script():
 
 @app.route("/download/master-launcher")
 def download_master_launcher():
-    script_dir = os.path.join(app.root_path, "static", "downloads")
-    launcher_name = "lancer_inventaire_master.bat"
-    launcher_path = os.path.join(script_dir, launcher_name)
+    launcher_path = os.path.join(_DOWNLOADS_DIR, _LAUNCHER_ASSET_NAME)
 
     if not os.path.isfile(launcher_path):
         flash("Lanceur d'inventaire introuvable sur le serveur", "error")
         return redirect(url_for("index"))
 
     return send_from_directory(
-        script_dir,
-        launcher_name,
+        _DOWNLOADS_DIR,
+        _LAUNCHER_ASSET_NAME,
         as_attachment=True,
         download_name="FabInventory-Lancer-Inventaire-Master.bat",
     )
@@ -2967,13 +3014,13 @@ def download_master_launcher():
 
 @app.route("/download/master-bundle")
 def download_master_bundle():
-    script_dir = os.path.join(app.root_path, "static", "downloads")
-    files_to_pack = [
-        "inventaire_master.ps1",
-        "lancer_inventaire_master.bat",
-    ]
+    files_to_pack = [_SCRIPT_ASSET_NAME, _LAUNCHER_ASSET_NAME]
 
-    missing = [name for name in files_to_pack if not os.path.isfile(os.path.join(script_dir, name))]
+    missing = [
+        name
+        for name in files_to_pack
+        if not os.path.isfile(os.path.join(_DOWNLOADS_DIR, name))
+    ]
     if missing:
         flash("Pack d'inventaire incomplet sur le serveur", "error")
         return redirect(url_for("index"))
@@ -2981,7 +3028,7 @@ def download_master_bundle():
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name in files_to_pack:
-            zf.write(os.path.join(script_dir, name), arcname=name)
+            zf.write(os.path.join(_DOWNLOADS_DIR, name), arcname=name)
 
     buffer.seek(0)
     return app.response_class(
@@ -3195,6 +3242,7 @@ def master_detail(master_id):
     # tableau et l'index utilisent la meme regle, y compris sur les anciens
     # snapshots qui n'ont pas de champ `cat`.
     latest = snapshots[0] if snapshots else None
+    latest_script_old = bool(latest) and _is_old_script_version(latest["script_version"])
     latest_warnings = _load_json_list(latest["warnings_json"]) if latest else []
     software = json.loads(latest["software_json"]) if latest else []
     for item in software:
@@ -3215,7 +3263,8 @@ def master_detail(master_id):
     return render_template("master.html", master=master, snapshots=snapshots,
                            software=software, flags=flags, latest=latest,
                            latest_warnings=latest_warnings, followups=followups,
-                           followup_counts=_followup_counts(followups))
+                           followup_counts=_followup_counts(followups),
+                           latest_script_old=latest_script_old)
 
 
 @app.route("/master/<int:master_id>/absences", methods=["GET", "POST"])

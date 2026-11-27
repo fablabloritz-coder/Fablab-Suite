@@ -11,13 +11,15 @@
 > aléatoire et persistée, et le compte admin n'a plus de mot de passe par
 > défaut. Les suppressions de masters et de scans passent par une corbeille
 > restaurable (`deleted_items`, `/admin/trash`). Suite de référence :
-> `python tests/run_all.py` (21 modules, 119 tests). Les
+> `python tests/run_all.py` (22 modules, 124 tests). Les
 > scans conservent aussi `warnings_json`, `script_version`, `scan_schema` et
 > `generated_at` ; `/master/<id>/evolution`, `/sante` et `/reseau` exploitent
 > ces données. Les absences de logiciels sont suivies dans
 > `software_followups` (statut `pending` par défaut, résolution automatique
-> au retour du logiciel). Le Lot 6 (script PowerShell unique) reste en attente
-> d'un test Windows.
+> au retour du logiciel). La version courante du script est exposée
+> (`CURRENT_SCRIPT_VERSION`) avec un badge « scan avec un script ancien » sur
+> la fiche master et `/sante`, et son SHA256 est affiché sur le dashboard. Le
+> test Windows réel du script reste à faire.
 
 ## 1) Purpose of this file
 
@@ -249,6 +251,9 @@ l'ancien emplacement de distribution, pas la source servie.
 - Sorties : HTML autonome + CSV ; options `-OutputPath`, `-OutputDirectory`, `-NoGui`, `-SelfTest`, `-SkipAppx`, `-SkipFolderScan`, `-SkipServices`
 - Les erreurs WMI/AppX/dossier sont non bloquantes et visibles dans le rapport ; un échec fatal écrit un journal dans `%TEMP%`
 - Le test Windows manuel reste obligatoire avant diffusion (le CI Linux ne peut pas exécuter WMI/AppX)
+- `CURRENT_SCRIPT_VERSION = "3.1.0"` doit rester aligné sur `$script:ScriptVersion` ; un test le vérifie
+- Un scan dont la version est absente ou antérieure porte le badge « scan avec un script ancien » (fiche master, `/sante`); `/sante` donne le nombre de postes concernés
+- Le dashboard affiche la version courante et le SHA256 du `.ps1` servi, pour vérifier le fichier téléchargé
 
 ## 14) Project conventions (must keep)
 

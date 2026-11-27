@@ -6,6 +6,26 @@ action imperative.
 
 ---
 
+## 2026-11-27 — FabInventory : version du script, badges et SHA256 (suite 3)
+
+**Fonctionnel**
+- `CURRENT_SCRIPT_VERSION = "3.1.0"` : source applicative unique, alignée sur
+  `$script:ScriptVersion` et vérifiée par test.
+- Badge « scan avec un script ancien » sur la fiche master et dans `/sante`
+  (version absente ou antérieure ; comparaison tolérante à `3.1` et `v3.1.0`).
+  `/sante` affiche le nombre de postes concernés et renvoie vers le script.
+- Le dashboard affiche la version courante et le SHA256 du `.ps1` servi ; le
+  test compare l'empreinte affichée à celle du fichier téléchargé.
+
+**Tests**
+- `tests/test_script_version.py` : 5 tests (alignement constante/script,
+  comparaison de versions, badge master, avertissement `/sante`, SHA256).
+- Suite officielle : `python tests/run_all.py`, **22 modules, 124 tests OK**.
+
+**Prochaine action**
+- Recette Windows réelle du script (WMI, AppX, dialogue WinForms), puis suite 4
+  (import d'identité) dès qu'un scan réel est disponible.
+
 ## 2026-11-27 — FabInventory : durcissement de SECRET_KEY
 
 **Sécurité**

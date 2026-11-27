@@ -58,6 +58,14 @@
   Une IP ou une MAC dupliquée peut être ancienne, virtualisée ou attribuée par DHCP : vérifier la date du scan.
 </div>
 
+{% if health.old_script %}
+<div class="alert alert-warning border small">
+  <i class="bi bi-arrow-repeat me-1"></i>
+  {{ health.old_script }} poste(s) scanné(s) avec un script antérieur à la version {{ current_script_version }}.
+  <a href="/" class="fw-semibold">Télécharger le script courant</a>.
+</div>
+{% endif %}
+
 <section class="card border-0 shadow-sm mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span><i class="bi bi-pc-display me-2"></i>Postes à surveiller</span>
@@ -84,6 +92,7 @@
           <td>{% if entry.snapshot_id %}{{ entry.total_software }}{% else %}—{% endif %}</td>
           <td>
             {% if entry.stale %}<span class="badge bg-warning text-dark">scan ancien</span>{% endif %}
+            {% if entry.script_old %}<span class="badge bg-warning text-dark">scan avec un script ancien</span>{% endif %}
             {% if entry.missing_scan %}<span class="badge bg-secondary">sans scan</span>{% endif %}
             {% if entry.has_low_disk %}<span class="badge bg-danger">disque bas</span>{% endif %}
             {% if entry.has_warning %}<span class="badge bg-warning text-dark">collecte partielle</span>{% endif %}

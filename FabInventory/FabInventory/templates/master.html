@@ -111,6 +111,11 @@
         <div class="sys-info-label">Dernier scan</div>
         <div class="sys-info-value">{{ latest.scan_date }}</div>
         {% if latest.script_version %}<div class="small text-muted">Script {{ latest.script_version }}</div>{% endif %}
+        {% if latest_script_old %}
+        <div class="mt-1">
+          <span class="badge bg-warning text-dark" title="Version courante : {{ current_script_version }}">scan avec un script ancien</span>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>

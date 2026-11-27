@@ -62,6 +62,11 @@ Le script servi par `/download/master-script` est la source unique :
 utilisateur, les applications AppX, les dossiers Program Files, les disques,
 le réseau, les services automatiques et les informations système.
 
+La version courante (`3.1.0`) et l'empreinte SHA256 du script sont affichées
+sur le dashboard. Un scan produit par une version antérieure (ou sans version)
+porte le badge « scan avec un script ancien » sur la fiche master et sur
+`/sante`.
+
 ```powershell
 # Mode interactif : fenêtre de sauvegarde
 .\inventaire_master.ps1
